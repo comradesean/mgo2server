@@ -172,8 +172,11 @@ services:
     command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100}
     volumes:
       - ./dev/stun_probe.py:/stun.py:ro
-    ports:
-      - "${NOMAD_PROBE_STUN:-192.168.1.100:3478}:3478/udp"
+    # Host networking, not published ports. Docker's UDP proxy rewrites the source port of
+    # replies, and a STUN client checks which address answered — that is the entire mechanism by
+    # which it classifies its NAT. Behind the proxy every reply appears to come from a random
+    # port and discovery cannot conclude.
+    network_mode: host
     restart: unless-stopped
 
 volumes:
