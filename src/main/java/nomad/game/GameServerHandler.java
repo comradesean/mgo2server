@@ -65,6 +65,20 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	}
 
 	@Override
+	public void channelActive(ChannelHandlerContext ctx) {
+		// Connections are logged as well as packets. A client that connects and sends nothing is
+		// otherwise completely invisible here, which is exactly the case worth seeing.
+		logger.info("Connected: {}", ctx.channel().remoteAddress());
+		ctx.fireChannelActive();
+	}
+
+	@Override
+	public void channelInactive(ChannelHandlerContext ctx) {
+		logger.info("Disconnected: {}", ctx.channel().remoteAddress());
+		ctx.fireChannelInactive();
+	}
+
+	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
 		logger.error(cause);
 	}
