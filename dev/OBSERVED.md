@@ -65,6 +65,24 @@ since a STUN client identifies which address answered, every reply appears to co
 port and discovery never concludes. Published ports look like they work — the reply arrives — but
 from the wrong port.
 
+## Error 090B:00000001
+
+"Unable to connect to server." Konami's own support answer, preserved on GameFAQs, attributes it
+to inbound **UDP** being blocked, and the thread identifies the port as **5730**. That matches what
+the client does here: every STUN request originates from port 5730, so the game binds it and
+expects to receive on it.
+
+The mechanism is easy to misread. NAT discovery asks the server to reply from a *different* port,
+and a stateful firewall treats a reply from a port the game never contacted as unsolicited inbound
+traffic and drops it. The client then concludes its UDP port is closed. Nothing in the server logs
+indicates a problem, because the server did send the reply.
+
+On Windows, allow it inbound:
+
+```
+netsh advfirewall firewall add rule name="MGO2 UDP 5730" dir=in action=allow protocol=UDP localport=5730
+```
+
 ## HTTP endpoints
 
 Plain HTTP on port 80:
