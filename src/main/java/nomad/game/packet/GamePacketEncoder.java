@@ -1,53 +1,59 @@
 package nomad.game.packet;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
-import io.netty.util.AttributeKey;
+import io.netty.handler.codec.MessageToByteEncoder;
+import nomad.common.crypto.GameCrypto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class GamePacketEncoder extends ChannelOutboundHandlerAdapter {
-	private static class EncodeState {
-		public int sequence;
+import java.util.function.IntPredicate;
 
-		public EncodeState(int sequence) {
-			this.sequence = sequence;
-		}
-	}
-
+/**
+ * Encodes {@link GamePacket}s onto the wire.
+ * <p>
+ * Stateful (it tracks the outgoing sequence) and therefore not sharable: give every channel its
+ * own instance. {@link MessageToByteEncoder} takes care of releasing the message.
+ */
+public class GamePacketEncoder extends MessageToByteEncoder<GamePacket> {
 	private static final Logger logger = LogManager.getLogger();
 
-	private static final AttributeKey<EncodeState> ENCODE_STATE = AttributeKey.valueOf("encodeState");
+	/** Whether a given command's payload must be Blowfish-encrypted before sending. */
+	private final IntPredicate payloadEncrypted;
 
-	@Override
-	public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
-		if (msg instanceof GamePacket packet) {
-			var encodeStateAttribute = ctx.channel().attr(ENCODE_STATE);
-			var encodeState = encodeStateAttribute.get();
-			if (encodeState == null) {
-				encodeStateAttribute.set(encodeState = new EncodeState(1));
-			}
+	private int sequence = 1;
 
-			var payload = packet.getPayload();
-			try {
-				var buffer = ctx.alloc().buffer(24 + payload.readableBytes());
-				buffer.writeShort(packet.getCommand());
-				buffer.writeShort(payload.readableBytes());
-				buffer.writeInt(encodeState.sequence++);
-				buffer.writeZero(16);
-				buffer.writeBytes(payload);
-				ctx.write(buffer, promise);
-			} finally {
-				payload.release();
-			}
-		} else {
-			ctx.write(msg, promise);
-		}
+	public GamePacketEncoder(IntPredicate payloadEncrypted) {
+		this.payloadEncrypted = payloadEncrypted;
+	}
+
+	/** Encodes what the server sends to a client. */
+	public static GamePacketEncoder forServer() {
+		return new GamePacketEncoder(GameCrypto::isPayloadEncryptedOutbound);
+	}
+
+	/** Encodes what a client sends to the server, for use by test and tool clients. */
+	public static GamePacketEncoder forClient() {
+		return new GamePacketEncoder(GameCrypto::isPayloadEncryptedInbound);
 	}
 
 	@Override
-	public void flush(ChannelHandlerContext ctx) {
-		ctx.flush();
+	protected void encode(ChannelHandlerContext ctx, GamePacket packet, ByteBuf out) {
+		var command = packet.getCommand();
+		var payload = packet.getPayload();
+
+		var body = new byte[payload.readableBytes()];
+		payload.getBytes(payload.readerIndex(), body);
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("Out - command {} - {} bytes", String.format("%04x", command), body.length);
+			if (body.length > 0) {
+				logger.debug(ByteBufUtil.hexDump(body));
+			}
+		}
+
+		var frame = GamePacketCodec.frame(command, sequence++, body, payloadEncrypted.test(command));
+		out.writeBytes(frame);
 	}
 }

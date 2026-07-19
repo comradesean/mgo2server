@@ -4,154 +4,115 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.util.AttributeKey;
+import io.netty.handler.codec.ByteToMessageDecoder;
+import io.netty.handler.codec.CorruptedFrameException;
+import nomad.common.crypto.GameCrypto;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class GamePacketDecoder extends ChannelInboundHandlerAdapter {
-	private static class DecodeState {
-		public final ByteBuf buffer;
-		public int sequence;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.IntPredicate;
 
-		public DecodeState(ByteBuf buffer, int sequence) {
-			this.buffer = buffer;
-			this.sequence = sequence;
-		}
-	}
-
+/**
+ * Decodes the game wire format into {@link GamePacket}s.
+ * <p>
+ * Stateful (it tracks the expected sequence) and therefore not sharable: give every channel its
+ * own instance. Reassembly is left to {@link ByteToMessageDecoder}, which already handles
+ * fragmented and coalesced reads correctly.
+ */
+public class GamePacketDecoder extends ByteToMessageDecoder {
 	private static final Logger logger = LogManager.getLogger();
 
-	private static final AttributeKey<DecodeState> DECODE_STATE = AttributeKey.valueOf("decodeState");
+	/** Whether a given command's payload arrives Blowfish-encrypted. */
+	private final IntPredicate payloadEncrypted;
 
-	@Override
-	public void channelActive(ChannelHandlerContext ctx) {
-		var decodeStateAttribute = ctx.channel().attr(DECODE_STATE);
+	private int expectedSequence = 1;
 
-		if (decodeStateAttribute.get() != null) {
-			logger.warn("GamePacketDecoder.channelActive(): Did not expect decodeState to be set.");
-		}
+	public GamePacketDecoder(IntPredicate payloadEncrypted) {
+		this.payloadEncrypted = payloadEncrypted;
+	}
 
-		var buffer = ctx.alloc().buffer(GamePacketConstants.MAX_PACKET_SIZE, GamePacketConstants.MAX_PACKET_SIZE);
-		decodeStateAttribute.set(new DecodeState(buffer, 1));
+	/** Decodes what a client sends to the server. */
+	public static GamePacketDecoder forServer() {
+		return new GamePacketDecoder(GameCrypto::isPayloadEncryptedInbound);
+	}
 
-		ctx.fireChannelActive();
+	/** Decodes what the server sends back, for use by test and tool clients. */
+	public static GamePacketDecoder forClient() {
+		return new GamePacketDecoder(GameCrypto::isPayloadEncryptedOutbound);
 	}
 
 	@Override
-	public void channelInactive(ChannelHandlerContext ctx) {
-		var decodeState = ctx.channel().attr(DECODE_STATE).get();
-		if (decodeState != null) {
-			decodeState.buffer.release();
-		}
-
-		ctx.fireChannelInactive();
-	}
-
-	@Override
-	public void channelRead(ChannelHandlerContext ctx, Object msg) {
-		if (!(msg instanceof ByteBuf in)) {
+	protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+		if (in.readableBytes() < GamePacketCodec.HEADER_LENGTH) {
 			return;
 		}
 
-		var decodeState = ctx.channel().attr(DECODE_STATE).get();
-		if (decodeState == null) {
-			logger.error("GamePacketDecoder.channelRead(): decodeState is null.");
+		// Command and length are needed to size the frame, but the buffer is still XORed, so
+		// undo the key over just those four bytes. The key repeats every four bytes, which is
+		// why the top half applies at offset 0 and the bottom half at offset 2.
+		var index = in.readerIndex();
+		var command = (in.getShort(index + GamePacketCodec.OFFSET_COMMAND)
+			^ (GameCrypto.XOR_KEY >>> 16)) & 0xffff;
+		var declaredLength = (in.getShort(index + GamePacketCodec.OFFSET_PAYLOAD_LENGTH)
+			^ GameCrypto.XOR_KEY) & 0xffff;
+
+		var encrypted = payloadEncrypted.test(command);
+		var padding = GamePacketCodec.paddingFor(declaredLength, encrypted);
+		var bodyLength = declaredLength + padding;
+
+		if (bodyLength > GamePacketCodec.MAX_PAYLOAD_LENGTH + 1) {
+			throw new CorruptedFrameException(
+				"Payload length %d exceeds maximum for command %04x".formatted(bodyLength, command));
+		}
+
+		var frameLength = GamePacketCodec.HEADER_LENGTH + bodyLength;
+		if (in.readableBytes() < frameLength) {
 			return;
 		}
 
-		var buffer = decodeState.buffer;
-		var expectedSequence = decodeState.sequence;
+		var frame = new byte[frameLength];
+		in.readBytes(frame);
+		GamePacketCodec.xor(frame);
 
-		logger.info("read");
-		logger.info(ByteBufUtil.hexDump(in));
+		var body = Arrays.copyOfRange(frame, GamePacketCodec.HEADER_LENGTH, frameLength);
 
-		while (in.isReadable()) {
-			in.readBytes(buffer, Math.min(in.readableBytes(), buffer.writableBytes()));
+		// The checksum covers only the declared length, not any padding beyond it.
+		var covered = declaredLength <= body.length ? Arrays.copyOf(body, declaredLength) : body;
+		var expectedChecksum = GameCrypto.checksum(frame, covered);
+		var actualChecksum = Arrays.copyOfRange(frame, GamePacketCodec.OFFSET_CHECKSUM,
+			GamePacketCodec.OFFSET_CHECKSUM + GameCrypto.CHECKSUM_LENGTH);
 
-			buffer.markReaderIndex();
-
-			// Read command
-			if (!buffer.isReadable(2)) {
-				logger.info("Can't read command yet");
-				buffer.resetReaderIndex();
-				break;
-			}
-
-			var command = (int) buffer.readShort();
-			logger.info("command=" + String.format("%04x", command));
-
-			// Read payload length
-			if (!buffer.isReadable(2)) {
-				logger.info("Can't read payload length yet");
-				buffer.resetReaderIndex();
-				break;
-			}
-
-			var payloadLength = buffer.readShort();
-			logger.info("payloadLength=" + payloadLength);
-
-			// Read sequence
-			if (!buffer.isReadable(4)) {
-				logger.info("Can't read sequence yet");
-				buffer.resetReaderIndex();
-				break;
-			}
-
-			var sequence = buffer.readInt();
-			logger.info("sequence=" + sequence);
-
-			// Read checksum
-			if (!buffer.isReadable(16)) {
-				logger.info("Can't read checksum yet");
-				buffer.resetReaderIndex();
-				break;
-			}
-
-			var checksum = new byte[16];
-			buffer.readBytes(checksum);
-			logger.info("checksum=" + ByteBufUtil.hexDump(checksum));
-
-			// Read payload
-			if (!buffer.isReadable(payloadLength)) {
-				logger.info("Can't read payload yet");
-				buffer.resetReaderIndex();
-				break;
-			}
-
-			var payload = new byte[payloadLength];
-			buffer.readBytes(payload);
-			logger.info("payload=" + ByteBufUtil.hexDump(payload));
-
-			// Validate
-
-
-			// Pass to next handler
-			var packet = new GamePacket(command, Unpooled.wrappedBuffer(payload));
-			ctx.fireChannelRead(packet);
-
-			// Move readable bytes to start of buffer, if applicable
-			logger.info("before, readerIndex=" + buffer.readerIndex() + ", readableBytes=" + buffer.readableBytes());
-			logger.info(ByteBufUtil.hexDump(buffer));
-
-			var readerIndex = buffer.readerIndex();
-			var readableBytes = buffer.readableBytes();
-			if (readableBytes > 0) {
-				var length0 = Math.min(readerIndex, readableBytes);
-				var length1 = readableBytes - length0;
-
-				buffer.getBytes(readerIndex, buffer, 0, length0);
-
-				if (length1 > 0) {
-					buffer.getBytes(readerIndex + length0, buffer, length0, length1);
-				}
-			}
-
-			buffer.readerIndex(0);
-			buffer.writerIndex(readableBytes);
-
-			logger.info("after, readerIndex=" + buffer.readerIndex() + ", readableBytes=" + buffer.readableBytes());
-			logger.info(ByteBufUtil.hexDump(buffer));
+		if (!GameCrypto.checksumMatches(expectedChecksum, actualChecksum)) {
+			throw new CorruptedFrameException("Bad checksum for command %04x".formatted(command));
 		}
+
+		var sequence = ((frame[GamePacketCodec.OFFSET_SEQUENCE] & 0xff) << 24)
+			| ((frame[GamePacketCodec.OFFSET_SEQUENCE + 1] & 0xff) << 16)
+			| ((frame[GamePacketCodec.OFFSET_SEQUENCE + 2] & 0xff) << 8)
+			| (frame[GamePacketCodec.OFFSET_SEQUENCE + 3] & 0xff);
+
+		if (sequence != expectedSequence) {
+			throw new CorruptedFrameException(
+				"Out of sequence for command %04x: got %d, expected %d"
+					.formatted(command, sequence, expectedSequence));
+		}
+		expectedSequence++;
+
+		if (encrypted && body.length > 0) {
+			GameCrypto.packet().decrypt(body);
+			// Drop the cipher padding so handlers see only the declared payload.
+			body = Arrays.copyOf(body, declaredLength);
+		}
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("In  - command {} - {} bytes", String.format("%04x", command), body.length);
+			if (body.length > 0) {
+				logger.debug(ByteBufUtil.hexDump(body));
+			}
+		}
+
+		out.add(new GamePacket(command, Unpooled.wrappedBuffer(body)));
 	}
 }
