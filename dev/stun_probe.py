@@ -5,8 +5,9 @@ That is not a single binding request: the client sends CHANGE-REQUEST attributes
 to reply from a different address or port, and infers its NAT type from which replies arrive.
 
 A textbook implementation needs two IP addresses. This has one, so it serves two ports and answers
-the change-port case honestly and the change-IP case not at all — which is what a real server with
-a single interface would do. Enough for the client to reach a conclusion rather than hang.
+every probe from the address it advertised in CHANGED-ADDRESS. Declining the change-IP probe
+instead is more truthful, but the client simply retries it five times and then reports a
+connection failure, so a reachable answer is more useful than an accurate silence.
 
 Development aid only: no authentication, no RFC 5780 behaviour discovery, no fingerprinting.
 """
@@ -113,13 +114,12 @@ def serve(primary_port, advertised_ip):
                   f"attrs=[{', '.join(names) or 'none'}] "
                   f"change_ip={wants_ip} change_port={wants_port}", flush=True)
 
-            # Only one address is available, so a request to change IP cannot be honoured. Staying
-            # silent is what a single-homed server does, and the client treats it as a result.
-            if wants_ip:
-                print("      no second address; not answering", flush=True)
-                continue
-
-            reply_from = alternate_port if wants_port else received_on
+            # A request to change IP is answered from the alternate port rather than ignored.
+            # Only one address exists, and CHANGED-ADDRESS advertises it with that port, so this
+            # is the address the client was told to expect. Staying silent instead is technically
+            # honest but leaves the client retrying until it gives up, which is what was observed:
+            # five unanswered change-IP probes and then a connection failure.
+            reply_from = alternate_port if (wants_port or wants_ip) else received_on
             other_port = alternate_port if reply_from == primary_port else primary_port
 
             body = (
