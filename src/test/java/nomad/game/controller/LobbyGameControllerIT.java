@@ -5,6 +5,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.common.model.Lobby;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
+import nomad.game.LobbyType;
 import nomad.game.packet.GamePacket;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +16,11 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 public class LobbyGameControllerIT extends BaseGameClientServerIT {
+	@Override
+	protected LobbyType lobbyType() {
+		return LobbyType.GATE;
+	}
+
 	private static final int ENTRY_SIZE = 0x2e;
 
 	private void addLobby(String name, int type, String ip, int port) {

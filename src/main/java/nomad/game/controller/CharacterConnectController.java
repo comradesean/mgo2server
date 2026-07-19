@@ -1,0 +1,160 @@
+package nomad.game.controller;
+
+import io.netty.buffer.ByteBuf;
+import nomad.common.BufferUtil;
+import nomad.common.model.Account;
+import nomad.common.model.Chara;
+import nomad.common.model.ChatMacro;
+import nomad.common.service.CharacterService;
+import nomad.game.GameControllerContext;
+import nomad.game.GameError;
+import nomad.game.IGameController;
+import nomad.game.packet.GamePacket;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
+import java.util.function.Consumer;
+
+/**
+ * The burst a client asks for on entering a game lobby.
+ * <p>
+ * A single request, 0x4100, is answered with everything the client needs about the character it
+ * arrived with. The original replies with eight separate messages; implemented here are the
+ * character record (0x4101) and the chat macros (0x4121).
+ * <p>
+ * Still to come, each needing schema this project does not have yet: gameplay options and UI
+ * settings (0x4120), personal info (0x4122, needs clans and equipped skills), gear (0x4123),
+ * skills (0x4124), skill sets (0x4125) and gear sets (0x4126). A real client will not be fully
+ * happy until those exist.
+ */
+public class CharacterConnectController implements IGameController {
+	private static final Logger logger = LogManager.getLogger();
+
+	public static final int CONNECT = 0x4100;
+
+	public static final int CHARACTER_INFO = 0x4101;
+
+	public static final int CHAT_MACROS = 0x4121;
+
+	private static final int NAME_LENGTH = 16;
+
+	private static final int INFO_PAYLOAD_SIZE = 0x243;
+
+	/** Friend ids run from the end of the header up to this offset. */
+	private static final int FRIENDS_END = 0x129;
+
+	/** Blocked ids follow, up to here. */
+	private static final int BLOCKED_END = 0x229;
+
+	/**
+	 * Fixed blocks the client expects inside the character record. Their meaning is undocumented;
+	 * they are reproduced from the original server byte for byte.
+	 */
+	private static final byte[] INFO_PREFIX = {
+		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,
+		(byte) 0x01, (byte) 0x3E, (byte) 0x01, (byte) 0x50,
+	};
+
+	private static final byte[] INFO_SUFFIX = {
+		(byte) 0x00, (byte) 0xB7, (byte) 0xFD, (byte) 0xAB, (byte) 0xFC, (byte) 0xFF, (byte) 0xFF, (byte) 0x7B,
+		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
+		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
+		(byte) 0x00, (byte) 0x00,
+	};
+
+	private final CharacterService characterService;
+
+	public CharacterConnectController(CharacterService characterService) {
+		this.characterService = characterService;
+	}
+
+	@Override
+	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
+		handlers.put(CONNECT, this::connect);
+	}
+
+	private void connect(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(CHARACTER_INFO, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var charaId = account.getCurrentCharaId();
+		if (charaId == null) {
+			logger.warn("Account {} entered a game lobby with no character selected.", account.getId());
+			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			return;
+		}
+
+		var chara = characterService.get(charaId).orElse(null);
+		if (chara == null) {
+			logger.warn("Account {} has a selected character {} that no longer exists.",
+				account.getId(), charaId);
+			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			return;
+		}
+
+		writeCharacterInfo(ctx, account, chara);
+		writeChatMacros(ctx, charaId);
+	}
+
+	private void writeCharacterInfo(GameControllerContext ctx, Account account, Chara chara) {
+		var now = (int) Instant.now().getEpochSecond();
+
+		var buffer = ctx.buffer(INFO_PAYLOAD_SIZE);
+		buffer.writeInt((int) chara.getId());
+		BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		buffer.writeBytes(INFO_PREFIX);
+
+		buffer.writeInt(experienceFor(account, chara))
+			// The client shows the previous login alongside the current one.
+			.writeInt(now - 1)
+			.writeInt(now)
+			.writeZero(1);
+
+		// Friend and blocked lists are fixed-width regions of 4-byte ids. Neither is modelled
+		// yet, so both are left empty and the regions are zero-filled.
+		padTo(buffer, FRIENDS_END);
+		padTo(buffer, BLOCKED_END);
+
+		buffer.writeBytes(INFO_SUFFIX);
+
+		ctx.write(new GamePacket(CHARACTER_INFO, buffer));
+	}
+
+	/** Experience is per account, split between the main character and the alts. */
+	private static int experienceFor(Account account, Chara chara) {
+		var main = account.getMainCharaId();
+		return main != null && main == chara.getId() ? account.getMainExp() : account.getAltExp();
+	}
+
+	private void writeChatMacros(GameControllerContext ctx, long charaId) {
+		var macros = characterService.getChatMacros(charaId);
+
+		// One packet per type, each carrying its type byte then its twelve entries.
+		for (var type = 0; type < ChatMacro.TYPES; type++) {
+			var buffer = ctx.buffer(1 + ChatMacro.PER_TYPE * ChatMacro.TEXT_LENGTH);
+			buffer.writeByte(type);
+
+			for (var macro : macros) {
+				if (macro.getType() == type) {
+					BufferUtil.writeString(buffer, macro.getText(), StandardCharsets.ISO_8859_1,
+						ChatMacro.TEXT_LENGTH);
+				}
+			}
+
+			ctx.write(new GamePacket(CHAT_MACROS, buffer));
+		}
+	}
+
+	private static void padTo(ByteBuf buffer, int offset) {
+		var padding = offset - buffer.writerIndex();
+		if (padding > 0) {
+			buffer.writeZero(padding);
+		}
+	}
+}
