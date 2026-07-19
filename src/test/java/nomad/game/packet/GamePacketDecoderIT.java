@@ -3,14 +3,14 @@ package nomad.game.packet;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import nomad.game.BaseGameClientServerTest;
+import nomad.game.BaseGameClientServerIT;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-public class GamePacketDecoderTest extends BaseGameClientServerTest {
+public class GamePacketDecoderIT extends BaseGameClientServerIT {
 	@Test
 	public void test1PacketNoPayload() {
 		var buffer = Unpooled.wrappedBuffer(new byte[] {

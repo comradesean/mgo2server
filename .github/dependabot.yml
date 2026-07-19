@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Keep coupled artifacts moving together so a partial bump never splits a version family.
+      testcontainers:
+        patterns: ["org.testcontainers:*"]
+      log4j:
+        patterns: ["org.apache.logging.log4j:*"]
+      jooby:
+        patterns: ["io.jooby:*"]
+      jdbi:
+        patterns: ["org.jdbi:*"]
+      flyway:
+        patterns: ["org.flywaydb:*"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

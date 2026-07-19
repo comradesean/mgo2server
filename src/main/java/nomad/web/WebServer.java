@@ -22,8 +22,4 @@ public class WebServer {
 			controller.use(jooby);
 		}
 	}
-
-	public static void main(String[] args) {
-		Jooby.runApp(args, jooby -> WebServerFactory.createWebServer().use(jooby));
-	}
 }

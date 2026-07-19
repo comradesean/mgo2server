@@ -1,0 +1,89 @@
+# nomad-ng
+
+A Metal Gear Online 2 server emulator, continuing [GHzGangster/nomad-ng](https://github.com/GHzGangster/nomad-ng).
+
+This tree is the `nomad-ng` rewrite with its infrastructure completed. Game logic is still to be
+ported from the original [Nomad](https://github.com/GHzGangster/Nomad), which implements 78 commands
+against this project's two.
+
+## Requirements
+
+- JDK 25
+- Docker (for the integration tests and the container build)
+
+Maven is not required — use the bundled wrapper.
+
+## Quick start
+
+```sh
+docker compose up -d --wait
+```
+
+Brings up Postgres, runs migrations to completion, then starts the game server (`:5730`) and the
+web API (`:8080`). Ports and credentials are overridable:
+
+```sh
+NOMAD_WEB_PORT=18080 NOMAD_GAME_PORT=15730 NOMAD_DB_PASSWORD=secret docker compose up -d --wait
+```
+
+## Building and testing
+
+```sh
+./mvnw verify          # unit tests, then integration tests, then the jar and SBOM
+./mvnw test            # unit tests only, no Docker needed
+```
+
+Tests are split by naming convention:
+
+- `*Test` — unit tests, run by Surefire, no external dependencies.
+- `*IT` — integration tests, run by Failsafe against a real Postgres via Testcontainers.
+
+All integration tests share one container and one migrated schema for the whole JVM;
+`TestDatabase.reset()` truncates between tests with identity restart, so row ids stay predictable
+without paying for a container per class.
+
+## Running without Docker
+
+The shaded jar takes the mode as its argument:
+
+```sh
+java -jar target/nomad-ng.jar migrate   # apply migrations and exit
+java -jar target/nomad-ng.jar game      # game protocol server
+java -jar target/nomad-ng.jar web       # web API
+```
+
+Both servers migrate on startup, so `migrate` is only needed to run migrations independently of a
+deploy.
+
+## Configuration
+
+All configuration is read from the environment. Nothing secret is baked into the image.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NOMAD_DB_URL` | `jdbc:postgresql://localhost:5432/nomad` | JDBC URL |
+| `NOMAD_DB_USER` | `nomad` | Database user |
+| `NOMAD_DB_PASSWORD` | `nomad` | Database password |
+| `NOMAD_DB_POOL_MAX_SIZE` | `10` | Hikari maximum pool size |
+| `NOMAD_GAME_PORT` | `5730` | Game server port (`0` binds an ephemeral port) |
+| `NOMAD_WEB_PORT` | `8080` | Web API port |
+
+## Schema migrations
+
+Migrations are Flyway scripts on the classpath at `src/main/resources/db/migration`, named
+`V<n>__<name>.sql`. They ship inside the jar, so they do not depend on the process working
+directory. A failed migration aborts startup rather than letting a server run against a schema it
+was not built for.
+
+## Health
+
+The web API exposes `/health` (liveness) and `/ready` (readiness, which checks that the pool can
+hand out a working connection). Point orchestrator probes at these; the Compose health checks use
+raw TCP only so the runtime image need not carry a HTTP client.
+
+## Notes
+
+`maven-failsafe-plugin` sets the `api.version` system property to pin the Docker API version.
+Docker 29 removed API versions below 1.44, while the docker-java client shaded into Testcontainers
+1.21.x still negotiates 1.32 and is refused. Drop that property once Testcontainers ships a client
+that negotiates a supported version.

@@ -2,7 +2,7 @@ package nomad.web.controller;
 
 import nomad.common.message.GetNewsItemsMessage;
 import nomad.common.model.News;
-import nomad.web.BaseWebClientServerTest;
+import nomad.web.BaseWebClientServerIT;
 import okhttp3.Request;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +13,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
-public class NewsWebControllerTest extends BaseWebClientServerTest {
+public class NewsWebControllerIT extends BaseWebClientServerIT {
 	@Test
 	public void getNewsItems1() throws IOException {
 		var news = new News();
@@ -28,7 +28,7 @@ public class NewsWebControllerTest extends BaseWebClientServerTest {
 		expectedMessage.setNewsItems(List.of(news));
 
 		var request = new Request.Builder()
-			.url(HOST + "/news")
+			.url(host + "/news")
 			.build();
 
 		try (var response = client.newCall(request).execute()) {

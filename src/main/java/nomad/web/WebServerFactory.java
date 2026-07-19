@@ -1,22 +1,18 @@
 package nomad.web;
 
-import nomad.common.Database;
 import nomad.common.Services;
-import nomad.common.ServicesFactory;
 import nomad.web.controller.AccountWebController;
+import nomad.web.controller.HealthWebController;
 import nomad.web.controller.NewsWebController;
 
+import javax.sql.DataSource;
 import java.util.ArrayList;
 
 public class WebServerFactory {
-	public static WebServer createWebServer() {
-		var jdbi = Database.getJdbi();
-		var services = ServicesFactory.createServices(jdbi);
-		return createWebServer(services);
-	}
-
-	public static WebServer createWebServer(Services services) {
+	public static WebServer createWebServer(Services services, DataSource dataSource) {
 		var controllers = new ArrayList<IWebController>();
+
+		controllers.add(new HealthWebController(dataSource));
 
 		controllers.add(new AccountWebController(services.getAccountService()));
 
