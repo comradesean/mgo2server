@@ -18,6 +18,12 @@ public class GameClient {
 
 	private MultiThreadIoEventLoopGroup workerGroup;
 
+	private final int port;
+
+	public GameClient(int port) {
+		this.port = port;
+	}
+
 	public void run(long timeout, ChannelHandler clientHandler) {
 		workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
@@ -43,7 +49,7 @@ public class GameClient {
 			}
 		});
 
-		bootstrap.connect("localhost", 5730); // .addListener(e -> future.complete(null))
+		bootstrap.connect("localhost", port);
 
 		closeFuture.orTimeout(timeout, TimeUnit.SECONDS).join();
 	}

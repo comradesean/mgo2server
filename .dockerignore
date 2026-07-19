@@ -1,0 +1,12 @@
+# Keep the build context small and avoid invalidating layer caches on irrelevant changes.
+.git
+.github
+.idea
+target
+upstream
+*.iml
+*.md
+!README.md
+.editorconfig
+.gitignore
+compose.yaml

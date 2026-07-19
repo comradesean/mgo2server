@@ -1,0 +1,80 @@
+# Local development stack: Postgres plus both server modes off the same image.
+#
+# Health checks invoke bash explicitly for its /dev/tcp support, which keeps the runtime image
+# free of a HTTP client (the default CMD-SHELL is dash, which has no /dev/tcp). Real
+# orchestrators should probe the web server's /health and /ready endpoints directly instead,
+# since they speak HTTP themselves and get a real readiness answer.
+
+name: nomad-ng
+
+x-server-env: &server-env
+  NOMAD_DB_URL: jdbc:postgresql://postgres:5432/nomad
+  NOMAD_DB_USER: nomad
+  NOMAD_DB_PASSWORD: ${NOMAD_DB_PASSWORD:-nomad}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: nomad
+      POSTGRES_USER: nomad
+      POSTGRES_PASSWORD: ${NOMAD_DB_PASSWORD:-nomad}
+    ports:
+      - "${NOMAD_DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nomad -d nomad"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs migrations once, then exits. Both servers wait for it so neither races the schema.
+  migrate:
+    build: .
+    image: nomad-ng:local
+    command: ["migrate"]
+    environment: *server-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  game:
+    build: .
+    image: nomad-ng:local
+    command: ["game"]
+    environment: *server-env
+    ports:
+      - "${NOMAD_GAME_PORT:-5730}:5730"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5730"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build: .
+    image: nomad-ng:local
+    command: ["web"]
+    environment: *server-env
+    ports:
+      - "${NOMAD_WEB_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

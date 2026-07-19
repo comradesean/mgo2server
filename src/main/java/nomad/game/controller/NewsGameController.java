@@ -26,7 +26,6 @@ public class NewsGameController implements IGameController {
 
 	private void getNewsItems(GameControllerContext ctx) {
 		var message = newsService.getNewsItems();
-		System.out.println(message);
 
 		var buffers = new ArrayList<ByteBuf>();
 		for (var newsItem : message.getNewsItems()) {

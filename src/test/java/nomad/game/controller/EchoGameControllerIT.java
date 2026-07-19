@@ -2,7 +2,7 @@ package nomad.game.controller;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import nomad.game.BaseGameClientServerTest;
+import nomad.game.BaseGameClientServerIT;
 import nomad.Bytes;
 import nomad.BytesAssert;
 import nomad.TestUtil;
@@ -13,7 +13,7 @@ import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.*;
 
-public class EchoGameControllerTest extends BaseGameClientServerTest {
+public class EchoGameControllerIT extends BaseGameClientServerIT {
 	@Test
 	public void echoTest() {
 		var packets = new ArrayList<GamePacket>();

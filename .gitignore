@@ -40,3 +40,6 @@ build/
 ### Nomad ###
 # Reference clones of upstream repos, not part of this project
 upstream/
+
+# Local tooling state
+.claude/

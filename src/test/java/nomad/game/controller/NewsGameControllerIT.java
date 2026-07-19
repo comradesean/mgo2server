@@ -2,7 +2,7 @@ package nomad.game.controller;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import nomad.game.BaseGameClientServerTest;
+import nomad.game.BaseGameClientServerIT;
 import nomad.Bytes;
 import nomad.BytesAssert;
 import nomad.common.model.News;
@@ -15,7 +15,7 @@ import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.*;
 
-public class NewsGameControllerTest extends BaseGameClientServerTest {
+public class NewsGameControllerIT extends BaseGameClientServerIT {
 	@Test
 	public void getNewsItems1() {
 		var news = new News();
