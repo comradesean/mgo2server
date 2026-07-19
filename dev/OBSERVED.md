@@ -106,6 +106,45 @@ Candidates, none confirmed:
 - the vendor attribute `0xf000` the client sends on its STUN probes, observed carrying
   `0573000000000002` — note the leading `0573` against the game's UDP port 5730
 
+## Where it currently stops, and why the server may not be the cause
+
+The client reaches the login screen, fetches the policy, passes the version check, receives the
+lobby list correctly, and then reports 090B:00000001.
+
+RPCS3's log shows the login connection being abandoned rather than refused:
+
+```
+connect(s=54) -> 192.168.1.100:443
+EINPROGRESS
+cellNetCtlDelHandler          19ms later
+shutdown(s=54, how=2)
+close(s=54)
+                              error dialog
+```
+
+No TLS handshake, no HTTP request — the server is never asked. It is intermittent: some attempts
+do complete the POST and receive a well-formed reply, and still fail.
+
+Immediately before that teardown the game makes calls the emulator does not implement:
+
+```
+196 x  sys_net TODO: sys_net_infoctl(cmd=9)
+ 32 x  sys_net TODO: sys_net_infoctl(cmd=53)
+ 19 x  cellNetCtl TODO: cellNetCtlAddHandler
+  4 x  cellNetCtl: Unsupported request: INFO_HTTP_PROXY_SERVER, INFO_SSID, ...
+```
+
+`TODO` is RPCS3's marker for an unimplemented call. The game queries its network configuration,
+receives nothing, and gives up. This is a strong candidate for the blocker and would explain why
+no server-side change affects the outcome, and why MGO2PC ships a **custom RPCS3 build** rather
+than instructions for the stock one. It is not proven: the calls are also made on attempts that
+progress further.
+
+What has been eliminated as the cause, each tested against a real client: the lobby list contents,
+ordering and encoding; lobby ports; the account id in the login reply; the perks field; the reply's
+content type; sequence-number enforcement; STUN behaviour including two-address NAT discovery;
+inbound UDP on 5730; and the WSL network boundary.
+
 ## HTTP endpoints
 
 Plain HTTP on port 80:
