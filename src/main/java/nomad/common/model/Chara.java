@@ -15,6 +15,10 @@ public class Chara {
 
 	private java.time.OffsetDateTime createdAt;
 
+	private String comment = "";
+
+	private int rank;
+
 	public long getId() {
 		return id;
 	}
@@ -61,6 +65,22 @@ public class Chara {
 
 	public void setOldName(String oldName) {
 		this.oldName = oldName;
+	}
+
+	public String getComment() {
+		return comment;
+	}
+
+	public void setComment(String comment) {
+		this.comment = comment;
+	}
+
+	public int getRank() {
+		return rank;
+	}
+
+	public void setRank(int rank) {
+		this.rank = rank;
 	}
 
 	public java.time.OffsetDateTime getCreatedAt() {

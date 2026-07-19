@@ -44,7 +44,7 @@ entered with a character already selected, so it sends that character's id inste
 | `0x3101` | account | Create character → `0x3102` |
 | `0x3103` | account | Select character → `0x3104` |
 | `0x3105` | account | Delete character → `0x3106` |
-| `0x4100` | game | Connect burst → `0x4101`, `0x4121` ×2 |
+| `0x4100` | game | Connect burst → `0x4101`, `0x4120`, `0x4121` ×2, `0x4122` |
 | `0x4300` | game | Get game list → `0x4301` / `0x4302` / `0x4303` |
 | `0x4316` | game | Create game → `0x4317` |
 
@@ -56,11 +56,15 @@ Deletion is soft. A deleted character keeps its row but is hidden and renamed to
 `:#<id>` prefix, which frees the original name for reuse and preserves it in `old_name`. Characters
 cannot be deleted within seven days of creation.
 
-The game lobby connect burst is partial. `0x4100` currently answers with the character record
-(`0x4101`) and chat macros (`0x4121`); the original also sends gameplay options and UI settings
-(`0x4120`), personal info (`0x4122`), gear (`0x4123`), skills (`0x4124`), skill sets (`0x4125`) and
-gear sets (`0x4126`). Each needs schema this project does not have yet — clans, equipped skills and
-gear — so a real client will not be fully satisfied until those land.
+The game lobby connect burst is partial. `0x4100` answers with the character record (`0x4101`),
+gameplay and interface settings (`0x4120`), chat macros (`0x4121`, one packet per type) and
+personal info (`0x4122`). The original also sends gear (`0x4124`), skills (`0x4125`), skill sets
+(`0x4140`) and gear sets (`0x4142`), which need schema this project does not have yet.
+
+Clans are not modelled, so `0x4122` reports every character as unaffiliated — a real state every
+character starts in rather than a placeholder. Character settings and equipped skills materialise
+with defaults on first use, matching the original, so a character that has never opened the options
+screen still gets a coherent one.
 
 Hosting is likewise partial. A game can be created from the character's stored host settings
 (`0x4316`) and appears in the browser (`0x4300`), but the client cannot yet push new settings

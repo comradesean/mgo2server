@@ -3,7 +3,9 @@ package nomad.common.service;
 import nomad.common.CharacterNames;
 import nomad.common.model.Chara;
 import nomad.common.model.CharaAppearance;
+import nomad.common.model.CharaSettings;
 import nomad.common.model.ChatMacro;
+import nomad.common.model.EquippedSkills;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.Duration;
@@ -84,6 +86,36 @@ public class CharacterService {
 			}
 		}
 		return grid;
+	}
+
+	/**
+	 * Gameplay and interface settings, materialised with defaults on first use. The original does
+	 * the same, handing back a default blob for a character that has never saved any.
+	 */
+	public CharaSettings getOrCreateSettings(long charaId) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("insert into chara_settings (chara_id) values (:id) on conflict do nothing")
+				.bind("id", charaId)
+				.execute());
+
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_settings where chara_id=:id")
+				.bind("id", charaId)
+				.mapTo(CharaSettings.class)
+				.one());
+	}
+
+	public EquippedSkills getOrCreateEquippedSkills(long charaId) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("insert into chara_equipped_skills (chara_id) values (:id) on conflict do nothing")
+				.bind("id", charaId)
+				.execute());
+
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_equipped_skills where chara_id=:id")
+				.bind("id", charaId)
+				.mapTo(EquippedSkills.class)
+				.one());
 	}
 
 	public Optional<CharaAppearance> getAppearance(long charaId) {
