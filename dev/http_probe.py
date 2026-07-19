@@ -42,7 +42,8 @@ def forward(path, body, content_type):
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
-            return response.read()
+            content_type = response.headers.get("Content-Type", "text/plain")
+            return response.read(), content_type
     except urllib.error.URLError as e:
         print(f"      !! proxy to {WEB_SERVER} failed: {e}", flush=True)
         return None
@@ -85,9 +86,9 @@ class Probe(BaseHTTPRequestHandler):
             if self.headers.get(k):
                 print(f"      {k}: {self.headers[k]}", flush=True)
 
-    def _respond(self, body):
+    def _respond(self, body, content_type="text/html"):
         self.send_response(200)
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -114,8 +115,11 @@ class Probe(BaseHTTPRequestHandler):
         # TLS terminator and the actual logic lives in the application.
         forwarded = forward(self.path, body, self.headers.get("Content-Type"))
         if forwarded is not None:
-            print(f"      -> proxied to web server, {len(forwarded)} bytes", flush=True)
-            self._respond(forwarded)
+            payload, upstream_type = forwarded
+            print(f"      -> proxied, {len(payload)} bytes, {upstream_type}", flush=True)
+            # Pass the application's content type through rather than relabelling everything as
+            # HTML. The console's HTTP stack sees whatever this says.
+            self._respond(payload, upstream_type)
             return
 
         self._respond(default_body(self.path))
