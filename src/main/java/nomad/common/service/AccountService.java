@@ -32,6 +32,24 @@ public class AccountService {
 	}
 
 	/**
+	 * Looks up an account by the credentials the client presents at login.
+	 * <p>
+	 * The client sends the password already MD5-hashed, so that hash is what is stored and
+	 * compared. That is the game's scheme, not a choice — MD5 is not acceptable for storing
+	 * passwords, and anything beyond a test deployment should sit behind a real account system
+	 * that never sees this value.
+	 */
+	public Optional<Account> findByCredentials(String username, String passwordHash) {
+		try (var handle = jdbi.open()) {
+			return handle.createQuery("select * from account where username=:username and password=:password")
+				.bind("username", username)
+				.bind("password", passwordHash)
+				.mapTo(Account.class)
+				.findOne();
+		}
+	}
+
+	/**
 	 * Clears the selected character. The client re-selects one after checking in, and leaving a
 	 * stale value behind would let a reconnect resume as a character the player did not pick.
 	 */

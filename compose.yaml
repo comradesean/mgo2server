@@ -128,5 +128,41 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Development harness for the console's HTTP endpoints. Terminates TLS with a certificate the
+  # PS3 trusts (its CA must be installed into RPCS3's dev_flash/data/cert), serves the static
+  # documents the client fetches, and proxies anything the application owns to the web server.
+  #
+  # Bind to the host's LAN address rather than 0.0.0.0, so port 53's neighbours and the WSL2
+  # resolver stub do not collide with these.
+  probe-http:
+    image: python:3.12-alpine
+    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 80'
+    environment:
+      NOMAD_WEB_URL: http://web:8080
+    volumes:
+      - ./dev/http_probe.py:/probe.py:ro
+      - ./dev/www:/wwwsrc:ro
+    ports:
+      - "${NOMAD_PROBE_HTTP:-192.168.1.100:80}:80"
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  probe-https:
+    image: python:3.12-alpine
+    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 443 tls'
+    environment:
+      NOMAD_WEB_URL: http://web:8080
+    volumes:
+      - ./dev/http_probe.py:/probe.py:ro
+      - ./dev/www:/wwwsrc:ro
+    ports:
+      - "${NOMAD_PROBE_HTTPS:-192.168.1.100:443}:443"
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres-data:
