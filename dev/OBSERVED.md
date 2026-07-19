@@ -7,11 +7,39 @@ policy path, the gate hostname, the gate port and the version-check response byt
 
 Sources of truth used, in order of usefulness:
 
-1. **RPCS3's own log** (`log/RPCS3.log`) — `DnsHook: DNS query for …` gives real hostnames, and
+1. **The decrypted game binary** (`PS3_GAME/USRDIR/o/MGO2.elf`) — the only actual specification.
+   Everything else is somebody's reading of it. See "Error 090B:00000001" for how to navigate it.
+2. **RPCS3's own log** (`log/RPCS3.log`) — `DnsHook: DNS query for …` gives real hostnames, and
    `Attempting to connect on <ip>:<port>` gives real ports.
-2. **The HTTP/TLS probe** (`dev/http_probe.py`) — exact paths, methods and bodies.
-3. **[MiguelRipoll23/mgo2-server](https://github.com/MiguelRipoll23/mgo2-server)** — an independent
+3. **The HTTP/TLS probe** (`dev/http_probe.py`) — exact paths, methods and bodies.
+4. **[MiguelRipoll23/mgo2-server](https://github.com/MiguelRipoll23/mgo2-server)** — an independent
    MGO2 server covering the web API that Nomad does not. Nomad is only the game server.
+
+## How this file gets things wrong
+
+Two failure modes have each cost real time here, and both are cheap to avoid.
+
+**Another implementation is not a specification.** mgo2-server and the Nomad upstreams both work —
+for their own targets. Neither was validated against `BLUS30109`, and the MGS4-integrated build
+differs. That divergence has now been paid for five times: the policy path, the gate hostname, the
+gate port, the version-check byte, and the perks field. The perks field is the instructive one,
+because it was copied *correctly* — `Array(10).fill("1000000").join("_")` is genuinely what
+mgo2-server sends. Faithful transcription of a source that does not apply is still wrong, and it
+looks exactly like diligence.
+
+**An elimination is only valid if you can say what you would have seen had it been the cause.**
+"The perks field" sat on the eliminated list below for a long time. The experiments that put it
+there varied the perk *values* while holding the separators fixed — and the binary discards that
+value entirely, so they varied an axis that provably could not matter. Ten attempts, ten identical
+failures, read as "not this" when they meant "this dimension is inert." Worse, the observable that
+would have settled it was already being printed: `http_probe.py` has logged
+`-> proxied, <n> bytes` since the login endpoint was first written. A reply of 108 bytes where 34
+were expected was on screen and never compared against anything, because "well-formed" was being
+judged against our own assumed format — which came from the same source as the bug.
+
+So: before crossing something off, name the observation that would have confirmed it, and check
+that the experiment actually produced that observation. And when the reasoning is about bytes,
+look at the bytes rather than at the schema you believe they follow.
 
 ## Hostnames
 
