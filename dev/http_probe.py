@@ -28,14 +28,18 @@ def default_body(path):
       chgpswd / deluser / reguser                            -> account operations
     Anything else falls back to the terms stub so new endpoints are obvious in the log.
     """
+    # Confirmed against MiguelRipoll23/mgo2-server: the .html endpoints answer with a single
+    # 0x00 byte, not the ASCII "0" (0x30) the MGO1 project's notes suggested. For checkver that
+    # means "up to date".
     if path.endswith(".html"):
-        return b"0"
+        return b"\x00"
     return TERMS
 
 
 def from_docroot(path):
     """Serves a real file if one exists for this path, else None."""
-    candidate = (DOCROOT / path.lstrip("/").split("?")[0]).resolve()
+    clean = path.split("?")[0].replace("//", "/").lstrip("/")
+    candidate = (DOCROOT / clean).resolve()
     try:
         candidate.relative_to(DOCROOT.resolve())
     except ValueError:
@@ -54,7 +58,7 @@ class Probe(BaseHTTPRequestHandler):
 
     def _respond(self, body):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
