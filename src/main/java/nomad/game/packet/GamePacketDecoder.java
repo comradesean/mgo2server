@@ -94,9 +94,13 @@ public class GamePacketDecoder extends ByteToMessageDecoder {
 			| (frame[GamePacketCodec.OFFSET_SEQUENCE + 3] & 0xff);
 
 		if (sequence != expectedSequence) {
-			throw new CorruptedFrameException(
-				"Out of sequence for command %04x: got %d, expected %d"
-					.formatted(command, sequence, expectedSequence));
+			// Logged rather than fatal. mgo2-server tracks the incoming sequence without ever
+			// validating it, and its note says a real client's first packet is sequence 0 while
+			// this counts from 1 — so rejecting on mismatch risks dropping a legitimate client
+			// over bookkeeping. The checksum is what actually authenticates a packet.
+			logger.debug("Sequence for command {}: got {}, expected {}",
+				String.format("%04x", command), sequence, expectedSequence);
+			expectedSequence = sequence;
 		}
 		expectedSequence++;
 

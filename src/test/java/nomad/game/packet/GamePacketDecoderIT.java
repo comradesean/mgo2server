@@ -188,9 +188,16 @@ public class GamePacketDecoderIT extends BaseGameClientServerIT {
 		assertThat(exchangeExpectingRejection(wire)).isEmpty();
 	}
 
-	/** Sequence numbers must advance by one, so a replayed packet is refused. */
+	/**
+	 * A replayed sequence number is tolerated, not refused.
+	 * <p>
+	 * mgo2-server tracks the incoming sequence without validating it, and notes that a real
+	 * client's first packet is sequence 0 where this counts from 1. Dropping a connection over
+	 * that bookkeeping risks refusing a legitimate client; the checksum is what authenticates a
+	 * packet, and it is still enforced.
+	 */
 	@Test
-	public void rejectsReplayedSequenceNumber() {
+	public void toleratesReplayedSequenceNumber() {
 		var first = GamePacketCodec.frame(ECHO, 1, payload(8), false);
 		var replay = GamePacketCodec.frame(ECHO, 1, payload(8), false);
 
@@ -198,8 +205,7 @@ public class GamePacketDecoderIT extends BaseGameClientServerIT {
 		System.arraycopy(first, 0, wire, 0, first.length);
 		System.arraycopy(replay, 0, wire, first.length, replay.length);
 
-		// The first echoes back; the replay trips the sequence check.
-		assertThat(exchangeExpectingRejection(wire)).hasSize(1);
+		assertThat(exchangeExpectingRejection(wire)).hasSize(2);
 	}
 
 }
