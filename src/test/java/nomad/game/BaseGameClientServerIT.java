@@ -18,6 +18,11 @@ public abstract class BaseGameClientServerIT {
 
 	protected GameClient client;
 
+	/** Which lobby the server under test is serving; override per test class. */
+	protected LobbyType lobbyType() {
+		return LobbyType.ACCOUNT;
+	}
+
 	@BeforeEach
 	public void setup() {
 		var database = TestDatabase.get();
@@ -26,7 +31,7 @@ public abstract class BaseGameClientServerIT {
 		services = ServicesFactory.createServices(database.jdbi());
 
 		// Port 0 lets the OS pick, so parallel test classes never fight over a port.
-		server = GameServerFactory.createGameServer(services, 0);
+		server = GameServerFactory.createGameServer(services, 0, lobbyType());
 		server.start().join();
 
 		client = new GameClient(server.boundPort());

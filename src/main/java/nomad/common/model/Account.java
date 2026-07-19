@@ -15,6 +15,10 @@ public class Account {
 
 	private Long currentCharaId;
 
+	private int mainExp;
+
+	private int altExp;
+
 	public long getId() {
 		return id;
 	}
@@ -69,6 +73,22 @@ public class Account {
 
 	public void setCurrentCharaId(Long currentCharaId) {
 		this.currentCharaId = currentCharaId;
+	}
+
+	public int getMainExp() {
+		return mainExp;
+	}
+
+	public void setMainExp(int mainExp) {
+		this.mainExp = mainExp;
+	}
+
+	public int getAltExp() {
+		return altExp;
+	}
+
+	public void setAltExp(int altExp) {
+		this.altExp = altExp;
 	}
 
 	@Override

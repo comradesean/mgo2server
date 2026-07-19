@@ -3,6 +3,7 @@ package nomad.game.controller;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.game.BaseGameClientServerIT;
+import nomad.game.LobbyType;
 import nomad.Bytes;
 import nomad.BytesAssert;
 import nomad.common.model.News;
@@ -16,6 +17,11 @@ import java.util.ArrayList;
 import static org.assertj.core.api.Assertions.*;
 
 public class NewsGameControllerIT extends BaseGameClientServerIT {
+	@Override
+	protected LobbyType lobbyType() {
+		return LobbyType.GATE;
+	}
+
 	@Test
 	public void getNewsItems1() {
 		var news = new News();

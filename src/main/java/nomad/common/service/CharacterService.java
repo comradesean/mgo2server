@@ -3,6 +3,7 @@ package nomad.common.service;
 import nomad.common.CharacterNames;
 import nomad.common.model.Chara;
 import nomad.common.model.CharaAppearance;
+import nomad.common.model.ChatMacro;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.Duration;
@@ -45,6 +46,44 @@ public class CharacterService {
 			}
 		}
 		return ordered;
+	}
+
+	public Optional<Chara> get(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara where id=:id")
+				.bind("id", charaId)
+				.mapTo(Chara.class)
+				.findOne());
+	}
+
+	/**
+	 * Chat macros as a dense grid, filling in blanks for any the character has never set. The
+	 * client always expects a full set, so absent rows become empty text rather than gaps.
+	 */
+	public List<ChatMacro> getChatMacros(long charaId) {
+		var stored = jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_chat_macro where chara_id=:id")
+				.bind("id", charaId)
+				.mapTo(ChatMacro.class)
+				.list());
+
+		var grid = new ArrayList<ChatMacro>();
+		for (var type = 0; type < ChatMacro.TYPES; type++) {
+			for (var index = 0; index < ChatMacro.PER_TYPE; index++) {
+				var macro = new ChatMacro();
+				macro.setCharaId(charaId);
+				macro.setType(type);
+				macro.setIndex(index);
+				for (var candidate : stored) {
+					if (candidate.getType() == type && candidate.getIndex() == index) {
+						macro.setText(candidate.getText());
+						break;
+					}
+				}
+				grid.add(macro);
+			}
+		}
+		return grid;
 	}
 
 	public Optional<CharaAppearance> getAppearance(long charaId) {

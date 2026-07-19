@@ -7,6 +7,7 @@ import nomad.common.Database;
 import nomad.common.ServicesFactory;
 import nomad.common.database.Migrations;
 import nomad.game.GameServerFactory;
+import nomad.game.LobbyType;
 import nomad.web.WebServerFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,7 +51,8 @@ public final class Main {
 		Migrations.migrate(database.dataSource());
 
 		var services = ServicesFactory.createServices(database.jdbi());
-		GameServerFactory.createGameServer(services, config.gamePort()).run();
+		GameServerFactory.createGameServer(services, config.gamePort(),
+			LobbyType.fromId(config.lobbyType())).run();
 	}
 
 	private static void runWeb(Config config, String[] args) {

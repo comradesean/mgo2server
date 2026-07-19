@@ -5,6 +5,7 @@ import nomad.common.service.AccountService;
 import nomad.game.GameControllerContext;
 import nomad.game.GameError;
 import nomad.game.IGameController;
+import nomad.game.LobbyType;
 import nomad.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,8 +16,13 @@ import java.util.function.Consumer;
 /**
  * Account check-in: the first thing a client does after connecting to an account lobby.
  * <p>
- * The client presents the account id it believes it has, plus the session token issued by the web
- * side. Both must agree with a live session before the connection counts as authenticated.
+ * The client presents an id plus the session token issued by the web side, and both must agree
+ * with a live session before the connection counts as authenticated.
+ * <p>
+ * Which id depends on the lobby: an account lobby is entered before a character is chosen, so the
+ * client sends its account id, and the selected character is cleared so the player must pick
+ * again. A game lobby is entered with a character already selected, so it sends that character's
+ * id and the selection is left alone.
  */
 public class AccountGameController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
@@ -27,8 +33,11 @@ public class AccountGameController implements IGameController {
 
 	private final AccountService accountService;
 
-	public AccountGameController(AccountService accountService) {
+	private final LobbyType lobbyType;
+
+	public AccountGameController(AccountService accountService, LobbyType lobbyType) {
 		this.accountService = accountService;
+		this.lobbyType = lobbyType;
 	}
 
 	@Override
@@ -45,7 +54,7 @@ public class AccountGameController implements IGameController {
 			return;
 		}
 
-		var claimedAccountId = payload.readInt() & 0xffffffffL;
+		var claimedId = payload.readInt() & 0xffffffffL;
 		var sessionField = new byte[SessionIds.FIELD_LENGTH];
 		payload.readBytes(sessionField);
 
@@ -58,20 +67,31 @@ public class AccountGameController implements IGameController {
 			return;
 		}
 
-		if (account.getId() != claimedAccountId) {
-			// The session is real but belongs to somebody else, so refuse rather than trust the
-			// id the client asked for.
-			logger.warn("Check session: session belongs to account {}, client claimed {}.",
-				account.getId(), claimedAccountId);
-			ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
-			return;
+		// The session is real, but it has to belong to whoever the client says it is; otherwise a
+		// leaked token would let any id be claimed.
+		if (lobbyType == LobbyType.GAME) {
+			var current = account.getCurrentCharaId();
+			if (current == null || current != claimedId) {
+				logger.warn("Check session: account {} has character {} selected, client claimed {}.",
+					account.getId(), current, claimedId);
+				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+				return;
+			}
+		} else {
+			if (account.getId() != claimedId) {
+				logger.warn("Check session: session belongs to account {}, client claimed {}.",
+					account.getId(), claimedId);
+				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+				return;
+			}
+
+			// Entering an account lobby means choosing a character, so drop any stale selection.
+			accountService.clearCurrentCharacter(account.getId());
+			account.setCurrentCharaId(null);
 		}
 
-		accountService.clearCurrentCharacter(account.getId());
-		account.setCurrentCharaId(null);
-
 		ctx.connection().authenticate(account);
-		logger.info("Account {} checked in.", account.getId());
+		logger.info("Account {} checked in to {} lobby.", account.getId(), lobbyType);
 
 		ctx.write(new GamePacket(CHECK_SESSION_RESULT, GameError.NONE.result()));
 	}
