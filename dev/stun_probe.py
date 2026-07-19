@@ -103,10 +103,17 @@ def serve(primary_port, advertised_ip):
 
             change_flags = 0
             names = []
+            vendor = []
             for attr_type, value in parse_attributes(data, length):
                 names.append(describe(attr_type))
                 if attr_type == ATTR_CHANGE_REQUEST and len(value) >= 4:
                     change_flags = struct.unpack("!I", value[:4])[0]
+                elif attr_type >= 0x8000 or attr_type == 0xf000:
+                    # Konami sends 0xf000 on the game's own probes but not on the plain ones.
+                    # Its meaning is unknown, so it is echoed back: a client that correlates
+                    # requests by a private attribute will not accept a reply without it.
+                    vendor.append((attr_type, value))
+                    print(f"      vendor 0x{attr_type:04x} = {value.hex()}", flush=True)
 
             wants_ip = bool(change_flags & CHANGE_IP)
             wants_port = bool(change_flags & CHANGE_PORT)
@@ -127,6 +134,7 @@ def serve(primary_port, advertised_ip):
                 + attribute(ATTR_SOURCE_ADDRESS, address_value(advertised_ip, reply_from))
                 + attribute(ATTR_CHANGED_ADDRESS, address_value(advertised_ip, other_port))
                 + attribute(ATTR_XOR_MAPPED_ADDRESS, xor_address_value(peer[0], peer[1]))
+                + b"".join(attribute(kind, value) for kind, value in vendor)
             )
             response = struct.pack("!HH16s", BIND_RESPONSE, len(body), transaction) + body
 
