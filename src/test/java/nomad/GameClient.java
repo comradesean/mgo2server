@@ -40,12 +40,13 @@ public class GameClient {
 			}
 		};
 
-		var packetEncoder = new GamePacketEncoder();
-		var packetDecoder = new GamePacketDecoder();
 		bootstrap.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
 			public void initChannel(SocketChannel ch) {
-				ch.pipeline().addLast(closeHandler).addLast(packetEncoder).addLast(packetDecoder).addLast(clientHandler);
+				ch.pipeline().addLast(closeHandler)
+					.addLast(GamePacketEncoder.forClient())
+					.addLast(GamePacketDecoder.forClient())
+					.addLast(clientHandler);
 			}
 		});
 
@@ -59,6 +60,9 @@ public class GameClient {
 	}
 
 	public CompletableFuture<Void> disconnect(long quietPeriod, long timeout, TimeUnit unit) {
+		if (workerGroup == null) {
+			return CompletableFuture.completedFuture(null);
+		}
 		var future = new CompletableFuture<Void>();
 		workerGroup.shutdownGracefully(quietPeriod, timeout, unit).addListener(e -> future.complete(null));
 		return future;
