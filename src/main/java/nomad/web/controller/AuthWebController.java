@@ -33,8 +33,22 @@ public class AuthWebController implements IWebController {
 
 	private static final String FAILURE = "1,0,0,0000000000000000";
 
-	/** Ten perk slots, all granted. Progression is not modelled yet. */
-	private static final String PERKS = String.join("_", java.util.Collections.nCopies(10, "1000000"));
+	/**
+	 * The third field of the login reply. mgo2-server calls it perks and sends "1000000" ten
+	 * times; what the client does with it is unknown, and it is the last field of the reply whose
+	 * meaning has not been pinned down. Overridable so values can be tried without a rebuild:
+	 *
+	 *   NOMAD_LOGIN_PERKS=2000000000_2000000000_...
+	 */
+	private static final String PERKS = perksFromEnv();
+
+	private static String perksFromEnv() {
+		var configured = System.getenv("NOMAD_LOGIN_PERKS");
+		if (configured != null && !configured.isBlank()) {
+			return configured.trim();
+		}
+		return String.join("_", java.util.Collections.nCopies(10, "1000000"));
+	}
 
 	/** Characters of the token kept in the database, and sent to the client, respectively. */
 	private static final int STORED_LENGTH = 8;
