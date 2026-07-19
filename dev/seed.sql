@@ -11,10 +11,13 @@
 
 -- One lobby of each type. The gate is what the client reaches first; it hands back this list, and
 -- the client then connects to the account lobby and finally a game lobby.
+-- The client dials 15731 for the gate; the remaining ports are advertised in the lobby list.
+-- Names matter: the list is ordered by name so a lobby the client can enter comes before the
+-- gate it just left.
 INSERT INTO public.lobby (type, subtype, name, ip, port) VALUES
-    (0, 0, 'Gate',    :'host_ip', 5730),
-    (1, 0, 'Account', :'host_ip', 5731),
-    (2, 0, 'Game',    :'host_ip', 5732)
+    (0, 0, 'Gate',    :'host_ip', 15731),
+    (1, 0, 'Account', :'host_ip', 15732),
+    (2, 1, 'Game',    :'host_ip', 15733)
 ON CONFLICT DO NOTHING;
 
 -- A test account. The session token is what the client presents on check-in; there is no web

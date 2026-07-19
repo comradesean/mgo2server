@@ -76,7 +76,7 @@ services:
       NOMAD_LOBBY_ID: "2"
       NOMAD_GAME_PORT: "5731"
     ports:
-      - "${NOMAD_ACCOUNT_PORT:-5731}:5731"
+      - "${NOMAD_ACCOUNT_PORT:-15732}:5731"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -98,7 +98,7 @@ services:
       NOMAD_LOBBY_ID: "3"
       NOMAD_GAME_PORT: "5732"
     ports:
-      - "${NOMAD_LOBBY_PORT:-5732}:5732"
+      - "${NOMAD_LOBBY_PORT:-15733}:5732"
     depends_on:
       migrate:
         condition: service_completed_successfully
