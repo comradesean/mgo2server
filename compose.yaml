@@ -8,6 +8,8 @@
 name: nomad-ng
 
 x-server-env: &server-env
+  # Set to DEBUG to trace every packet, including hex dumps, when testing a real client.
+  NOMAD_LOG_LEVEL: ${NOMAD_LOG_LEVEL:-INFO}
   NOMAD_DB_URL: jdbc:postgresql://postgres:5432/nomad
   NOMAD_DB_USER: nomad
   NOMAD_DB_PASSWORD: ${NOMAD_DB_PASSWORD:-nomad}

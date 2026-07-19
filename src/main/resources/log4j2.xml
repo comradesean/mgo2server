@@ -6,6 +6,14 @@
         </Console>
     </Appenders>
     <Loggers>
+        <!--
+          Packet-level tracing is off by default because it prints a hex dump per packet. Set
+          NOMAD_LOG_LEVEL=DEBUG to turn it on when diagnosing a real client; the decoder and
+          encoder then log every command, its length and its payload.
+        -->
+        <Logger name="nomad" level="${env:NOMAD_LOG_LEVEL:-INFO}" additivity="false">
+            <AppenderRef ref="stdout" />
+        </Logger>
         <Root level="INFO" additivity="true">
             <AppenderRef ref="stdout" />
         </Root>
