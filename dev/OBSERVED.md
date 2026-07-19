@@ -172,17 +172,87 @@ switches: a per-request bit that pre-clears the two date bits, and a global word
 whose bit 0 makes it discard every verify error and accept the certificate outright. Bit 1 of the
 same word is what decides whether `np=<psn name>` is appended to the login request.
 
-**This gives us a free discriminator.** Serve `mgo2auth.konami.com` a certificate that is
-otherwise perfectly valid — same CA, same common name — but deliberately expired or
-post-dated relative to the PS3's clock:
+### That prediction was tested against the real client, and it held
 
-- client reports **070B** → the TLS handshake is being reached and the chain verifies. The
-  failure is downstream, and the certificate is exonerated.
-- client still reports **090B** → the client is not getting far enough to evaluate the
-  certificate, which points at the socket layer and at the unimplemented `sys_net_infoctl` /
-  `cellNetCtlAddHandler` calls below.
+Serving `dev/www/cert-expired.pem` — the same CA, key and common name as the working chain,
+re-signed over 2020–2021 so that expiry is its only defect — produced exactly the predicted
+outcome:
 
-Either answer splits the remaining search space in half, and costs one `openssl` invocation.
+```
+TLS handshake ok from ... (TLSv1.2, AES256-SHA256)
+  POST http://mgo2web.konami.com/us/mgo2//patch/checkver.html
+TLS handshake ok from ... (TLSv1.2, AES256-SHA256)
+  POST http://mgo2web.konami.com/us/mgo2//patch/checkver.html
+TLS handshake FAILED from ...: [SSL: SSLV3_ALERT_CERTIFICATE_EXPIRED]
+```
+
+and on screen:
+
+> Security Certificate has either expired or has not been enabled. (Your PS3tm system clock may
+> not be set correctly.) Continue processing? **(070B:00000002)**
+
+The dialog names both bits of the `0x1800` mask — "expired or has not been enabled" is
+`CELL_HTTPS_VERIFY_ERROR_EXPIRED` and `..._NOT_YET_VALID` — and the code is `070B:00000002`,
+the reason-2 pairing read out of the binary. The static analysis is confirmed by observation.
+
+Four things follow, all of them new:
+
+1. **The login connection reaches the TLS handshake and evaluates our certificate.** It is not
+   dying in the socket layer. The earlier `connect` → `EINPROGRESS` → `shutdown` teardown is not
+   what happens on every attempt.
+2. **Our CA chain verifies.** The client's only complaint was the date. An untrusted CA produces
+   `unknown_ca` and 090B instead — that is what a stock `curl` sends when it has not been given
+   `ca-cert.pem`. So installing the CA at `CA30.cer` genuinely works, and the normal
+   `cert.pem` is exonerated as a cause of 090B.
+3. **The version check and the login verify certificates differently.** The same expired chain was
+   accepted twice for `checkver.html` and rejected for the login. That is the per-request bit at
+   `+0x28` of the request object, tested at `0xBB359C`, which pre-clears the two date bits before
+   the callback decides: `uupdate.cc` sets it, `uaccount.cc` does not.
+4. **070B is a prompt, not a dead end** — "Continue processing?". It is raised through
+   `0x8858F0`, which takes *two* callbacks and a flag byte of `0x12`, where 090B goes through
+   `0x885A08` with one callback and `0x10`. A confirm dialog and an error dialog respectively.
+
+With the transport and the certificate both cleared, the remaining triggers for 090B are the
+response grammar and the leading status field — the parts we thought were already satisfied.
+
+### Root cause: the perks field
+
+Answering "Continue" to the 070B prompt let the login proceed over the expired connection, and
+the probe caught the request we had never previously been able to see:
+
+```
+POST http://mgo2auth.konami.com/us/mgo2/kid/gidauth5.html
+     body fields: name,passwd,product,lang,tz,disk,ps3,stime,seed,np
+     -> proxied, 108 bytes, text/plain;charset=UTF-8
+```
+
+108 bytes is far too long for `0,<id>,<perks>,<16 hex>`. We were sending:
+
+```
+0,122345677,1000000_1000000_1000000_1000000_1000000_1000000_1000000_1000000_1000000_1000000,84486ef2cca76f51
+```
+
+Against the parser at `0xBB16B0`:
+
+| step | outcome |
+| --- | --- |
+| `strtol` → `0` | ok, the success status |
+| next byte `,` | ok |
+| `strtol` → `122345677` | ok |
+| next byte `,` | ok |
+| `strtol` → `1000000`, stops at `_` | ok, digits were consumed |
+| next byte must be `,`, but is `_` | **fails** — `0xBB172C`/`0xBB1730` branch to reason 1 |
+
+So the third field must be a **single decimal integer immediately followed by a comma**. Its value
+is then thrown away: `strtol`'s result at `0xBB1710` is never stored anywhere, so only the syntax
+matters. `1000000` works; the ten-element underscore-joined list mgo2-server sends does not.
+
+That reference targets the standalone MGO2, and this is the MGS4-integrated build — the same
+divergence that already cost us the gate port and the policy path.
+
+**This corrects an earlier entry in this file.** "The perks field" was listed below as eliminated.
+It was not: the attempts varied the perk *values* while keeping the underscores, so every one of
+them died at the same byte and looked like the same failure.
 
 ### The old folklore, for the record
 
@@ -254,9 +324,13 @@ raised by the login task, and the only one of its three triggers our reply does 
 satisfy is a failed HTTPS POST — which is exactly what the teardown above is.
 
 What has been eliminated as the cause, each tested against a real client: the lobby list contents,
-ordering and encoding; lobby ports; the account id in the login reply; the perks field; the reply's
-content type; sequence-number enforcement; STUN behaviour including two-address NAT discovery;
-inbound UDP on 5730; and the WSL network boundary.
+ordering and encoding; lobby ports; the account id in the login reply; the reply's content type;
+sequence-number enforcement; STUN behaviour including two-address NAT discovery; inbound UDP on
+5730; and the WSL network boundary.
+
+The perks field was on this list and should not have been — see "Root cause: the perks field"
+above. Every attempt varied its value but kept the underscore separators, so all of them failed
+identically and the field looked ruled out.
 
 ## HTTP endpoints
 

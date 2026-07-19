@@ -18,11 +18,13 @@ import java.util.HexFormat;
  *   name=&lt;game id&gt;&amp;passwd=&lt;md5&gt;&amp;product=..&amp;lang=..&amp;tz=..&amp;disk=..&amp;ps3=..&amp;stime=..
  *   &amp;seed=&lt;48 hex&gt;&amp;np=&lt;psn name&gt;
  * </pre>
- * The reply is plain text, comma separated:
+ * The reply is plain text, comma separated, and the client's parser is strict — three decimal
+ * integers each followed immediately by a comma, then a token of exactly 16 characters:
  * <pre>
  *   0,&lt;account id&gt;,&lt;perks&gt;,&lt;16 hex session&gt;   success
  *   1,0,0,0000000000000000                        failure
  * </pre>
+ * Anything else is rejected as 090B:00000001. See {@link #PERKS}.
  * A token is 32 hex characters. The first 8 are stored and are what the game server sees after
  * the client encrypts them into the check-session packet; the first 16 go back to the client.
  */
@@ -34,11 +36,20 @@ public class AuthWebController implements IWebController {
 	private static final String FAILURE = "1,0,0,0000000000000000";
 
 	/**
-	 * The third field of the login reply. mgo2-server calls it perks and sends "1000000" ten
-	 * times; what the client does with it is unknown, and it is the last field of the reply whose
-	 * meaning has not been pinned down. Overridable so values can be tried without a rebuild:
+	 * The third field of the login reply, which <em>must be a single decimal integer</em>.
+	 * <p>
+	 * mgo2-server calls this perks and sends "1000000" joined ten times by underscores. That is
+	 * wrong for this client, and was the cause of error 090B:00000001. The parser in the game's
+	 * own binary (MGO2.elf, {@code 0xBB16B0}) reads the reply as three {@code strtol} calls each
+	 * followed by a literal comma; at {@code 0xBB172C} it loads the byte after the third integer
+	 * and branches to the failure path unless it is {@code ','}. An underscore-joined list dies on
+	 * the first separator.
+	 * <p>
+	 * The parsed value is then discarded — {@code strtol}'s result is never stored — so only the
+	 * syntax matters. Overridable so values can still be tried without a rebuild, but any
+	 * replacement must remain a bare integer:
 	 *
-	 *   NOMAD_LOGIN_PERKS=2000000000_2000000000_...
+	 *   NOMAD_LOGIN_PERKS=2000000000
 	 */
 	private static final String PERKS = perksFromEnv();
 
@@ -47,7 +58,7 @@ public class AuthWebController implements IWebController {
 		if (configured != null && !configured.isBlank()) {
 			return configured.trim();
 		}
-		return String.join("_", java.util.Collections.nCopies(10, "1000000"));
+		return "1000000";
 	}
 
 	/** Characters of the token kept in the database, and sent to the client, respectively. */
@@ -86,8 +97,18 @@ public class AuthWebController implements IWebController {
 			accountService.setSession(account.getId(), token.substring(0, STORED_LENGTH));
 
 			logger.info("Account {} logged in as '{}'.", account.getId(), name);
-			return "0,%d,%s,%s".formatted(account.getId(), PERKS, token.substring(0, CLIENT_LENGTH));
+			return successReply(account.getId(), token.substring(0, CLIENT_LENGTH));
 		});
+	}
+
+	/**
+	 * Formats a successful login reply.
+	 * <p>
+	 * Kept separate so the grammar the client enforces can be tested directly. See
+	 * {@link #PERKS} for why the third field cannot be a list.
+	 */
+	static String successReply(long accountId, String sessionToken) {
+		return "0,%d,%s,%s".formatted(accountId, PERKS, sessionToken);
 	}
 
 	/** 32 hex characters from 16 random bytes. */
