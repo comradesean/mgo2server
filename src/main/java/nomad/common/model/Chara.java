@@ -9,6 +9,12 @@ public class Chara {
 
 	private int level;
 
+	private boolean active = true;
+
+	private String oldName;
+
+	private java.time.OffsetDateTime createdAt;
+
 	public long getId() {
 		return id;
 	}
@@ -39,6 +45,30 @@ public class Chara {
 
 	public void setLevel(int level) {
 		this.level = level;
+	}
+
+	public boolean isActive() {
+		return active;
+	}
+
+	public void setActive(boolean active) {
+		this.active = active;
+	}
+
+	public String getOldName() {
+		return oldName;
+	}
+
+	public void setOldName(String oldName) {
+		this.oldName = oldName;
+	}
+
+	public java.time.OffsetDateTime getCreatedAt() {
+		return createdAt;
+	}
+
+	public void setCreatedAt(java.time.OffsetDateTime createdAt) {
+		this.createdAt = createdAt;
 	}
 	@Override
 	public String toString() {

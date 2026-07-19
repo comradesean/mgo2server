@@ -2,6 +2,7 @@ package nomad.game;
 
 import nomad.common.Services;
 import nomad.game.controller.AccountGameController;
+import nomad.game.controller.CharacterGameController;
 import nomad.game.controller.EchoGameController;
 import nomad.game.controller.LobbyGameController;
 import nomad.game.controller.NewsGameController;
@@ -15,6 +16,9 @@ public class GameServerFactory {
 		controllers.add(new EchoGameController());
 
 		controllers.add(new AccountGameController(services.getAccountService()));
+
+		controllers.add(new CharacterGameController(services.getAccountService(),
+			services.getCharacterService()));
 
 		controllers.add(new LobbyGameController(services.getLobbyService()));
 

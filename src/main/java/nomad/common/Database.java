@@ -54,6 +54,7 @@ public final class Database implements AutoCloseable {
 
 		jdbi.registerRowMapper(BeanMapper.factory(Account.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Chara.class));
+		jdbi.registerRowMapper(BeanMapper.factory(CharaAppearance.class));
 		jdbi.registerRowMapper(BeanMapper.factory(CharaRoomConfiguration.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Clan.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Lobby.class));
