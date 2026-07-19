@@ -4,11 +4,43 @@ MGO2 fetches a terms-of-use document over plain HTTP before it will let you log 
 host and path vary by region and disc, so rather than guessing, this answers everything and
 prints what was asked for.
 """
+import pathlib
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+DOCROOT = pathlib.Path(__file__).parent / "www"
+
+# Confirmed from a real client: MGO2 fetches
+#   GET http://mgo2web.konami.com/us/mgo2/policy/policy.txt
+# with User-Agent "PS3Application libhttp/4.9.3-000 (CellOS)". Files under www/ are served at
+# their matching path; anything else still gets a stub so new endpoints show up in the log
+# rather than failing.
 TERMS = (b"nomad-ng test server.\r\n\r\n"
          b"This is a private server for development testing.\r\n")
+
+
+def default_body(path):
+    """Reply for a path with no file behind it.
+
+    The .html endpoints are not documents: the client posts a form and expects a bare status
+    code back, "0" meaning success. Confirmed shapes so far:
+      /patch/checkver.html   p=<flags>,<titleid>,<version>   -> version check
+      chgpswd / deluser / reguser                            -> account operations
+    Anything else falls back to the terms stub so new endpoints are obvious in the log.
+    """
+    if path.endswith(".html"):
+        return b"0"
+    return TERMS
+
+
+def from_docroot(path):
+    """Serves a real file if one exists for this path, else None."""
+    candidate = (DOCROOT / path.lstrip("/").split("?")[0]).resolve()
+    try:
+        candidate.relative_to(DOCROOT.resolve())
+    except ValueError:
+        return None  # refuse traversal outside the docroot
+    return candidate.read_bytes() if candidate.is_file() else None
 
 class Probe(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -30,10 +62,11 @@ class Probe(BaseHTTPRequestHandler):
     def do_GET(self):
         self._log()
         # Endpoints the MGO1 emulator documents expect a bare "0" as success.
-        if any(p in self.path for p in ("chgpswd", "deluser", "reguser")):
-            self._respond(b"0")
+        body = from_docroot(self.path)
+        if body is not None:
+            self._respond(body)
         else:
-            self._respond(TERMS)
+            self._respond(default_body(self.path))
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -41,12 +74,25 @@ class Probe(BaseHTTPRequestHandler):
         self._log()
         if body:
             print(f"      body: {body[:200]!r}", flush=True)
-        self._respond(b"0")
+        self._respond(default_body(self.path))
 
     def log_message(self, *args):
         pass  # replaced by _log
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 80
-    print(f"HTTP probe listening on 0.0.0.0:{port} — every request will be printed", flush=True)
-    ThreadingHTTPServer(("0.0.0.0", port), Probe).serve_forever()
+    # The client does the policy fetch over plain HTTP but authenticates over TLS, so the probe
+    # has to be able to run as either. The certificate is self-signed; whether the client accepts
+    # it is the open question — the PS3 may pin or require a Konami-issued chain.
+    use_tls = len(sys.argv) > 2 and sys.argv[2] == "tls"
+    server = ThreadingHTTPServer(("0.0.0.0", port), Probe)
+    if use_tls:
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(DOCROOT / "cert.pem"), str(DOCROOT / "key.pem"))
+        # The PS3's TLS stack is from 2008; allow the old ciphers and versions it offers.
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+        ctx.set_ciphers("ALL:@SECLEVEL=0")
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+    print(f"probe listening on 0.0.0.0:{port} ({'https' if use_tls else 'http'})", flush=True)
+    server.serve_forever()
