@@ -1,0 +1,2 @@
+subjectAltName=DNS:mgo2web.konami.com,DNS:*.konami.com,DNS:*.konamionline.com
+extendedKeyUsage=serverAuth

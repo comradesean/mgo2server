@@ -1,0 +1,8 @@
+nomad-ng test server
+
+This is a private development server, not affiliated with Konami.
+
+It exists to test a reimplementation of the Metal Gear Online 2 server
+protocol. No warranty, no support, no data retention guarantees.
+
+By continuing you acknowledge this is a test environment.
