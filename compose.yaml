@@ -156,6 +156,9 @@ services:
     command: sh -c 'cp -r /wwwsrc /www && python /probe.py 443 tls'
     environment:
       NOMAD_WEB_URL: http://web:8080
+      # cert-expired.pem swaps in a chain whose only defect is its validity window, which the
+      # client reports as 070B rather than 090B. See OBSERVED.md, "The certificate branch".
+      NOMAD_TLS_CERT: ${NOMAD_TLS_CERT:-cert.pem}
     volumes:
       - ./dev/http_probe.py:/probe.py:ro
       - ./dev/www:/wwwsrc:ro
