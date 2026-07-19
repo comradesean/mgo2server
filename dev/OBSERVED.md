@@ -57,8 +57,15 @@ as `len=12` and `len=24` requests, sourced from the game's own port — asking t
 from a different port or address, and classifies its NAT from which replies arrive. A responder
 that always answers from the same socket cannot satisfy that.
 
-`dev/stun_probe.py` serves two ports and honours change-port, declining change-IP because only one
-address is available, which is what a single-homed server does.
+NAT classification fundamentally needs **two IP addresses**: the client asks the server to reply
+from a different address and infers its NAT type from whether that reply arrives. SaveMGO ran its
+STUN server on a different address from its gate for exactly this reason — its DNS handler maps
+`mgo2gate` to 192.3.217.61 and the STUN host to 192.3.217.162, and its setup instructions give
+users both addresses.
+
+`dev/stun_probe.py` takes an optional second address and serves the full four-socket layout when
+given one. With a single address it answers change-IP from the alternate port, which lets the
+client conclude rather than hang, but cannot distinguish a full-cone NAT from a symmetric one.
 
 It must run with host networking. Docker's UDP proxy rewrites the source port of replies, and
 since a STUN client identifies which address answered, every reply appears to come from a random

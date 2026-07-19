@@ -4,10 +4,13 @@ MGO2 is peer-to-peer for matches, so the client runs NAT discovery before it wil
 That is not a single binding request: the client sends CHANGE-REQUEST attributes asking the server
 to reply from a different address or port, and infers its NAT type from which replies arrive.
 
-A textbook implementation needs two IP addresses. This has one, so it serves two ports and answers
-every probe from the address it advertised in CHANGED-ADDRESS. Declining the change-IP probe
-instead is more truthful, but the client simply retries it five times and then reports a
-connection failure, so a reachable answer is more useful than an accurate silence.
+NAT classification fundamentally needs two IP addresses: the client asks the server to reply from
+a different address and infers its NAT type from whether that reply arrives. SaveMGO ran its STUN
+server on a different address from its gate for this reason.
+
+Pass a second address to serve the four-socket layout properly. With one address it falls back to
+answering change-IP from the alternate port, which lets the client conclude something rather than
+hang, but cannot distinguish a full-cone NAT from a symmetric one.
 
 Development aid only: no authentication, no RFC 5780 behaviour discovery, no fingerprinting.
 """
@@ -69,27 +72,37 @@ def describe(kind):
     }.get(kind, f"0x{kind:04x}")
 
 
-def serve(primary_port, advertised_ip):
+def serve(primary_port, advertised_ip, secondary_ip=None):
     alternate_port = primary_port + 1
+    two_addresses = secondary_ip is not None and secondary_ip != advertised_ip
+
+    # (ip, port) -> socket. With one address only the two ports differ.
+    addresses = [advertised_ip] if not two_addresses else [advertised_ip, secondary_ip]
 
     sockets = {}
-    for port in (primary_port, alternate_port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.bind(("0.0.0.0", port))
-        sockets[port] = s
+    for ip in addresses:
+        for port in (primary_port, alternate_port):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((ip if two_addresses else "0.0.0.0", port))
+            sockets[(ip, port)] = s
 
     selector = selectors.DefaultSelector()
-    for port, s in sockets.items():
-        selector.register(s, selectors.EVENT_READ, port)
+    for key, s in sockets.items():
+        selector.register(s, selectors.EVENT_READ, key)
 
-    print(f"STUN responder on {primary_port} and {alternate_port} (advertising {advertised_ip})",
-          flush=True)
+    if two_addresses:
+        print(f"STUN responder on {advertised_ip} and {secondary_ip}, "
+              f"ports {primary_port} and {alternate_port}", flush=True)
+    else:
+        print(f"STUN responder on {advertised_ip}, ports {primary_port} and {alternate_port} "
+              f"(single address: change-IP answered from the alternate port)", flush=True)
 
     while True:
         for key, _ in selector.select():
-            received_on = key.data
+            received_ip, received_on = key.data
             try:
-                data, peer = sockets[received_on].recvfrom(2048)
+                data, peer = sockets[(received_ip, received_on)].recvfrom(2048)
             except OSError as e:
                 print(f"  recv failed: {e}", flush=True)
                 continue
@@ -117,33 +130,41 @@ def serve(primary_port, advertised_ip):
 
             wants_ip = bool(change_flags & CHANGE_IP)
             wants_port = bool(change_flags & CHANGE_PORT)
-            print(f"  :{received_on} <- {peer[0]}:{peer[1]} len={length} "
+            print(f"  {received_ip}:{received_on} <- {peer[0]}:{peer[1]} len={length} "
                   f"attrs=[{', '.join(names) or 'none'}] "
                   f"change_ip={wants_ip} change_port={wants_port}", flush=True)
 
-            # A request to change IP is answered from the alternate port rather than ignored.
-            # Only one address exists, and CHANGED-ADDRESS advertises it with that port, so this
-            # is the address the client was told to expect. Staying silent instead is technically
-            # honest but leaves the client retrying until it gives up, which is what was observed:
-            # five unanswered change-IP probes and then a connection failure.
-            reply_from = alternate_port if (wants_port or wants_ip) else received_on
-            other_port = alternate_port if reply_from == primary_port else primary_port
+            reply_port = alternate_port if wants_port else received_on
+            if two_addresses:
+                # The real thing: reply from the other address when asked to.
+                reply_ip = secondary_ip if wants_ip and received_ip == advertised_ip else (
+                    advertised_ip if wants_ip else received_ip)
+            else:
+                # One address only. Answer change-IP from the alternate port so the client can
+                # conclude rather than retry until it fails.
+                reply_ip = received_ip
+                if wants_ip:
+                    reply_port = alternate_port
+
+            other_ip = secondary_ip if (two_addresses and reply_ip == advertised_ip) else advertised_ip
+            other_port = alternate_port if reply_port == primary_port else primary_port
 
             body = (
                 attribute(ATTR_MAPPED_ADDRESS, address_value(peer[0], peer[1]))
-                + attribute(ATTR_SOURCE_ADDRESS, address_value(advertised_ip, reply_from))
-                + attribute(ATTR_CHANGED_ADDRESS, address_value(advertised_ip, other_port))
+                + attribute(ATTR_SOURCE_ADDRESS, address_value(reply_ip, reply_port))
+                + attribute(ATTR_CHANGED_ADDRESS, address_value(other_ip, other_port))
                 + attribute(ATTR_XOR_MAPPED_ADDRESS, xor_address_value(peer[0], peer[1]))
                 + b"".join(attribute(kind, value) for kind, value in vendor)
             )
             response = struct.pack("!HH16s", BIND_RESPONSE, len(body), transaction) + body
 
-            sockets[reply_from].sendto(response, peer)
-            print(f"      -> :{reply_from} mapped {peer[0]}:{peer[1]}", flush=True)
+            sockets[(reply_ip, reply_port)].sendto(response, peer)
+            print(f"      -> {reply_ip}:{reply_port} mapped {peer[0]}:{peer[1]}", flush=True)
 
 
 if __name__ == "__main__":
     serve(
         int(sys.argv[1]) if len(sys.argv) > 1 else 3478,
         sys.argv[2] if len(sys.argv) > 2 else "0.0.0.0",
+        sys.argv[3] if len(sys.argv) > 3 else None,
     )
