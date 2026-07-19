@@ -83,6 +83,22 @@ On Windows, allow it inbound:
 netsh advfirewall firewall add rule name="MGO2 UDP 5730" dir=in action=allow protocol=UDP localport=5730
 ```
 
+Opening that port did not resolve it here, so the UDP explanation is at best incomplete.
+
+A second explanation appears in period forum threads: that 090B:00000001 also means the client's
+**region** does not match the service — a NA disc against EU servers, or similar. This client is
+consistently NA: disc `BLUS30109`, it resolves `mgo2gateus`, and it fetches `/us/mgo2/...`
+documents. So if region is the cause, the mismatch is in something the server returns rather than
+in what the client asks for. Unverified, and the most promising lead not yet followed.
+
+Candidates, none confirmed:
+
+- the `checkver` reply, currently a bare `0x00` meaning "up to date", which may need to encode a
+  region or data version
+- `product=2592964502` in the login request, which is not validated or echoed
+- the vendor attribute `0xf000` the client sends on its STUN probes, observed carrying
+  `0573000000000002` — note the leading `0573` against the game's UDP port 5730
+
 ## HTTP endpoints
 
 Plain HTTP on port 80:
