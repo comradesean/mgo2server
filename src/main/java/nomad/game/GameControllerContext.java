@@ -23,6 +23,16 @@ public class GameControllerContext {
 		return packet;
 	}
 
+	/** Per-connection state, including the authenticated account. */
+	public GameConnection connection() {
+		return GameConnection.of(channelHandlerContext.channel());
+	}
+
+	/** Writes a bare result packet, masking the code as the client expects. */
+	public void write(int command, GameError error) {
+		write(new GamePacket(command, error.result()));
+	}
+
 	public ByteBuf buffer(int initialCapacity) {
 		var buffer = channelHandlerContext.alloc().buffer(initialCapacity);
 		if (buffer != null) {
