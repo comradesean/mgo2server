@@ -1,6 +1,7 @@
 package nomad.game;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
@@ -14,6 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * Dispatches decoded packets to the controller registered for their command.
+ * <p>
+ * Sharable, and deliberately so: one instance serves every channel. The handler map is built in
+ * the constructor and only read afterwards, so there is no per-connection state here — that lives
+ * in {@link GameConnection} and in the codecs.
+ */
+@ChannelHandler.Sharable
 public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	private static final Logger logger = LogManager.getLogger();
 
