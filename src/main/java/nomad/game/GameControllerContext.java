@@ -44,4 +44,10 @@ public class GameControllerContext {
 	public void write(GamePacket packet) {
 		channelHandlerContext.write(packet);
 	}
+
+	/** Closes the connection once anything already written has been flushed. */
+	public void close() {
+		channelHandlerContext.flush();
+		channelHandlerContext.close();
+	}
 }

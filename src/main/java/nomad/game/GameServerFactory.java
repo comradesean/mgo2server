@@ -2,6 +2,7 @@ package nomad.game;
 
 import nomad.common.Services;
 import nomad.game.controller.AccountGameController;
+import nomad.game.controller.CommonGameController;
 import nomad.game.controller.CharacterConnectController;
 import nomad.game.controller.CharacterGameController;
 import nomad.game.controller.EchoGameController;
@@ -21,6 +22,9 @@ public class GameServerFactory {
 	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
 			long lobbyId, int lobbySubtype) {
 		var controllers = new ArrayList<IGameController>();
+
+		// Disconnect and ping, which every lobby answers.
+		controllers.add(new CommonGameController());
 
 		// Useful for smoke-testing a connection regardless of lobby type.
 		controllers.add(new EchoGameController());
