@@ -164,5 +164,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # MGO2 is peer-to-peer for matches, so the client discovers its public address before it will
+  # enter a lobby. Without a reachable STUN server it retries UPnP and then fails, which presents
+  # as a lobby error rather than a NAT one.
+  probe-stun:
+    image: python:3.12-alpine
+    command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100}
+    volumes:
+      - ./dev/stun_probe.py:/stun.py:ro
+    ports:
+      - "${NOMAD_PROBE_STUN:-192.168.1.100:3478}:3478/udp"
+    restart: unless-stopped
+
 volumes:
   postgres-data:

@@ -20,7 +20,7 @@ Sources of truth used, in order of usefulness:
 | `mgo2web.konami.com` | Static documents and the version check |
 | `mgo2auth.konami.com` | Login |
 | `mgo2gateus.konamionline.com` | Gate server (`us` = region) |
-| `mgo2stunna.konamionline.com` | STUN, for NAT traversal (`na` = region). Not implemented. |
+| `mgo2stunna.konamionline.com` | STUN, for NAT traversal (`na` = region) |
 | `info.service.konamionline.com` | Resolved, purpose not yet observed |
 
 Redirection is done with RPCS3's **IP swap list**, not DNS: its DnsHook resolves inside the
@@ -36,7 +36,22 @@ mgo2web.konami.com=<ip>&&info.service.konamionline.com=<ip>&&mgo2gateus.konamion
 | --- | --- | --- |
 | 80 | HTTP | Static documents |
 | 443 | HTTPS | Version check and login |
+| 3478 | UDP | STUN. Required — see below. |
 | 15731 | TCP | **Gate.** Not 5730 (Nomad's default) or 5731 (the MGO1 emulator's). |
+
+For comparison, `mgo2-server` documents gate 5731, account 5732, game 5733+. This client dials
+15731 for the gate, so that value is disc or region specific; the ports for the other lobbies come
+from the lobby list and can be anything.
+
+## STUN
+
+Matches are peer-to-peer, so the client discovers its public address before it will enter a lobby.
+With no STUN server reachable it retries UPnP against the router and then fails — which presents
+as a lobby error, not a NAT one, and is easy to misread.
+
+`mgo2-server` lists a STUN server on 3478/udp as a required component alongside the gate and
+account servers. `dev/stun_probe.py` implements just enough of it: the classic binding
+request/response plus XOR-MAPPED-ADDRESS.
 
 ## HTTP endpoints
 
