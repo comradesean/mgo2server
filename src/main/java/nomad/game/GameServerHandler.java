@@ -41,6 +41,11 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 		if (msg instanceof GamePacket packet) {
 			var command = (int) packet.getCommand();
 			var handler = handlers.get(command);
+			if (handler == null) {
+				// Silently dropping these makes a stalled client impossible to diagnose: the
+				// connection looks healthy and simply stops.
+				logger.warn("No handler for command {}; ignoring.", String.format("%04x", command));
+			}
 			if (handler != null) {
 				var allocations = new ArrayList<ByteBuf>();
 				try {
