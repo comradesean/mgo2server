@@ -9,6 +9,12 @@ public class Account {
 
 	private int slots;
 
+	private String session;
+
+	private Long mainCharaId;
+
+	private Long currentCharaId;
+
 	public long getId() {
 		return id;
 	}
@@ -39,6 +45,30 @@ public class Account {
 
 	public void setSlots(int slots) {
 		this.slots = slots;
+	}
+
+	public String getSession() {
+		return session;
+	}
+
+	public void setSession(String session) {
+		this.session = session;
+	}
+
+	public Long getMainCharaId() {
+		return mainCharaId;
+	}
+
+	public void setMainCharaId(Long mainCharaId) {
+		this.mainCharaId = mainCharaId;
+	}
+
+	public Long getCurrentCharaId() {
+		return currentCharaId;
+	}
+
+	public void setCurrentCharaId(Long currentCharaId) {
+		this.currentCharaId = currentCharaId;
 	}
 
 	@Override
