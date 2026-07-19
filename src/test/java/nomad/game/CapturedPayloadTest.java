@@ -14,16 +14,26 @@ import java.util.Objects;
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * Checks the payload writers against real captured traffic.
+ * Checks the payload writers against reference payloads shipped in Nomad's repository.
  * <p>
- * The other writer tests assert that the implementation matches my reading of the original source,
- * which is circular: a misread offset would be reproduced identically in both. These fixtures are
- * payloads captured from the retail server, so they are independent evidence that the layouts and
- * the undocumented constant blocks are right.
+ * The other writer tests assert that the implementation matches my reading of the original Java
+ * source, which is circular: a misread offset would be reproduced identically in the code and in
+ * the test. These fixtures are not circular in that way, because nothing in Nomad generates them —
+ * the code only ever reads them, via {@code Util.readFile}, to serve canned responses to a client.
+ * They are therefore independent of the code being ported from.
+ * <p>
+ * Their ultimate origin is <em>not</em> documented anywhere in that repository. They may be traces
+ * preserved from the retail servers, or they may have been constructed by hand; the repo says
+ * nothing either way, and the files were committed in 2017, years after MGO2 shut down. What can
+ * be observed is that several ship in differing {@code -working} and {@code .bak} variants, which
+ * suggests they were iterated until a client accepted them — but that is inference, not evidence.
+ * <p>
+ * So: treat these as strong corroboration that the layouts and undocumented constants match a
+ * second, independent artefact, and not as proof of correctness against the retail protocol. Only
+ * a real client can supply that.
  * <p>
  * Only the parts that do not depend on character data are compared — sizes, fixed blocks and the
- * constants whose meaning is unknown. Everything else legitimately differs between the captured
- * character and a test one.
+ * constants whose meaning is unknown. Everything else legitimately differs.
  */
 public class CapturedPayloadTest {
 	private static byte[] capture(String name) {
@@ -88,7 +98,7 @@ public class CapturedPayloadTest {
 	}
 
 	/**
-	 * The capture is from a character in a clan with an emblem, which is the case this build
+	 * The fixture is from a character in a clan with an emblem, which is the case this build
 	 * cannot yet produce. Documents the known divergence so it is not mistaken for a bug.
 	 */
 	@Test
