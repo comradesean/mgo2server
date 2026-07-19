@@ -128,9 +128,10 @@ to the `(%04X:%08X)` format string is a coincidence of the string blob — those
 
 Reason 1 is set at `0xBB1618`, reachable from exactly three places:
 
-1. **The POST itself fails.** `0xBB1584`: if the request call returns negative, the only tolerated
-   value is `0x80710A06`; every other error falls straight through to reason 1. This is what the
-   RPCS3 log shows — `connect` → `EINPROGRESS` → `shutdown` → error dialog, with no TLS handshake.
+1. **The POST itself fails.** `0xBB1584`: if the request call returns negative, every error except
+   `0x80710A06` falls straight through to reason 1. This is what the RPCS3 log shows —
+   `connect` → `EINPROGRESS` → `shutdown` → error dialog, with no TLS handshake.
+   `0x80710A06` is not an exemption; see the certificate branch below.
 2. **The response body does not parse.** The parser at `0xBB16B0` requires, with no slack:
    `strtol(base 10)` `,` `strtol` `,` `strtol` `,` `<token>`. A missing comma, or a `strtol` that
    consumes zero characters, jumps to reason 1. The token is then passed to cellHttpUtil import #3
@@ -144,6 +145,44 @@ Reason 1 is set at `0xBB1618`, reachable from exactly three places:
 Our reply is `0,<account id>,<perks>,<16 hex>`, which satisfies (2) and (3). That leaves (1) —
 the transport — as the cause, which agrees with the RPCS3 log and with the fact that no
 server-side change has ever moved the outcome.
+
+### The certificate branch, and a decisive experiment it enables
+
+`0x80710A06` is `CELL_HTTPS_ERROR_HANDSHAKE`, per RPCS3's `cellHttp.h`. It is the one error the
+login task does not immediately report, because it is the one error where the client can say
+something more specific. At `0xBB19C8` it re-reads the saved SSL verify mask and classifies:
+
+```
+verifyErr & 0x1800 == 0            -> reason 1  (090B:00000001)
+verifyErr & ~0x1800 != 0           -> reason 1  (090B:00000001)
+otherwise                          -> reason 2  (070B:00000002)
+```
+
+`0x1800` is exactly `CELL_HTTPS_VERIFY_ERROR_EXPIRED (0x0800)` plus
+`CELL_HTTPS_VERIFY_ERROR_NOT_YET_VALID (0x1000)`. So the special case is not tolerance — it is a
+**clock-and-validity-window diagnosis**. A certificate that fails *only* because of its dates gets
+its own error, 070B. Every other certificate failure — unknown CA, bad chain, common-name
+mismatch, not verifiable — lands back on 090B:00000001, indistinguishable from the socket never
+opening.
+
+The mask is saved at `+0x24` of the request object by the `cellHttpsSslCallback` at `0xBB3310`,
+whose signature matches RPCS3's `s32(u32 verifyErr, void** sslCerts, s32 certNum, const char*
+hostname, const void* id, void* userArg)` register for register. That callback also honours two
+switches: a per-request bit that pre-clears the two date bits, and a global word at `0x16194CC`
+whose bit 0 makes it discard every verify error and accept the certificate outright. Bit 1 of the
+same word is what decides whether `np=<psn name>` is appended to the login request.
+
+**This gives us a free discriminator.** Serve `mgo2auth.konami.com` a certificate that is
+otherwise perfectly valid — same CA, same common name — but deliberately expired or
+post-dated relative to the PS3's clock:
+
+- client reports **070B** → the TLS handshake is being reached and the chain verifies. The
+  failure is downstream, and the certificate is exonerated.
+- client still reports **090B** → the client is not getting far enough to evaluate the
+  certificate, which points at the socket layer and at the unimplemented `sys_net_infoctl` /
+  `cellNetCtlAddHandler` calls below.
+
+Either answer splits the remaining search space in half, and costs one `openssl` invocation.
 
 ### The old folklore, for the record
 
