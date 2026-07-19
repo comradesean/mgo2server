@@ -72,9 +72,82 @@ since a STUN client identifies which address answered, every reply appears to co
 port and discovery never concludes. Published ports look like they work — the reply arrives — but
 from the wrong port.
 
-## Error 090B:00000001
+## Error 090B:00000001 — traced in the game binary
 
-"Unable to connect to server." Konami's own support answer, preserved on GameFAQs, attributes it
+This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
+
+Reference material for all addresses below: `MGO2.elf` under `PS3_GAME/USRDIR/o/`, an ELF64 PPC64
+big-endian image. Virtual address = file offset + `0x10000` for both PT_LOAD segments. The TOC
+pointer `r2` is `0x10353A8`, taken from the `.opd` function-descriptor table at `0xFFEC90`
+(every descriptor is `{entry, toc}` and every one carries that same TOC). That table also gives
+23,779 function boundaries, which is what makes the disassembly navigable.
+
+### Only one site can produce it
+
+The error is formatted `(%04X:%08X)` from a pair `(code, detail)`. Exactly three instructions in
+the whole image load `0x090B` as the code:
+
+| site | detail argument | renders as |
+| --- | --- | --- |
+| `0x945A3C` | `li r4, 1` | `090B:00000001` |
+| `0x946A34` | `extsw r4, r3` — a negative network return code | `090B:FFFFFF..` |
+| `0x946B98` | `li r4, -0xF0` | `090B:FFFFFF10` |
+
+The observed detail is `00000001`, so the failure is `0x945A3C` and nothing else. The other two
+sites belong to a different state machine (`0x9468B8`) and cannot render a detail of 1.
+
+### What that site is
+
+`0x945A3C` sits in the state machine at `0x9455BC`, whose state 3 polls `0x944444`. That poll
+reads a status field and returns 0 for done, -1 for failed, 1 for still working. On failure it
+calls a virtual accessor for the reason code and maps it:
+
+| reason | error code |
+| --- | --- |
+| 1 | **090B** |
+| 2 | 070B |
+| 3 | 0911 |
+| 4 | 0846 |
+| 5 | 0912 |
+| 6 | 0847 |
+| 7 | not an error — the state machine advances |
+| 8 | code 0 |
+| other | 0910 |
+
+The object it polls is the singleton built at `0xBB1C40`, and its worker is `0xBB0FB8`. That
+function is **`uaccount.cc`** — the HTTPS login. It is the code that assembles
+`name`, `passwd`, `product`, `lang`, `tz`, `disk`, `ps3`, `stime`, `seed`, `np` and `flag`, all
+loaded from one pointer table at `0xFF22B8`, alongside the literal `uaccount.cc` and an embedded
+`-----BEGIN CERTIFICATE-----`.
+
+**So 090B:00000001 is a login error, not a lobby error.** The adjacency of `MGO_ERROR_RES_LOBBY`
+to the `(%04X:%08X)` format string is a coincidence of the string blob — those three
+`MGO_ERROR_RES_*` names are never referenced from any code that computes `0x090B`.
+
+### The three ways to trigger it
+
+Reason 1 is set at `0xBB1618`, reachable from exactly three places:
+
+1. **The POST itself fails.** `0xBB1584`: if the request call returns negative, the only tolerated
+   value is `0x80710A06`; every other error falls straight through to reason 1. This is what the
+   RPCS3 log shows — `connect` → `EINPROGRESS` → `shutdown` → error dialog, with no TLS handshake.
+2. **The response body does not parse.** The parser at `0xBB16B0` requires, with no slack:
+   `strtol(base 10)` `,` `strtol` `,` `strtol` `,` `<token>`. A missing comma, or a `strtol` that
+   consumes zero characters, jumps to reason 1. The token is then passed to cellHttpUtil import #3
+   (NID `0x8E6C5BB9`, called as `(out, outSize, in, &required)`) with a null output to measure it,
+   and `required` must equal `0x11` — i.e. **the fourth field must be exactly 16 characters**,
+   which confirms the 16-hex session half we already return.
+3. **The first field is 10, 11 or 12.** The jump table at `0xBB1994` maps the leading integer of
+   the response: 0 is success; 2, 5, 6, 7, 8 give distinct errors; 1, 3, 4, 9 and anything above
+   12 give reason 3 (`0911`); and 10, 11, 12 give reason 1.
+
+Our reply is `0,<account id>,<perks>,<16 hex>`, which satisfies (2) and (3). That leaves (1) —
+the transport — as the cause, which agrees with the RPCS3 log and with the fact that no
+server-side change has ever moved the outcome.
+
+### The old folklore, for the record
+
+Konami's own support answer, preserved on GameFAQs, attributes 090B
 to inbound **UDP** being blocked, and the thread identifies the port as **5730**. That matches what
 the client does here: every STUN request originates from port 5730, so the game binds it and
 expects to receive on it.
@@ -95,16 +168,13 @@ Opening that port did not resolve it here, so the UDP explanation is at best inc
 A second explanation appears in period forum threads: that 090B:00000001 also means the client's
 **region** does not match the service — a NA disc against EU servers, or similar. This client is
 consistently NA: disc `BLUS30109`, it resolves `mgo2gateus`, and it fetches `/us/mgo2/...`
-documents. So if region is the cause, the mismatch is in something the server returns rather than
-in what the client asks for. Unverified, and the most promising lead not yet followed.
+documents. Both explanations are now superseded: the binary shows the code is raised by the login
+task alone, and neither UDP reachability nor region is consulted on any path that reaches it.
 
-Candidates, none confirmed:
+Two candidates that the binary also rules out as causes of *this* code:
 
-- the `checkver` reply, currently a bare `0x00` meaning "up to date", which may need to encode a
-  region or data version
-- `product=2592964502` in the login request, which is not validated or echoed
-- the vendor attribute `0xf000` the client sends on its STUN probes, observed carrying
-  `0573000000000002` — note the leading `0573` against the game's UDP port 5730
+- the `checkver` reply — it is parsed by a different module (`uupdate.cc`) that cannot raise 090B
+- `product=2592964502` in the login request, which is sent but never echoed or validated
 
 ## Where it currently stops, and why the server may not be the cause
 
@@ -139,6 +209,10 @@ receives nothing, and gives up. This is a strong candidate for the blocker and w
 no server-side change affects the outcome, and why MGO2PC ships a **custom RPCS3 build** rather
 than instructions for the stock one. It is not proven: the calls are also made on attempts that
 progress further.
+
+The binary trace above raises this from a candidate to the leading explanation. 090B:00000001 is
+raised by the login task, and the only one of its three triggers our reply does not already
+satisfy is a failed HTTPS POST — which is exactly what the teardown above is.
 
 What has been eliminated as the cause, each tested against a real client: the lobby list contents,
 ordering and encoding; lobby ports; the account id in the login reply; the perks field; the reply's
