@@ -50,8 +50,20 @@ With no STUN server reachable it retries UPnP against the router and then fails 
 as a lobby error, not a NAT one, and is easy to misread.
 
 `mgo2-server` lists a STUN server on 3478/udp as a required component alongside the gate and
-account servers. `dev/stun_probe.py` implements just enough of it: the classic binding
-request/response plus XOR-MAPPED-ADDRESS.
+account servers.
+
+The client does not send a plain binding request. It sends CHANGE-REQUEST attributes — observed
+as `len=12` and `len=24` requests, sourced from the game's own port — asking the server to reply
+from a different port or address, and classifies its NAT from which replies arrive. A responder
+that always answers from the same socket cannot satisfy that.
+
+`dev/stun_probe.py` serves two ports and honours change-port, declining change-IP because only one
+address is available, which is what a single-homed server does.
+
+It must run with host networking. Docker's UDP proxy rewrites the source port of replies, and
+since a STUN client identifies which address answered, every reply appears to come from a random
+port and discovery never concludes. Published ports look like they work — the reply arrives — but
+from the wrong port.
 
 ## HTTP endpoints
 
