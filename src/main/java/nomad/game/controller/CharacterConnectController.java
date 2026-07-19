@@ -4,11 +4,14 @@ import io.netty.buffer.ByteBuf;
 import nomad.common.BufferUtil;
 import nomad.common.model.Account;
 import nomad.common.model.Chara;
+import nomad.common.model.CharaAppearance;
 import nomad.common.model.ChatMacro;
 import nomad.common.service.CharacterService;
 import nomad.game.GameControllerContext;
 import nomad.game.GameError;
+import nomad.game.GameplaySettingsWriter;
 import nomad.game.IGameController;
+import nomad.game.PersonalInfoWriter;
 import nomad.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,13 +25,12 @@ import java.util.function.Consumer;
  * The burst a client asks for on entering a game lobby.
  * <p>
  * A single request, 0x4100, is answered with everything the client needs about the character it
- * arrived with. The original replies with eight separate messages; implemented here are the
- * character record (0x4101) and the chat macros (0x4121).
+ * arrived with. The original replies with eight separate messages; four are implemented here:
+ * the character record (0x4101), gameplay and interface settings (0x4120), chat macros (0x4121)
+ * and personal info (0x4122).
  * <p>
- * Still to come, each needing schema this project does not have yet: gameplay options and UI
- * settings (0x4120), personal info (0x4122, needs clans and equipped skills), gear (0x4123),
- * skills (0x4124), skill sets (0x4125) and gear sets (0x4126). A real client will not be fully
- * happy until those exist.
+ * Still to come, each needing schema this project does not have yet: gear (0x4124), skills
+ * (0x4125), skill sets (0x4140) and gear sets (0x4142).
  */
 public class CharacterConnectController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
@@ -37,7 +39,11 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int CHARACTER_INFO = 0x4101;
 
+	public static final int GAMEPLAY_SETTINGS = 0x4120;
+
 	public static final int CHAT_MACROS = 0x4121;
+
+	public static final int PERSONAL_INFO = 0x4122;
 
 	private static final int NAME_LENGTH = 16;
 
@@ -98,8 +104,30 @@ public class CharacterConnectController implements IGameController {
 			return;
 		}
 
+		// Order matches the original's burst.
 		writeCharacterInfo(ctx, account, chara);
+		writeGameplaySettings(ctx, charaId);
 		writeChatMacros(ctx, charaId);
+		writePersonalInfo(ctx, chara);
+	}
+
+	private void writeGameplaySettings(GameControllerContext ctx, long charaId) {
+		var settings = characterService.getOrCreateSettings(charaId);
+
+		var buffer = ctx.buffer(GameplaySettingsWriter.PAYLOAD_SIZE);
+		GameplaySettingsWriter.write(buffer, settings);
+
+		ctx.write(new GamePacket(GAMEPLAY_SETTINGS, buffer));
+	}
+
+	private void writePersonalInfo(GameControllerContext ctx, Chara chara) {
+		var appearance = characterService.getAppearance(chara.getId()).orElseGet(CharaAppearance::new);
+		var skills = characterService.getOrCreateEquippedSkills(chara.getId());
+
+		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
+		PersonalInfoWriter.write(buffer, chara, appearance, skills);
+
+		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}
 
 	private void writeCharacterInfo(GameControllerContext ctx, Account account, Chara chara) {
