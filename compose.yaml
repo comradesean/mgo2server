@@ -40,18 +40,67 @@ services:
         condition: service_healthy
     restart: "no"
 
-  game:
+  # One server per lobby, matching the lobby rows created by dev/seed.sql. Each instance answers
+  # only its own lobby's commands, so all three must run for a client to get past the gate.
+  gate:
     build: .
     image: nomad-ng:local
     command: ["game"]
-    environment: *server-env
+    environment:
+      <<: *server-env
+      NOMAD_LOBBY_TYPE: "0"
+      NOMAD_LOBBY_ID: "1"
     ports:
-      - "${NOMAD_GAME_PORT:-5730}:5730"
+      - "${NOMAD_GATE_PORT:-5730}:5730"
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5730"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  account:
+    build: .
+    image: nomad-ng:local
+    command: ["game"]
+    environment:
+      <<: *server-env
+      NOMAD_LOBBY_TYPE: "1"
+      NOMAD_LOBBY_ID: "2"
+      NOMAD_GAME_PORT: "5731"
+    ports:
+      - "${NOMAD_ACCOUNT_PORT:-5731}:5731"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5731"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  gamelobby:
+    build: .
+    image: nomad-ng:local
+    command: ["game"]
+    environment:
+      <<: *server-env
+      NOMAD_LOBBY_TYPE: "2"
+      NOMAD_LOBBY_ID: "3"
+      NOMAD_GAME_PORT: "5732"
+    ports:
+      - "${NOMAD_LOBBY_PORT:-5732}:5732"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5732"]
       interval: 15s
       timeout: 5s
       retries: 3
