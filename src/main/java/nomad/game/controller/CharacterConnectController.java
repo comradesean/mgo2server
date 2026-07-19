@@ -11,6 +11,7 @@ import nomad.game.GameControllerContext;
 import nomad.game.GameError;
 import nomad.game.GameplaySettingsWriter;
 import nomad.game.IGameController;
+import nomad.game.LoadoutWriter;
 import nomad.game.PersonalInfoWriter;
 import nomad.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
@@ -25,12 +26,10 @@ import java.util.function.Consumer;
  * The burst a client asks for on entering a game lobby.
  * <p>
  * A single request, 0x4100, is answered with everything the client needs about the character it
- * arrived with. The original replies with eight separate messages; four are implemented here:
- * the character record (0x4101), gameplay and interface settings (0x4120), chat macros (0x4121)
- * and personal info (0x4122).
- * <p>
- * Still to come, each needing schema this project does not have yet: gear (0x4124), skills
- * (0x4125), skill sets (0x4140) and gear sets (0x4142).
+ * arrived with. All eight of the original's responses are implemented: the character record
+ * (0x4101), gameplay and interface settings (0x4120), chat macros (0x4121, one packet per type),
+ * personal info (0x4122), the gear and skill catalogues (0x4124, 0x4125) and the saved skill and
+ * gear loadouts (0x4140, 0x4142).
  */
 public class CharacterConnectController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
@@ -44,6 +43,14 @@ public class CharacterConnectController implements IGameController {
 	public static final int CHAT_MACROS = 0x4121;
 
 	public static final int PERSONAL_INFO = 0x4122;
+
+	public static final int GEAR = 0x4124;
+
+	public static final int SKILLS = 0x4125;
+
+	public static final int SKILL_SETS = 0x4140;
+
+	public static final int GEAR_SETS = 0x4142;
 
 	private static final int NAME_LENGTH = 16;
 
@@ -109,6 +116,38 @@ public class CharacterConnectController implements IGameController {
 		writeGameplaySettings(ctx, charaId);
 		writeChatMacros(ctx, charaId);
 		writePersonalInfo(ctx, chara);
+		writeGear(ctx);
+		writeSkills(ctx);
+		writeSkillSets(ctx, charaId);
+		writeGearSets(ctx, charaId);
+	}
+
+	private void writeGear(GameControllerContext ctx) {
+		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize());
+		LoadoutWriter.writeGear(buffer);
+		ctx.write(new GamePacket(GEAR, buffer));
+	}
+
+	private void writeSkills(GameControllerContext ctx) {
+		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize());
+		LoadoutWriter.writeSkills(buffer);
+		ctx.write(new GamePacket(SKILLS, buffer));
+	}
+
+	private void writeSkillSets(GameControllerContext ctx, long charaId) {
+		var sets = characterService.getOrCreateSkillSets(charaId);
+
+		var buffer = ctx.buffer(sets.size() * LoadoutWriter.SKILL_SET_SIZE);
+		LoadoutWriter.writeSkillSets(buffer, sets);
+		ctx.write(new GamePacket(SKILL_SETS, buffer));
+	}
+
+	private void writeGearSets(GameControllerContext ctx, long charaId) {
+		var sets = characterService.getOrCreateGearSets(charaId);
+
+		var buffer = ctx.buffer(sets.size() * LoadoutWriter.GEAR_SET_SIZE);
+		LoadoutWriter.writeGearSets(buffer, sets);
+		ctx.write(new GamePacket(GEAR_SETS, buffer));
 	}
 
 	private void writeGameplaySettings(GameControllerContext ctx, long charaId) {

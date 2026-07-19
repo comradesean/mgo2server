@@ -9,6 +9,7 @@ import nomad.common.model.ChatMacro;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
 import nomad.game.GameplaySettingsWriter;
+import nomad.game.LoadoutWriter;
 import nomad.game.PersonalInfoWriter;
 import nomad.game.LobbyType;
 import nomad.game.packet.GamePacket;
@@ -27,10 +28,10 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 	private static final String SESSION = "abcd1234";
 
 	/**
-	 * Check-session reply plus the burst. The burst is five packets, not four responses: chat
+	 * Check-session reply plus the burst. The burst is nine packets from eight responses: chat
 	 * macros are sent as one packet per type.
 	 */
-	private static final int BURST_REPLIES = 6;
+	private static final int BURST_REPLIES = 10;
 
 	private long accountId;
 
@@ -170,17 +171,21 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 	}
 
 	@Test
-	public void connectBurstSendsAllFourResponsesInOrder() {
+	public void connectBurstSendsAllEightResponsesInOrder() {
 		givenSelectedCharacter("Snake");
 
 		var replies = connect(charaId, BURST_REPLIES);
 
-		assertThat(replies).hasSize(6);
+		assertThat(replies).hasSize(10);
 		assertThat(replies.get(1).getCommand()).isEqualTo(CharacterConnectController.CHARACTER_INFO);
 		assertThat(replies.get(2).getCommand()).isEqualTo(CharacterConnectController.GAMEPLAY_SETTINGS);
 		assertThat(replies.get(3).getCommand()).isEqualTo(CharacterConnectController.CHAT_MACROS);
 		assertThat(replies.get(4).getCommand()).isEqualTo(CharacterConnectController.CHAT_MACROS);
 		assertThat(replies.get(5).getCommand()).isEqualTo(CharacterConnectController.PERSONAL_INFO);
+		assertThat(replies.get(6).getCommand()).isEqualTo(CharacterConnectController.GEAR);
+		assertThat(replies.get(7).getCommand()).isEqualTo(CharacterConnectController.SKILLS);
+		assertThat(replies.get(8).getCommand()).isEqualTo(CharacterConnectController.SKILL_SETS);
+		assertThat(replies.get(9).getCommand()).isEqualTo(CharacterConnectController.GEAR_SETS);
 	}
 
 	@Test
@@ -371,5 +376,55 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		});
 
 		assertThat(replies).isEmpty();
+	}
+
+	/** The three saved loadouts of each kind materialise on first connect. */
+	@Test
+	public void loadoutSetsAreCreatedOnFirstConnect() {
+		givenSelectedCharacter("Snake");
+
+		var replies = connect(charaId, BURST_REPLIES);
+
+		assertThat(replies.get(8).getPayload().readableBytes())
+			.isEqualTo(3 * LoadoutWriter.SKILL_SET_SIZE);
+		assertThat(replies.get(9).getPayload().readableBytes())
+			.isEqualTo(3 * LoadoutWriter.GEAR_SET_SIZE);
+
+		var skillSets = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_skill_set where chara_id=:id")
+				.bind("id", charaId).mapTo(Integer.class).one());
+		var gearSets = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_gear_set where chara_id=:id")
+				.bind("id", charaId).mapTo(Integer.class).one());
+
+		assertThat(skillSets).isEqualTo(3);
+		assertThat(gearSets).isEqualTo(3);
+	}
+
+	/** Connecting twice must not duplicate the loadout rows. */
+	@Test
+	public void reconnectingDoesNotDuplicateLoadoutSets() {
+		givenSelectedCharacter("Snake");
+
+		connect(charaId, BURST_REPLIES);
+		connect(charaId, BURST_REPLIES);
+
+		var skillSets = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_skill_set where chara_id=:id")
+				.bind("id", charaId).mapTo(Integer.class).one());
+
+		assertThat(skillSets).isEqualTo(3);
+	}
+
+	@Test
+	public void gearAndSkillCataloguesAreAdvertised() {
+		givenSelectedCharacter("Snake");
+
+		var replies = connect(charaId, BURST_REPLIES);
+
+		assertThat(replies.get(6).getPayload().readableBytes())
+			.isEqualTo(LoadoutWriter.gearPayloadSize());
+		assertThat(replies.get(7).getPayload().getInt(0))
+			.isEqualTo(LoadoutWriter.SKILL_COUNT);
 	}
 }

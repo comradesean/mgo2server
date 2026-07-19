@@ -61,12 +61,14 @@ public final class Database implements AutoCloseable {
 		jdbi.registerRowMapper(BeanMapper.factory(CharaRoomConfiguration.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Clan.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Game.class));
+		jdbi.registerRowMapper(BeanMapper.factory(GearSet.class));
 		jdbi.registerRowMapper(BeanMapper.factory(HostSettings.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Lobby.class));
 		jdbi.registerRowMapper(BeanMapper.factory(News.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Room.class));
 		jdbi.registerRowMapper(BeanMapper.factory(RoomChara.class));
 		jdbi.registerRowMapper(BeanMapper.factory(RoomConfiguration.class));
+		jdbi.registerRowMapper(BeanMapper.factory(SkillSet.class));
 
 		jdbi.setTemplateEngine(new StringTemplateEngine());
 
