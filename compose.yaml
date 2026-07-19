@@ -51,7 +51,8 @@ services:
       NOMAD_LOBBY_TYPE: "0"
       NOMAD_LOBBY_ID: "1"
     ports:
-      - "${NOMAD_GATE_PORT:-5730}:5730"
+      # Observed from a real client: MGO2 dials the gate on 15731, not 5730.
+      - "${NOMAD_GATE_PORT:-15731}:5730"
     depends_on:
       migrate:
         condition: service_completed_successfully
