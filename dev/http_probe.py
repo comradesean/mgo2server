@@ -133,14 +133,48 @@ if __name__ == "__main__":
     # has to be able to run as either. The certificate is self-signed; whether the client accepts
     # it is the open question — the PS3 may pin or require a Konami-issued chain.
     use_tls = len(sys.argv) > 2 and sys.argv[2] == "tls"
-    server = ThreadingHTTPServer(("0.0.0.0", port), Probe)
+
+    tls_ctx = None
     if use_tls:
         import ssl
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(str(DOCROOT / "cert.pem"), str(DOCROOT / "key.pem"))
+        # Which chain to present. Set NOMAD_TLS_CERT=cert-expired.pem to serve a certificate that
+        # is identical to the normal one — same CA, same key, same common name — except that its
+        # validity window is in the past. The client distinguishes that case: a certificate that
+        # fails only on its dates is reported as 070B, anything else as 090B:00000001. See
+        # OBSERVED.md, "The certificate branch".
+        chain = os.environ.get("NOMAD_TLS_CERT", "cert.pem")
+        tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls_ctx.load_cert_chain(str(DOCROOT / chain), str(DOCROOT / "key.pem"))
         # The PS3's TLS stack is from 2008; allow the old ciphers and versions it offers.
-        ctx.minimum_version = ssl.TLSVersion.TLSv1
-        ctx.set_ciphers("ALL:@SECLEVEL=0")
-        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        tls_ctx.minimum_version = ssl.TLSVersion.TLSv1
+        tls_ctx.set_ciphers("ALL:@SECLEVEL=0")
+        print(f"probe serving TLS chain {chain}", flush=True)
+
+    class LoggingServer(ThreadingHTTPServer):
+        """Reports every connection, and every handshake that fails.
+
+        The usual arrangement — wrapping the listening socket — hides exactly what we most need
+        to see. socketserver calls get_request() inside a bare `except OSError: return`, and
+        ssl.SSLError is an OSError, so a client that connects and then rejects our certificate
+        looks identical to a client that never connected at all. Wrapping per-connection instead
+        keeps the peer address in hand and lets the failure be reported.
+        """
+
+        def get_request(self):
+            conn, addr = self.socket.accept()
+            if tls_ctx is None:
+                print(f"connect from {addr[0]}:{addr[1]}", flush=True)
+                return conn, addr
+            try:
+                conn = tls_ctx.wrap_socket(conn, server_side=True)
+            except OSError as exc:
+                print(f"TLS handshake FAILED from {addr[0]}:{addr[1]}: {exc}", flush=True)
+                conn.close()
+                raise
+            print(f"TLS handshake ok from {addr[0]}:{addr[1]} "
+                  f"({conn.version()}, {conn.cipher()[0]})", flush=True)
+            return conn, addr
+
+    server = LoggingServer(("0.0.0.0", port), Probe)
     print(f"probe listening on 0.0.0.0:{port} ({'https' if use_tls else 'http'})", flush=True)
     server.serve_forever()
