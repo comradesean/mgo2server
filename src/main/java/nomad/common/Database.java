@@ -58,6 +58,8 @@ public final class Database implements AutoCloseable {
 		jdbi.registerRowMapper(BeanMapper.factory(ChatMacro.class));
 		jdbi.registerRowMapper(BeanMapper.factory(CharaRoomConfiguration.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Clan.class));
+		jdbi.registerRowMapper(BeanMapper.factory(Game.class));
+		jdbi.registerRowMapper(BeanMapper.factory(HostSettings.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Lobby.class));
 		jdbi.registerRowMapper(BeanMapper.factory(News.class));
 		jdbi.registerRowMapper(BeanMapper.factory(Room.class));

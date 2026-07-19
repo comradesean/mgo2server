@@ -45,6 +45,8 @@ entered with a character already selected, so it sends that character's id inste
 | `0x3103` | account | Select character → `0x3104` |
 | `0x3105` | account | Delete character → `0x3106` |
 | `0x4100` | game | Connect burst → `0x4101`, `0x4121` ×2 |
+| `0x4300` | game | Get game list → `0x4301` / `0x4302` / `0x4303` |
+| `0x4316` | game | Create game → `0x4317` |
 
 Characters are addressed by their index in the last list the client was sent, so every command
 that takes an index resolves it through one ordering rule: live characters by id, with the
@@ -59,6 +61,17 @@ The game lobby connect burst is partial. `0x4100` currently answers with the cha
 (`0x4120`), personal info (`0x4122`), gear (`0x4123`), skills (`0x4124`), skill sets (`0x4125`) and
 gear sets (`0x4126`). Each needs schema this project does not have yet — clans, equipped skills and
 gear — so a real client will not be fully satisfied until those land.
+
+Hosting is likewise partial. A game can be created from the character's stored host settings
+(`0x4316`) and appears in the browser (`0x4300`), but the client cannot yet push new settings
+(`0x4310`), read them back (`0x4304`), inspect a game (`0x4312`), join one (`0x4320`), or
+administer it once running (`0x4340` onwards).
+
+Where the original stores game and host settings as JSON blobs it re-parses on every list request,
+they are typed columns here. The fields are a fixed set defined by the client, and the game list
+derives two bitfield bytes from them on every request — much easier to verify against columns than
+against free-form JSON. `GameListEntry` owns that packing and each flag is pinned by a test, since
+a wrong bit surfaces as an unrelated option appearing set in the browser rather than as a failure.
 
 ## Requirements
 

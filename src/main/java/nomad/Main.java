@@ -52,7 +52,7 @@ public final class Main {
 
 		var services = ServicesFactory.createServices(database.jdbi());
 		GameServerFactory.createGameServer(services, config.gamePort(),
-			LobbyType.fromId(config.lobbyType())).run();
+			LobbyType.fromId(config.lobbyType()), config.lobbyId(), config.lobbySubtype()).run();
 	}
 
 	private static void runWeb(Config config, String[] args) {

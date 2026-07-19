@@ -5,6 +5,8 @@ import nomad.game.controller.AccountGameController;
 import nomad.game.controller.CharacterConnectController;
 import nomad.game.controller.CharacterGameController;
 import nomad.game.controller.EchoGameController;
+import nomad.game.controller.GameListGameController;
+import nomad.game.controller.HostGameController;
 import nomad.game.controller.LobbyGameController;
 import nomad.game.controller.NewsGameController;
 
@@ -16,7 +18,8 @@ public class GameServerFactory {
 	 * gate cannot be asked to create a character and a game lobby cannot be asked for the lobby
 	 * list — the same split the original gets from running a separate server per lobby.
 	 */
-	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType) {
+	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
+			long lobbyId, int lobbySubtype) {
 		var controllers = new ArrayList<IGameController>();
 
 		// Useful for smoke-testing a connection regardless of lobby type.
@@ -35,6 +38,9 @@ public class GameServerFactory {
 			case GAME -> {
 				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
 				controllers.add(new CharacterConnectController(services.getCharacterService()));
+				controllers.add(new GameListGameController(services.getGameService(), lobbyId));
+				controllers.add(new HostGameController(services.getGameService(),
+					services.getCharacterService(), lobbyId, lobbySubtype));
 			}
 		}
 

@@ -15,7 +15,9 @@ public record Config(
 	int dbPoolMaxSize,
 	int gamePort,
 	int webPort,
-	int lobbyType
+	int lobbyType,
+	long lobbyId,
+	int lobbySubtype
 ) {
 	public static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/nomad";
 
@@ -25,6 +27,9 @@ public record Config(
 
 	/** Gate, so a default deployment answers the first thing a client asks for. */
 	public static final int DEFAULT_LOBBY_TYPE = 0;
+
+	/** Which lobby row this instance serves; only meaningful for a game lobby. */
+	public static final int DEFAULT_LOBBY_ID = 1;
 
 	public static Config fromEnv() {
 		return from(System::getenv);
@@ -39,7 +44,9 @@ public record Config(
 			integer(env, "NOMAD_DB_POOL_MAX_SIZE", 10),
 			integer(env, "NOMAD_GAME_PORT", DEFAULT_GAME_PORT),
 			integer(env, "NOMAD_WEB_PORT", DEFAULT_WEB_PORT),
-			integer(env, "NOMAD_LOBBY_TYPE", DEFAULT_LOBBY_TYPE)
+			integer(env, "NOMAD_LOBBY_TYPE", DEFAULT_LOBBY_TYPE),
+			integer(env, "NOMAD_LOBBY_ID", DEFAULT_LOBBY_ID),
+			integer(env, "NOMAD_LOBBY_SUBTYPE", 0)
 		);
 	}
 
@@ -63,7 +70,7 @@ public record Config(
 	/** Redacts the password so a Config can be safely logged. */
 	@Override
 	public String toString() {
-		return "Config[dbUrl=%s, dbUser=%s, dbPassword=***, dbPoolMaxSize=%d, gamePort=%d, webPort=%d, lobbyType=%d]"
-			.formatted(dbUrl, dbUser, dbPoolMaxSize, gamePort, webPort, lobbyType);
+		return "Config[dbUrl=%s, dbUser=%s, dbPassword=***, dbPoolMaxSize=%d, gamePort=%d, webPort=%d, lobbyType=%d, lobbyId=%d, lobbySubtype=%d]"
+			.formatted(dbUrl, dbUser, dbPoolMaxSize, gamePort, webPort, lobbyType, lobbyId, lobbySubtype);
 	}
 }
