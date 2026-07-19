@@ -100,6 +100,36 @@ since a STUN client identifies which address answered, every reply appears to co
 port and discovery never concludes. Published ports look like they work — the reply arrives — but
 from the wrong port.
 
+## UPnP, and "Adjusting port settings"
+
+MGO2 does not ask the console to forward ports. It carries its own IGD client — the binary holds
+`mrdUPnP / Ver[0.0.1.00]` beside `uupnp.cc`, along with `M-SEARCH`, `ssdp:discover`,
+`239.255.255.250`, `WANIPConnection`, `GetExternalIPAddress`, `AddPortMapping` and
+`DeletePortMapping`. The screen reading "Adjusting port settings" is that sequence.
+
+Observed: one discovery burst from a single source port, asking for four targets in this order.
+
+```
+urn:schemas-upnp-org:service:WANIPConnection:1
+urn:schemas-upnp-org:service:WANPPPConnection:1
+urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1
+urn:schemas-upnp-org:service:InternetGatewayDevice:1
+```
+
+**All four are `service:` types, including the last.** UPnP defines `InternetGatewayDevice` as a
+*device* type, and every conformant gateway advertises it that way. This client asks for it as a
+service. A responder that matches only the spec-correct URN answers none of the four, and the
+client waits indefinitely rather than timing out — which is what the first version of
+`dev/upnp_probe.py` did, and it cost a test cycle. Echo back whatever target was asked for.
+
+The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
+
+```
+python3 dev/upnp_probe.py --respond --ip 192.168.1.100
+```
+
+Mappings are logged, not created. Nothing in the harness touches a real router.
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
