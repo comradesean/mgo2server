@@ -6,6 +6,8 @@ import nomad.common.model.CharaAppearance;
 import nomad.common.model.CharaSettings;
 import nomad.common.model.ChatMacro;
 import nomad.common.model.EquippedSkills;
+import nomad.common.model.GearSet;
+import nomad.common.model.SkillSet;
 import org.jdbi.v3.core.Jdbi;
 
 import java.time.Duration;
@@ -116,6 +118,42 @@ public class CharacterService {
 				.bind("id", charaId)
 				.mapTo(EquippedSkills.class)
 				.one());
+	}
+
+	/**
+	 * The character's three skill loadouts, created empty on first use. The client always expects
+	 * three, so absent rows are materialised rather than returned as gaps.
+	 */
+	public List<SkillSet> getOrCreateSkillSets(long charaId) {
+		createSets(charaId, "chara_skill_set");
+
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_skill_set where chara_id=:id order by index")
+				.bind("id", charaId)
+				.mapTo(SkillSet.class)
+				.list());
+	}
+
+	public List<GearSet> getOrCreateGearSets(long charaId) {
+		createSets(charaId, "chara_gear_set");
+
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_gear_set where chara_id=:id order by index")
+				.bind("id", charaId)
+				.mapTo(GearSet.class)
+				.list());
+	}
+
+	private void createSets(long charaId, String table) {
+		jdbi.useHandle(handle -> {
+			for (var index = 0; index < SkillSet.PER_CHARACTER; index++) {
+				handle.createUpdate("insert into " + table + " (chara_id, index) values (:id, :index)"
+						+ " on conflict do nothing")
+					.bind("id", charaId)
+					.bind("index", index)
+					.execute();
+			}
+		});
 	}
 
 	public Optional<CharaAppearance> getAppearance(long charaId) {
