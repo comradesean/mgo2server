@@ -12,10 +12,17 @@ public class LobbyService {
 		this.jdbi = jdbi;
 	}
 
-	/** Lobbies advertised to a client, in a stable order so the list does not shuffle. */
+	/**
+	 * Lobbies advertised to a client, ordered by name.
+	 * <p>
+	 * The order is not cosmetic. A client that reconnects to whichever entry leads the list will
+	 * loop if that entry is the gate it just came from, so a lobby it can actually enter has to
+	 * come first. mgo2-server orders by name for what appears to be the same reason: its rows are
+	 * named GATE and ACCOUNT, so alphabetical ordering puts the account lobby ahead of the gate.
+	 */
 	public List<Lobby> getLobbies() {
 		try (var handle = jdbi.open()) {
-			return handle.createQuery("select * from lobby order by id")
+			return handle.createQuery("select * from lobby order by name")
 				.mapTo(Lobby.class)
 				.list();
 		}
