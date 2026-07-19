@@ -37,9 +37,28 @@ import threading
 SSDP_ADDR = "239.255.255.250"
 SSDP_PORT = 1900
 
-# The service the client searches for. It may also send a blanket ssdp:all.
 IGD_URN = "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
 WAN_URN = "urn:schemas-upnp-org:service:WANIPConnection:1"
+
+# What MGO2 actually searches for, observed in one burst from a single source port:
+#
+#   urn:schemas-upnp-org:service:WANIPConnection:1
+#   urn:schemas-upnp-org:service:WANPPPConnection:1
+#   urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1
+#   urn:schemas-upnp-org:service:InternetGatewayDevice:1
+#
+# Note the last one: UPnP defines InternetGatewayDevice as a *device* type, and the client asks
+# for it as a *service*. A responder that matches only the spec-correct URN answers none of these
+# and the client waits forever. Echo back whichever target was asked for.
+SEARCH_TARGETS = {
+    "urn:schemas-upnp-org:service:WANIPConnection:1",
+    "urn:schemas-upnp-org:service:WANPPPConnection:1",
+    "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1",
+    "urn:schemas-upnp-org:service:InternetGatewayDevice:1",
+    IGD_URN,
+    "upnp:rootdevice",
+    "ssdp:all",
+}
 
 
 def log(message):
@@ -60,6 +79,15 @@ DESCRIPTION = """<?xml version="1.0"?>
     <deviceType>urn:schemas-upnp-org:device:WANDevice:1</deviceType>
     <friendlyName>WANDevice</friendlyName>
     <UDN>uuid:{uuid}-wan</UDN>
+    <serviceList>
+     <service>
+      <serviceType>urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1</serviceType>
+      <serviceId>urn:upnp-org:serviceId:WANCommonIFC1</serviceId>
+      <controlURL>/ctl</controlURL>
+      <eventSubURL>/evt</eventSubURL>
+      <SCPDURL>/scpd.xml</SCPDURL>
+     </service>
+    </serviceList>
     <deviceList>
      <device>
       <deviceType>urn:schemas-upnp-org:device:WANConnectionDevice:1</deviceType>
@@ -69,6 +97,13 @@ DESCRIPTION = """<?xml version="1.0"?>
        <service>
         <serviceType>{wan}</serviceType>
         <serviceId>urn:upnp-org:serviceId:WANIPConn1</serviceId>
+        <controlURL>/ctl</controlURL>
+        <eventSubURL>/evt</eventSubURL>
+        <SCPDURL>/scpd.xml</SCPDURL>
+       </service>
+       <service>
+        <serviceType>urn:schemas-upnp-org:service:WANPPPConnection:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:WANPPPConn1</serviceId>
         <controlURL>/ctl</controlURL>
         <eventSubURL>/evt</eventSubURL>
         <SCPDURL>/scpd.xml</SCPDURL>
@@ -169,22 +204,25 @@ def serve_ssdp(bind_ip, http_port, respond):
         if not respond or not first.upper().startswith("M-SEARCH"):
             continue
         wanted = target.group(1).strip() if target else "ssdp:all"
-        if wanted not in (IGD_URN, "ssdp:all", "upnp:rootdevice"):
+        if wanted not in SEARCH_TARGETS:
             log(f"      not us ({wanted}), ignoring")
             continue
 
+        # Echo the requested target back. The client is looking for the exact string it asked
+        # for, including its non-standard service:InternetGatewayDevice:1 form.
+        answered = IGD_URN if wanted in ("ssdp:all", "upnp:rootdevice") else wanted
         reply = (
             "HTTP/1.1 200 OK\r\n"
             "CACHE-CONTROL: max-age=1800\r\n"
             "EXT:\r\n"
             f"LOCATION: {location}\r\n"
             "SERVER: nomad-ng/1.0 UPnP/1.0 probe/1.0\r\n"
-            f"ST: {IGD_URN}\r\n"
-            f"USN: uuid:{UUID}::{IGD_URN}\r\n"
+            f"ST: {answered}\r\n"
+            f"USN: uuid:{UUID}::{answered}\r\n"
             "\r\n"
         ).encode()
         sock.sendto(reply, addr)
-        log(f"      -> answered {addr[0]}:{addr[1]} with {location}")
+        log(f"      -> answered {addr[0]}:{addr[1]} as {answered}")
 
 
 if __name__ == "__main__":
