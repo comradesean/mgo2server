@@ -4,8 +4,11 @@ MGO2 fetches a terms-of-use document over plain HTTP before it will let you log 
 host and path vary by region and disc, so rather than guessing, this answers everything and
 prints what was asked for.
 """
+import os
 import pathlib
 import sys
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DOCROOT = pathlib.Path(__file__).parent / "www"
@@ -17,6 +20,32 @@ DOCROOT = pathlib.Path(__file__).parent / "www"
 # rather than failing.
 TERMS = (b"nomad-ng test server.\r\n\r\n"
          b"This is a private server for development testing.\r\n")
+
+
+# Paths the application server owns. Everything else is answered by this harness.
+PROXY_PREFIXES = ("/us/mgo2/kid/",)
+
+WEB_SERVER = os.environ.get("NOMAD_WEB_URL", "http://web:8080")
+
+
+def forward(path, body, content_type):
+    """Proxies a request to the real web server, or returns None if it does not own the path."""
+    clean = path.replace("//", "/")
+    if not any(clean.startswith(prefix) for prefix in PROXY_PREFIXES):
+        return None
+
+    request = urllib.request.Request(
+        WEB_SERVER + clean,
+        data=body,
+        headers={"Content-Type": content_type or "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.read()
+    except urllib.error.URLError as e:
+        print(f"      !! proxy to {WEB_SERVER} failed: {e}", flush=True)
+        return None
 
 
 def default_body(path):
@@ -77,7 +106,18 @@ class Probe(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         self._log()
         if body:
-            print(f"      body: {body[:200]!r}", flush=True)
+            # Credentials pass through here; log the field names but not the values.
+            fields = ",".join(f.split(b"=")[0].decode("latin-1") for f in body.split(b"&"))
+            print(f"      body fields: {fields}", flush=True)
+
+        # Anything the real web server implements is proxied to it, so the harness stays a
+        # TLS terminator and the actual logic lives in the application.
+        forwarded = forward(self.path, body, self.headers.get("Content-Type"))
+        if forwarded is not None:
+            print(f"      -> proxied to web server, {len(forwarded)} bytes", flush=True)
+            self._respond(forwarded)
+            return
+
         self._respond(default_body(self.path))
 
     def log_message(self, *args):

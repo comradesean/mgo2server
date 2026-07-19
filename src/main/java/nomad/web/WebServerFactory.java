@@ -2,6 +2,7 @@ package nomad.web;
 
 import nomad.common.Services;
 import nomad.web.controller.AccountWebController;
+import nomad.web.controller.AuthWebController;
 import nomad.web.controller.HealthWebController;
 import nomad.web.controller.NewsWebController;
 
@@ -13,6 +14,8 @@ public class WebServerFactory {
 		var controllers = new ArrayList<IWebController>();
 
 		controllers.add(new HealthWebController(dataSource));
+
+		controllers.add(new AuthWebController(services.getAccountService()));
 
 		controllers.add(new AccountWebController(services.getAccountService()));
 
