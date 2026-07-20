@@ -90,9 +90,14 @@ in this server ever sends** — it is carried for parity with the references and
 Note the asymmetry: a request being encrypted says nothing about its reply. `0x3003` arrives
 encrypted and `0x3004` goes back in the clear; same for `0x4700`/`0x4701` and `0x4990`/`0x4991`.
 
-The cipher (`nomad.common.crypto.Blowfish`) is Blowfish with two deviations from the textbook:
-**8 rounds rather than 16**, and the key is shipped as an already-expanded 4168-byte schedule (18
-P-array entries then four 256-entry S-boxes) rather than a passphrase. Three schedules ship in
+The cipher (`nomad.common.crypto.Blowfish`) is **standard 16-round Blowfish**. Its loop reads as
+`ROUNDS = 8`, which is easy to misread as a deviation, but each iteration applies the round
+function *twice* — sixteen Feistel rounds in total. This was settled empirically, not by reading
+the loop: a textbook 16-round implementation fed our shipped schedule reproduces this class's
+output exactly, and the same implementation reproduced a session field captured off a real client.
+Treat "it's a Konami variant" as folklore; the only real deviation is that the key ships as an
+already-expanded 4168-byte schedule (18 P-array entries then four 256-entry S-boxes) rather than a
+passphrase. Three schedules ship in
 `src/main/resources/crypto/`: `packet.key` (payloads), `auth.key` (unused by the current session
 code, retained), and `session.key` (the check-session transform). Payloads are zero-padded up to
 an 8-byte boundary before encryption and the padding is dropped after decryption.
@@ -377,7 +382,7 @@ the client sends is **not** confirmed; we require at least 27 readable bytes and
 | +0 | 1 | gender |
 | +1 | 1 | face |
 | +2 | 1 | upper |
-| +3 | 1 | **skipped, purpose unknown** — sits where `lower` goes on the way out |
+| +3 | 1 | lower |
 | +4 | 1 | face paint |
 | +5 | 1 | upper colour |
 | +6 | 1 | lower colour |
@@ -393,19 +398,23 @@ the client sends is **not** confirmed; we require at least 27 readable bytes and
 | +19 | 1 | accessory 2 |
 | +20 | 1 | head colour |
 | +21 | 1 | chest colour |
-| +22 | 1 | **skipped, purpose unknown** — sits where `hands colour` goes on the way out |
+| +22 | 1 | hands colour |
 | +23 | 1 | waist colour |
 | +24 | 1 | feet colour |
 | +25 | 1 | accessory 1 colour |
 | +26 | 1 | accessory 2 colour |
 
-**Flagged.** The layout is the same 27 bytes the write path emits, but three positions are skipped,
-so `lower` and `hands_color` are stored as **0 for every character created through this command**.
-The code comment says the original server discarded them; that claim is inherited from the
-upstreams and is unverified. It is suspicious on its face: `lower_color` *is* read while `lower` is
-not, and `chest_color` is read while `hands_color` is not — an odd pair of exceptions for a
-deliberate design. `0x4130` (below) carries both fields and we do store them there, which makes the
-creation-time skip look more like a bug than a choice.
+**Resolved — this was a real bug, now fixed.** Offsets +3 and +22 were skipped for years on an
+inherited comment claiming the original server discarded them, so `lower` and `hands_color` were
+stored as 0 for every character ever created. That claim was wrong.
+
+`0x4130` carries the same fields in the same order and names them: the byte after `upper` is
+`lower`, and the byte after `chest colour` is `hands colour`. Confirmed against a live client — a
+character created with `lower = 0` gained a real value the instant `0x4130` was implemented and the
+player changed clothes in the lobby. Both are now read at creation.
+
+The four bytes at +9 remain **skipped, purpose unknown**. They sit where the write path emits four
+zero bytes, so nothing is known to be lost, but nothing confirms that either.
 
 ### Reply `0x3102`
 
@@ -932,13 +941,16 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 
 ### Certainly worth a second look
 
-1. **`readAppearance` in `CharacterGameController` skips three positions**, so `lower` and
-   `hands_color` are stored as **0 for every character created**. The comment claims the original
-   server discarded them; that is inherited from the upstreams and unverified. It looks wrong:
-   `lower_color` is read while `lower` is not, and `chest_color` is read while `hands_color` is not.
-   `0x4130` carries both fields and we do store them there, so the same character ends up with the
-   fields populated only if the player later changes clothes. Reading `0x3101`'s parser out of the
-   binary would settle it in an afternoon.
+1. ~~**`readAppearance` skips three positions**~~ — **RESOLVED, it was a bug.** `lower` and
+   `hands_color` were stored as 0 for every character ever created, on an inherited comment
+   claiming the original server discarded them. `0x4130` carries the same fields in the same order
+   and names them, and a live client confirmed it: a character created with `lower = 0` gained a
+   real value the moment `0x4130` was implemented and the player changed clothes. Both are now read
+   at creation. The four bytes at +9 are still skipped and still unexplained, though the write path
+   emits zeroes there.
+
+   Kept in this list as the worked example: an inherited "the original server did X" claim was
+   wrong, and it silently discarded player data for as long as it stood.
 
 2. **The `0x3108` reply shape is inferred, not read.** It is modelled on its sibling result packets
    (`0x3004`, `0x3102`, `0x3104`, `0x3106`), all of which *are* confirmed as single-s32 parses. The
