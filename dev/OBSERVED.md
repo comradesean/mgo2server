@@ -774,11 +774,16 @@ Immediately before that teardown the game makes calls the emulator does not impl
   4 x  cellNetCtl: Unsupported request: INFO_HTTP_PROXY_SERVER, INFO_SSID, ...
 ```
 
-`TODO` is RPCS3's marker for an unimplemented call. The game queries its network configuration,
-receives nothing, and gives up. This is a strong candidate for the blocker and would explain why
-no server-side change affects the outcome, and why MGO2PC ships a **custom RPCS3 build** rather
-than instructions for the stock one. It is not proven: the calls are also made on attempts that
-progress further.
+`TODO` is RPCS3's marker for an unimplemented call. The game queries its network configuration
+and receives nothing. This was once promoted here to the leading explanation for the stall.
+
+**It is refuted.** A working MGO2PC session on the custom RPCS3 build was compared against the
+stock build's hung session, and the custom build leaves the *same* calls unimplemented:
+`sys_net_infoctl(cmd=9)` TODO ×298 (stock ×210), `cmd=53` TODO ×65 (stock ×44), `cmd=5` TODO ×6
+(both), `cellNetCtlAddHandler/DelHandler` TODO (both). The build that reaches a lobby has the
+identical unimplemented calls as the build that hangs, so those TODOs are not the blocker. The
+custom RPCS3 differs from stock in some *other* way, or the difference is server-side; it is not
+these network-config calls.
 
 The binary trace above raises this from a candidate to the leading explanation. 090B:00000001 is
 raised by the login task, and the only one of its three triggers our reply does not already
