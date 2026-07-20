@@ -154,18 +154,40 @@ RFC 3489 §11.2 and RFC 5389 §18.2 put attribute types `0x8000-0xFFFF` in the
 drop it. So every conformant server ignores this attribute — our default is the standards-correct
 behaviour, not a workaround.
 
-**Still unknown:** what `0xf000` carries. Note though that the client having handlers for sub-types
-1 and 3 is decent evidence the real server *did* send it in some circumstance.
+### What the attribute actually contains
 
-**Speculation, labelled as such but testable.** The observed values split as
-`0573 0000 0000 0002` and `0573 0000 0000 0004 0000 0004`. `0x0573` is constant and looks like a
-magic or version tag. The trailing word is `2` on the basic probe and `4` on the change-request —
-and the client's handlers are for `1` and `3`. That fits a scheme where **requests are even and
-the matching responses odd**: probe `2` answered by `1`, probe `4` answered by `3`. It would
-explain in one stroke why the client has no handler for the values it sends and why handlers 1 and
-3 exist at all. The discriminating experiment is to reply with `0573000000000001` to the basic
-probe and `…0003` to the change-request and see whether the client accepts them. If the sub-type is
-a bitfield instead, the correspondence is coincidence.
+**Confirmed, read out of `MGO2.elf`.** This was an open question for a long time and it need not
+have been; the client both builds and parses these, so the layout is in the binary.
+
+`DecodePacket` unpacks the attribute at `0xD89A40` using the format string `"nnN"` taken from
+`TOC-0x5c78` (`0x102F730` → `0xE2CDC8`). In this codebase's pack convention — the same one behind
+the `nnx16nnNnnnnNN` builder format elsewhere — `n` is a big-endian `u16` and `N` a big-endian
+`u32`. That resolves both observed values exactly:
+
+```
+0573 0000 00000002                 basic probe        magic, zero, sub-type 2
+0573 0000 00000004  00000004       change-request     magic, zero, sub-type 4, + 4 bytes
+```
+
+So the leading `0x0573` is a fixed magic, the second halfword is unused, and the third field is a
+**sub-type**. The client dispatches on it at `0xD89A64`, and the two handlers say what it is for:
+
+| sub-type | handler | effect |
+| --- | --- | --- |
+| 1 | `0xD89B30` | stores `-1` and `0` into the result — **"no address"** |
+| 3 | `0xD89B44` | unpacks `"nnN"` again and stores a `u32` address and `u16` port |
+| anything else | `0xD89A78` | logs `ex_info[%08x]` through an assert, then `b .` — **hangs forever** |
+
+`0xf000` is therefore **Konami's private address-carrying attribute**, running alongside the
+standard `CHANGED-ADDRESS`: sub-type 3 conveys an alternate address and port, sub-type 1 says there
+isn't one. The client **sends** sub-types 2 and 4 and **handles** 1 and 3 — requests even,
+responses odd — which is why echoing its own attribute back is fatal rather than merely useless.
+There is no handler for a request sub-type, so the decoder falls through to the assert and spins.
+
+This also settles that the real server *did* send `0xf000`, and what it put in it. We still send
+none, which is safe: the client passes without it, and the fields it would populate are only
+consulted on the branch our client never takes. Sending sub-type 1 (or 3, with the alternate
+address) would be the faithful thing to do if the branch-4 path ever needs exercising.
 
 ## What the client is actually doing, and why two addresses
 
@@ -334,9 +356,11 @@ Three of the five entries that used to be here are now answered — see "Where t
 from" for the `0x8020` provenance, "What the client is actually doing" for the verdict, and "Why
 two addresses" for the single-address question. What remains:
 
-1. **What `0xf000` carries.** The range and the safe handling are settled (comprehension-optional,
-   ignore it), but the payload is not. The even/odd request-response theory above is a labelled
-   guess with a concrete experiment attached.
+1. ~~**What `0xf000` carries.**~~ **RESOLVED** — read out of the binary: a magic `0x0573`, an
+   unused halfword, and a sub-type; sub-type 3 carries an address and port, sub-type 1 says there
+   is none. The even/odd request-response pairing that was a guess here is now derived from the
+   dispatch table. See "What the attribute actually contains". What remains unknown is only why
+   `0x0573` is that value.
 2. **Whether any of the four reply attributes are optional.** We send all four because Vovida
    `stund` did and because the capture shows all four. Nobody has bisected them against this
    client. There is one indirect hint: coturn in old-STUN mode sends no XOR-MAPPED-ADDRESS at all,
