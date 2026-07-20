@@ -365,6 +365,56 @@ as hex for web URLs). We use the v1 scheme, which is what SaveMGO ran in product
 this build. The first real `0x3003` will settle it: a wrong decode produces a clean
 INVALID_SESSION reply and a client-side error, not a hang.
 
+## The port check is a game-lobby connect plus check-session — traced end to end
+
+The waiting machine at `0x946F00` — the one machine live during the stall — has twelve states
+(jump table at `0x946F5C`, dispatched on the halfword at `+0x68`). Reading them settles what
+"Adjusting port settings" actually does after UPnP and STUN:
+
+- **State 0** requires at least one type-2 (Game) entry in the lobby list (`0xD35F1C(ctx,2) > 0`,
+  else error `0x908`), reads a halfword from config id `0xFE` — the **ordinal of the game lobby
+  to use** — and polls `0xD35E44(ctx, 2, ordinal, 2)`, which resolves the ordinal to a list
+  index and calls `mgo_connect_server_by_index(index, 2)`. `-102`/`-64` poll again with **no
+  timeout**; `0` advances; anything else raises `0x91E`.
+- **State 1** sends **`0x3003` check-session over the game-lobby connection**: u32 stored
+  character id, 16 session bytes, and a trailing flag byte (from `+0x294` of the object behind
+  `0x883F20`) — request-status id 6. The stored character id lives behind the accessor
+  `0xD3A094` and is zero until a character has been selected, so **the port check claims
+  character id 0**.
+- **State 2** waits for the `0x3004` result with a real timeout (a tick counter that raises
+  `0x923`). Result `0` advances to state 3; `-0xF0` → `0x924`, `-0x192` → `0xA50`,
+  `-0x193`/`-0x194` → `0x933`, `-0xF2` and everything else → `0x925`. These are the same
+  "official" codes Nomad v2 defines (`CHAR_CANTBEUSED = -0x192` and friends), so the server's
+  reply payload chooses the client's error screen directly.
+
+Three consequences:
+
+- **The next server the client contacts after the gate is the game lobby, not the account
+  lobby.** Every earlier statement here reasoning from "the account lobby is never dialled"
+  stands factually, but the expectation behind it was wrong — during this phase the client was
+  never going to dial the account lobby.
+- **The game lobby must accept a check-session with character id 0 and no character selected.**
+  SaveMGO passed this by a collision of defaults — the client zero-initialises its stored id and
+  v1's MySQL `current_character` column defaulted to 0, so `0 == 0`. Our port modelled "no
+  selection" as null and rejected, which would have failed the port check with `0x925` the
+  moment the connect ever succeeded. Fixed: with no character selected, a claimed id of 0 and a
+  valid session now check in.
+- **The stall mechanism is narrowed to one shape.** The connect poller singleton (its pointer is
+  the word at `0xFFE5F0`) has exactly two states — its only writers are the poller itself
+  (`0xD34A38`) and the ctx initialiser (`0xD355B4`) — and state 0 always creates a
+  `mgonet_connect_timeo` thread. Endless `-64` with no new thread in the log therefore means
+  **state 1 with the completion flag at `+0x20` never set**: a worker that was created but never
+  ran to completion, or a creation that failed outright — the `sys_ppu_thread_create` result is
+  **ignored** at `0xD34ADC`. To confirm from a hung session, read `g = [0xFFE5F0]` in the Memory
+  Viewer, then `[g+0x1C]` (expect 1), `[g+0x20]` (expect 0), `[g+0xC]` (the port — expect 15733,
+  proving the target is the game lobby), `[g+8]` (pointer to the host string), `[g+0x14]` (the
+  stored result). And grep the RPCS3 log for the second `mgonet_connect_timeo` creation — its
+  absence or an error there is the whole story.
+
+This reframes the emulator hypothesis precisely: whatever the MGO2PC build fixes, it is
+something the connect worker (entry `0xD35530`) needs between thread creation and setting its
+completion flag.
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
