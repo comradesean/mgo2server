@@ -445,13 +445,23 @@ UDP port unusable, and the client reports it.
 
 This was seen on the **MGO2PC custom build**, which is a different game build on a patched RPCS3
 and is not the target. Its RPCS3 log shows it resolving `stun.mgo2pc.com` and connecting to
-`15.204.239.231:5731` — MGO2PC's own live gate — not any local address, so pointing local DNS at
-`192.168.1.100` did not cause this: the custom build overrode DNS and reached the real MGO2PC
-STUN host, which returned a genuine port-check failure. That is a NAT/firewall verdict on the
-user's network, not a server misconfiguration and not something our server is even in the path
-for. The useful takeaway for our own target is structural: **if our connect machine is ever
-unstuck, this UDP check is the next gate, and it needs a STUN/UDP-probe server that actually
-validates the bound port** — consistent with everything already recorded under "STUN".
+`15.204.239.231:5731` — MGO2PC's own live gate.
+
+**The cause was a local UDP 5730 collision, confirmed by experiment.** `netstat` showed exactly
+one holder of `192.168.1.100:5730` on Windows (a stale RPCS3 instance from BLUS30109 testing,
+not the MGO2PC client); closing that process let the MGO2PC client progress past the port check.
+So `0692:0003` here was the live client being unable to own 5730 because a second RPCS3 instance
+held it — two emulator instances on one host contend for the same UDP port. This **corrects an
+earlier version of this entry** which read the failure as a NAT/firewall verdict on the user's
+network because the build reached a real remote STUN host. That was an over-read of the log: the
+port-close experiment refutes it. The operational rule is simply **one RPCS3 instance at a time,
+with 5730 verified free before launch** (`netstat -ano | findstr :5730`).
+
+Open and untested: whether the same collision explains our own BLUS30109 client's
+"Adjusting port settings" hang. Against it, this file records our client binding 5730
+successfully in a clean session and hanging anyway — so a free port may be necessary but not
+sufficient for us. The cheap experiment is to retest our client with 5730 confirmed free and no
+second RPCS3 running, before investing further in a port-check responder.
 
 ## Error 090B:00000001 — traced in the game binary
 
