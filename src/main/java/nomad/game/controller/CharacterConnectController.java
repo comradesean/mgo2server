@@ -36,6 +36,16 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int CONNECT = 0x4100;
 
+	/** The client's peer-to-peer endpoint, registered on joining a game lobby. */
+	public static final int UPDATE_CONNECTION_INFO = 0x4700;
+
+	public static final int UPDATE_CONNECTION_INFO_RESULT = 0x4701;
+
+	/** Private port, private address, public port, then two bytes the client pads with. */
+	private static final int PRIVATE_IP_LENGTH = 16;
+
+	private static final int CONNECTION_INFO_SIZE = 2 + PRIVATE_IP_LENGTH + 2;
+
 	public static final int CHARACTER_INFO = 0x4101;
 
 	public static final int GAMEPLAY_SETTINGS = 0x4120;
@@ -88,6 +98,57 @@ public class CharacterConnectController implements IGameController {
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(CONNECT, this::connect);
+		handlers.put(UPDATE_CONNECTION_INFO, this::updateConnectionInfo);
+	}
+
+	/**
+	 * The endpoint the client wants other players to reach it on, sent right after it joins a game
+	 * lobby. Matches are peer to peer, so this is what a joining client is eventually handed.
+	 * <p>
+	 * The client blocks on the reply: with nothing sent back it waits and then fails with
+	 * <em>Unable to connect to lobby (092E:FFFFFF60)</em>, the same timeout shape as an unanswered
+	 * name check.
+	 * <p>
+	 * The values are read and logged but not yet persisted — nothing serves them to another player
+	 * until hosting and joining are wired up, and columns nothing reads would only be a guess at
+	 * what that path needs. The public address is taken from the socket rather than trusted from
+	 * the payload, which is what the reference servers do.
+	 */
+	private void updateConnectionInfo(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var payload = ctx.packet().getPayload();
+		if (payload.readableBytes() < CONNECTION_INFO_SIZE) {
+			logger.warn("Connection info: payload too short ({} bytes).", payload.readableBytes());
+			ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		var privatePort = payload.readUnsignedShort();
+		var privateIp = readNulTerminated(payload, PRIVATE_IP_LENGTH);
+		var publicPort = payload.readUnsignedShort();
+
+		logger.info("Account {} reachable on public port {} (private {}:{}).",
+			account.getId(), publicPort, privateIp, privatePort);
+
+		ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.NONE);
+	}
+
+	/** Reads a fixed-width field the client pads with NULs. */
+	private static String readNulTerminated(ByteBuf buffer, int length) {
+		var bytes = new byte[Math.min(length, buffer.readableBytes())];
+		buffer.readBytes(bytes);
+
+		var end = 0;
+		while (end < bytes.length && bytes[end] != 0) {
+			end++;
+		}
+
+		return new String(bytes, 0, end, StandardCharsets.ISO_8859_1);
 	}
 
 	private void connect(GameControllerContext ctx) {
