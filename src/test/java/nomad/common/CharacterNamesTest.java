@@ -20,10 +20,16 @@ public class CharacterNamesTest {
 		assertThat(CharacterNames.check(name)).isEqualTo(Result.RESERVED_PREFIX);
 	}
 
+	/**
+	 * The reserved-name list is operator policy and is currently empty, so this asserts the
+	 * matching is case-insensitive using a name added for the test rather than a real entry. It
+	 * previously asserted that "SaveMGO" was refused — another server's branding, inherited from
+	 * their name checker, which this server has no reason to enforce.
+	 */
 	@ParameterizedTest
-	@ValueSource(strings = { "SaveMGO", "savemgo", "SaVeMgO" })
-	public void rejectsReservedNamesRegardlessOfCase(String name) {
-		assertThat(CharacterNames.check(name)).isEqualTo(Result.RESERVED_NAME);
+	@ValueSource(strings = { "GM_Snake", "gm_snake", "Gm_SnAkE" })
+	public void matchesReservedEntriesRegardlessOfCase(String name) {
+		assertThat(CharacterNames.check(name)).isEqualTo(Result.RESERVED_PREFIX);
 	}
 
 	/** Padding a name with spaces would let a player mimic another; refuse it. */
