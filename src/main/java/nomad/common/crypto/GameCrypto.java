@@ -41,19 +41,12 @@ public final class GameCrypto {
 
 	private static final Blowfish PACKET = Blowfish.loadResource("crypto/packet.key");
 
-	private static final Blowfish AUTH = Blowfish.loadResource("crypto/auth.key");
-
 	private GameCrypto() {
 	}
 
 	/** Cipher for packet payloads. */
 	public static Blowfish packet() {
 		return PACKET;
-	}
-
-	/** Cipher for session identifiers, which use a different key schedule. */
-	public static Blowfish auth() {
-		return AUTH;
 	}
 
 	public static boolean isPayloadEncryptedInbound(int command) {
