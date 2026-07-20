@@ -1089,3 +1089,36 @@ client — a character created with `lower = 0` had a real `lower` the moment `0
 implemented and the player changed clothes. Both fields are now read at creation.
 
 This is the sixth time an inherited assertion about "what the original server did" has been wrong.
+
+
+## A real client hosts a game
+
+The full path now works against an unmodified client (`BLUS30109`, stock RPCS3): port check, login,
+check-session, character creation and selection, the connect burst, the main menu, Lobby Select,
+entering a game lobby, the Create Game screens, and into the game as host.
+
+Both crypto directions are confirmed by real traffic rather than by inherited test vectors.
+`0x4305` is the only payload encrypted outbound, and the Create Game screen opening proves it;
+`0x4310` arrives encrypted inbound and decrypted to 348 bytes of settings.
+
+### What is not proven
+
+- **Nobody has joined.** `0x4320` (join game) is unimplemented, as is most of the in-match host
+  protocol (`0x4340`–`0x4346`, `0x43a0`–`0x43d0`). Whether a match plays is untested.
+- **Peer-to-peer is unproven.** `0x4700` records the host's endpoint but nothing serves it to a
+  peer, and NAT classification has only ever run on a LAN with no NAT in the path.
+- **Host settings are discarded**, so a created game uses defaults whatever the player chose.
+
+### Two self-inflicted faults worth remembering
+
+Both came from fixing something else and not checking the result.
+
+`seed.sql` was made idempotent by deleting and reinserting the lobby rows without specifying ids,
+so the identity column advanced on every run. The rows looked right; their ids had drifted to 10,
+11 and 12. Since compose passes `MGO2SERVER_LOBBY_ID` to each server, lobby 3 must be the game
+lobby, and creating a game failed on a foreign key against an id that no longer existed. **Ids that
+something outside the database depends on are not an implementation detail.**
+
+Before that, the same file had been re-run with an `ON CONFLICT DO NOTHING` guard that had no
+unique constraint to conflict against, silently doubling the lobby list. The client addresses a
+lobby by its index in the list it was sent, so that corrupts Lobby Select specifically.

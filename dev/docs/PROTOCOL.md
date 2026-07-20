@@ -772,13 +772,59 @@ modelled, so every game in the lobby is listed whatever was asked for.
 | `0x34` | 2 | — | zero, purpose unknown |
 | `0x36` | 1 | u8 | **unknown**: always `0x63` |
 
+## `0x4304` — get host settings
+
+**Client → server**, `HostGameController.getHostSettings`. Sent when Create Game opens, so the
+screen can be pre-filled with whatever the player hosted last time. Empty request.
+
+### Reply `0x4305` — 128 bytes
+
+**The only payload this server encrypts on the way out.** Until this command was implemented
+nothing sent `0x4305`, so the Blowfish encrypt direction had never produced a byte the client saw.
+It is now confirmed working: the Create Game screen opens.
+
+A host with nothing saved gets 128 zero bytes, which is what both references send and what the
+client reads as "no saved settings". Populated, mgo2-server writes a `u32` type followed by the
+settings blob, zero-padded to at least 128 — **untested here**, since we never store settings.
+
+## `0x4310` — check host settings
+
+**Client → server**, `HostGameController.checkHostSettings`. Carries the settings just configured —
+name, conditions, comment, match type, map, rules — pushed immediately before the game is created.
+
+**Payload arrives Blowfish-encrypted.** This was the first command other than check-session to
+exercise the inbound decrypt path.
+
+| offset | size | field |
+| --- | --- | --- |
+| `0x00` | 4 | settings type. Observed `1399153006`; the value's meaning is unknown. |
+| `0x04` | n | opaque settings blob. Observed 348 bytes. **Layout not decoded.** |
+
+**Flagged.** We read and log it but do not store it: `chara_host_settings` is structured per field
+while this is an opaque blob, so there is nowhere faithful to put it. The visible consequence is
+that `0x4304` always returns empty, so the Create Game screen does not remember settings between
+sessions. Hosting is unaffected.
+
+### Reply `0x4311` — empty
+
+No payload. The client only waits for the acknowledgement.
+
+## `0x4150` — lobby disconnect
+
+**Client → server**, `HubGameController.lobbyDisconnect`. Sent when the player backs out of a lobby
+to the previous screen. Empty request, empty `0x4151` reply.
+
+Unanswered this hangs on the way **out** rather than the way in, which reads as an unrelated bug —
+everything works until you press cancel. Nothing is torn down server-side: lobby membership is not
+tracked, and the connection stays open because the client reuses it.
+
 ## `0x4316` — create game
 
 **Client → server**, `HostGameController.createGame`. Request payload is **not read at all**.
 
 Settings come from the character's stored host-settings row (`getOrCreateHostSettings`), which is
-materialised with defaults named after the host. The client can also push settings with `0x4310`
-and read them back with `0x4304`; we handle neither, so anything the player configured on the host
+materialised with defaults named after the host. The client also pushes settings with `0x4310`
+and reads them back with `0x4304`; both are handled now, though the blob is not stored, so what the player configured on the host
 screen is lost and the defaults are used.
 
 ### Reply `0x4317`
@@ -921,10 +967,7 @@ Known-sendable, currently unanswered:
 | `0x4128` | get post-game info | |
 | `0x4141` | update skill sets | The write-back half of `0x4140` |
 | `0x4143` | update gear sets | The write-back half of `0x4142` |
-| `0x4150` | lobby disconnect | echo answers with a bare response packet |
 | `0x4220` | get character card | |
-| `0x4304` | get host settings | |
-| `0x4310` | check host settings | Payload arrives **encrypted** |
 | `0x4312` | get game details | |
 | `0x4320` | join game | Payload arrives **encrypted** |
 | `0x4340`–`0x4398` | in-game player and round events | |
@@ -1036,9 +1079,10 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 21. **`0x4300`'s filter type is read and discarded.** Clan rooms are distinguished by a name prefix
     in the original; unmodelled here.
 
-22. **`0x4316` does not read its request payload at all**, and we handle neither `0x4310` nor
-    `0x4304`, so host settings the player configures never reach the server. Untested — nothing has
-    reached the host screen.
+22. **`0x4316` does not read its request payload at all.** The settings the player configured
+    arrive on `0x4310` instead, which we now handle — but store nothing from, since the blob's
+    layout is undecoded. So a created game uses defaults regardless of what was chosen on the
+    Create Game screens. Confirmed reachable: a game is created and the host enters it.
 
 23. **`0x3103` clamps an out-of-range index to the first character and `0x3105` to the last.** The
     asymmetry is claimed to match the original. Unverified, and unreachable in practice since the
