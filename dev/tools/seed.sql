@@ -14,11 +14,17 @@
 -- The client dials 15731 for the gate; the remaining ports are advertised in the lobby list.
 -- Order matters, and it is by id, not by name: the client refers to a lobby by its index in the
 -- list it was sent. Ordering by name was a bug -- see dev/docs/OBSERVED.md.
+-- Idempotent by type. ON CONFLICT DO NOTHING alone is not enough: there is no unique constraint
+-- for it to conflict against, so re-running this file used to insert a second set of lobbies. The
+-- client addresses a lobby by its index in the list it was sent, so duplicates corrupt Lobby
+-- Select rather than being merely untidy.
+DELETE FROM public.lobby
+ WHERE type IN (0, 1, 2);
+
 INSERT INTO public.lobby (type, subtype, name, ip, port) VALUES
     (0, 0, 'Gate',    :'host_ip', 15731),
     (1, 0, 'Account', :'host_ip', 15732),
-    (2, 1, 'Game',    :'host_ip', 15733)
-ON CONFLICT DO NOTHING;
+    (2, 1, 'Game',    :'host_ip', 15733);
 
 -- A test account.
 --
