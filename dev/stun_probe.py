@@ -27,7 +27,9 @@ ATTR_RESPONSE_ADDRESS = 0x0002
 ATTR_CHANGE_REQUEST = 0x0003
 ATTR_SOURCE_ADDRESS = 0x0004
 ATTR_CHANGED_ADDRESS = 0x0005
-ATTR_XOR_MAPPED_ADDRESS = 0x0020
+# The real MGO2 STUN server (captured from mgo2pc) tags this attribute 0x8020, not the
+# RFC-5389 0x0020, and XORs against the request's transaction id rather than a magic cookie.
+ATTR_XOR_MAPPED_ADDRESS = 0x8020
 
 CHANGE_IP = 0x04
 CHANGE_PORT = 0x02
@@ -45,9 +47,13 @@ def address_value(ip, port):
     return struct.pack("!BBH", 0, FAMILY_IPV4, port) + socket.inet_aton(ip)
 
 
-def xor_address_value(ip, port):
-    xor_port = port ^ (MAGIC_COOKIE >> 16)
-    raw = struct.unpack("!I", socket.inet_aton(ip))[0] ^ MAGIC_COOKIE
+def xor_address_value(ip, port, transaction):
+    # Decoded from the real server's capture: key is the request transaction id, not the
+    # RFC-5389 magic cookie. port ^ txid[0:2], ip ^ txid[0:4], both big-endian.
+    key32 = struct.unpack("!I", transaction[:4])[0]
+    key16 = struct.unpack("!H", transaction[:2])[0]
+    xor_port = port ^ key16
+    raw = struct.unpack("!I", socket.inet_aton(ip))[0] ^ key32
     return struct.pack("!BBH", 0, FAMILY_IPV4, xor_port) + struct.pack("!I", raw)
 
 
@@ -165,9 +171,8 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
             # server addresses must report the *same* mapped ip:port; that consistency across two
             # addresses is what the client reads as a full-cone NAT and passes.
             #
-            # (The real XOR-MAPPED uses attribute id 0x8020 and an obfuscation this client's own,
-            # not the RFC 5389 magic cookie; its exact key is not yet reproduced here, so the XOR
-            # attribute stays optional. The three plaintext address attributes carry the verdict.)
+            # The XOR-MAPPED (0x8020) key is now reproduced from the capture: the request's
+            # transaction id. Sent by default so the reply matches the real server byte-for-byte.
             body = (
                 attribute(ATTR_MAPPED_ADDRESS, address_value(peer[0], peer[1]))
                 + attribute(ATTR_SOURCE_ADDRESS, address_value(reply_ip, reply_port))
@@ -175,7 +180,8 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
             if include_changed:
                 body += attribute(ATTR_CHANGED_ADDRESS, address_value(other_ip, other_port))
             if include_xor:
-                body += attribute(ATTR_XOR_MAPPED_ADDRESS, xor_address_value(peer[0], peer[1]))
+                body += attribute(ATTR_XOR_MAPPED_ADDRESS,
+                                  xor_address_value(peer[0], peer[1], transaction))
             if echo_vendor:
                 body += b"".join(attribute(kind, value) for kind, value in vendor)
             response = struct.pack("!HH16s", BIND_RESPONSE, len(body), transaction) + body
@@ -193,6 +199,6 @@ if __name__ == "__main__":
         positional[1] if len(positional) > 1 else "0.0.0.0",
         positional[2] if len(positional) > 2 else None,
         include_changed="--no-changed" not in flags,
-        include_xor="--xor" in flags,
+        include_xor="--no-xor" not in flags,
         echo_vendor="--no-vendor" not in flags,
     )
