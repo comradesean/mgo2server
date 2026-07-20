@@ -14,17 +14,29 @@
 -- The client dials 15731 for the gate; the remaining ports are advertised in the lobby list.
 -- Order matters, and it is by id, not by name: the client refers to a lobby by its index in the
 -- list it was sent. Ordering by name was a bug -- see dev/docs/OBSERVED.md.
--- Idempotent by type. ON CONFLICT DO NOTHING alone is not enough: there is no unique constraint
--- for it to conflict against, so re-running this file used to insert a second set of lobbies. The
--- client addresses a lobby by its index in the list it was sent, so duplicates corrupt Lobby
--- Select rather than being merely untidy.
-DELETE FROM public.lobby
- WHERE type IN (0, 1, 2);
+-- Idempotent, and with fixed ids.
+--
+-- The ids are not an implementation detail: compose passes MGO2SERVER_LOBBY_ID to each server, so
+-- lobby 1/2/3 must be the gate/account/game rows. An earlier version of this file deleted and
+-- reinserted without specifying ids, which let the serial advance on every run -- the rows looked
+-- right, but games then failed to insert with a foreign key violation against a lobby id that no
+-- longer existed.
+--
+-- Games reference lobbies, so they go first.
+DELETE FROM public.game;
+DELETE FROM public.lobby WHERE type IN (0, 1, 2);
 
-INSERT INTO public.lobby (type, subtype, name, ip, port) VALUES
-    (0, 0, 'Gate',    :'host_ip', 15731),
-    (1, 0, 'Account', :'host_ip', 15732),
-    (2, 1, 'Game',    :'host_ip', 15733);
+-- OVERRIDING SYSTEM VALUE because id is GENERATED ALWAYS; the whole point here is to choose it.
+INSERT INTO public.lobby (id, type, subtype, name, ip, port)
+OVERRIDING SYSTEM VALUE VALUES
+    (1, 0, 0, 'Gate',    :'host_ip', 15731),
+    (2, 1, 0, 'Account', :'host_ip', 15732),
+    (3, 2, 1, 'Game',    :'host_ip', 15733);
+
+-- Keep the sequence ahead of the explicit ids so later inserts do not collide.
+SELECT setval(pg_get_serial_sequence('public.lobby', 'id'),
+              (SELECT max(id) FROM public.lobby), true);
+
 
 -- A test account.
 --
