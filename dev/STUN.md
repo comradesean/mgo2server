@@ -6,7 +6,8 @@ server gets this wrong the game hangs on that screen with no error and no timeou
 
 Our responder is `dev/stun_probe.py`, run as the `probe-stun` service. `dev/PROTOCOL.md` covers the
 TCP lobby protocol and has no bearing here: this is UDP, on its own thread in the client, sharing
-nothing with the lobby servers.
+nothing with the lobby servers — and none of the ciphers in `dev/CRYPTO.md` either. STUN packets
+are plaintext.
 
 ## The dialect: draft-ietf-behave-rfc3489bis-02
 

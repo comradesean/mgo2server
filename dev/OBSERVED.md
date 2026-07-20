@@ -21,6 +21,7 @@ Companion documents:
   the XOR and checksum, which payloads are encrypted, and every command this server handles.
 - **`dev/STUN.md`** — the UDP port check ("Adjusting port settings") in full. Separate because it
   is UDP, runs on its own thread in the client, and shares nothing with the lobby servers.
+- **`dev/CRYPTO.md`** — every cipher, key and hash, and where each is applied.
 
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.

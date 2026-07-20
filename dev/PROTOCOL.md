@@ -21,7 +21,8 @@ Three levels of confidence are used throughout:
 Companion documents: **`dev/OBSERVED.md`** records what was observed and verified against the real
 client, including the hypotheses that turned out to be wrong. **`dev/STUN.md`** covers the UDP port
 check, which is not part of this protocol at all — different transport, different thread, no shared
-framing — and is documented separately for that reason.
+framing. **`dev/CRYPTO.md`** is the reference for every cipher, key and hash, and where each is
+applied; the transport section below summarises what this protocol uses.
 
 That last distinction matters more than it looks. The references are not specifications: they were
 written for different client builds and have been wrong for `BLUS30109` five separate times (the
