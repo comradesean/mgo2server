@@ -25,7 +25,7 @@ TERMS = (b"nomad-ng test server.\r\n\r\n"
 # Paths the application server owns. Everything else is answered by this harness.
 PROXY_PREFIXES = ("/us/mgo2/kid/",)
 
-WEB_SERVER = os.environ.get("NOMAD_WEB_URL", "http://web:8080")
+WEB_SERVER = os.environ.get("MGO2SERVER_WEB_URL", "http://web:8080")
 
 
 def forward(path, body, content_type):
@@ -137,12 +137,12 @@ if __name__ == "__main__":
     tls_ctx = None
     if use_tls:
         import ssl
-        # Which chain to present. Set NOMAD_TLS_CERT=cert-expired.pem to serve a certificate that
+        # Which chain to present. Set MGO2SERVER_TLS_CERT=cert-expired.pem to serve a certificate that
         # is identical to the normal one — same CA, same key, same common name — except that its
         # validity window is in the past. The client distinguishes that case: a certificate that
         # fails only on its dates is reported as 070B, anything else as 090B:00000001. See
         # OBSERVED.md, "The certificate branch".
-        chain = os.environ.get("NOMAD_TLS_CERT", "cert.pem")
+        chain = os.environ.get("MGO2SERVER_TLS_CERT", "cert.pem")
         tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls_ctx.load_cert_chain(str(DOCROOT / chain), str(DOCROOT / "key.pem"))
         # The PS3's TLS stack is from 2008; allow the old ciphers and versions it offers.

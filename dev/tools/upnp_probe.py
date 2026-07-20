@@ -70,8 +70,8 @@ DESCRIPTION = """<?xml version="1.0"?>
  <specVersion><major>1</major><minor>0</minor></specVersion>
  <device>
   <deviceType>{igd}</deviceType>
-  <friendlyName>nomad-ng test gateway</friendlyName>
-  <manufacturer>nomad-ng</manufacturer>
+  <friendlyName>mgo2server test gateway</friendlyName>
+  <manufacturer>mgo2server</manufacturer>
   <modelName>probe</modelName>
   <UDN>uuid:{uuid}</UDN>
   <deviceList>
@@ -267,7 +267,7 @@ def serve_ssdp(bind_ip, http_port, respond):
             "CACHE-CONTROL: max-age=1800\r\n"
             "EXT:\r\n"
             f"LOCATION: {location}\r\n"
-            "SERVER: nomad-ng/1.0 UPnP/1.0 probe/1.0\r\n"
+            "SERVER: mgo2server/1.0 UPnP/1.0 probe/1.0\r\n"
             f"ST: {answered}\r\n"
             f"USN: uuid:{UUID}::{answered}\r\n"
             "\r\n"

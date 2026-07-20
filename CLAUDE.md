@@ -1,4 +1,4 @@
-# nomad-ng
+# mgo2server
 
 An MGO2 server targeting the retail MGS4 disc **BLUS30109** on RPCS3.
 
@@ -14,7 +14,11 @@ expensively. When deciding what the server should do, sources rank:
    Konami servers. Authoritative for behaviour, silent on intent.
 3. **Published standards** — RFCs and drafts, where the game implements one (the port check is
    `draft-ietf-behave-rfc3489bis-02`; Blowfish is Blowfish).
-4. **Other server implementations** — `upstream/*`. **Not specifications.** They target different
+4. **Other server implementations** — `upstream/*`. **Not specifications.**
+
+   Note the near-collision: this project is **`mgo2server`**; **`mgo2-server`** (hyphenated) is
+   MiguelRipoll23's separate project, cited throughout as a reference. When the docs say
+   "mgo2-server does X", they mean theirs, not ours. They target different
    client builds, and several of their behaviours are operator policy or outright hacks rather
    than protocol.
 

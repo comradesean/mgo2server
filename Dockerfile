@@ -28,27 +28,27 @@ RUN --mount=type=cache,target=/root/.m2 \
 # ---------- runtime ----------
 FROM eclipse-temurin:25-jre-noble@sha256:7161e12dbcd2791d1fc8b9cf6f1c1519a84c4acea5706c6a0659bc254a4c55d7 AS runtime
 
-LABEL org.opencontainers.image.title="nomad-ng" \
+LABEL org.opencontainers.image.title="mgo2server" \
       org.opencontainers.image.description="Metal Gear Online 2 server emulator" \
       org.opencontainers.image.source="https://github.com/comradesean/nomad" \
       org.opencontainers.image.licenses="MIT"
 
 # Unprivileged runtime user; nothing here needs root.
-RUN groupadd --system --gid 1001 nomad \
- && useradd --system --uid 1001 --gid nomad --no-create-home nomad
+RUN groupadd --system --gid 1001 mgo2server \
+ && useradd --system --uid 1001 --gid mgo2server --no-create-home mgo2server
 
 WORKDIR /app
 
-COPY --from=build --chown=nomad:nomad /build/target/nomad-ng.jar ./nomad-ng.jar
+COPY --from=build --chown=mgo2server:mgo2server /build/target/mgo2server.jar ./mgo2server.jar
 
-USER nomad
+USER mgo2server
 
-# Game protocol and web API respectively; both are overridable via NOMAD_GAME_PORT/NOMAD_WEB_PORT.
+# Game protocol and web API respectively; both are overridable via MGO2SERVER_GAME_PORT/MGO2SERVER_WEB_PORT.
 EXPOSE 5730 8080
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseZGC"
 
 # Container-aware defaults: let the JVM size the heap from the cgroup limit rather than the host.
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/nomad-ng.jar \"$@\"", "--"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/mgo2server.jar \"$@\"", "--"]
 
 CMD ["game"]

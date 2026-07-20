@@ -54,7 +54,7 @@ threat, and shipping it means setup is a file copy rather than an openssl sessio
 if you would rather not: sign a leaf with `ext.cnf`'s SANs and install your CA instead.
 
 `cert-expired.pem` and `cert-leaf-expired.pem` are a chain whose only defect is its validity window.
-Swapping them in via `NOMAD_TLS_CERT` makes the client report `070B` instead of `090B`, which is how
+Swapping them in via `MGO2SERVER_TLS_CERT` makes the client report `070B` instead of `090B`, which is how
 the certificate branch was identified in the first place.
 
 ## About `upstream/`
