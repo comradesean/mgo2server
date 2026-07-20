@@ -4,15 +4,10 @@
 
 The binary is not redistributed with this project -- it is the game, and you are expected to have
 your own copy. This script exists so the constants below are reproducible from a disc rather than
-taken on trust from a checked-in blob.
+taken on trust from a checked-in blob. packet.key in particular is fully derivable: expand the raw
+key it prints and you get the shipped schedule exactly.
 
 What it CANNOT get, and why, so nobody wastes time looking:
-
-  packet.key   The 4168-byte expanded schedule is not in the image, and the raw key it expands
-               from is not in the constants region either (checked: none of the nearby .rodata
-               constants expand to it). The game builds its schedule at runtime. This key was
-               inherited from savemgo Nomad and remains the one artefact with no disc-derived
-               provenance.
 
   session.key  Derivable in principle but not from the disc alone. The transform needs mode 6's
                64-byte context, produced by running the cipher over a blob at 0x10985F0 using the
@@ -28,6 +23,11 @@ DELTA = 0x10000
 
 # (vaddr, length, name, what it is)
 CONSTANTS = [
+    (0xE25A18, 56, "packet-raw.key",
+     "Raw 56-byte key for packet payload encryption. Expand it through the standard Blowfish key "
+     "schedule (seeded from the pi table below) and you get packet.key byte for byte -- verified. "
+     "The game does the same at runtime: it copies these 56 bytes to a stack buffer and calls its "
+     "key-schedule routine."),
     (0xE25AD0, 4, "xor.key",
      "Whole-packet XOR key, applied to every game packet including the header."),
     (0xE25AD8, 16, "hmac.key",

@@ -33,10 +33,24 @@ public final class GameCrypto {
 
 	private static final SecretKeySpec HMAC_KEY_SPEC = new SecretKeySpec(HMAC_KEY, HMAC_MD5);
 
-	/** Commands whose payload the client encrypts on the way in. */
+	/**
+	 * Commands whose payload the client encrypts on the way in.
+	 * <p>
+	 * Taken from the reference servers, not from the binary — the client decides per call site
+	 * rather than from a table, so there is nothing to read off. Only `0x3003`, `0x4700` and
+	 * `0x4990` are handled here, and of those only `0x3003` is <em>confirmed</em>: its payload
+	 * decrypts to a correct account id, which a wrong list or key could not produce.
+	 */
 	private static final int[] DECRYPT_COMMANDS = { 0x3003, 0x4310, 0x4320, 0x43c0, 0x4700, 0x4990 };
 
-	/** Commands whose payload the server encrypts on the way out. */
+	/**
+	 * Commands whose payload the server encrypts on the way out.
+	 * <p>
+	 * <b>Entirely unverified.</b> Nothing in this server sends `0x4305`, so this cipher has never
+	 * encrypted a byte the client has seen, and whether the client expects it encrypted is unknown
+	 * — the id appears as a code immediate in the binary but never near the crypto path. Inherited
+	 * from the reference servers. If `0x4305` is ever implemented, confirm this before trusting it.
+	 */
 	private static final int[] ENCRYPT_COMMANDS = { 0x4305 };
 
 	private static final Blowfish PACKET = Blowfish.loadResource("crypto/packet.key");
