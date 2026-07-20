@@ -155,6 +155,10 @@ runs an extra probe (`0x2409`) and re-runs Test I before continuing, and can the
 RFC 3489 §8.1: *"A STUN server MUST be prepared to receive Binding Requests on four address/port
 combinations — (A1, P1), (A2, P1), (A1, P2), and (A2, P2)."*
 
+`P1` is the port the client dials, 3478. **`P2` is simply `P1 + 1`, i.e. 3479** — the standard does
+not fix it, and the client learns it from the CHANGED-ADDRESS we send, so any free port works as
+long as it is reported consistently. Our responder uses `primary + 1`.
+
 ```
 python3 dev/stun_probe.py 3478 <A1> <A2>
 ```
@@ -242,8 +246,11 @@ checked across all sixteen arrival/flag combinations.
 
 **Not established:**
 
-- Whether all four reply attributes are required. Never bisected; coturn's old-STUN mode sends only
-  three, which hints XOR-MAPPED is optional.
+- Whether MAPPED, SOURCE and CHANGED are each individually required. **XOR-MAPPED is not in
+  question: it is mandatory.** An early responder sent three attributes and the client rejected the
+  reply; adding `0x8020` is what made the port check proceed. That was an accidental bisection, but
+  a decisive one. (coturn's old-STUN mode sends no XOR attribute at all, so it would not work here
+  as a drop-in — noted under Off-the-shelf alternatives.)
 - Behaviour against a STUN error response, or under packet loss.
 - **Where the keepalives come from.** The heartbeat in this module (`0x2408`, via
   `mrdUPnP_STUN_hartbeat` at `0xD8AB78`) sends a 40-byte request with a `0x14` body. What we

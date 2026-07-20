@@ -113,6 +113,9 @@ Two things make this unguessable from captures alone: the block is **decrypted**
 encrypted, and the XOR is against the **previous plaintext** block rather than the previous
 ciphertext.
 
+The IV is `b0 78 1d 53 65 e3 91 0e` and the 56-byte key is the schedule shipped as
+`crypto/session.key`; both are constants in `SessionField`.
+
 The context is mode 6 of a keyed table inside the client, itself produced by running this same
 transform over a 64-byte blob with a master context. That blob is zero in the game image and is
 materialised at runtime, so it was read out of a live client; the resulting key schedule ships as
