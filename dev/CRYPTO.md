@@ -74,8 +74,9 @@ zero-padded up to a block boundary before encryption and the padding dropped aft
 `auth.key` was the schedule behind the old `SessionIds` class, which modelled the check-session
 field as an invertible transform. That model was wrong and the class is gone. The schedule is still
 loaded by `GameCrypto.auth()` and still referenced by `BlowfishTest`, but **no production code path
-uses it**. It is retained only because it is a genuine artefact extracted from the game; it can be
-deleted whenever the tests are repointed.
+uses it**. It is retained only because it is an artefact inherited from savemgo Nomad that may yet prove
+useful; it can be deleted whenever the tests are repointed. Note that nothing has ever verified it
+is the game's key — see Provenance.
 
 ### Which payloads are encrypted
 
@@ -153,7 +154,33 @@ rather than `090B`, which is how the certificate branch was originally identifie
 
 ## Provenance
 
-`packet.key` and `auth.key` were extracted from the game. `session.key` was derived from a context
-read out of a live client, as described above. The XOR key and the HMAC key are constants in the
-game binary. Nothing here was invented, and nothing here should be regenerated — a changed key
-means an unmodified client can no longer talk to the server.
+Worth stating precisely, because the three schedules have very different pedigrees and only one of
+them is verified by anything.
+
+**None of the three appears in `MGO2.elf`.** That is expected rather than suspicious: the standard
+Blowfish pi-init table *is* in the binary (at `0xE25AEC`), so the game performs key expansion at
+runtime from a key plus that table. An already-expanded schedule was never going to be stored in
+the image, and searching for one there proves nothing either way.
+
+| schedule | where it came from | how it is validated |
+| --- | --- | --- |
+| `packet.key` | savemgo Nomad's `Constants.java` | **In production.** Real client payloads decrypt correctly and the client accepts ours. Wrong bytes here would break every encrypted command. |
+| `session.key` | derived here, from a context read out of a live client | **Pinned to two independent captures** in `SessionFieldTest`. |
+| `auth.key` | savemgo Nomad's `Constants.java` | **Nothing.** Unused in production; no test asserts it is the game's key, only that our Blowfish reproduces the original implementation's output over it. |
+
+`packet.key` and `auth.key` were inherited when the crypto was ported from savemgo Nomad — they
+were extracted from that project's `Constants.java`, not from the game by us. How savemgo obtained
+them is not recorded here; presumably a memory dump of a running game, since the expanded form does
+not exist on disc. Both are byte-identical to `mgo2-server`'s `BLOWFISH_KEY_PACKET` and
+`BLOWFISH_KEY_AUTH`, which is corroboration that they are a real shared artefact — though possibly
+only that both projects drew from the same upstream.
+
+The practical consequence: **`packet.key` is trustworthy because it demonstrably works**, and
+`session.key` because it reproduces captured bytes. `auth.key` is trustworthy on nobody's authority
+— it is an inherited constant, for a model that turned out to be wrong, that nothing exercises. If
+it is ever needed, verify it against the client before believing it.
+
+The XOR key and the HMAC key are constants in the game binary and are exercised by every packet.
+
+Nothing here should be regenerated: a changed key means an unmodified client can no longer talk to
+the server.
