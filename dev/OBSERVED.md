@@ -415,6 +415,14 @@ This reframes the emulator hypothesis precisely: whatever the MGO2PC build fixes
 something the connect worker (entry `0xD35530`) needs between thread creation and setting its
 completion flag.
 
+The phase continues past check-session: **state 3 sends `0x4100`** (empty payload,
+request-status id `0x15`) — the character-connect burst our game lobby already answers with ten
+packets — and **state 4** waits for it (timeout error `0x1037:FFFFFF60`), then fills in a large
+parameter object and advances to states 5+, which is where the actual UDP verification must
+live. So the server-side obligations for the whole port check are: accept the TCP connect,
+answer `0x3003` with result 0, and answer `0x4100` — all of which this server now does, with
+the burst layouts still unverified against the client's parsers.
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
