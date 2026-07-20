@@ -533,6 +533,50 @@ successfully in a clean session and hanging anyway — so a free port may be nec
 sufficient for us. The cheap experiment is to retest our client with 5730 confirmed free and no
 second RPCS3 running, before investing further in a port-check responder.
 
+## What stock RPCS3 does and does not do for the port check (read from RPCS3 master)
+
+Reading RPCS3's own source (`github.com/RPCS3/rpcs3`, master) settles what the emulator
+contributes:
+
+- **RPCS3 has no STUN client at all.** No STUN code anywhere in the tree; `cellNetCtlGetNatInfo`
+  is faked (`cellNetCtl.cpp`), hardcoding NAT type 2 / STUN OK. So MGO2's port check is entirely
+  the game's own mrdUPnP STUN — the emulator neither performs nor assists it.
+- **No emulator UDP socket contends with the game's ports.** The only fixed internal UDP port is
+  the RPCN P2P socket 3658 (bind-rewritten to 3659); nothing binds 3478 or 5730. So a collision
+  with the game's STUN is impossible at the emulator level.
+- **The UDP send path is a faithful passthrough.** `lv2_socket_native::sendto` calls host
+  `::sendto` directly; the only drop is a *public* destination while Internet is Disconnected
+  (`is_ip_public_address` returns false for 192.168/x, so LAN-local sends are never blocked or
+  rewritten). Bind of `192.168.1.100:5730` maps 1:1 to a host bind and succeeds.
+
+So stock RPCS3 is fully capable of carrying the game's STUN with Internet set to Connected. **The
+"bind 5730 then never sendto" is therefore game-side, not the socket layer** — the game aborts
+before it sends, it is not the emulator dropping the datagram.
+
+One real stock limitation the source shows, kept as a weak candidate: `sys_net_infoctl` implements
+only cmd=9 (returns the DNS nameserver); **cmd=5 and cmd=53 fall through to `default` and return
+`CELL_OK` with the output struct left zeroed** (`sys_net.cpp`). If some component read a local
+interface/address out of those and rejected zeros, it could abort. It is weak because the log
+shows cmd=5/9/53 issued on the `mgonet_connect_timeo` and `uaccount.cc` threads — the gate and
+login, which both *succeed* — not on the `mrdUPnP` thread that runs the port check.
+
+**Crucially, the fork does not fix any of this in public source.** The public `cipherxof/rpcs3:mgs4`
+adds only graphics/audio/perf commits over upstream and touches no net file; the historical MGO2
+net patch (a 2020 WSAPoll change) is long upstreamed. So stock and the SaveMGO build share
+identical net code — any difference lives in the unpublished `savemgo-rebase7` branch, the
+different game binary (`NPMG00020` standalone MGO vs `BLUS30109` MGS4-disc MGO2), or config.
+
+## MGO2 requires a PSN/NP sign-in to go online; the SaveMGO build fakes it
+
+Observed on stock RPCS3: with RPCN disabled, MGO2 refuses to go online with **"Unable to connect
+to network (0519:8002AA0C)"**. So the game gates its online mode on a PSN/NP sign-in, which stock
+RPCS3 supplies only through RPCN. The SaveMGO custom build reaches online **with RPCN off**
+(`rpcn.yml` has empty NPID/password, config `PSN status: Disconnected`), so it must fake the NP
+sign-in — a genuine emulator behaviour, and one absent from the public fork, i.e. carried in the
+private branch. This is the clearest thing the custom emulator demonstrably *does*. It is about
+getting online (passing the sign-in gate), which is upstream of the port check; it does not by
+itself explain the port-check stall on an RPCN-enabled stock client.
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
