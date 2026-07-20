@@ -15,6 +15,16 @@ Sources of truth used, in order of usefulness:
 4. **[MiguelRipoll23/mgo2-server](https://github.com/MiguelRipoll23/mgo2-server)** — an independent
    MGO2 server covering the web API that Nomad does not. Nomad is only the game server.
 
+Companion documents:
+
+- **`dev/PROTOCOL.md`** — the TCP command protocol, command by command and byte by byte: framing,
+  the XOR and checksum, which payloads are encrypted, and every command this server handles.
+- **`dev/STUN.md`** — the UDP port check ("Adjusting port settings") in full. Separate because it
+  is UDP, runs on its own thread in the client, and shares nothing with the lobby servers.
+
+This file is the record of what was *observed and verified*, including the things that turned out
+to be wrong. The other two describe what the code does today.
+
 ## How this file gets things wrong
 
 Two failure modes have each cost real time here, and both are cheap to avoid.
@@ -73,15 +83,23 @@ from the lobby list and can be anything.
 
 ## STUN
 
+**The port check is documented in full in `dev/STUN.md`** — the exchange that works, the reply
+format, the Docker and secondary-address requirements, the eliminated hypotheses and the remaining
+unknowns. Only the headline facts are kept here.
+
 Matches are peer-to-peer, so the client discovers its public address before it will enter a lobby.
 With no STUN server reachable it retries UPnP against the router and then fails — which presents
 as a lobby error, not a NAT one, and is easy to misread.
 
-`mgo2-server` lists a STUN server on 3478/udp as a required component alongside the gate and
-account servers.
+The client does not send a plain binding request. It sends `len=12` (basic) and `len=24`
+(CHANGE-REQUEST) probes from its own port 5730, and classifies its NAT from which address answers.
 
-**None of the three reference servers actually implement a STUN responder** — so none of them can
-be copied for the reply shape, and none shares our bugs here:
+**Never echo the client's `0xf000` vendor attribute back.** It drives the client's decoder into an
+infinite branch and hangs the game on "Adjusting port settings" with no error and no timeout. This
+was confirmed in both directions. `stun_probe.py` defaults to not sending it.
+
+**None of the three reference servers implement a STUN responder**, so none can be copied for the
+reply shape:
 
 - **GHzGangster/Nomad** and the savemgo forks: no STUN code at all. Every `stun` match in the
   source is the in-game *stun grenade* weapon-restriction flag.
@@ -91,61 +109,8 @@ be copied for the reply shape, and none shares our bugs here:
 - **boiln/echo**: does not hand-roll it either — it runs stock **coturn** in `stun-only` mode, and
   its `stun.conf` requires two `listening-ip` addresses.
 
-So coturn-on-two-addresses is the only reference-blessed shape, and our responder should behave
-like coturn (notably: send no vendor attribute — see below).
-
-The client does not send a plain binding request. It sends CHANGE-REQUEST attributes — observed
-as `len=12` and `len=24` requests, sourced from the game's own port — asking the server to reply
-from a different port or address, and classifies its NAT from which replies arrive. A responder
-that always answers from the same socket cannot satisfy that.
-
-NAT classification fundamentally needs **two IP addresses**: the client asks the server to reply
-from a different address and infers its NAT type from whether that reply arrives. SaveMGO ran its
-STUN server on a different address from its gate for exactly this reason — its DNS handler maps
-`mgo2gate` to 192.3.217.61 and the STUN host to 192.3.217.162, and its setup instructions give
-users both addresses.
-
-`dev/stun_probe.py` takes an optional second address and serves the full four-socket layout when
-given one. With a single address it answers change-IP from the alternate port, which lets the
-client conclude rather than hang, but cannot distinguish a full-cone NAT from a symmetric one.
-
-It must run with host networking. Docker's UDP proxy rewrites the source port of replies, and
-since a STUN client identifies which address answered, every reply appears to come from a random
-port and discovery never concludes. Published ports look like they work — the reply arrives — but
-from the wrong port.
-
-### Never echo the client's `0xf000` vendor attribute — that is what hangs "Adjusting port settings"
-
-The responder used to echo the Konami `0xf000` vendor attribute back verbatim, on the untested
-theory that "a client that correlates requests by a private attribute will not accept a reply
-without it." **That theory is wrong, and the echo is actively harmful.**
-
-The client's own `DecodePacket` dispatches on the `0xf000` sub-type: values 1 and 3 have handlers;
-**anything else falls through to a logging stub and then an infinite `b .`**. The client sends
-sub-types the server must not parrot — an observed first probe carried
-`0xf000 = 0573000000000002`. Echoing that back feeds the decoder the value that spins it forever,
-which presents as the game sitting on **"Adjusting port settings"** with no error and no timeout.
-
-Running `dev/stun_probe.py` with `--no-vendor` (send no `0xf000` at all) fixes it. This matches the
-only reference that demonstrably works online: `echo` runs stock **coturn**, which has no notion of
-Konami vendor attributes and sends none.
-
-With the echo removed, the client runs the *full* classification instead of stalling after the
-basic probes:
-
-```
-basic request                          -> replied from .100:3478
-CHANGE-REQUEST (change_ip, change_port) -> replied from .201:3479   <- alternate address
-follow-up probes                        -> replied from .100:3478
-```
-
-That change-request leg had never been reached before. **The port check then passes** and the game
-proceeds to log in — the failure moves off STUN entirely and becomes `0910:C0FFEE02`
-(our own `INVALID_SESSION`; see *Session tokens*). Note the two responder addresses were both on
-the client's own subnet with the primary sharing the client's IP, and it still passed — so the
-earlier worry that the mapped address colliding with the server address forces a symmetric verdict
-did **not** turn out to be the blocker.
-
+So coturn-on-two-addresses is the only reference-blessed shape, and our responder behaves like
+coturn — notably, it sends no vendor attribute.
 ## UPnP, and "Adjusting port settings"
 
 MGO2 does not ask the console to forward ports. It carries its own IGD client — the binary holds
@@ -601,11 +566,11 @@ network because the build reached a real remote STUN host. That was an over-read
 port-close experiment refutes it. The operational rule is simply **one RPCS3 instance at a time,
 with 5730 verified free before launch** (`netstat -ano | findstr :5730`).
 
-Open and untested: whether the same collision explains our own BLUS30109 client's
-"Adjusting port settings" hang. Against it, this file records our client binding 5730
-successfully in a clean session and hanging anyway — so a free port may be necessary but not
-sufficient for us. The cheap experiment is to retest our client with 5730 confirmed free and no
-second RPCS3 running, before investing further in a port-check responder.
+**That question is now closed, and the answer was no.** Our own BLUS30109 client's
+"Adjusting port settings" hang had an unrelated cause: the responder was echoing the client's
+`0xf000` vendor attribute back, which drives the client's decoder into an infinite branch. With
+the echo removed the client completes classification and passes. The two failures share a screen
+and nothing else. See `dev/STUN.md`.
 
 ## What stock RPCS3 does and does not do for the port check (read from RPCS3 master)
 
