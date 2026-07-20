@@ -145,8 +145,9 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(1);
 		var payload = replies.get(0).getPayload();
-		// The client parses a fixed 0x1d7-byte grid with no length check; anything shorter makes
-		// it read stale buffer bytes.
+		// The client's parser at 0xD3732C (MGO2.elf) consumes a fixed 0x1d7-byte grid with no
+		// length check -- a 23-byte header, eight 52-byte slots, then 32 trailing bytes -- so
+		// anything shorter makes it read stale buffer bytes rather than fail.
 		assertThat(payload.readableBytes()).isEqualTo(0x1d7);
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
 		assertThat(payload.getByte(4)).isEqualTo((byte) 3);   // slots
@@ -252,13 +253,10 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.CHARACTER_NAME_PREFIX.result());
 	}
 
-	@Test
-	public void rejectsReservedName() {
-		var replies = loginThen(createRequest("SaveMGO"),
-			CharacterGameController.CREATE_CHARACTER_RESULT);
-
-		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.CHARACTER_NAME_RESERVED.result());
-	}
+	// There is deliberately no reserved-name case here. The reserved-name list is operator policy
+	// and is empty: it used to hold "SaveMGO", another server's branding inherited from their name
+	// checker. Asserting a rejection would mean re-adding an entry purely to satisfy the test.
+	// CharacterNames.check still maps the case, so populating the list stays supported.
 
 	@Test
 	public void rejectsDuplicateName() {
