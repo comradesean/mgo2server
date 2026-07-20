@@ -1,8 +1,8 @@
-"""Checks a running stun_probe.py against the reply format dev/STUN.md documents.
+"""Checks a running stun_probe.py against the reply format dev/docs/STUN.md documents.
 
-Run it with the responder up:  python3 dev/stun_selftest.py
+Run it with the responder up:  python3 dev/tools/stun_selftest.py
 
-Every assertion here corresponds to a claim in dev/STUN.md, so if the responder is changed in a
+Every assertion here corresponds to a claim in dev/docs/STUN.md, so if the responder is changed in a
 way that breaks the client, this says which claim broke rather than leaving a game hanging on
 "Adjusting port settings" as the only symptom.
 

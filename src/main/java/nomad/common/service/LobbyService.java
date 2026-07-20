@@ -29,7 +29,7 @@ public class LobbyService {
 	 * Account at index 0 and the Gate at index 2, breaking it.
 	 * <p>
 	 * This previously ordered by name, citing mgo2-server. That reference targets a different
-	 * client build and has been wrong for this disc repeatedly; see dev/OBSERVED.md.
+	 * client build and has been wrong for this disc repeatedly; see dev/docs/OBSERVED.md.
 	 */
 	public List<Lobby> getLobbies() {
 		try (var handle = jdbi.open()) {

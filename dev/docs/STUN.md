@@ -4,9 +4,9 @@ MGO2 runs NAT discovery before it will allow online play, shown as **"Adjusting 
 Matches are peer to peer, so the client needs to know how its UDP port looks from outside. If the
 server gets this wrong the game hangs on that screen with no error and no timeout.
 
-Our responder is `dev/stun_probe.py`, run as the `probe-stun` service. `dev/PROTOCOL.md` covers the
+Our responder is `dev/runtime/stun_probe.py`, run as the `probe-stun` service. `dev/docs/PROTOCOL.md` covers the
 TCP lobby protocol and has no bearing here: this is UDP, on its own thread in the client, sharing
-nothing with the lobby servers — and none of the ciphers in `dev/CRYPTO.md` either. STUN packets
+nothing with the lobby servers — and none of the ciphers in `dev/docs/CRYPTO.md` either. STUN packets
 are plaintext.
 
 ## The dialect: draft-ietf-behave-rfc3489bis-02
@@ -160,7 +160,7 @@ not fix it, and the client learns it from the CHANGED-ADDRESS we send, so any fr
 long as it is reported consistently. Our responder uses `primary + 1`.
 
 ```
-python3 dev/stun_probe.py 3478 <A1> <A2>
+python3 dev/runtime/stun_probe.py 3478 <A1> <A2>
 ```
 
 RFC 5780 §6 goes further: a server that cannot provide a second address **MUST** reject
@@ -205,7 +205,7 @@ bind with `Errno 99`.
 
 ## Checking the responder
 
-`dev/stun_selftest.py` asserts the reply format against a running responder: the four attributes and
+`dev/tools/stun_selftest.py` asserts the reply format against a running responder: the four attributes and
 their order, the `0x8020` tag, XOR-MAPPED decoding back to MAPPED under the transaction-id key,
 SOURCE and CHANGED pointing where they should, and no `0xf000` echoed. Thirteen checks.
 

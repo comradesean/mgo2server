@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * <p>
  * Note that this command carries {@code lower} and {@code hands_color}, which character creation
  * (0x3101) skips over. That makes the creation-time skip look more like a bug than a deliberate
- * choice — see the note in {@code dev/OBSERVED.md}. Here the fields are read and stored.
+ * choice — see the note in {@code dev/docs/OBSERVED.md}. Here the fields are read and stored.
  */
 public class PersonalInfoController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();

@@ -34,7 +34,7 @@ entered with a character already selected, so it sends that character's id inste
 
 ### Commands implemented
 
-Deliberately not listed here. **`dev/PROTOCOL.md`** documents every command with its payload broken
+Deliberately not listed here. **`dev/docs/PROTOCOL.md`** documents every command with its payload broken
 down field by field, and a summary in two places drifts — this table went stale within a day of the
 last six commands being added, which is exactly the failure this project keeps paying for.
 

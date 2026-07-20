@@ -13,14 +13,14 @@ client has nothing to talk to.
 
 Run it in listen-only mode first, to establish whether the M-SEARCH even reaches this host:
 
-    sudo python3 dev/upnp_probe.py --listen
+    sudo python3 dev/tools/upnp_probe.py --listen
 
 Multicast has to cross from RPCS3 (on Windows) into WSL, which is not guaranteed. If nothing
 arrives, that is the finding, and no amount of responder is going to help.
 
 If M-SEARCH does arrive, answer it:
 
-    sudo python3 dev/upnp_probe.py --respond --ip 192.168.1.100
+    sudo python3 dev/tools/upnp_probe.py --respond --ip 192.168.1.100
 
 which replies to the discovery, serves a minimal InternetGatewayDevice description over HTTP, and
 implements just enough of WANIPConnection to satisfy the calls above. Port mappings are recorded

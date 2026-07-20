@@ -24,7 +24,7 @@ answers the lobby-list request with a start and an end packet and no entries, so
 nowhere to go and reports nothing useful.
 
 ```
-docker compose exec -T postgres psql -U nomad -d nomad < dev/seed.sql
+docker compose exec -T postgres psql -U nomad -d nomad < dev/tools/seed.sql
 ```
 
 That inserts one lobby of each type — gate, account, game — on ports 15731/15732/15733, plus a test
@@ -33,7 +33,7 @@ in the list it was sent, so the rows must be inserted so that index equals type.
 
 ### Create an account
 
-There is **no registration endpoint**. `dev/seed.sql` adds a `tester` account with the password
+There is **no registration endpoint**. `dev/tools/seed.sql` adds a `tester` account with the password
 `nomad`. For any other, insert it by hand — the client sends the password already MD5-hashed, so
 that hash is what is stored:
 
@@ -43,7 +43,7 @@ values ('<game id>', md5('<password>'), 3);
 ```
 
 The `username` is whatever is typed into the game's ID field. Passwords are MD5 because the client
-hashes them before sending; see `dev/CRYPTO.md`.
+hashes them before sending; see `dev/docs/CRYPTO.md`.
 
 ## RPCS3 — four changes
 
@@ -67,14 +67,14 @@ contacted. A self-signed certificate is not enough.
 
 The leaf certificate must cover **every hostname in the swap list**, not just one. The login is on
 `mgo2auth.konami.com` and the version check on `mgo2web.konami.com`; a certificate naming only one
-fails the other, and both failures look identical (`090B`). The chain in `dev/www` already carries
-`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/www/ext.cnf`
+fails the other, and both failures look identical (`090B`). The chain in `dev/runtime/www` already carries
+`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/runtime/www/ext.cnf`
 if regenerating.
 
 Copy this repository's CA over one of the emulator's certificate slots:
 
 ```
-cp dev/www/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
+cp dev/runtime/www/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
 ```
 
 Back up the original first. The client was observed reading `CA29`–`CA31`; `CA30` works. The
@@ -108,7 +108,7 @@ addresses. Without it `probe-stun` crash-loops on bind with `Errno 99`.
 `eth8` and `eth0` have all been seen) — check `ip -brief addr` rather than reusing the old command.
 
 A single address does get the client past the check, but misclassifies restricted-cone players as
-full-cone, which breaks peer-to-peer for them. `dev/STUN.md` has the detail.
+full-cone, which breaks peer-to-peer for them. `dev/docs/STUN.md` has the detail.
 
 ## What is *not* needed
 
@@ -118,7 +118,7 @@ full-cone, which breaks peer-to-peer for them. `dev/STUN.md` has the detail.
   A DNS container was run during early debugging and has been removed; nothing in `compose.yaml`
   provides one.
 
-  `dev/dnsmasq.conf` is kept as a **diagnostic**, not a dependency: run it and point the emulator's
+  `dev/tools/dnsmasq.conf` is kept as a **diagnostic**, not a dependency: run it and point the emulator's
   DNS setting at the machine to discover the hostnames a *different* disc or region asks for, which
   is how the swap list above was built. Stop it again afterwards.
 
@@ -136,7 +136,7 @@ full-cone, which breaks peer-to-peer for them. `dev/STUN.md` has the detail.
 Some are recoverable from your own disc rather than taken on trust:
 
 ```
-python3 dev/extract_keys.py "<disc>/PS3_GAME/USRDIR/o/MGO2.elf"
+python3 dev/tools/extract_keys.py "<disc>/PS3_GAME/USRDIR/o/MGO2.elf"
 ```
 
 prints the raw packet key, the whole-packet XOR key, the HMAC key, the Blowfish pi table and the
@@ -145,7 +145,7 @@ session master context, with offsets.
 **`packet.key` is fully derivable**: expand the 56-byte raw key it prints through the standard
 Blowfish schedule and you get the shipped file byte for byte. Only **`session.key`** needs anything
 more — mode 6's blob is zeroed on disc, so it requires a memory dump from a running client.
-`dev/CRYPTO.md` gives the six-step procedure and a test vector to check the result.
+`dev/docs/CRYPTO.md` gives the six-step procedure and a test vector to check the result.
 
 ## Gotchas
 
@@ -165,5 +165,5 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 | Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST |
 | `0519:8002AA0C` | PSN status is not RPCN |
 | Login screen rejects, `090B` | certificate not installed, or wrong slot |
-| Stuck on "Adjusting port settings" | `probe-stun` running? `python3 dev/stun_selftest.py` should pass every check it runs (13 under WSL, where the change-request leg skips; 17 from a separate host) |
+| Stuck on "Adjusting port settings" | `probe-stun` running? `python3 dev/tools/stun_selftest.py` should pass every check it runs (13 under WSL, where the change-request leg skips; 17 from a separate host) |
 | `0910:C0FFEE02` | no account row, or its password hash does not match |

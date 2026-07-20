@@ -1,7 +1,7 @@
 -- Seed for live testing against a real client.
 --
 -- Run against a migrated database:
---   docker compose exec -T postgres psql -U nomad -d nomad < dev/seed.sql
+--   docker compose exec -T postgres psql -U nomad -d nomad < dev/tools/seed.sql
 --
 -- IMPORTANT: the ip column is what the client is told to connect to next. It must be an address
 -- the console (or RPCS3) can actually reach — the host's LAN address, not 127.0.0.1, unless the
@@ -13,7 +13,7 @@
 -- the client then connects to the account lobby and finally a game lobby.
 -- The client dials 15731 for the gate; the remaining ports are advertised in the lobby list.
 -- Order matters, and it is by id, not by name: the client refers to a lobby by its index in the
--- list it was sent. Ordering by name was a bug -- see dev/OBSERVED.md.
+-- list it was sent. Ordering by name was a bug -- see dev/docs/OBSERVED.md.
 INSERT INTO public.lobby (type, subtype, name, ip, port) VALUES
     (0, 0, 'Gate',    :'host_ip', 15731),
     (1, 0, 'Account', :'host_ip', 15732),
