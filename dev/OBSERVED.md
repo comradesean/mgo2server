@@ -192,13 +192,28 @@ which is the parsed lobby list.
 lobby list, and that connect never gets going** — which is exactly consistent with the account
 lobby never being contacted and no TCP connect appearing in the log after the gate.
 
-Not yet established, and worth stating so it is not assumed later: `0xD34B50` does **not** call
-the connect-with-timeout poller at `0xD34A38` (checked — there are no calls to it anywhere in the
-`mgonet` range), so the aborted `mgonet_connect_timeo` thread seen in the log is *not* known to be
-the thing blocking this. `0xD34A38` is a separate helper whose caller has not been identified.
+`mgo_connect_server_by_index` calls the connect-with-timeout poller at `0xD34A38` (from
+`0xD34C0C`) and returns its result unchanged. That poller is a **singleton** over a global context:
 
-The open question is therefore narrow: what does `mgo_connect_server_by_index` wait on between
-being asked for a lobby and opening a socket.
+```
+state = [g+0x1c]
+  0 -> sys_ppu_thread_create("mgonet_connect_timeo", entry 0xD35530); state = 1; return -102
+  1 -> [g+0x20] == 0 ? "**** wait ***" : return -64
+                     : "**** poll off ***"; result = [g+0x14]; state = 0; return result
+  else -> return -64
+```
+
+and the worker at `0xD35530` does the blocking connect, stores the result at `+0x14`, aborts its
+net operations, **sets the completion flag `[g+0x20] = 1`, and only then exits**. The flag is set
+before the exit, so an aborted exit does not strand it.
+
+**This means the client is not sitting in state 2.** A poll there with `state == 0` would create a
+`mgonet_connect_timeo` thread, and the log shows exactly one for the whole session — the one that
+connected to the gate and completed normally. No second worker is ever created, and no TCP connect
+is attempted after the gate. Whatever drives the screen is one of the other six states.
+
+So the call chain above is understood but is *not* where it hangs. Which state it is in remains
+open; the state is a halfword at `+0x68` of the machine's context.
 
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
