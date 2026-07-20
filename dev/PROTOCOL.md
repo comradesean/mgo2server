@@ -18,6 +18,11 @@ Three levels of confidence are used throughout:
   `upstream/mgo2-server-upstream` (TypeScript, `@GameCommandHandler(0x....)`) or the Nomad
   upstreams. **Unverified against our client** unless separately marked.
 
+Companion documents: **`dev/OBSERVED.md`** records what was observed and verified against the real
+client, including the hypotheses that turned out to be wrong. **`dev/STUN.md`** covers the UDP port
+check, which is not part of this protocol at all — different transport, different thread, no shared
+framing — and is documented separately for that reason.
+
 That last distinction matters more than it looks. The references are not specifications: they were
 written for different client builds and have been wrong for `BLUS30109` five separate times (the
 policy path, the gate hostname, the gate port, the version-check byte, and the login perks field —
