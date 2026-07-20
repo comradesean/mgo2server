@@ -42,6 +42,15 @@ public class HostGameController implements IGameController {
 	 */
 	private static final int HOST_SETTINGS_SIZE = 128;
 
+	/**
+	 * The settings the player just configured, pushed before the game is created.
+	 * <p>
+	 * Its payload arrives Blowfish-encrypted — see {@code GameCrypto.DECRYPT_COMMANDS}.
+	 */
+	public static final int CHECK_HOST_SETTINGS = 0x4310;
+
+	public static final int CHECK_HOST_SETTINGS_RESULT = 0x4311;
+
 	public static final int CREATE_GAME = 0x4316;
 
 	public static final int CREATE_GAME_RESULT = 0x4317;
@@ -65,6 +74,7 @@ public class HostGameController implements IGameController {
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(GET_HOST_SETTINGS, this::getHostSettings);
+		handlers.put(CHECK_HOST_SETTINGS, this::checkHostSettings);
 		handlers.put(CREATE_GAME, this::createGame);
 	}
 
@@ -84,6 +94,33 @@ public class HostGameController implements IGameController {
 		var buffer = ctx.buffer(HOST_SETTINGS_SIZE);
 		buffer.writeZero(HOST_SETTINGS_SIZE);
 		ctx.write(new GamePacket(HOST_SETTINGS_RESULT, buffer));
+	}
+
+	/**
+	 * Accepts the host's configured settings. The reply carries no payload; the client only waits
+	 * for the acknowledgement before moving on to create the game.
+	 * <p>
+	 * The settings are read but <b>not stored</b>. Our {@code chara_host_settings} table is
+	 * structured per field, while the client sends an opaque blob whose layout is not decoded here,
+	 * so there is nowhere faithful to put it. The consequence is visible but small: the Create Game
+	 * screen will not remember these settings next time, because {@link #getHostSettings} has
+	 * nothing to return. Hosting itself is unaffected.
+	 */
+	private void checkHostSettings(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var payload = ctx.packet().getPayload();
+		if (payload.readableBytes() >= Integer.BYTES) {
+			var type = payload.readInt();
+			logger.info("Host settings from account {}: type {}, {} bytes (not stored).",
+				account.getId(), type, payload.readableBytes());
+		}
+
+		ctx.write(new GamePacket(CHECK_HOST_SETTINGS_RESULT, ctx.buffer(0)));
 	}
 
 	private void createGame(GameControllerContext ctx) {
