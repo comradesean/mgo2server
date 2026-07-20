@@ -130,13 +130,33 @@ def soap_envelope(action, body):
     ).encode()
 
 
+def soap_fault(code, description):
+    """A real gateway answers some queries with a fault, and clients depend on it.
+
+    Asking for a port mapping that does not exist must produce 714 NoSuchEntryInArray, not an
+    empty success — that is how a control point learns the port is free before claiming it. A
+    responder that returns 200 with no body leaves it unable to tell.
+    """
+    return (
+        '<?xml version="1.0"?>\n'
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+        's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
+        '<s:Body><s:Fault><faultcode>s:Client</faultcode>'
+        '<faultstring>UPnPError</faultstring><detail>'
+        '<UPnPError xmlns="urn:schemas-upnp-org:control-1-0">'
+        f'<errorCode>{code}</errorCode>'
+        f'<errorDescription>{description}</errorDescription>'
+        '</UPnPError></detail></s:Fault></s:Body></s:Envelope>'
+    ).encode()
+
+
 class Gateway(http.server.BaseHTTPRequestHandler):
     """The device description and control endpoint the SSDP reply points at."""
 
     external_ip = "192.168.1.100"
 
-    def _send(self, body, content_type="text/xml; charset=\"utf-8\""):
-        self.send_response(200)
+    def _send(self, body, content_type="text/xml; charset=\"utf-8\"", status=200):
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Connection", "close")
@@ -171,8 +191,20 @@ class Gateway(http.server.BaseHTTPRequestHandler):
                 "<NewConnectionStatus>Connected</NewConnectionStatus>"
                 "<NewLastConnectionError>ERROR_NONE</NewLastConnectionError>"
                 "<NewUptime>1000</NewUptime>"))
+        elif action == "GetSpecificPortMappingEntry":
+            # Nothing is mapped here, and saying so is the point: this is how the client
+            # establishes the port is free.
+            self._send(soap_fault(714, "NoSuchEntryInArray"), status=500)
+        elif action == "GetGenericPortMappingEntry":
+            self._send(soap_fault(713, "SpecifiedArrayIndexInvalid"), status=500)
+        elif action == "GetNATRSIPStatus":
+            self._send(soap_envelope(
+                action, "<NewRSIPAvailable>0</NewRSIPAvailable><NewNATEnabled>1</NewNATEnabled>"))
         else:
-            self._send(soap_envelope(action or "Unknown", ""))
+            # Loudly, because an unhandled action is the most likely reason the client stalls.
+            log(f"      !! unhandled SOAP action {action!r} -- answering InvalidAction")
+            log(f"      !! body: {body[:400]}")
+            self._send(soap_fault(401, "InvalidAction"), status=500)
 
     def log_message(self, *args):
         pass  # replaced by log()
