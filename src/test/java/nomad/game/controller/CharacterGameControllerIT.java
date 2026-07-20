@@ -145,6 +145,9 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(1);
 		var payload = replies.get(0).getPayload();
+		// The client parses a fixed 0x1d7-byte grid with no length check; anything shorter makes
+		// it read stale buffer bytes.
+		assertThat(payload.readableBytes()).isEqualTo(0x1d7);
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
 		assertThat(payload.getByte(4)).isEqualTo((byte) 3);   // slots
 		assertThat(payload.getByte(5)).isEqualTo((byte) 0);   // character count

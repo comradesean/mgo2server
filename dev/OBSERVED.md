@@ -302,6 +302,69 @@ python3 dev/upnp_probe.py --respond --ip 192.168.1.100
 
 Mappings are logged, not created. Nothing in the harness touches a real router.
 
+## The account lobby, read from the binary
+
+The client's account-lobby code sits beside the mgonet packet parser. Its reply dispatcher is
+`0xD37024`, and the request senders are one function each: `0x3003` at `0xD38180` (a second
+sender exists at `0xD39F18`), `0x3040` at `0xD37B00`, `0x3048` at `0xD37BF0`, `0x3101` at
+`0xD37DE4`, `0x3103` at `0xD37A0C`, `0x3105` at `0xD37918`, `0x3107` at `0xD37CC0`. Each sender
+marks a request-status id "in progress" and the matching reply arm marks it complete:
+`0x3004`→5, `0x3041`→0xD, `0x3049`→0xE, `0x3102`→0xF, `0x3104`→0x10, `0x3106`→0x11,
+`0x3108`→0x12.
+
+Verified request layouts: `0x3003` is a u32 id (ctx+0x150) followed by exactly 16 bytes
+(ctx+0x154) — the session field. `0x3103` and `0x3105` carry one u8 index, bounds-checked ≤ 7
+client-side before sending. `0x3101` is 16 name bytes then the appearance bytes. `0x3040` is one
+u8 slot; `0x3107` is 16 bytes of name.
+
+Verified reply grammars: `0x3004`, `0x3102`, `0x3104`, `0x3106`, `0x3108` are parsed as a single
+s32 result — anything after it is ignored. `0x3041` is s32 result, then (if 0) a u32 and 16
+bytes. `0x3049` is a **fixed grid parsed identically regardless of character count**:
+
+```
+s32 result; u8 slots; u8 count; u8 selectedSlot; u8 name[16];   23-byte header
+8 entries x 52 bytes: u8 slot; u32 charaId; u8 name[16];
+                      u8 appearance[9]; u32; u8 appearance[14]; u32
+u8 tail[32]                                                     total 0x1D7 = 471
+```
+
+After parsing, the client scans the eight entries for one whose first byte equals
+`selectedSlot`. The reference servers' seemingly different entry layout (a leading u32 index
+instead of a u8 slot) lands on this grid exactly: three bytes of each index complete the
+previous entry's final u32 and the low byte becomes the slot.
+
+Two things follow, one of them a bug that has been fixed:
+
+- **Our character-list trailer was 32 bytes; the canonical one is 35.** Both Nomad upstreams
+  and mgo2-server pad the body to 0x1B4 and append the same 35-byte block, making 471 total.
+  Ours sent 468. This is not a parse error — the read primitives bound-check only the 0x400
+  receive buffer, and begin/end read (`0xD5C844`/`0xD5C858`) never compare consumed bytes
+  against the payload length — but the client would have read its last three tail bytes from
+  stale buffer contents. Fixed to the canonical 35 bytes.
+- **The client can send `0x3040` and `0x3107`, and no reference implementation answers them.**
+  Nomad v1, v2, mgo2-server and ours all lack handlers (v1 answers inbound `0x3042` with an
+  empty `0x3041`, which is a different exchange). Expected replies if they ever arrive:
+  `0x3041` = s32, u32, 16 bytes; `0x3108` = s32. An unanswered request would strand its status
+  id the way the current port-settings screen is stranded, so if a future hang coincides with
+  one of these being sent, this is where to look. Since SaveMGO ran without them, the normal
+  disc flow presumably never sends them.
+
+Everything else in our account lobby matches the binary: the session field length, the
+one-s32 result replies, entry stride and appearance order, the `0x3102` success payload
+(result + new character id — the client ignores the id), and the 8-entry ceiling.
+
+**Not established: how the client derives the 16 session bytes from the login token.** Nomad v1
+(and mgo2-server, which copies it) decode the field as XOR with `35 D5 C3 8E D0 11 0E A8` then
+a Blowfish encrypt with the auth key; Nomad v2 instead Blowfish-decrypts all 16 bytes with a
+different key (`Ptsys.KEY_6`, itself stored encrypted) and truncates to 8 chars. The two are
+mutually exclusive, so at most one matches this disc. The XOR mask appears nowhere in the
+binary in any byte order, and both keys are shipped in derived forms (v1 as a full precomputed
+schedule, v2 encrypted), so a byte search cannot arbitrate; the client-side filler of
+ctx+0x154 was not located (the two callers of the accessor at `0xD36C5C` only format the bytes
+as hex for web URLs). We use the v1 scheme, which is what SaveMGO ran in production against
+this build. The first real `0x3003` will settle it: a wrong decode produces a clean
+INVALID_SESSION reply and a client-side error, not a hang.
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
