@@ -23,6 +23,25 @@ import java.util.function.Consumer;
 public class HostGameController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
 
+	/**
+	 * The host's saved game settings, asked for when the player opens Create Game so the screen can
+	 * be pre-filled with whatever they hosted last time.
+	 */
+	public static final int GET_HOST_SETTINGS = 0x4304;
+
+	/**
+	 * The reply, and <b>the only payload this server encrypts on the way out</b> — see
+	 * {@code GameCrypto.ENCRYPT_COMMANDS}. Until this command existed nothing exercised the
+	 * Blowfish encrypt direction at all, so a fault there would have been invisible.
+	 */
+	public static final int HOST_SETTINGS_RESULT = 0x4305;
+
+	/**
+	 * Fixed reply size. A host with nothing saved gets this many zero bytes, which is what both
+	 * references send and what the client reads as "no saved settings, use the defaults".
+	 */
+	private static final int HOST_SETTINGS_SIZE = 128;
+
 	public static final int CREATE_GAME = 0x4316;
 
 	public static final int CREATE_GAME_RESULT = 0x4317;
@@ -45,7 +64,26 @@ public class HostGameController implements IGameController {
 
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
+		handlers.put(GET_HOST_SETTINGS, this::getHostSettings);
 		handlers.put(CREATE_GAME, this::createGame);
+	}
+
+	/**
+	 * Returns the host's saved settings, or an empty block when there are none.
+	 * <p>
+	 * Nothing is persisted here yet: {@code chara_host_settings} exists but is never written, so
+	 * this always takes the empty path. That is correct rather than a stub — a player who has not
+	 * hosted has no settings to restore — but it means the populated path is untested.
+	 */
+	private void getHostSettings(GameControllerContext ctx) {
+		if (ctx.connection().account() == null) {
+			ctx.write(HOST_SETTINGS_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var buffer = ctx.buffer(HOST_SETTINGS_SIZE);
+		buffer.writeZero(HOST_SETTINGS_SIZE);
+		ctx.write(new GamePacket(HOST_SETTINGS_RESULT, buffer));
 	}
 
 	private void createGame(GameControllerContext ctx) {
