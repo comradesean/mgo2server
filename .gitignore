@@ -43,3 +43,6 @@ upstream/
 
 # Local tooling state
 .claude/
+
+# Recreated by the Maven container; never has anything worth keeping
+tmp/
