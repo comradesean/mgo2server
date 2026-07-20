@@ -36,6 +36,17 @@ public class HubGameController implements IGameController {
 
 	public static final int GAME_ENTRY_INFO_RESULT = 0x4991;
 
+	/**
+	 * Sent when the player backs out of a lobby to the screen before it.
+	 * <p>
+	 * Unanswered, the client hangs on the way <em>back</em> rather than on the way in, which is a
+	 * confusing symptom: everything worked until you pressed cancel. Both references reply with an
+	 * empty {@code 0x4151} and treat it as "this session has left the lobby".
+	 */
+	public static final int LOBBY_DISCONNECT = 0x4150;
+
+	public static final int LOBBY_DISCONNECT_RESULT = 0x4151;
+
 	private static final int NAME_LENGTH = 16;
 
 	/** index, attributes, id, name, open and close times, and the open flag. */
@@ -56,6 +67,7 @@ public class HubGameController implements IGameController {
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(GET_GAME_LOBBY_INFO, this::getGameLobbyInfo);
 		handlers.put(GET_GAME_ENTRY_INFO, this::getGameEntryInfo);
+		handlers.put(LOBBY_DISCONNECT, this::lobbyDisconnect);
 	}
 
 	private void getGameLobbyInfo(GameControllerContext ctx) {
@@ -93,6 +105,17 @@ public class HubGameController implements IGameController {
 
 		// Open and close times are unset, and the lobby is always open.
 		buffer.writeInt(0).writeInt(0).writeByte(1);
+	}
+
+	/**
+	 * Acknowledges the player leaving a lobby. The reply carries no payload — the client only waits
+	 * for it before returning to the previous screen.
+	 * <p>
+	 * Nothing is torn down here. Lobby membership is not tracked yet, and the connection stays open
+	 * because the client reuses it for whatever it shows next.
+	 */
+	private void lobbyDisconnect(GameControllerContext ctx) {
+		ctx.write(new GamePacket(LOBBY_DISCONNECT_RESULT, ctx.buffer(0)));
 	}
 
 	/**
