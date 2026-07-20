@@ -41,11 +41,14 @@ attributes. No magic cookie. Everything big-endian.
 
 **Requests the client sends** — three shapes, and no others have been observed:
 
-| body | attributes | RFC 3489 role |
+| body | attributes | what it is |
 | --- | --- | --- |
-| 12 | `0xf000` | Test I, basic Binding Request |
-| 24 | `CHANGE-REQUEST` (change-ip + change-port, `0x06`) + `0xf000` | Test II |
-| 0 | none | keepalive, repeated for the session once the check passes |
+| 12 | `0xf000` sub-type 2 | Test I (`0x2401`) |
+| 24 | `CHANGE-REQUEST` value `6` + `0xf000` sub-type 4 | Test II (`0x2402`) |
+| 0 | none | keepalive — see Confidence, its origin is not identified |
+
+Tests I′ and III (`0x2403`, `0x2404`) exist and are documented under Classification, but only run
+when Test II goes unanswered, which has never happened here.
 
 **Binding Response (`0x0101`)** — echo the request's transaction id, then four attributes in this
 order. Order matters: Stuntman carries a comment that Vovida-era clients are hardcoded to it.
@@ -86,6 +89,12 @@ anywhere in the binary.
 
 Requests are even, responses odd.
 
+**The decoded address is never used.** The parser stores it at offset `+0x30`/`+0x34` of the
+response record, and nothing in the worker ever reads that offset — the record lives on the
+worker's stack, so nothing outside can either. `CHANGED-ADDRESS` (`0x0005`) is consumed separately
+and is what actually drives Test I′ and Test III. So omitting `0xf000` changes no decision the
+client makes; its only functional weight is the hang below.
+
 ### Never echo it back
 
 **The client hangs forever on a sub-type it does not expect.** Its decoder dispatches on the
@@ -100,22 +109,44 @@ optional attributes are meant to be ignored, and `stund`, coturn and Stuntman al
 
 ## Classification (RFC 3489 §10.1)
 
-The client runs the standard decision tree — not a cut-down or custom algorithm.
+**Confirmed from the binary**, not inferred from behaviour. The client runs the standard tree, and
+the worker at `0xD89B78` drives it from a static test list at `0xE2CD08+0x5c`:
 
-1. **Test I** — basic Binding Request. No answer → UDP blocked. On an answer, compare
-   MAPPED-ADDRESS with the local socket address.
-2. **MAPPED == local** (no NAT): run Test II. Answered → **open Internet**. Unanswered → symmetric
-   UDP firewall. Terminal either way.
-3. **MAPPED != local** (NAT'd): run Test II. Answered → **full-cone NAT**. Terminal.
-4. **Test II unanswered**: re-run Test I against CHANGED-ADDRESS to detect symmetric NAT, then run
-   Test III (change-port only) to separate restricted-cone from port-restricted-cone.
+```
+2401  2402  2403  2404  240B          (240B terminates)
+```
 
-"Basic, then change-both, then stop" is the complete correct sequence for anyone whose Test II
-succeeds — branches 2 and 3. Nothing is skipped.
+| id | destination | body | RFC role |
+| --- | --- | --- | --- |
+| `0x2401` | primary | 12 (with `0xf000` sub-type 2) | Test I |
+| `0x2402` | primary | 24, CHANGE-REQUEST value **6** (change IP + port) | Test II |
+| `0x2403` | CHANGED-ADDRESS | 0 | Test I repeated, for symmetric detection |
+| `0x2404` | CHANGED-ADDRESS | 8, CHANGE-REQUEST value **2** (change port only) | Test III |
 
-On a LAN with no NAT the client takes branch 2 and concludes **open Internet**. A player behind a
-router takes branch 3 and gets **full-cone**. Branch 4 is the only path that issues Test III or a
-second Test I.
+The tree, with the verdict each branch assigns:
+
+| outcome | verdict | meaning |
+| --- | --- | --- |
+| Test I no reply | `2` | UDP blocked |
+| Test II replies, local == mapped | **`0x10`** | **open Internet** |
+| Test II replies, local != mapped | **`0x90`** | **full-cone NAT** |
+| Test II silent, local == mapped | `0x30` | symmetric UDP firewall |
+| Test I′ mapping differs | `0xD0` | symmetric NAT |
+| Test III replies / silent | `0xB1` / `0xB3` | restricted / port-restricted cone |
+
+The verdict is a `u16` written by a **single instruction** — `sth r14, 0xa18(obj)` at `0xD8A538`,
+the worker's one exit. It surfaces to the game as key `0x2102`; the classifier at `0xBBEA48` masks
+off a flag bit and **passes on `0x10` and `0x90`, failing everything else**.
+
+Retries and timeouts also match the RFC: four attempts, timeout `100 << retry` ms.
+
+So on a LAN with no NAT the client gets `0x10`; a player behind a router gets `0x90`. Both pass, and
+**Test II succeeding is the single load-bearing fact** — tests `0x2403`/`0x2404` still run but their
+validators preserve an already-nonzero verdict.
+
+One behaviour not in the RFC: if Test I's mapped **port** differs from the local port, the worker
+runs an extra probe (`0x2409`) and re-runs Test I before continuing, and can then yield `0x50`
+(address preserved, port translated).
 
 ## Server requirements
 
@@ -197,28 +228,38 @@ no XOR attribute at all.
 
 ## Confidence
 
-**Verified against the real client** (`BLUS30109`, stock RPCS3): the three request shapes, the
+**Verified against the real client** (`BLUS30109`, stock RPCS3): the request shapes, the
 four-attribute reply and its XOR key, the vendor-echo hang (reproduced in both directions), and a
-completed port check that proceeds to login. Across every frame the client has sent, our validator
-has never rejected one as malformed and it has never sent an attribute outside the set above — on
-the paths exercised it is byte-for-byte conformant.
+completed port check that proceeds to login. Our frame validator has never rejected a client packet
+as malformed and the client has never sent an attribute outside the set above — on the paths
+exercised it is byte-for-byte conformant.
 
-**Understood from the binary but never exercised:** branch 4. Our client is on a LAN with no NAT, so
-it takes branch 2 and terminates. Test III, the second Test I, and the `0xf000` sub-type 1 and 3
-handlers have never run. The Table 1 routing serving them is correct by construction — checked
-across all sixteen arrival/flag combinations — but has never been driven by a client.
+**Confirmed from the binary, though never exercised here:** the whole of the decision tree,
+including the branches our LAN client never takes. The test list, every builder and validator, the
+verdict values and the single instruction that writes them are all read out of `MGO2.elf`. So
+branch 4 is understood even though no client has driven it, and the Table 1 routing serving it was
+checked across all sixteen arrival/flag combinations.
 
-**Not established:** whether all four reply attributes are required (never bisected; coturn's
-old-STUN mode sends only three, hinting XOR-MAPPED is optional), how the client behaves against a
-STUN error response or under packet loss, and how its internal verdict encoding maps onto the RFC's
-named NAT types.
+**Not established:**
+
+- Whether all four reply attributes are required. Never bisected; coturn's old-STUN mode sends only
+  three, which hints XOR-MAPPED is optional.
+- Behaviour against a STUN error response, or under packet loss.
+- **Where the keepalives come from.** The heartbeat in this module (`0x2408`, via
+  `mrdUPnP_STUN_hartbeat` at `0xD8AB78`) sends a 40-byte request with a `0x14` body. What we
+  actually receive is a **20-byte header-only** Binding Request with no attributes — our validator
+  asserts datagram length equals `20 + declared length` and has never fired, so this is certain, not
+  a parsing artefact. Something outside the traced module is sending them. Harmless, since answering
+  them keeps the client happy, but unexplained.
 
 ## Eliminated
 
-**A separate "STTN" text protocol is not required.** A disassembly pass concluded a passing verdict
-could only come from a Konami text/HTTP protocol on a secondary server. The client passes against a
-pure RFC 3489 responder with no such endpoint in existence, so those paths are not the ones this
-client takes.
+**A separate "STTN" text protocol is not required, and now we know why.** An earlier disassembly
+pass concluded a passing verdict could only come from a Konami text/HTTP protocol on a secondary
+server. It was wrong twice over: it missed the UDP worker's own writer at `0xD8A538`, and the
+protocol is chosen by `obj+0xa40`, whose **default is `0x2203`** (set at object init) routing to the
+UDP worker. `STTN` runs only when that field is `0x2202`. The pure-STUN path is the default, which
+is why a plain responder passes.
 
 **A mapped address equal to the server address does not force a symmetric verdict.** We pass with
 both equal.
