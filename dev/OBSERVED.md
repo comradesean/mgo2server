@@ -423,6 +423,36 @@ live. So the server-side obligations for the whole port check are: accept the TC
 answer `0x3003` with result 0, and answer `0x4100` — all of which this server now does, with
 the burst layouts still unverified against the client's parsers.
 
+## Error 0692:00000003 — the UDP port check, a second machine after the connect
+
+There are **two** post-login "adjusting port" machines in the binary, and they are easy to
+conflate:
+
+1. The connect machine at `0x946F00` (module base `0xFF1018`) — a game-lobby TCP connect plus
+   check-session plus `0x4100`. This is where our BLUS30109 client on stock RPCS3 hangs
+   forever, and it is documented above.
+2. A **UDP port-check machine** at `0x95244C` (module base `0xFF1210`, six states, jump table
+   `0x9524A4`, state in the halfword at `+0x66`). State 1 binds a UDP socket and starts a
+   probe; state 3 polls it via `0x8F0DA8` and classifies the result: `0`/`1` pass (0 rings the
+   success chime `0x1CF`, 1 advances), while **`3`, `4`, and anything else raise error `0692`
+   with that classification as the detail** (`0x952758` → `li r4,3`; `0x952764` → `li r4,4`;
+   `0x952788` → `li r4,0`), through the confirm-dialog path `0x885A08`.
+
+So `0692:00000003` is not a DNS or connect failure — a connect failure aborts state 1 before any
+probe runs. It is the UDP probe completing and the server-side or NAT verdict coming back as
+classification 3. The probe reaches a server, that server (or the round trip) judges the client's
+UDP port unusable, and the client reports it.
+
+This was seen on the **MGO2PC custom build**, which is a different game build on a patched RPCS3
+and is not the target. Its RPCS3 log shows it resolving `stun.mgo2pc.com` and connecting to
+`15.204.239.231:5731` — MGO2PC's own live gate — not any local address, so pointing local DNS at
+`192.168.1.100` did not cause this: the custom build overrode DNS and reached the real MGO2PC
+STUN host, which returned a genuine port-check failure. That is a NAT/firewall verdict on the
+user's network, not a server misconfiguration and not something our server is even in the path
+for. The useful takeaway for our own target is structural: **if our connect machine is ever
+unstuck, this UDP check is the next gate, and it needs a STUN/UDP-probe server that actually
+validates the bound port** — consistent with everything already recorded under "STUN".
+
 ## Error 090B:00000001 — traced in the game binary
 
 This is no longer guesswork. The decrypted MGO2 module names the exact instruction that raises it.
