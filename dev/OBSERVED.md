@@ -34,8 +34,7 @@ Two failure modes have each cost real time here, and both are cheap to avoid.
 
 **Another implementation is not a specification.** mgo2-server and the Nomad upstreams both work —
 for their own targets. Neither was validated against `BLUS30109`, and the MGS4-integrated build
-differs. That divergence has now been paid for five times: the policy path, the gate hostname, the
-gate port, the version-check byte, and the perks field. The perks field is the instructive one,
+differs. That divergence has now been paid for six times: the policy path, the gate hostname, the gate port, the version-check byte, the login perks field, and the two appearance bytes character creation discarded. The perks field is the instructive one,
 because it was copied *correctly* — `Array(10).fill("1000000").join("_")` is genuinely what
 mgo2-server sends. Faithful transcription of a source that does not apply is still wrong, and it
 looks exactly like diligence.
@@ -158,7 +157,10 @@ Established, each checked rather than assumed:
 - **The client uses the real router, not a local responder.** It never fetches our description,
   even when ours answers all four searches first.
 - **STUN is answered.** Two binding requests per run, from an ephemeral port and then from 5730,
-  each with the `0xf000` vendor attribute. The client never sends CHANGE-REQUEST, so it is not
+  each with the `0xf000` vendor attribute. ~~The client never sends CHANGE-REQUEST~~ — **this was wrong; see the capture below.** It does
+  send one (change-ip and change-port together) as RFC 3489 Test II. The original claim was made
+  while the responder still echoed the `0xf000` vendor attribute, which hung the client before it
+  got that far. Left struck rather than deleted because the false conclusion is instructive. It is not
   doing full RFC 3489 classification here.
 - **The gate is not implicated.** Its exchange completes and the lobby list decodes field for
   field against SaveMGO's own `Hub.getLobbyList` layout — 46 bytes an entry, correct types,
@@ -407,7 +409,9 @@ Three consequences:
   lobby.** Every earlier statement here reasoning from "the account lobby is never dialled"
   stands factually, but the expectation behind it was wrong — during this phase the client was
   never going to dial the account lobby.
-- **The game lobby must accept a check-session with character id 0 and no character selected.**
+- **RETRACTED — do not implement this.** The premise below was false and the changes built on it were reverted; the game lobby rejects a check-session with no character selected. Kept only because the reasoning is instructive. See "reconciled against the disassembly" later in this file.
+
+~~The game lobby must accept a check-session with character id 0 and no character selected.~~
   SaveMGO passed this by a collision of defaults — the client zero-initialises its stored id and
   v1's MySQL `current_character` column defaulted to 0, so `0 == 0`. Our port modelled "no
   selection" as null and rejected, which would have failed the port check with `0x925` the
@@ -528,7 +532,9 @@ captured `port=fd37 ip=c498fd81` exactly. `dev/stun_probe.py` now sends this by 
 With the four-attribute reply, the game accepts the response, runs the port check to a verdict,
 and **reaches the online menu.** The verdict is `0692:00000003` ("NAT looks symmetric"), a soft
 dialog that lets the user proceed — it is not a hang. It is symmetric only because the client ran
-just the first NAT test (three basic Binding Requests to the primary, no CHANGE-REQUEST, never
+just the first NAT test — **historical: this was with the vendor attribute still echoed. With that
+removed the client runs Test II and the check passes, so a 0692 verdict today is a regression, not
+the expected outcome.** (three basic Binding Requests to the primary, no CHANGE-REQUEST, never
 queried the second address), so full-cone can't be confirmed; that matters for P2P match hosting,
 not for reaching the lobby. Making it a clean pass (`0x10`) would require driving the client
 through the two-address / change-request legs — a later concern.
@@ -929,8 +935,10 @@ must also allow TLS 1.0 and legacy ciphers.
 
 ## Session tokens
 
-A token is 32 hex characters. The first **8** are stored server-side; the first **16** are returned
-to the client. That much is confirmed: it matches `mgo2-server`'s login byte for byte
+A token is 32 hex characters and the first **16** are returned to the client. The server no
+longer stores a prefix of it: it stores the 32-hex-character value the client will derive, so
+`account.session` is `varchar(32)`. The ruled-out models below are historical — the transform
+was solved, see `dev/CRYPTO.md`. That the client receives 16 characters is confirmed: it matches `mgo2-server`'s login byte for byte
 (`sessionToken.slice(0,8)` stored, `slice(0,16)` returned).
 
 **The transform that recovers it is NOT understood, and `SessionIds.decode` is wrong.** This was

@@ -25,9 +25,8 @@ framing. **`dev/CRYPTO.md`** is the reference for every cipher, key and hash, an
 applied; the transport section below summarises what this protocol uses.
 
 That last distinction matters more than it looks. The references are not specifications: they were
-written for different client builds and have been wrong for `BLUS30109` five separate times (the
-policy path, the gate hostname, the gate port, the version-check byte, and the login perks field —
-see `dev/OBSERVED.md`, "How this file gets things wrong"). The perks field is the instructive one,
+written for different client builds and have been wrong for `BLUS30109` six separate times (the policy path, the gate hostname, the gate port, the version-check byte, the login perks field, and the two appearance bytes character creation discarded
+— see `dev/OBSERVED.md`, "How this file gets things wrong"). The perks field is the instructive one,
 because it was transcribed *correctly* from a source that did not apply. Faithful copying of the
 wrong reference looks exactly like diligence.
 
