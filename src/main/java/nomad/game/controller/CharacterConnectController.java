@@ -5,7 +5,9 @@ import nomad.common.BufferUtil;
 import nomad.common.model.Account;
 import nomad.common.model.Chara;
 import nomad.common.model.CharaAppearance;
+import nomad.common.model.CharaSettings;
 import nomad.common.model.ChatMacro;
+import nomad.common.model.EquippedSkills;
 import nomad.common.service.CharacterService;
 import nomad.game.GameControllerContext;
 import nomad.game.GameError;
@@ -54,28 +56,29 @@ public class CharacterConnectController implements IGameController {
 
 	private static final int NAME_LENGTH = 16;
 
-	private static final int INFO_PAYLOAD_SIZE = 0x243;
+	/**
+	 * The client's 0x4101 parser (0xD3C120) consumes a fixed 0x142-byte grid: the 0x29-byte
+	 * header, 32 friend ids, 32 blocked ids, then a 25-byte tail (u8, 16 bytes, two u32s).
+	 * Anything past 0x142 is never read. The reference servers all send 0x243 with 256-byte
+	 * friend and blocked regions — under them the client's blocked list was actually friend
+	 * ids 33-64, and its tail was read out of the blocked region, which was zeros in practice.
+	 */
+	private static final int INFO_PAYLOAD_SIZE = 0x142;
 
-	/** Friend ids run from the end of the header up to this offset. */
-	private static final int FRIENDS_END = 0x129;
+	/** 32 friend ids run from the end of the header up to this offset. */
+	private static final int FRIENDS_END = 0xa9;
 
-	/** Blocked ids follow, up to here. */
-	private static final int BLOCKED_END = 0x229;
+	/** 32 blocked ids follow, up to here; the remaining 25 bytes are the tail, zeroed. */
+	private static final int BLOCKED_END = 0x129;
 
 	/**
-	 * Fixed blocks the client expects inside the character record. Their meaning is undocumented;
-	 * they are reproduced from the original server byte for byte.
+	 * Four u16 values the client stores from the header (0x16AE, 0x0338, 0x013E, 0x0150).
+	 * Their meaning is undocumented; they are reproduced from the original server byte for
+	 * byte.
 	 */
 	private static final byte[] INFO_PREFIX = {
 		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,
 		(byte) 0x01, (byte) 0x3E, (byte) 0x01, (byte) 0x50,
-	};
-
-	private static final byte[] INFO_SUFFIX = {
-		(byte) 0x00, (byte) 0xB7, (byte) 0xFD, (byte) 0xAB, (byte) 0xFC, (byte) 0xFF, (byte) 0xFF, (byte) 0x7B,
-		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-		(byte) 0x00, (byte) 0x00,
 	};
 
 	private final CharacterService characterService;
@@ -98,8 +101,13 @@ public class CharacterConnectController implements IGameController {
 
 		var charaId = account.getCurrentCharaId();
 		if (charaId == null) {
-			logger.warn("Account {} entered a game lobby with no character selected.", account.getId());
-			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			// The post-login port check sends 0x4100 before any character exists. The client's
+			// 0x4101 grammar has no result field, so an error reply would be a parse failure
+			// and the port-check screen would sit on its timeout. Send the burst around an
+			// empty character instead; nothing is persisted for it.
+			logger.info("Account {} connected with no character selected; sending an empty burst.",
+				account.getId());
+			connectWithoutCharacter(ctx, account);
 			return;
 		}
 
@@ -120,6 +128,31 @@ public class CharacterConnectController implements IGameController {
 		writeSkills(ctx);
 		writeSkillSets(ctx, charaId);
 		writeGearSets(ctx, charaId);
+	}
+
+	/**
+	 * The burst for a connection with no character: defaults everywhere, nothing persisted.
+	 * The skill and gear sets (0x4140, 0x4142) are omitted — the client has no parser for
+	 * either, and materialising them would need character rows.
+	 */
+	private void connectWithoutCharacter(GameControllerContext ctx, Account account) {
+		var chara = new Chara();
+
+		writeCharacterInfo(ctx, account, chara);
+
+		var settingsBuffer = ctx.buffer(GameplaySettingsWriter.PAYLOAD_SIZE);
+		GameplaySettingsWriter.write(settingsBuffer, new CharaSettings());
+		ctx.write(new GamePacket(GAMEPLAY_SETTINGS, settingsBuffer));
+
+		// Character id 0 has no rows, so this yields the default grid without touching it.
+		writeChatMacros(ctx, 0);
+
+		var infoBuffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
+		PersonalInfoWriter.write(infoBuffer, chara, new CharaAppearance(), new EquippedSkills());
+		ctx.write(new GamePacket(PERSONAL_INFO, infoBuffer));
+
+		writeGear(ctx);
+		writeSkills(ctx);
 	}
 
 	private void writeGear(GameControllerContext ctx) {
@@ -184,11 +217,11 @@ public class CharacterConnectController implements IGameController {
 			.writeZero(1);
 
 		// Friend and blocked lists are fixed-width regions of 4-byte ids. Neither is modelled
-		// yet, so both are left empty and the regions are zero-filled.
+		// yet, so both are left empty and the regions are zero-filled, as is the tail — which
+		// is what the client actually received from the original server.
 		padTo(buffer, FRIENDS_END);
 		padTo(buffer, BLOCKED_END);
-
-		buffer.writeBytes(INFO_SUFFIX);
+		padTo(buffer, INFO_PAYLOAD_SIZE);
 
 		ctx.write(new GamePacket(CHARACTER_INFO, buffer));
 	}
