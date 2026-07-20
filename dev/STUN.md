@@ -359,8 +359,9 @@ two addresses" for the single-address question. What remains:
 1. ~~**What `0xf000` carries.**~~ **RESOLVED** — read out of the binary: a magic `0x0573`, an
    unused halfword, and a sub-type; sub-type 3 carries an address and port, sub-type 1 says there
    is none. The even/odd request-response pairing that was a guess here is now derived from the
-   dispatch table. See "What the attribute actually contains". What remains unknown is only why
-   `0x0573` is that value.
+   dispatch table. See "What the attribute actually contains". `0x0573` is a hardcoded immediate — `li rX, 0x573` at
+   `0xD8A07C`, `0xD8A618` and `0xD8A6C8`, the three attribute builders, with no derivation
+   anywhere. There is nothing further to recover: only Konami's source would say why 1395.
 2. **Whether any of the four reply attributes are optional.** We send all four because Vovida
    `stund` did and because the capture shows all four. Nobody has bisected them against this
    client. There is one indirect hint: coturn in old-STUN mode sends no XOR-MAPPED-ADDRESS at all,
