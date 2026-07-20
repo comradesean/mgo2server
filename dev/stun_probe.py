@@ -72,7 +72,8 @@ def describe(kind):
     }.get(kind, f"0x{kind:04x}")
 
 
-def serve(primary_port, advertised_ip, secondary_ip=None):
+def serve(primary_port, advertised_ip, secondary_ip=None,
+          include_changed=True, include_xor=False, echo_vendor=True):
     alternate_port = primary_port + 1
     two_addresses = secondary_ip is not None and secondary_ip != advertised_ip
 
@@ -149,13 +150,31 @@ def serve(primary_port, advertised_ip, secondary_ip=None):
             other_ip = secondary_ip if (two_addresses and reply_ip == advertised_ip) else advertised_ip
             other_port = alternate_port if reply_port == primary_port else primary_port
 
+            # Keep the reply to what an RFC 3489 client understands, and no wider.
+            #
+            # The client's decoder is template driven. mrd_upnp_stun.c carries these format
+            # strings, and nothing longer:
+            #
+            #   nnx16            header alone
+            #   nnx16nnN         header + one 4-byte attribute
+            #   nnx16nnnnN       header + one address attribute
+            #   nnx16nnNnnnnN    header + two attributes
+            #   nnx16nnNnnnnNN   header + two attributes
+            #
+            # Fixed shapes, the longest accounting for two attributes. A reply carrying five
+            # will not match any of them. XOR-MAPPED-ADDRESS goes first: it is RFC 5389, it is
+            # XORed against a magic cookie this 2008 client has no concept of, and it cannot
+            # appear in any of those templates.
             body = (
                 attribute(ATTR_MAPPED_ADDRESS, address_value(peer[0], peer[1]))
                 + attribute(ATTR_SOURCE_ADDRESS, address_value(reply_ip, reply_port))
-                + attribute(ATTR_CHANGED_ADDRESS, address_value(other_ip, other_port))
-                + attribute(ATTR_XOR_MAPPED_ADDRESS, xor_address_value(peer[0], peer[1]))
-                + b"".join(attribute(kind, value) for kind, value in vendor)
             )
+            if include_changed:
+                body += attribute(ATTR_CHANGED_ADDRESS, address_value(other_ip, other_port))
+            if include_xor:
+                body += attribute(ATTR_XOR_MAPPED_ADDRESS, xor_address_value(peer[0], peer[1]))
+            if echo_vendor:
+                body += b"".join(attribute(kind, value) for kind, value in vendor)
             response = struct.pack("!HH16s", BIND_RESPONSE, len(body), transaction) + body
 
             sockets[(reply_ip, reply_port)].sendto(response, peer)
@@ -163,8 +182,14 @@ def serve(primary_port, advertised_ip, secondary_ip=None):
 
 
 if __name__ == "__main__":
+    # Flags exist so the reply shape can be bisected against a real client without edits.
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
     serve(
-        int(sys.argv[1]) if len(sys.argv) > 1 else 3478,
-        sys.argv[2] if len(sys.argv) > 2 else "0.0.0.0",
-        sys.argv[3] if len(sys.argv) > 3 else None,
+        int(positional[0]) if len(positional) > 0 else 3478,
+        positional[1] if len(positional) > 1 else "0.0.0.0",
+        positional[2] if len(positional) > 2 else None,
+        include_changed="--no-changed" not in flags,
+        include_xor="--xor" in flags,
+        echo_vendor="--no-vendor" not in flags,
     )
