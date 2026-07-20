@@ -49,6 +49,7 @@ not an elimination if the thing varied could not have mattered.
 - `dev/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
 - `dev/STUN.md` — the UDP port check.
 - `dev/CRYPTO.md` — every cipher, key and hash, and where each is applied.
+- `dev/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.
 
 ## Distinguishing spec from policy
 
