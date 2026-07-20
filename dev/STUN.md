@@ -44,7 +44,10 @@ vendor 0xf000 = 057300000000000400000004
     -> replied from 192.168.1.100:3478,  mapped 192.168.1.100:5730
 ```
 
-Three request shapes, and that is all the client ever sends:
+Three request shapes — **but only because Test II succeeded here.** See the classification tree
+below: a player whose Test II gets no answer goes on to re-send Test I to CHANGED-ADDRESS and then
+a change-port-only Test III. Those will appear in the wild even though they never appear on a LAN
+bench, which is why CHANGED-ADDRESS has to be right:
 
 | len | attributes | meaning | we must reply from |
 | --- | --- | --- | --- |
@@ -70,15 +73,54 @@ attributes in this order:
 | `0x0005` | CHANGED-ADDRESS | the *other* address and port, i.e. where a change-request would be answered from |
 | `0x8020` | XOR-MAPPED-ADDRESS | the mapped address, obfuscated |
 
-Two details that are easy to get wrong, both settled against a real-server capture:
+Two details that look like Konami peculiarities and are not:
 
-- The XOR-mapped attribute is tagged **`0x8020`**, not the RFC-5389 `0x0020`.
-- It is XORed against the **request's transaction id**, not the RFC-5389 magic cookie:
+- The XOR-mapped attribute is tagged **`0x8020`**, not the RFC 5389 `0x0020`.
+- It is XORed against the **request's transaction id**, not the RFC 5389 magic cookie:
   `port ^ txid[0:2]`, `ip ^ txid[0:4]`, both big-endian. Verified by reproducing a captured
   packet exactly: for txid `eb55d721…` and client `47.205.42.160:5730` it yields port `fd37`,
   ip `c498fd81`, matching the capture byte for byte.
 
 MAPPED-ADDRESS must report the port the client actually sent from (`5730`), unmodified.
+
+### Where this dialect comes from
+
+**Confirmed against primary sources.** This is not a custom protocol. It is
+**`draft-ietf-behave-rfc3489bis-02`** (July 2005), the working draft that became RFC 5389 — and
+`0x8020` appears in *exactly one* published version of it:
+
+| draft | dated | XOR-MAPPED type | magic cookie | transaction id |
+| --- | --- | --- | --- | --- |
+| `-00`, `-01` | Oct 2004, Feb 2005 | `0x0020` | no | 128 bit |
+| **`-02`** | **Jul 2005** | **`0x8020`** | **no** | **128 bit** |
+| `-03` … `-18` | Feb 2006 → 2009 | `0x0020` | yes | 96 bit |
+
+Draft `-03` §11.15 says so in as many words: *"Version -02 of this Internet Draft used 0x8020 for
+this attribute, which was in the Optional range… This attribute has been moved back to 0x0020."*
+And `-02` §10.2.12 specifies the XOR key as *"the most significant 16 bits of the transaction ID"*
+for the port and 32 bits for the address — bit for bit what our responder does.
+
+The two oddities are therefore **one** oddity: the magic cookie was carved out of RFC 3489's
+128-bit transaction id in `-03`, and the attribute moved in the same revision. `0x8020` plus
+transaction-id XOR is a single coherent snapshot of the spec as it stood in late 2005.
+
+MGO2 shipped in June 2008; RFC 5389 was published in **October 2008**, after the game was on
+shelves. The client could not have targeted the final RFC. RFC 3489 (2003) has no
+XOR-MAPPED-ADDRESS at all.
+
+Corroboration that this was a real deployed dialect rather than a misreading:
+
+- **Microsoft [MS-TURN] §2.2.2.1** normatively cites *"[IETFDRAFT-STUN-02] section 10.2.12"*, sets
+  the attribute type to `0x8020`, and XORs against the transaction id. Lync/OCS spoke it too.
+- **Wireshark** carries `#define MS_XOR_MAPPED_ADDRESS 0x8020 /* MS-TURN */`.
+- **IANA** never permanently assigned `0x8020`; it sits in `0x8005-0x8021 Unassigned`.
+
+**The likely server:** Vovida `stund`, the RFC 3489 reference implementation. Its `stun.h` has
+`const UInt16 XorMappedAddress = 0x8020;`, its response builder XORs against the transaction id
+with the same 16/32-bit split, and `stunEncodeMessage()` emits attributes in a fixed order that for
+a binding response is exactly `0x0001, 0x0004, 0x0005, 0x8020` — **the precise four attributes, in
+the precise order, of the Konami capture**. One hypothesis explains the tag, the key, the attribute
+set and the ordering at once, with nothing Konami-specific left over.
 
 ## Never echo the client's `0xf000` vendor attribute
 
@@ -105,42 +147,121 @@ The behaviour was confirmed in both directions — echoing reproduced the hang, 
 a pass — so this is causal, not correlation. `echo_vendor` therefore defaults to **off** in
 `stun_probe.py`, and `--echo-vendor` exists only to reproduce the hang deliberately.
 
-**Unknown:** what `0xf000` actually means, what its sub-types 1 and 3 do, and whether there is any
-circumstance where the real server sends one. We simply never send it.
+**Sending nothing is also what the standard requires**, which is a better reason than "it works".
+RFC 3489 §11.2 and RFC 5389 §18.2 put attribute types `0x8000-0xFFFF` in the
+**comprehension-optional** range: a conformant peer must ignore what it does not understand.
+`0xf000` is in that range and is unassigned at IANA, and `stund`, coturn and stuntman all silently
+drop it. So every conformant server ignores this attribute — our default is the standards-correct
+behaviour, not a workaround.
 
-## Why two addresses
+**Still unknown:** what `0xf000` carries. Note though that the client having handlers for sub-types
+1 and 3 is decent evidence the real server *did* send it in some circumstance.
 
-**Reference, and partly unverified — read the caveat.**
+**Speculation, labelled as such but testable.** The observed values split as
+`0573 0000 0000 0002` and `0573 0000 0000 0004 0000 0004`. `0x0573` is constant and looks like a
+magic or version tag. The trailing word is `2` on the basic probe and `4` on the change-request —
+and the client's handlers are for `1` and `3`. That fits a scheme where **requests are even and
+the matching responses odd**: probe `2` answered by `1`, probe `4` answered by `3`. It would
+explain in one stroke why the client has no handler for the values it sends and why handlers 1 and
+3 exist at all. The discriminating experiment is to reply with `0573000000000001` to the basic
+probe and `…0003` to the change-request and see whether the client accepts them. If the sub-type is
+a bitfield instead, the correspondence is coincidence.
 
-RFC 3489 classification needs the server to be able to answer *from a different IP*: the client
-sends CHANGE-REQUEST and infers its NAT type from whether that reply arrives, and from which
-address. A responder with one address cannot distinguish a full-cone NAT from a symmetric one.
+## What the client is actually doing, and why two addresses
 
-This is why `boiln/echo`'s `stun.conf` requires two `listening-ip` entries, and why SaveMGO ran its
-STUN server on a different address from its gate (its DNS mapped the gate to `192.3.217.61` and the
-STUN host to `192.3.217.162`).
+**Confirmed against RFC 3489 §10.1.** The client is not running a cut-down or custom algorithm. It
+is running the standard tree, and our server makes it terminate on the shortest branch:
 
-Our responder serves the full four-socket layout when given a second address:
+1. **Test I** — basic Binding Request. No answer means UDP is blocked. On an answer, compare
+   MAPPED-ADDRESS against the local socket address.
+2. **If MAPPED == local** (no NAT in the path): run Test II. Answered → verdict **"open
+   Internet"**. Unanswered → symmetric UDP firewall. *Terminal either way; Test III never sent.*
+3. **If MAPPED != local** (NAT'd): run Test II. Answered → verdict **"full-cone NAT"**.
+   *Terminal; Test III never sent.*
+4. **Only if Test II goes unanswered** does the client re-run Test I against CHANGED-ADDRESS to
+   detect symmetric NAT, then run Test III (change-port only) to separate restricted-cone from
+   port-restricted-cone.
+
+So "basic, then change-both, then stop" is the complete and correct sequence for anyone whose
+Test II succeeds. Nothing is being skipped.
+
+**This also answers what verdict our client reached.** In the captured run the client was
+`192.168.1.100:5730` and MAPPED-ADDRESS came back `192.168.1.100:5730` — identical, so branch 2
+applies and the verdict was **"on the open Internet"**. A genuinely NAT'd player taking branch 3
+would get **full-cone**. That is a derivation from a deterministic flow chart applied to our own
+logged bytes, not a guess.
+
+### Why two addresses
+
+**Confirmed.** RFC 3489 §8.1: *"A STUN server MUST be prepared to receive Binding Requests on four
+address/port combinations — (A1, P1), (A2, P1), (A1, P2), and (A2, P2)."* RFC 5780 §6 is stricter
+still: a server that cannot allocate the same port on two addresses **MUST** answer any
+CHANGE-REQUEST with a 420 error rather than fudge it.
+
+Our responder serves all four when given a second address:
 
 ```
 python3 dev/stun_probe.py 3478 192.168.1.100 192.168.1.201
 ```
 
-binding `.100:3478`, `.100:3479`, `.201:3478`, `.201:3479`. With one address it falls back to
-answering change-IP from the alternate *port*, which lets the client conclude something rather than
-hang, but cannot express a full-cone verdict.
+**A single address will still get this client past the port check** — and that corrects an earlier
+claim here that it "cannot distinguish full-cone from symmetric". Two things are now clear:
 
-**Caveat, and an open question.** Both addresses were present on the run that passed, so the
-two-address layout is *sufficient*. Whether it is *necessary* has never been tested: nobody has run
-single-address mode with `echo_vendor` off. It is entirely possible the vendor echo was the only
-real blocker and one address would pass too. The experiment is cheap — drop the second argument,
-restart `probe-stun`, boot the game — and until someone runs it, "you need two IPs" is inherited
-belief rather than a result.
+- The client never checks *where* a reply came from. RFC 3489 §9.3 imposes no such check, and
+  §10.1 branches purely on whether a response arrived. So answering change-ip from another port on
+  the same address is not detected, and the check passes.
+- What it actually breaks is **full-cone vs restricted-cone**, not symmetric. Per §5 a restricted
+  cone filters on *address only*, so a reply from the same address on a different port passes its
+  filter. That player is told "full cone" and will then attempt direct connections that only a real
+  full-cone peer could accept.
 
-Note also that the run which passed had the **primary responder address equal to the client's own
-address** (`192.168.1.100` for both), so the mapped address and the server address were identical.
-An earlier theory held that this collision would force a symmetric verdict and had to be avoided.
-That theory is **refuted**: it passed anyway.
+Symmetric NAT is detected by re-running Test I against CHANGED-ADDRESS (branch 4), not by Test II
+at all — which is precisely why the CHANGED-ADDRESS bug below mattered.
+
+Since MGO2 matches are peer to peer, the cost of a single address is misrouted P2P for
+restricted-cone players rather than a failed port check. Keep two.
+
+### CHANGED-ADDRESS is relative to where the request arrived
+
+**Fixed here after being wrong.** RFC 3489 §9.2 Table 1 gives the source address, source port and
+CHANGED-ADDRESS for each flag combination, and CHANGED-ADDRESS is `Ca:Cp` on **every** row — the
+server's *other* socket relative to where the request arrived, never a function of where this
+particular reply is being sent.
+
+We previously derived it from the reply address. For a change-ip+port request arriving on `A1:P1`
+that produced `CHANGED-ADDRESS = A1:P1` — pointing the client back at the socket it had just used.
+
+It survived unnoticed because **Test I is the only test that completes on a LAN bench**, and for
+Test I the two derivations agree. It would have mattered to a real player on branch 4: they re-run
+Test I against CHANGED-ADDRESS to detect symmetric NAT, and would have been comparing the primary
+socket against itself. `stun_probe.py` now implements Table 1 directly, verified across all
+sixteen arrival/flag combinations.
+
+## Off-the-shelf alternatives
+
+**Confirmed from source.** Our Python responder is not the only option, and for anyone not wanting
+to run it there is a maintained server that speaks this exact dialect.
+
+**Stuntman** (`github.com/jselbie/stunserver`) implements it natively and auto-detects it:
+
+- `stuncore/stuntypes.h` — `// 0x8020 is not defined in any RFC, but is the value that Vovida
+  server uses`, `STUN_ATTRIBUTE_XORMAPPEDADDRESS_OPTIONAL = 0x8020`.
+- `stunreader.cpp` — `_fMessageIsLegacyFormat = !(cookie == STUN_COOKIE);`. MGO2 sends a 128-bit
+  transaction id with no magic cookie, so legacy mode engages automatically with no configuration.
+- In legacy mode it emits SOURCE-ADDRESS/CHANGED-ADDRESS rather than RESPONSE-ORIGIN/OTHER-ADDRESS,
+  XORs against the transaction id, and its handler carries the comment *"paranoia — just to be
+  consistent with Vovida, send the attributes back in the same order… I suspect there are clients
+  out there that might be hardcoded to the ordering"*. MGO2 is exactly such a client.
+
+Run it as `stunserver --mode full --primaryinterface <A1> --altinterface <A2>`. Being conformant,
+it ignores comprehension-optional attributes and so never echoes `0xf000`.
+
+**coturn will not work as a drop-in.** It defines `OLD_STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS (0x8020)`
+but never uses the constant: in old-STUN mode it sends MAPPED-ADDRESS, SOURCE-ADDRESS and
+CHANGED-ADDRESS and **no XOR attribute at all**. That is worth knowing for a second reason — the
+claim below that `boiln/echo` runs stock coturn online could not be verified from public sources,
+and if it *is* true then XOR-MAPPED-ADDRESS is optional to this client, since coturn never sends
+one. Untested either way.
 
 ## Checking the responder
 
@@ -209,17 +330,39 @@ code does all of it over ordinary UDP sockets.
 
 ## Still unknown
 
-1. **What `0xf000` carries.** Sub-types 1 and 3 have handlers in the client; the values it sends
-   (`…0002`, `…0004…`) are neither. Whether the real server ever sent one, and what it meant, is
-   unknown. We avoid the question by sending nothing.
-2. **Whether the second address is actually required** with the vendor echo off. Untested; cheap to
-   test. See "Why two addresses".
-3. **What NAT verdict the client actually settled on.** We know it passed and stopped complaining.
-   We never read the verdict byte back out of the client to see whether it concluded full-cone,
-   restricted, or something else — so we do not know how much headroom the current setup has, or
-   whether a stricter real-world NAT would still pass.
-4. **Whether any of the four reply attributes are optional.** We send all four because the real
-   server did. Nobody has bisected them against this client with the vendor echo off.
-5. **The `CHANGED-ADDRESS` semantics when only one address is configured.** The fallback answers
-   change-IP from the alternate port and reports something plausible in `CHANGED-ADDRESS`, but what
-   the client makes of that has not been checked.
+Three of the five entries that used to be here are now answered — see "Where this dialect comes
+from" for the `0x8020` provenance, "What the client is actually doing" for the verdict, and "Why
+two addresses" for the single-address question. What remains:
+
+1. **What `0xf000` carries.** The range and the safe handling are settled (comprehension-optional,
+   ignore it), but the payload is not. The even/odd request-response theory above is a labelled
+   guess with a concrete experiment attached.
+2. **Whether any of the four reply attributes are optional.** We send all four because Vovida
+   `stund` did and because the capture shows all four. Nobody has bisected them against this
+   client. There is one indirect hint: coturn in old-STUN mode sends no XOR-MAPPED-ADDRESS at all,
+   so if the `boiln/echo`-runs-coturn claim is true, that attribute at least is optional.
+3. **Whether `boiln/echo` really runs stock coturn.** Used here as precedent, but the repository
+   could not be found publicly and the claim is uncited. The conclusions it was supporting now rest
+   on the RFCs instead, so nothing depends on it — but it should not be repeated as fact.
+4. **What the client does with a single-address CHANGED-ADDRESS.** Untested. The reasoning above
+   says a restricted-cone player would be misclassified as full-cone, which is an argument from the
+   NAT definitions in RFC 3489 §5 rather than an observation.
+5. **Whether `mrd` is a known middleware vendor.** No trace of `mrdUPnP`, `mrd_upnp`, or the same
+   library in another PS3-era title. No public documentation, capture, or reimplementation of
+   MGO2's own STUN server was found either — this file may be the only writeup of it.
+
+## Sources
+
+Primary sources, all read rather than cited second-hand:
+
+- `draft-ietf-behave-rfc3489bis-00` … `-18`, IETF archive. `-02` §10.2.12 is the dialect we
+  implement; `-03` §11.15 records the move back to `0x0020`, and `-03` §6 introduces the magic
+  cookie.
+- RFC 3489 §§5, 8.1, 9.2, 9.3, 10.1, 11.2 — NAT definitions, the four-socket requirement,
+  Table 1, client processing, the classification tree, the optional-attribute range.
+- RFC 5389 §18.2 — the comprehension-required/optional split. RFC 5780 §6 — the 420 requirement.
+- IANA STUN Parameters registry — `0x8020` and `0xf000` both unassigned.
+- Microsoft [MS-TURN] §2.2.2.1 — cites draft `-02` and the same `0x8020`.
+- Vovida `stund` (`stun.h`, `stun.cxx`), Stuntman (`stuntypes.h`, `stunreader.cpp`,
+  `stunbuilder.cpp`, `messagehandler.cpp`), coturn (`ns_turn_msg_defs.h`, `ns_turn_msg.c`,
+  `ns_turn_server.c`), Wireshark `packet-stun.c`.
