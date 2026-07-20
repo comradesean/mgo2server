@@ -169,17 +169,33 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 			@Override
 			public void channelRead(ChannelHandlerContext ctx, Object msg) {
-				if (msg instanceof GamePacket packet) {
-					replies.add(packet);
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				replies.add(packet);
+
+				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
+					ctx.writeAndFlush(new GamePacket(CharacterConnectController.CONNECT));
+					return;
+				}
+				// Check-in plus the characterless burst: no skill or gear sets in it.
+				if (replies.size() >= 8) {
 					ctx.close();
 				}
 			}
 		});
 
-		assertThat(replies).hasSize(1);
 		assertThat(replies.get(0).getCommand())
 			.isEqualTo(AccountGameController.CHECK_SESSION_RESULT);
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		// The burst parses as a real one: full-size character info around character id 0.
+		assertThat(replies.get(1).getCommand()).isEqualTo(CharacterConnectController.CHARACTER_INFO);
+		assertThat(replies.get(1).getPayload().readableBytes()).isEqualTo(0x142);
+		assertThat(replies.get(1).getPayload().getInt(0)).isEqualTo(0);
+		// Skills (0x4125) is the packet whose arrival the port-check screen waits on.
+		assertThat(replies.stream().map(GamePacket::getCommand))
+			.contains(CharacterConnectController.SKILLS);
 	}
 
 	@Test
@@ -313,7 +329,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 		// This character is the account's main, so it draws on the main experience pool.
 		assertThat(info.getInt(28)).isEqualTo(1234);
-		assertThat(info.readableBytes()).isEqualTo(0x243);
+		// The client's parser consumes exactly this much: header, 32+32 ids, 25-byte tail.
+		assertThat(info.readableBytes()).isEqualTo(0x142);
 	}
 
 	/** An alt draws on the other pool. */
