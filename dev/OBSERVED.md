@@ -995,8 +995,16 @@ So keys and algorithm match a working server; only the derivation is wrong. Sinc
 `mgo2-server`'s, the same field would miss there too, which suggests `mgo2-server` targets a
 different client build (consistent with its underscore-joined perks, which this client rejects).
 
-This is the current blocker: the client reaches check-session and is refused with
-`INVALID_SESSION`, surfacing as **`0910:C0FFEE02`**.
+**This is solved.** The transform was traced in the binary (below), implemented as
+`nomad.common.crypto.SessionField`, and confirmed against a live client:
+
+```
+Account 122345677 checked in to ACCOUNT lobby.
+```
+
+The client reaches the account lobby and the character screen. `SessionIds` and its hard-coded
+`cafebabe` sentinel are gone; nothing is inverted any more. Login stores
+`SessionField.stored(token)` and check-session matches the presented sixteen bytes directly.
 
 ### What the client actually does, traced in MGO2.elf
 
@@ -1056,3 +1064,15 @@ In  - command 0003 - 0 bytes      client continues
 That single exchange validates the whole transport: the packet XOR, the HMAC-MD5 checksum,
 sequence numbering, framing, and the lobby list encoding — none of which had been tested against
 anything but this project's own test client.
+
+## Command 0x3107 — check character name
+
+Sent by the client on the account lobby around the character-registration screen. It is a
+name-availability pre-check: savemgo's Nomad names it in a commented-out case,
+`Accounts.checkCharacterName(ctx, in)` (`AccountLobby.java`), and shipped without it.
+
+We do not handle it either. Observed against a live client: the game logs
+`No handler for command 3107; ignoring.` and still reaches **Register New Character**, so it is
+not fatal. Whether the client blocks on a `0x3108` reply during name entry itself is untested —
+if it does, that is where it will show up, and the reply format should be read from the binary
+rather than guessed.
