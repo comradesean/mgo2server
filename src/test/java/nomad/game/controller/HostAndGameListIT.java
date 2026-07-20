@@ -4,7 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.TestDatabase;
-import nomad.common.crypto.SessionIds;
+import nomad.common.crypto.SessionField;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
 import nomad.game.GameListEntry;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.*;
  * Hosting a game and seeing it in the browser, end to end.
  */
 public class HostAndGameListIT extends BaseGameClientServerIT {
-	private static final String SESSION = "abcd1234";
+	private static final String TOKEN = "abcd1234abcd1234";
 
 	private long accountId;
 
@@ -40,7 +40,7 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 					values (:name, 'x', :session, 3, 500)
 					""")
 				.bind("name", name)
-				.bind("session", SESSION)
+				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -63,7 +63,7 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 	private List<GamePacket> exchange(int expectedReplies, GamePacket... requests) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionIds.encode(SESSION));
+		login.writeBytes(SessionField.of(TOKEN));
 
 		var replies = new ArrayList<GamePacket>();
 		var sent = new int[] { 0 };

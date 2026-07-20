@@ -5,7 +5,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.TestDatabase;
-import nomad.common.crypto.SessionIds;
+import nomad.common.crypto.SessionField;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
 import nomad.game.packet.GamePacket;
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.*;
  * authenticated account.
  */
 public class CharacterGameControllerIT extends BaseGameClientServerIT {
-	private static final String SESSION = "abcd1234";
+	private static final String TOKEN = "abcd1234abcd1234";
 
 	private long accountId;
 
@@ -36,7 +36,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots)
 					values ('player', 'x', :session, 3)
 					""")
-				.bind("session", SESSION)
+				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -88,7 +88,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	private List<GamePacket> loginThenNoAccount(GamePacket request, int untilCommand) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) accountId);
-		login.writeBytes(SessionIds.encode(SESSION));
+		login.writeBytes(SessionField.of(TOKEN));
 
 		var replies = new ArrayList<GamePacket>();
 

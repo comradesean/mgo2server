@@ -1,6 +1,7 @@
 package nomad.web.controller;
 
 import io.jooby.Jooby;
+import nomad.common.crypto.SessionField;
 import nomad.common.service.AccountService;
 import nomad.web.IWebController;
 import org.apache.logging.log4j.LogManager;
@@ -25,8 +26,9 @@ import java.util.HexFormat;
  *   1,0,0,0000000000000000                        failure
  * </pre>
  * Anything else is rejected as 090B:00000001. See {@link #PERKS}.
- * A token is 32 hex characters. The first 8 are stored and are what the game server sees after
- * the client encrypts them into the check-session packet; the first 16 go back to the client.
+ * A token is 32 hex characters, of which the first 16 go to the client. The client never sends
+ * them back: it derives a sixteen-byte value from them at login and presents that on
+ * check-session, so the account stores that derived value. See {@link SessionField}.
  */
 public class AuthWebController implements IWebController {
 	private static final Logger logger = LogManager.getLogger();
@@ -61,9 +63,7 @@ public class AuthWebController implements IWebController {
 		return "1000000";
 	}
 
-	/** Characters of the token kept in the database, and sent to the client, respectively. */
-	private static final int STORED_LENGTH = 8;
-
+	/** Characters of the token handed to the client; it derives its session value from these. */
 	private static final int CLIENT_LENGTH = 16;
 
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -93,11 +93,13 @@ public class AuthWebController implements IWebController {
 				return FAILURE;
 			}
 
-			var token = newToken();
-			accountService.setSession(account.getId(), token.substring(0, STORED_LENGTH));
+			// The client keeps these sixteen characters and derives the value it will present on
+			// check-session from them, so that derived value is what the account stores.
+			var token = newToken().substring(0, CLIENT_LENGTH);
+			accountService.setSession(account.getId(), SessionField.stored(token));
 
 			logger.info("Account {} logged in as '{}'.", account.getId(), name);
-			return successReply(account.getId(), token.substring(0, CLIENT_LENGTH));
+			return successReply(account.getId(), token);
 		});
 	}
 

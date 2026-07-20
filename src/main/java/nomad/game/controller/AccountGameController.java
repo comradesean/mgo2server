@@ -1,6 +1,6 @@
 package nomad.game.controller;
 
-import nomad.common.crypto.SessionIds;
+import nomad.common.crypto.SessionField;
 import nomad.common.service.AccountService;
 import nomad.game.GameControllerContext;
 import nomad.game.GameError;
@@ -48,19 +48,19 @@ public class AccountGameController implements IGameController {
 	private void checkSession(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 
-		if (payload.readableBytes() < Integer.BYTES + SessionIds.FIELD_LENGTH) {
+		if (payload.readableBytes() < Integer.BYTES + SessionField.FIELD_LENGTH) {
 			logger.warn("Check session: payload too short ({} bytes).", payload.readableBytes());
 			ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
 			return;
 		}
 
 		var claimedId = payload.readInt() & 0xffffffffL;
-		var sessionField = new byte[SessionIds.FIELD_LENGTH];
+		var sessionField = new byte[SessionField.FIELD_LENGTH];
 		payload.readBytes(sessionField);
 
-		var token = SessionIds.decode(sessionField);
-
-		var account = accountService.findBySession(token).orElse(null);
+		// The client derived this from its login token, so the account already holds the same
+		// value and it is matched directly. Nothing is decoded back into a token.
+		var account = accountService.findBySession(SessionField.stored(sessionField)).orElse(null);
 		if (account == null) {
 			logger.warn("Check session: no account holds the presented session.");
 			ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);

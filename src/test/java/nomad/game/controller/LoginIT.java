@@ -4,7 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.TestDatabase;
-import nomad.common.crypto.SessionIds;
+import nomad.common.crypto.SessionField;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
 import nomad.game.packet.GamePacket;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.*;
  * exercise the encrypted path of the codec rather than just the plaintext framing.
  */
 public class LoginIT extends BaseGameClientServerIT {
-	private static final String SESSION = "abcd1234";
+	private static final String TOKEN = "abcd1234abcd1234";
 
 	private long createAccount(String username, String session) {
 		return TestDatabase.get().jdbi().withHandle(handle ->
@@ -31,7 +31,7 @@ public class LoginIT extends BaseGameClientServerIT {
 					values (:username, 'x', :session, 3)
 					""")
 				.bind("username", username)
-				.bind("session", session)
+				.bind("session", SessionField.stored(session))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -39,7 +39,7 @@ public class LoginIT extends BaseGameClientServerIT {
 
 	/** Sends a check-session packet and returns the reply packets. */
 	private List<GamePacket> checkSession(long accountId, byte[] sessionField) {
-		var payload = Unpooled.buffer(Integer.BYTES + SessionIds.FIELD_LENGTH);
+		var payload = Unpooled.buffer(Integer.BYTES + SessionField.FIELD_LENGTH);
 		payload.writeInt((int) accountId);
 		payload.writeBytes(sessionField);
 
@@ -71,9 +71,9 @@ public class LoginIT extends BaseGameClientServerIT {
 
 	@Test
 	public void acceptsValidSession() {
-		var accountId = createAccount("player", SESSION);
+		var accountId = createAccount("player", TOKEN);
 
-		var replies = checkSession(accountId, SessionIds.encode(SESSION));
+		var replies = checkSession(accountId, SessionField.of(TOKEN));
 
 		assertThat(replies).hasSize(1);
 		assertThat(replies.get(0).getCommand()).isEqualTo(AccountGameController.CHECK_SESSION_RESULT);
@@ -83,7 +83,7 @@ public class LoginIT extends BaseGameClientServerIT {
 	/** Checking in clears any previously selected character. */
 	@Test
 	public void clearsCurrentCharacterOnCheckIn() {
-		var accountId = createAccount("player", SESSION);
+		var accountId = createAccount("player", TOKEN);
 
 		var charaId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("insert into chara (account_id, name) values (:account, 'Snake')")
@@ -98,7 +98,7 @@ public class LoginIT extends BaseGameClientServerIT {
 				.bind("id", accountId)
 				.execute());
 
-		checkSession(accountId, SessionIds.encode(SESSION));
+		checkSession(accountId, SessionField.of(TOKEN));
 
 		var current = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select current_chara_id from account where id=:id")
@@ -111,9 +111,9 @@ public class LoginIT extends BaseGameClientServerIT {
 
 	@Test
 	public void rejectsUnknownSession() {
-		createAccount("player", SESSION);
+		createAccount("player", TOKEN);
 
-		var replies = checkSession(1, SessionIds.encode("zzzzzzzz"));
+		var replies = checkSession(1, SessionField.of("zzzzzzzzzzzzzzzz"));
 
 		assertThat(replies).hasSize(1);
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.INVALID_SESSION.result());
@@ -122,10 +122,10 @@ public class LoginIT extends BaseGameClientServerIT {
 	/** A valid session presented alongside somebody else's account id must not be honoured. */
 	@Test
 	public void rejectsSessionBelongingToAnotherAccount() {
-		var accountId = createAccount("player", SESSION);
+		var accountId = createAccount("player", TOKEN);
 		var otherId = createAccount("other", "wxyz9876");
 
-		var replies = checkSession(otherId, SessionIds.encode(SESSION));
+		var replies = checkSession(otherId, SessionField.of(TOKEN));
 
 		assertThat(accountId).isNotEqualTo(otherId);
 		assertThat(replies).hasSize(1);
@@ -140,7 +140,7 @@ public class LoginIT extends BaseGameClientServerIT {
 				.mapTo(Long.class)
 				.one());
 
-		var replies = checkSession(accountId, SessionIds.encode("00000000"));
+		var replies = checkSession(accountId, SessionField.of("0000000000000000"));
 
 		assertThat(replies).hasSize(1);
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.INVALID_SESSION.result());
