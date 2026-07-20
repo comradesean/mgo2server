@@ -493,6 +493,34 @@ built on that false premise — accepting a game-lobby check-session with id 0, 
 characterless `0x4100` burst — have been reverted. The `0x3049` trailer (35 bytes / 0x1d7) and
 `0x4101` grid (0x142) fixes are independent of this and stand.
 
+## The port check is beaten — the game reaches the menu (stock RPCS3 + our server)
+
+The long-standing "the client binds 5730 but never sends STUN" was a **logging artifact**, and
+it is now disproven end to end. With `sys_net` at Trace level and a STUN responder running, the
+BLUS30109 client on **stock RPCS3** plainly does: `bind 192.168.1.100:5730` →
+`sendto(len=32) → 192.168.1.100:3478` (a STUN Binding Request carrying the Konami `0xf000`
+vendor attribute). Default RPCS3 batches the sendto into a `⁂ sys_net_bnet_sendto [n]` summary
+and, with no responder answering, nothing confirmed it — which is why every prior session
+concluded it was never sent.
+
+The first responder reply was **rejected** because it was three attributes where the real server
+sends four. The missing one is **XOR-MAPPED-ADDRESS**, and two things about it were non-standard:
+its type is **`0x8020`** (not the RFC-5389 `0x0020`), and it is XORed against the **request
+transaction id**, not the magic cookie (`port ^ txid[0:2]`, `ip ^ txid[0:4]`). Decoded from the
+capture and validated: for txid `eb55d721…`, client `47.205.42.160:5730`, it reproduces the
+captured `port=fd37 ip=c498fd81` exactly. `dev/stun_probe.py` now sends this by default.
+
+With the four-attribute reply, the game accepts the response, runs the port check to a verdict,
+and **reaches the online menu.** The verdict is `0692:00000003` ("NAT looks symmetric"), a soft
+dialog that lets the user proceed — it is not a hang. It is symmetric only because the client ran
+just the first NAT test (three basic Binding Requests to the primary, no CHANGE-REQUEST, never
+queried the second address), so full-cone can't be confirmed; that matters for P2P match hosting,
+not for reaching the lobby. Making it a clean pass (`0x10`) would require driving the client
+through the two-address / change-request legs — a later concern.
+
+So: **stock RPCS3 + our server now clears gate → login → lobby list → port check → menu.** The
+next server-side surface is the account lobby (`15732`) reached from the menu.
+
 ## Error 0692:00000003 — the UDP port check, a second machine after the connect
 
 There are **two** post-login "adjusting port" machines in the binary, and they are easy to
