@@ -120,8 +120,9 @@ Two things make this unguessable from captures alone: the block is **decrypted**
 encrypted, and the XOR is against the **previous plaintext** block rather than the previous
 ciphertext.
 
-The IV is `b0 78 1d 53 65 e3 91 0e` and the 56-byte key is the schedule shipped as
-`crypto/session.key`; both are constants in `SessionField`.
+The IV is `b0 78 1d 53 65 e3 91 0e`, a constant in `SessionField`. The 56-byte key is not shipped
+directly — `crypto/session.key` is the **4168-byte expanded schedule** built from it, which is what
+the cipher actually consumes.
 
 ### Reproducing `session.key` from a live client
 
@@ -182,7 +183,20 @@ For RPCS3 this is solvable without patching the client: generate a CA, sign the 
 with it, and write the CA over one of the `CAxx.cer` files. The client was observed reading
 `CA29`–`CA31`; installing at `CA30.cer` works.
 
-The PS3's TLS stack is from 2008, so the server must also permit TLS 1.0 and legacy ciphers.
+The PS3's TLS stack is from 2008, so the server must also permit TLS 1.0 and legacy ciphers — and
+on a modern OpenSSL that is not the default. Both knobs are required; without them the handshake is
+refused before any request arrives, which looks **exactly** like a missing certificate and reports
+the same `090B`. In Python:
+
+```python
+tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls_ctx.load_cert_chain(cert, key)
+tls_ctx.minimum_version = ssl.TLSVersion.TLSv1   # modern default is TLS 1.2
+tls_ctx.set_ciphers("ALL:@SECLEVEL=0")           # SECLEVEL 0 re-enables 2008-era suites
+```
+
+`SECLEVEL=0` is the one people miss: modern distributions compile OpenSSL with a security level
+that removes these ciphers entirely, so `ALL` alone still offers the console nothing it can use.
 `probe-https` terminates TLS and proxies through to the web service; `NOMAD_TLS_CERT` selects the
 chain, which allows swapping in a deliberately expired one — the client reports that as `070B`
 rather than `090B`, which is how the certificate branch was originally identified.
@@ -199,6 +213,11 @@ pulls these from your own disc:
 | `0xE25AD8` | 16 | HMAC-MD5 key (ASCII) |
 | `0xE25AEC` | 4168 | Blowfish pi-init table |
 | `0xE26DA8` | 64 | session master context: 8-byte IV then a 56-byte key |
+
+Check your extraction rather than trusting it. The raw packet key at `0xE25A18` begins
+`27 50 1f d0 4e 6b 82 c8`, and expanding all 56 bytes yields a schedule whose first P entries are
+`b08e376f 3d82d63e 18ec1f44 673a86f5`. If those do not match, the expansion is wrong — most likely
+a byte-order slip, since every step is silent on failure.
 
 `vaddr = file offset + 0x10000`.
 
