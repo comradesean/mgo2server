@@ -174,7 +174,12 @@ services:
   # as a lobby error rather than a NAT one.
   probe-stun:
     image: python:3.12-alpine
-    command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100}
+    # A second address is what makes NAT classification possible at all: the client asks the
+    # server to reply from a different address and infers its type from whether that reply
+    # arrives. With one address the responder can only answer change-IP from the alternate port,
+    # which lets the client conclude but not distinguish full-cone from symmetric. The secondary
+    # must be a real address on the host (ip addr add ... dev <iface>).
+    command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100} ${NOMAD_STUN_SECONDARY_IP:-192.168.1.201}
     volumes:
       - ./dev/stun_probe.py:/stun.py:ro
     # Host networking, not published ports. Docker's UDP proxy rewrites the source port of

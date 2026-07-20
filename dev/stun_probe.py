@@ -79,7 +79,7 @@ def describe(kind):
 
 
 def serve(primary_port, advertised_ip, secondary_ip=None,
-          include_changed=True, include_xor=False, echo_vendor=True):
+          include_changed=True, include_xor=False, echo_vendor=False):
     alternate_port = primary_port + 1
     two_addresses = secondary_ip is not None and secondary_ip != advertised_ip
 
@@ -130,8 +130,8 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
                     change_flags = struct.unpack("!I", value[:4])[0]
                 elif attr_type >= 0x8000 or attr_type == 0xf000:
                     # Konami sends 0xf000 on the game's own probes but not on the plain ones.
-                    # Its meaning is unknown, so it is echoed back: a client that correlates
-                    # requests by a private attribute will not accept a reply without it.
+                    # Recorded only; echoing it back is off by default and must stay that way.
+                    # See echo_vendor below for why.
                     vendor.append((attr_type, value))
                     print(f"      vendor 0x{attr_type:04x} = {value.hex()}", flush=True)
 
@@ -192,6 +192,20 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
 
 if __name__ == "__main__":
     # Flags exist so the reply shape can be bisected against a real client without edits.
+    #
+    # echo_vendor defaults OFF, and that default is load-bearing rather than cosmetic. The
+    # client's own DecodePacket dispatches on the 0xf000 vendor attribute's sub-type: 1 and 3
+    # have handlers, and anything else falls through to a logging stub followed by an infinite
+    # branch. The client sends sub-types the server must not parrot -- an observed first probe
+    # carried 0xf000 = 0573000000000002 -- so echoing its own attribute back hands the decoder
+    # the value that spins it forever. That is what left the game sitting on "Adjusting port
+    # settings" with no error and no timeout.
+    #
+    # With no vendor attribute in the reply the client runs the full NAT classification,
+    # including the change-request leg answered from the alternate address, and the port check
+    # passes. This also matches coturn, which the one reference server that works online uses
+    # and which has no notion of Konami vendor attributes. --echo-vendor exists only to
+    # reproduce the hang deliberately.
     flags = [a for a in sys.argv[1:] if a.startswith("--")]
     positional = [a for a in sys.argv[1:] if not a.startswith("--")]
     serve(
@@ -200,5 +214,5 @@ if __name__ == "__main__":
         positional[2] if len(positional) > 2 else None,
         include_changed="--no-changed" not in flags,
         include_xor="--no-xor" not in flags,
-        echo_vendor="--no-vendor" not in flags,
+        echo_vendor="--echo-vendor" in flags,
     )
