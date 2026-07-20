@@ -150,21 +150,24 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
             other_ip = secondary_ip if (two_addresses and reply_ip == advertised_ip) else advertised_ip
             other_port = alternate_port if reply_port == primary_port else primary_port
 
-            # Keep the reply to what an RFC 3489 client understands, and no wider.
+            # A capture of the real MGO2 server (mgo2pc, BLUS30109 client) settles the reply
+            # shape: a Binding Response carries FOUR attributes, in this order, and the client
+            # accepts all of them and passes NAT classification:
             #
-            # The client's decoder is template driven. mrd_upnp_stun.c carries these format
-            # strings, and nothing longer:
+            #   0x0001 MAPPED-ADDRESS      the client's public ip:port  (port PRESERVED)
+            #   0x0004 SOURCE-ADDRESS      the responding server's own ip:port
+            #   0x0005 CHANGED-ADDRESS     the *other* server's ip:port
+            #   0x8020 XOR-MAPPED-ADDRESS  the mapped ip:port, obfuscated
             #
-            #   nnx16            header alone
-            #   nnx16nnN         header + one 4-byte attribute
-            #   nnx16nnnnN       header + one address attribute
-            #   nnx16nnNnnnnN    header + two attributes
-            #   nnx16nnNnnnnNN   header + two attributes
+            # The earlier belief that the decoder is template-driven and rejects more than two
+            # attributes was wrong — the working server sends four. The decisive field is
+            # MAPPED-ADDRESS: its port must equal the port the client sent from (5730). Both
+            # server addresses must report the *same* mapped ip:port; that consistency across two
+            # addresses is what the client reads as a full-cone NAT and passes.
             #
-            # Fixed shapes, the longest accounting for two attributes. A reply carrying five
-            # will not match any of them. XOR-MAPPED-ADDRESS goes first: it is RFC 5389, it is
-            # XORed against a magic cookie this 2008 client has no concept of, and it cannot
-            # appear in any of those templates.
+            # (The real XOR-MAPPED uses attribute id 0x8020 and an obfuscation this client's own,
+            # not the RFC 5389 magic cookie; its exact key is not yet reproduced here, so the XOR
+            # attribute stays optional. The three plaintext address attributes carry the verdict.)
             body = (
                 attribute(ATTR_MAPPED_ADDRESS, address_value(peer[0], peer[1]))
                 + attribute(ATTR_SOURCE_ADDRESS, address_value(reply_ip, reply_port))

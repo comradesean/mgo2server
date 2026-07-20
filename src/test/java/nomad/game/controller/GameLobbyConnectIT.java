@@ -143,61 +143,6 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 			.isEqualTo(GameError.INVALID_SESSION.result());
 	}
 
-	/**
-	 * The post-login port check dials a game lobby before any character exists. The client's
-	 * stored character id is still zero-initialised, and its 0x3003 here carries a trailing flag
-	 * byte the account-lobby variant lacks. The session alone must be enough.
-	 */
-	@Test
-	public void acceptsPortCheckBeforeCharacterSelection() {
-		givenSelectedCharacter("Snake");
-		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update account set current_chara_id = null where id = :id")
-				.bind("id", accountId).execute());
-
-		var login = Unpooled.buffer();
-		login.writeInt(0);
-		login.writeBytes(SessionIds.encode(SESSION));
-		login.writeByte(0);
-
-		var replies = new ArrayList<GamePacket>();
-		client.run(10, new ChannelInboundHandlerAdapter() {
-			@Override
-			public void channelActive(ChannelHandlerContext ctx) {
-				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
-			}
-
-			@Override
-			public void channelRead(ChannelHandlerContext ctx, Object msg) {
-				if (!(msg instanceof GamePacket packet)) {
-					return;
-				}
-				replies.add(packet);
-
-				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
-					ctx.writeAndFlush(new GamePacket(CharacterConnectController.CONNECT));
-					return;
-				}
-				// Check-in plus the characterless burst: no skill or gear sets in it.
-				if (replies.size() >= 8) {
-					ctx.close();
-				}
-			}
-		});
-
-		assertThat(replies.get(0).getCommand())
-			.isEqualTo(AccountGameController.CHECK_SESSION_RESULT);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
-
-		// The burst parses as a real one: full-size character info around character id 0.
-		assertThat(replies.get(1).getCommand()).isEqualTo(CharacterConnectController.CHARACTER_INFO);
-		assertThat(replies.get(1).getPayload().readableBytes()).isEqualTo(0x142);
-		assertThat(replies.get(1).getPayload().getInt(0)).isEqualTo(0);
-		// Skills (0x4125) is the packet whose arrival the port-check screen waits on.
-		assertThat(replies.stream().map(GamePacket::getCommand))
-			.contains(CharacterConnectController.SKILLS);
-	}
-
 	@Test
 	public void rejectsCheckInWithNoCharacterSelected() {
 		givenSelectedCharacter("Snake");

@@ -5,9 +5,7 @@ import nomad.common.BufferUtil;
 import nomad.common.model.Account;
 import nomad.common.model.Chara;
 import nomad.common.model.CharaAppearance;
-import nomad.common.model.CharaSettings;
 import nomad.common.model.ChatMacro;
-import nomad.common.model.EquippedSkills;
 import nomad.common.service.CharacterService;
 import nomad.game.GameControllerContext;
 import nomad.game.GameError;
@@ -101,13 +99,8 @@ public class CharacterConnectController implements IGameController {
 
 		var charaId = account.getCurrentCharaId();
 		if (charaId == null) {
-			// The post-login port check sends 0x4100 before any character exists. The client's
-			// 0x4101 grammar has no result field, so an error reply would be a parse failure
-			// and the port-check screen would sit on its timeout. Send the burst around an
-			// empty character instead; nothing is persisted for it.
-			logger.info("Account {} connected with no character selected; sending an empty burst.",
-				account.getId());
-			connectWithoutCharacter(ctx, account);
+			logger.warn("Account {} entered a game lobby with no character selected.", account.getId());
+			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
 			return;
 		}
 
@@ -128,31 +121,6 @@ public class CharacterConnectController implements IGameController {
 		writeSkills(ctx);
 		writeSkillSets(ctx, charaId);
 		writeGearSets(ctx, charaId);
-	}
-
-	/**
-	 * The burst for a connection with no character: defaults everywhere, nothing persisted.
-	 * The skill and gear sets (0x4140, 0x4142) are omitted — the client has no parser for
-	 * either, and materialising them would need character rows.
-	 */
-	private void connectWithoutCharacter(GameControllerContext ctx, Account account) {
-		var chara = new Chara();
-
-		writeCharacterInfo(ctx, account, chara);
-
-		var settingsBuffer = ctx.buffer(GameplaySettingsWriter.PAYLOAD_SIZE);
-		GameplaySettingsWriter.write(settingsBuffer, new CharaSettings());
-		ctx.write(new GamePacket(GAMEPLAY_SETTINGS, settingsBuffer));
-
-		// Character id 0 has no rows, so this yields the default grid without touching it.
-		writeChatMacros(ctx, 0);
-
-		var infoBuffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(infoBuffer, chara, new CharaAppearance(), new EquippedSkills());
-		ctx.write(new GamePacket(PERSONAL_INFO, infoBuffer));
-
-		writeGear(ctx);
-		writeSkills(ctx);
 	}
 
 	private void writeGear(GameControllerContext ctx) {
