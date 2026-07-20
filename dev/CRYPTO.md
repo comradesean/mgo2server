@@ -18,7 +18,6 @@ check (which uses none of this).
 | HMAC-MD5 | every game packet header | `GameCrypto.checksum` |
 | Blowfish (`packet.key`) | payloads of six inbound commands, one outbound | `GameCrypto.packet()` |
 | Blowfish (`session.key`) + custom chaining | the check-session field | `SessionField` |
-| Blowfish (`auth.key`) | **nothing — dead** | `GameCrypto.auth()` |
 | MD5 | account passwords, hashed by the client | `AccountService.findByCredentials` |
 | TLS | the HTTPS login and version-check endpoints | `probe-https` container |
 
@@ -63,20 +62,22 @@ is a 4168-byte key schedule — 18 P-array entries then four 256-entry S-boxes, 
 rather than a passphrase to be run through key setup. Block size is 8 bytes; payloads are
 zero-padded up to a block boundary before encryption and the padding dropped after.
 
-### The three schedules
+### The two schedules
 
 | file | bytes | used for |
 | --- | --- | --- |
 | `packet.key` | 4168 | payload encryption for the command sets below |
 | `session.key` | 4168 | the check-session field transform |
-| `auth.key` | 4168 | nothing in production — see below |
 
-`auth.key` was the schedule behind the old `SessionIds` class, which modelled the check-session
-field as an invertible transform. That model was wrong and the class is gone. The schedule is still
-loaded by `GameCrypto.auth()` and still referenced by `BlowfishTest`, but **no production code path
-uses it**. It is retained only because it is an artefact inherited from savemgo Nomad that may yet prove
-useful; it can be deleted whenever the tests are repointed. Note that nothing has ever verified it
-is the game's key — see Provenance.
+A third schedule, `auth.key`, was **removed**. It backed the old `SessionIds` class, which modelled
+the check-session field as an invertible transform — a model that turned out to be wrong and whose
+class has been deleted. Nothing in production ever loaded it, nothing verified it was the game's
+key, and it was inherited rather than derived here.
+
+It is recoverable if ever needed: byte-identical copies are vendored at
+`upstream/mgo2-server-upstream/src/core/constants/crypto-keys-constants.ts` (`BLOWFISH_KEY_AUTH`)
+and `upstream/nomad-upstream/src/main/java/savemgo/nomad/crypto/Constants.java`. Both were checked
+against our copy before deletion and matched exactly, all 4168 bytes.
 
 ### Which payloads are encrypted
 
@@ -166,19 +167,15 @@ the image, and searching for one there proves nothing either way.
 | --- | --- | --- |
 | `packet.key` | savemgo Nomad's `Constants.java` | **In production.** Real client payloads decrypt correctly and the client accepts ours. Wrong bytes here would break every encrypted command. |
 | `session.key` | derived here, from a context read out of a live client | **Pinned to two independent captures** in `SessionFieldTest`. |
-| `auth.key` | savemgo Nomad's `Constants.java` | **Nothing.** Unused in production; no test asserts it is the game's key, only that our Blowfish reproduces the original implementation's output over it. |
 
-`packet.key` and `auth.key` were inherited when the crypto was ported from savemgo Nomad — they
-were extracted from that project's `Constants.java`, not from the game by us. How savemgo obtained
-them is not recorded here; presumably a memory dump of a running game, since the expanded form does
-not exist on disc. Both are byte-identical to `mgo2-server`'s `BLOWFISH_KEY_PACKET` and
-`BLOWFISH_KEY_AUTH`, which is corroboration that they are a real shared artefact — though possibly
-only that both projects drew from the same upstream.
+`packet.key` was inherited when the crypto was ported from savemgo Nomad — extracted from that
+project's `Constants.java`, not from the game by us. How savemgo obtained it is not recorded here;
+presumably a memory dump of a running game, since the expanded form does not exist on disc. It is
+byte-identical to `mgo2-server`'s `BLOWFISH_KEY_PACKET`, which is corroboration that it is a real
+shared artefact — though possibly only that both projects drew from the same upstream.
 
 The practical consequence: **`packet.key` is trustworthy because it demonstrably works**, and
-`session.key` because it reproduces captured bytes. `auth.key` is trustworthy on nobody's authority
-— it is an inherited constant, for a model that turned out to be wrong, that nothing exercises. If
-it is ever needed, verify it against the client before believing it.
+`session.key` because it reproduces captured bytes. Neither rests on anyone's say-so.
 
 The XOR key and the HMAC key are constants in the game binary and are exercised by every packet.
 

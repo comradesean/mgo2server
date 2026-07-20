@@ -20,38 +20,30 @@ import static org.assertj.core.api.Assertions.*;
 public class BlowfishTest {
 	private static final HexFormat HEX = HexFormat.of();
 
-	// plaintext, packet-key encrypt, packet-key decrypt, auth-key encrypt, auth-key decrypt
+	// plaintext, packet-key encrypt, packet-key decrypt
 	@ParameterizedTest(name = "{0} bytes")
 	@CsvSource({
 		"344b5b2e116ee87a,"
-			+ "67fc5890077915b7,e926129be2ce9225,366fc45030ac4210,359fcb2be54f2257",
+			+ "67fc5890077915b7,e926129be2ce9225",
 
 		"8cb3662a7a5f622f016e848962d3a078,"
-			+ "6f95660ee1652aedcdf9526c4371ab32,cd31fd54a963fc64d99a2f3fdf03bbc7,"
-			+ "bdbe53a520c046a68e051d731faddbc6,fb91e431fabfe17ed6634bc1a8f7a60d",
+			+ "6f95660ee1652aedcdf9526c4371ab32,cd31fd54a963fc64d99a2f3fdf03bbc7",
 
 		"e51b7125e34fdbe55d2ea1b51e0bf40545c94f7c6e47d423,"
 			+ "1595f0d6807949bec3e33fc86b3cb5f1443d594b7ce63393,"
-			+ "3158c878621fcd6c08501ec5a1f6e632a00d7372cc674825,"
-			+ "ef9386b99a3b204f4a97dc9f199f5f53f592e9cf5b772da8,"
-			+ "15e74ed42d3f08a99ce4a95f7881a5cf7ae1969643f68208",
+			+ "3158c878621fcd6c08501ec5a1f6e632a00d7372cc674825",
 
 		"9e25a80df2023b7126f1318fcb259cc8d3c65c73586e3a4cebcfd505ee1a5a4455066d05ad171f7882cd71f7d1d50c09cb1fb04619faaed8ddfbe72b3293e527,"
 			+ "7bd09bb7c1f5f4ad0c756b6c70009394227f60fd0bd5303ad562d4558c754e62d7d19dddb71400c1101a21e1b6e2be76316120a5f99605654bc68e833fb2135a,"
-			+ "2acd7fc75e756a7f66e5ba4271fb33cf286c00ef2341f9332509e2cfc38efa88612843d9260966cc3497d964cc8a23e7199cff1b3b5c77f92ea5948fcb7f7ba4,"
-			+ "58e24b033f1a140fd3f84b18d8f99f6a25bd7b15ca9d7b08cdae85374707d7f99774092c603a0405c31c6c4164ef31c5bc72abeb77b5a34f0d374d2b0e88937b,"
-			+ "068708b129d8996471416a3cc90e427f9539e19c4ac7fb166a7a1818b2f9719f498be82aba09a834449a990297a3ebe9b7b4233c84b11af6b02ddc450b5a62d5",
+			+ "2acd7fc75e756a7f66e5ba4271fb33cf286c00ef2341f9332509e2cfc38efa88612843d9260966cc3497d964cc8a23e7199cff1b3b5c77f92ea5948fcb7f7ba4",
 	})
 	public void matchesOriginalImplementation(
-		String plainHex, String packetEncrypted, String packetDecrypted,
-		String authEncrypted, String authDecrypted
+		String plainHex, String packetEncrypted, String packetDecrypted
 	) {
 		var plain = HEX.parseHex(plainHex);
 
 		assertThat(apply(GameCrypto.packet(), plain, true)).isEqualTo(packetEncrypted);
 		assertThat(apply(GameCrypto.packet(), plain, false)).isEqualTo(packetDecrypted);
-		assertThat(apply(GameCrypto.auth(), plain, true)).isEqualTo(authEncrypted);
-		assertThat(apply(GameCrypto.auth(), plain, false)).isEqualTo(authDecrypted);
 	}
 
 	private static String apply(Blowfish cipher, byte[] plain, boolean encrypt) {
@@ -99,10 +91,10 @@ public class BlowfishTest {
 		var viaPacket = plain.clone();
 		GameCrypto.packet().encrypt(viaPacket);
 
-		var viaAuth = plain.clone();
-		GameCrypto.auth().encrypt(viaAuth);
+		var viaSession = plain.clone();
+		Blowfish.loadResource("crypto/session.key").encrypt(viaSession);
 
-		assertThat(viaPacket).isNotEqualTo(viaAuth);
+		assertThat(viaPacket).isNotEqualTo(viaSession);
 	}
 
 	@Test
