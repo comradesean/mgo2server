@@ -13,16 +13,27 @@ public class LobbyService {
 	}
 
 	/**
-	 * Lobbies advertised to a client, ordered by name.
+	 * Lobbies advertised to a client, ordered by id.
 	 * <p>
-	 * The order is not cosmetic. A client that reconnects to whichever entry leads the list will
-	 * loop if that entry is the gate it just came from, so a lobby it can actually enter has to
-	 * come first. mgo2-server orders by name for what appears to be the same reason: its rows are
-	 * named GATE and ACCOUNT, so alphabetical ordering puts the account lobby ahead of the gate.
+	 * The order is not cosmetic, and it is not alphabetical. SaveMGO's Nomad — the server this
+	 * client was actually developed against — never sorts: {@code Hub.getLobbyList} iterates
+	 * {@code NLobbies.get().values()}, a map keyed by lobby id, which for small integer keys
+	 * yields ascending id. With the canonical seeding (Gate 1, Account 2, Game 3) that makes the
+	 * list index and the lobby type coincide:
+	 * <pre>
+	 *   index 0 -> type 0 (Gate)    index 1 -> type 1 (Account)    index 2 -> type 2 (Game)
+	 * </pre>
+	 * That identity matters because the client keys its connections by type — it holds a
+	 * three-slot table at stride 0x44 indexed by type — while its own debug string reads
+	 * {@code mgo_connect_server_by_index() index=%d, type=%d}, carrying both. Sorting by name put
+	 * Account at index 0 and the Gate at index 2, breaking it.
+	 * <p>
+	 * This previously ordered by name, citing mgo2-server. That reference targets a different
+	 * client build and has been wrong for this disc repeatedly; see dev/OBSERVED.md.
 	 */
 	public List<Lobby> getLobbies() {
 		try (var handle = jdbi.open()) {
-			return handle.createQuery("select * from lobby order by name")
+			return handle.createQuery("select * from lobby order by id")
 				.mapTo(Lobby.class)
 				.list();
 		}
