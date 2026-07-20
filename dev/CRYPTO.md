@@ -86,9 +86,16 @@ inbound  (client -> server):  0x3003, 0x4310, 0x4320, 0x43c0, 0x4700, 0x4990
 outbound (server -> client):  0x4305
 ```
 
-Of the inbound set we currently handle `0x3003`, `0x4700` and `0x4990`. The outbound set contains
-one command that **nothing in this server ever sends** — it is carried for parity with the
-reference implementations and is untested.
+**Both sets come from the reference servers, not the binary.** The client decides per call site
+rather than consulting a table, so there is nothing to read off — searching the image for these ids
+as a contiguous table finds nothing, and they do not cluster.
+
+Of the inbound set we handle `0x3003`, `0x4700` and `0x4990`, and only `0x3003` is confirmed: its
+payload decrypts to a correct account id, which neither a wrong list nor a wrong key could produce.
+
+The outbound set is **entirely unverified**. Nothing here sends `0x4305`, so this cipher has never
+encrypted a byte the client has seen, and whether the client expects it encrypted is unknown. The
+encrypt direction of `packet.key` is therefore exercised only by unit vectors, never in production.
 
 A request being encrypted says nothing about its reply. `0x3003` arrives encrypted and `0x3004`
 goes back in the clear; likewise `0x4700`/`0x4701` and `0x4990`/`0x4991`.
@@ -156,6 +163,32 @@ The PS3's TLS stack is from 2008, so the server must also permit TLS 1.0 and leg
 chain, which allows swapping in a deliberately expired one — the client reports that as `070B`
 rather than `090B`, which is how the certificate branch was originally identified.
 
+## Offsets in `MGO2.elf`
+
+Every constant that lives in the binary, with the address to read it from. `dev/extract_keys.py`
+pulls these from your own disc:
+
+| vaddr | size | what |
+| --- | --- | --- |
+| `0xE25A18` | 56 | **raw packet key.** Expand through the standard Blowfish schedule to get `packet.key`. |
+| `0xE25AD0` | 4 | whole-packet XOR key |
+| `0xE25AD8` | 16 | HMAC-MD5 key (ASCII) |
+| `0xE25AEC` | 4168 | Blowfish pi-init table |
+| `0xE26DA8` | 64 | session master context: 8-byte IV then a 56-byte key |
+
+`vaddr = file offset + 0x10000`.
+
+Runtime-only addresses, for the parts a disc cannot give you:
+
+| vaddr | what |
+| --- | --- |
+| `0x1698DA8` | the crypto singleton; `+4` is the master-context pointer, `+0x34` mode 6's key pointer |
+| `0xFFE6DC` | static global holding that singleton pointer |
+| `0xfbbd00` | its vtable — `+0x8` the cipher, `+0xC` the wrapper |
+| `0x10985F0` | mode 6's 64-byte key blob. **Zero on disc**, materialised at runtime — this is the one that needs a memory dump. |
+| `0xBB1800` | the login parser's call into the crypto service, mode 6 |
+| `0xD35704` | where the packet key pointer is loaded, `*(*(TOC-0x66d8) - 0x7fe8)` |
+
 ## Provenance
 
 Worth stating precisely, because the three schedules have very different pedigrees and only one of
@@ -171,14 +204,14 @@ the image, and searching for one there proves nothing either way.
 | `packet.key` | savemgo Nomad's `Constants.java` | **In production.** Real client payloads decrypt correctly and the client accepts ours. Wrong bytes here would break every encrypted command. |
 | `session.key` | derived here, from a context read out of a live client | **Pinned to two independent captures** in `SessionFieldTest`. |
 
-`packet.key` was inherited when the crypto was ported from savemgo Nomad — extracted from that
-project's `Constants.java`, not from the game by us. How savemgo obtained it is not recorded here;
-presumably a memory dump of a running game, since the expanded form does not exist on disc. It is
-byte-identical to `mgo2-server`'s `BLOWFISH_KEY_PACKET`, which is corroboration that it is a real
-shared artefact — though possibly only that both projects drew from the same upstream.
+`packet.key` arrived inherited from savemgo Nomad's `Constants.java`, but it no longer rests on
+that: the game's own 56-byte key is at `0xE25A18`, and expanding it reproduces the shipped schedule
+exactly. It is now a disc-derived constant that happens to agree with the upstreams, rather than an
+upstream constant we hoped was right.
 
-The practical consequence: **`packet.key` is trustworthy because it demonstrably works**, and
-`session.key` because it reproduces captured bytes. Neither rests on anyone's say-so.
+`session.key` remains the one artefact a disc cannot produce, because mode 6's key blob is zeroed
+in the image and written at runtime. Everything around it is documented — the master context is at
+`0xE26DA8`, the blob at `0x10985F0` — so a memory dump reproduces it, but nothing static will.
 
 The XOR key and the HMAC key are constants in the game binary and are exercised by every packet.
 
