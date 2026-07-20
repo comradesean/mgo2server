@@ -122,6 +122,45 @@ service. A responder that matches only the spec-correct URN answers none of the 
 client waits indefinitely rather than timing out — which is what the first version of
 `dev/upnp_probe.py` did, and it cost a test cycle. Echo back whatever target was asked for.
 
+### Where it stops now, and what is ruled out
+
+With the login fixed, the client reaches this phase and stalls in it. One clean RPCS3 session:
+
+```
+0:02:13.31  [mgonet_connect_timeo]  connect 192.168.1.100:15731   gate, lobby list, clean 0003
+0:02:13.65  [uaccount.cc]           connect 192.168.1.100:443     login, 36-byte reply
+0:02:19-24  [mrdUPnP]               connect 192.168.1.1:49152  x8  the real router
+0:02:25.10  [mrdUPnP]               bind    192.168.1.100:5730
+            ...nothing further. recvfrom is called in a loop; nothing is sent.
+```
+
+Established, each checked rather than assumed:
+
+- **UPnP succeeds.** The router ends up holding `UDP 5730 -> 192.168.1.100:5730` described as
+  `988358F30A3C`, which is the client's own machine id — the binary has
+  `mrdUPnP_Create_Machine_Uniq_Id` and `%02X%02X%02X%02X%02X%02X` next to `KONAMI`. Enumerating
+  the router's mappings read-only shows it. The eight connects are that exchange succeeding, not
+  a retry loop.
+- **The client uses the real router, not a local responder.** It never fetches our description,
+  even when ours answers all four searches first.
+- **STUN is answered.** Two binding requests per run, from an ephemeral port and then from 5730,
+  each with the `0xf000` vendor attribute. The client never sends CHANGE-REQUEST, so it is not
+  doing full RFC 3489 classification here.
+- **The gate is not implicated.** Its exchange completes and the lobby list decodes field for
+  field against SaveMGO's own `Hub.getLobbyList` layout — 46 bytes an entry, correct types,
+  ports and ids. The account lobby is never contacted at all.
+- **`EADDRINUSE` on `192.168.1.100:1900` is a red herring.** Windows' own SSDP Discovery service
+  (`svchost`) binds port 1900 by default, so every RPCS3 user on Windows gets this, SaveMGO's
+  included. The client falls back to an ephemeral port and discovery works regardless.
+- **Unsolicited UDP to port 5730 does not move it.** Sent from WSL and from Windows, as a bare
+  datagram, a Binding Request and a Binding Response. The WSL-to-Windows path is not the problem:
+  a Windows listener receives WSL-sent datagrams, tested directly.
+- **RPCS3's own UPnP setting is irrelevant.** The client asks 21 `cellNetCtlGetInfo` codes and
+  NAT type is not among them; there is no value that setting changes for the game.
+
+So the phase completes its visible work and the client still waits. The next place to look is the
+state machine behind the screen, in the binary, the way 090B was found — not the network.
+
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
 ```
