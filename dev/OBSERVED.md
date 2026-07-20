@@ -998,6 +998,49 @@ different client build (consistent with its underscore-joined perks, which this 
 This is the current blocker: the client reaches check-session and is refused with
 `INVALID_SESSION`, surfacing as **`0910:C0FFEE02`**.
 
+### What the client actually does, traced in MGO2.elf
+
+The transform runs at **login**, not at check-session. The login-reply parser stores the token as
+its **16 ASCII characters** (confirmed: it round-trips through a `cellHttpUtil` unescape that
+reports 17 bytes required = 16 chars + NUL, i.e. identity — base64 would need 12 or 24), then at
+`0xBB1800` makes a virtual call and copies the 16-byte result to parse-object `+0x154`, which the
+`0x3003` builder ships verbatim.
+
+The call is `f(r3=obj, r4=out, r5=in, r6=0x10, r7=6)` on a singleton whose pointer lives in the
+static global `0xFFE6DC` (= `0x1698DA8`, `.bss`; the accessor `0xD64498` is a plain getter, no lazy
+init). `0x1698DA8` appears nowhere else in the image and no code forms it inline — every user goes
+through that getter.
+
+The vtable is at **`0xfbbd00`**, recovered by finding OPD descriptors (identified by their TOC field
+`0x10353A8`) for the service's code region and then the array of pointers to them:
+
+| slot | function | role |
+|---|---|---|
+| `+0x0` | `0xd64860` | register key for a mode |
+| `+0x4` | `0xd64798` | mode → key schedule |
+| `+0x8` | `0xd645c8` | the block cipher itself |
+| `+0xC` | `0xd644b0` | the wrapper invoked at login (mode 6) |
+
+`0xd644b0` calls `+0x4(obj, mode, 0)`, which must return `0x40` or it logs and spins on `b .`; then
+`+0x4(obj, mode, ctxbuf)` to build a context; then `+0x8(obj, out, in, len, ctx)` to transform.
+`0xd645c8` rejects `len & 7`, so it is an **8-byte block cipher**. `0xd64798` is:
+
+```
+if (unsigned)(mode-1) > 9  -> error        ; modes 1..10
+row = obj + mode*8 ; keyptr = *(row+4) ; keylen = *(row+8)
+if keylen > 0 && outbuf:  +0x8(obj, outbuf, keyptr, keylen, *(obj+4))
+```
+
+So a **master context at `*(obj+4)`** decrypts a **64-byte per-mode key blob** into the context that
+then encrypts our 16 bytes. Mode 6's blob is registered at `0x2fa8c` — `bl` the getter, then
+`+0x0(obj, mode=6, keyptr, 0x40)` where `keyptr = *(*(TOC-0x7f68) - 0x7ff8)` = **`0x10985f0`**.
+
+**Dead end for static analysis:** the 64 bytes at `0x10985f0` are **all zero in the image**, its
+address appears only in the pointer slot at `0xfbc6bc`, and no code constructs it inline. The key is
+materialized at runtime. Recovering it needs either the runtime derivation chased further, or a
+memory dump of `0x10985f0` (and `obj` at `0x1698DA8`) from a running client — the cipher body at
+`0xd645c8` can still be read statically.
+
 ## Protocol, confirmed working
 
 A real client completed a lobby list exchange against this server:
