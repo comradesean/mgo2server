@@ -191,10 +191,16 @@ public class GamePacketDecoderIT extends BaseGameClientServerIT {
 	/**
 	 * A replayed sequence number is tolerated, not refused.
 	 * <p>
-	 * mgo2-server tracks the incoming sequence without validating it, and notes that a real
-	 * client's first packet is sequence 0 where this counts from 1. Dropping a connection over
-	 * that bookkeeping risks refusing a legitimate client; the checksum is what authenticates a
-	 * packet, and it is still enforced.
+	 * The reasoning stands on its own: the checksum is what authenticates a packet and is still
+	 * enforced, so dropping a connection over sequence bookkeeping can only lose legitimate
+	 * clients without preventing anything.
+	 * <p>
+	 * <b>Evidence: upstream only.</b> The specific claim that a real client's first packet is
+	 * sequence 0, where this counts from 1, comes from mgo2-server and has never been checked
+	 * against {@code BLUS30109}. It is cheap to settle — raise {@code GamePacketDecoder} to debug
+	 * and read the "Sequence for command" line on the next connection — and until somebody does,
+	 * this test guards our behaviour rather than proving it correct. Our own captures cannot
+	 * settle it: they are payload-only and carry no headers.
 	 */
 	@Test
 	public void toleratesReplayedSequenceNumber() {

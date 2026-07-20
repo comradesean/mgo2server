@@ -123,7 +123,7 @@ public class LoginIT extends BaseGameClientServerIT {
 	@Test
 	public void rejectsSessionBelongingToAnotherAccount() {
 		var accountId = createAccount("player", TOKEN);
-		var otherId = createAccount("other", "wxyz9876");
+		var otherId = createAccount("other", "wxyz9876wxyz9876");
 
 		var replies = checkSession(otherId, SessionField.of(TOKEN));
 
