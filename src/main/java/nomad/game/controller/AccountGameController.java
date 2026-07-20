@@ -70,13 +70,8 @@ public class AccountGameController implements IGameController {
 		// The session is real, but it has to belong to whoever the client says it is; otherwise a
 		// leaked token would let any id be claimed.
 		if (lobbyType == LobbyType.GAME) {
-			// The port check right after login dials a game lobby before any character has been
-			// selected; the client's stored character id is still its zero-initialised value. The
-			// original server passed this because its current-character column also defaulted to
-			// zero. So: no selection and a claimed id of zero is the port check, and only the
-			// session can be validated.
 			var current = account.getCurrentCharaId();
-			if (current == null ? claimedId != 0 : current != claimedId) {
+			if (current == null || current != claimedId) {
 				logger.warn("Check session: account {} has character {} selected, client claimed {}.",
 					account.getId(), current, claimedId);
 				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);

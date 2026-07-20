@@ -423,6 +423,76 @@ live. So the server-side obligations for the whole port check are: accept the TC
 answer `0x3003` with result 0, and answer `0x4100` — all of which this server now does, with
 the burst layouts still unverified against the client's parsers.
 
+## The port check decoded from a live packet capture
+
+A Wireshark capture of a **working** MGO2PC session (`savemgo.pcapng`) settles the port check on
+the wire, and Wireshark itself labels it **CLASSIC-STUN (RFC 3489)** — no magic cookie, exactly
+as the binary predicted. The client binds UDP 5730 and runs two-address NAT classification
+against two STUN server IPs. Read the bytes, not the schema:
+
+The client sends a Binding Request to the primary STUN server, carrying one Konami `0xf000`
+vendor attribute, and gets back a Binding Response with **four** attributes:
+
+```
+REQ  ->  0001 000c <16B txid> f000 0008 0573000000000002
+RESP <-  0101 0030 <txid>
+         0001 0008 0001 1662 2fcd2aa0   MAPPED-ADDRESS   port 0x1662=5730  ip 47.205.42.160
+         0004 0008 0001 0d96 0fcc42cf   SOURCE-ADDRESS   port 3478  ip 15.204.66.207 (self)
+         0005 0008 0001 0d97 0fcc14bb   CHANGED-ADDRESS  port 3479  ip 15.204.20.187 (other srv)
+         8020 0008 0001 fd37 c498fd81   XOR-MAPPED-ADDRESS (obfuscated, non-RFC-5389 key)
+```
+
+The client then contacts the second server (learned from CHANGED-ADDRESS), which returns the
+**same** MAPPED-ADDRESS `47.205.42.160:5730`. It also sends a CHANGE-REQUEST leg
+(`0003 0004 00000006` = change IP **and** port) — so it *does* send CHANGE-REQUEST, correcting the
+earlier note here that it never does.
+
+What makes it PASS, stated as the responder must satisfy it:
+
+1. **Two server addresses**, each answering on the STUN port. DNS gave only the primary
+   (`stun.mgo2pc.com` → 15.204.66.207); the second (15.204.20.187) is handed to the client in the
+   first response's CHANGED-ADDRESS. So our responder supplies the second address itself.
+2. **MAPPED-ADDRESS port must equal the client's source port (5730)** — port-preserving.
+3. **Both servers must report the identical mapped ip:port.** That consistency across two
+   distinct server addresses is what the client reads as full-cone (NAT type `0x10`) and passes;
+   a differing/absent mapping reads as symmetric (0/1/2) and fails `0692:00000003`.
+
+`dev/stun_probe.py` already emits MAPPED + SOURCE + CHANGED with `peer` as the mapped address
+(port-preserving) and, given a second address, answers change-IP from it — i.e. it is the right
+shape. The capture removes the last doubt about the format (four attributes are accepted; the
+old "decoder rejects >2 attributes" comment was wrong and is fixed). The remaining risk is
+operational: it must run host-networked (Docker's UDP proxy rewrites the source port, which would
+break the port-preserving mapping) and with the real second address configured. The XOR-MAPPED
+`0x8020` attribute uses a client-specific obfuscation not yet reproduced; the three plaintext
+address attributes carry the verdict, so it is optional.
+
+## The post-login machines, mapped to the flow (reconciled against the disassembly)
+
+A working MGO2PC session reaches character select, joins a match, and quits, giving the
+ground-truth order: **gate (5731) → UDP port check (STUN, 5730) → account lobby (5732, character
+select) → game lobby (5733, join)**. The state machines map onto it as follows, each cited to the
+binary:
+
+| machine (obj slot) | step | connects | 0x3003 sender | onward |
+| --- | --- | --- | --- | --- |
+| `0x9461D8` (0x166F050) | fetch lobby list | — | — | sends `0x2005` |
+| `0x95244C` | UDP port check | — (STUN, binds 5730) | — | raises `0692:xxxx` |
+| `0x9468B8` (0x166F054) | **account lobby / char select** | **type 1** via `0xD38120` | **`0xD38180`** (account id from ctx+0x150, req-status 5) | UI requests `0x3048` char list |
+| `0x946F00` (0x166F058) | **game join** (user-initiated) | **type 2** via `0xD384A4` | **`0xD39F18`** (character id from *(ctx+0x57d8), + flag byte, req-status 6) | `0x4100` loadout burst via `0xD3A9F4` |
+
+Connection slots are keyed by type at stride `0x44`, valid types 0/1/2 only (`0xD358CC`); type 0
+= gate (established by the gate handshake, not this path), 1 = account, 2 = game. The two connect
+wrappers hard-code the type: `0xD38120` → type 1, `0xD384A4` → type 2. `0x946F00`'s ordinal comes
+from config key `0xFE`, which the game-lobby-list UI (`0x935344`) writes from the entry the user
+picks — proving `0x946F00` is a **user-initiated game join**, not an automatic post-port step.
+
+**This corrects a claim made earlier in this work:** that `0x946F00` (seen live in one memory
+read) was the "Adjusting port settings" step dialing a game lobby with character id 0. It is the
+game-join machine, always entered after character select with a real character. Server changes
+built on that false premise — accepting a game-lobby check-session with id 0, and a
+characterless `0x4100` burst — have been reverted. The `0x3049` trailer (35 bytes / 0x1d7) and
+`0x4101` grid (0x142) fixes are independent of this and stand.
+
 ## Error 0692:00000003 — the UDP port check, a second machine after the connect
 
 There are **two** post-login "adjusting port" machines in the binary, and they are easy to
