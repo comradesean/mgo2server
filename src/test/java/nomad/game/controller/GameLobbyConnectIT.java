@@ -4,7 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import nomad.TestDatabase;
-import nomad.common.crypto.SessionIds;
+import nomad.common.crypto.SessionField;
 import nomad.common.model.ChatMacro;
 import nomad.game.BaseGameClientServerIT;
 import nomad.game.GameError;
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.*;
  * Entering a game lobby: check in with a character id, then ask for the connect burst.
  */
 public class GameLobbyConnectIT extends BaseGameClientServerIT {
-	private static final String SESSION = "abcd1234";
+	private static final String TOKEN = "abcd1234abcd1234";
 
 	/**
 	 * Check-session reply plus the burst. The burst is nine packets from eight responses: chat
@@ -49,7 +49,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots, main_exp, alt_exp)
 					values ('player', 'x', :session, 3, 1234, 99)
 					""")
-				.bind("session", SESSION)
+				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -84,7 +84,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 	private List<GamePacket> connect(long claimedId, int expectedPackets) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) claimedId);
-		login.writeBytes(SessionIds.encode(SESSION));
+		login.writeBytes(SessionField.of(TOKEN));
 
 		var replies = new ArrayList<GamePacket>();
 
