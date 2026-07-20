@@ -27,7 +27,7 @@ import java.util.HexFormat;
  * Mode 6's context is itself produced by running this same transform over a 64-byte blob with a
  * master context. The blob is zero in the image and is materialised at runtime, so it was read out
  * of a live client; the resulting key schedule is shipped as {@code crypto/session.key} and the IV
- * below. Verified against two independent captures from a real client — see {@code dev/OBSERVED.md}.
+ * below. Verified against two independent captures from a real client — see {@code dev/docs/OBSERVED.md}.
  */
 public final class SessionField {
 	/** Characters of the login token the client keeps, and the size of the value it derives. */

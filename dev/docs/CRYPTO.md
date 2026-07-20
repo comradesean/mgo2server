@@ -7,7 +7,7 @@ the server can talk to an unmodified client. Treat all of it as an encoding whos
 compatibility, not protection. The one place that genuinely matters — TLS to the console — is
 noted as such.
 
-Companion documents: `dev/PROTOCOL.md` for the TCP command protocol, `dev/STUN.md` for the UDP port
+Companion documents: `dev/docs/PROTOCOL.md` for the TCP command protocol, `dev/docs/STUN.md` for the UDP port
 check (which uses none of this).
 
 ## Where each method is used
@@ -136,7 +136,7 @@ client" is not a procedure:
 2. **Dump 64 bytes at `0x10985F0`** — RPCS3's *Tools → Memory Viewer*. This is mode 6's key blob,
    encrypted. All zeroes means you dumped too early.
 3. **Read 64 bytes at `0xE26DA8`** — the master context. This one is static, so
-   `dev/extract_keys.py` gets it from the disc; no dump needed.
+   `dev/tools/extract_keys.py` gets it from the disc; no dump needed.
 4. **Decrypt the blob with the master context**, using the transform above: split the master into
    an 8-byte IV and a 56-byte Blowfish key, schedule the key, then run
    `C[i] = decrypt(P[i]) XOR P[i-1]` over the 64-byte blob. The result is the **derived context**.
@@ -203,7 +203,7 @@ rather than `090B`, which is how the certificate branch was originally identifie
 
 ## Offsets in `MGO2.elf`
 
-Every constant that lives in the binary, with the address to read it from. `dev/extract_keys.py`
+Every constant that lives in the binary, with the address to read it from. `dev/tools/extract_keys.py`
 pulls these from your own disc:
 
 | vaddr | size | what |

@@ -44,7 +44,7 @@ services:
         condition: service_healthy
     restart: "no"
 
-  # One server per lobby, matching the lobby rows created by dev/seed.sql. Each instance answers
+  # One server per lobby, matching the lobby rows created by dev/tools/seed.sql. Each instance answers
   # only its own lobby's commands, so all three must run for a client to get past the gate.
   gate:
     build: .
@@ -142,8 +142,8 @@ services:
     environment:
       NOMAD_WEB_URL: http://web:8080
     volumes:
-      - ./dev/http_probe.py:/probe.py:ro
-      - ./dev/www:/wwwsrc:ro
+      - ./dev/runtime/http_probe.py:/probe.py:ro
+      - ./dev/runtime/www:/wwwsrc:ro
     ports:
       - "${NOMAD_PROBE_HTTP:-192.168.1.100:80}:80"
     depends_on:
@@ -160,8 +160,8 @@ services:
       # client reports as 070B rather than 090B. See OBSERVED.md, "The certificate branch".
       NOMAD_TLS_CERT: ${NOMAD_TLS_CERT:-cert.pem}
     volumes:
-      - ./dev/http_probe.py:/probe.py:ro
-      - ./dev/www:/wwwsrc:ro
+      - ./dev/runtime/http_probe.py:/probe.py:ro
+      - ./dev/runtime/www:/wwwsrc:ro
     ports:
       - "${NOMAD_PROBE_HTTPS:-192.168.1.100:443}:443"
     depends_on:
@@ -181,7 +181,7 @@ services:
     # must be a real address on the host (ip addr add ... dev <iface>).
     command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100} ${NOMAD_STUN_SECONDARY_IP:-192.168.1.201}
     volumes:
-      - ./dev/stun_probe.py:/stun.py:ro
+      - ./dev/runtime/stun_probe.py:/stun.py:ro
     # Host networking, not published ports. Docker's UDP proxy rewrites the source port of
     # replies, and a STUN client checks which address answered — that is the entire mechanism by
     # which it classifies its NAT. Behind the proxy every reply appears to come from a random

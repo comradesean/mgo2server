@@ -10,7 +10,7 @@ a day proving it wrong.
 
 Three levels of confidence are used throughout:
 
-- **Confirmed** — verified against the real client (`BLUS30109` on RPCS3), and `dev/OBSERVED.md`
+- **Confirmed** — verified against the real client (`BLUS30109` on RPCS3), and `dev/docs/OBSERVED.md`
   records how.
 - **Ours** — this is what our code does. It may still be wrong for the client; it is simply what
   goes on the wire today.
@@ -18,15 +18,15 @@ Three levels of confidence are used throughout:
   `upstream/mgo2-server-upstream` (TypeScript, `@GameCommandHandler(0x....)`) or the Nomad
   upstreams. **Unverified against our client** unless separately marked.
 
-Companion documents: **`dev/OBSERVED.md`** records what was observed and verified against the real
-client, including the hypotheses that turned out to be wrong. **`dev/STUN.md`** covers the UDP port
+Companion documents: **`dev/docs/OBSERVED.md`** records what was observed and verified against the real
+client, including the hypotheses that turned out to be wrong. **`dev/docs/STUN.md`** covers the UDP port
 check, which is not part of this protocol at all — different transport, different thread, no shared
-framing. **`dev/CRYPTO.md`** is the reference for every cipher, key and hash, and where each is
+framing. **`dev/docs/CRYPTO.md`** is the reference for every cipher, key and hash, and where each is
 applied; the transport section below summarises what this protocol uses.
 
 That last distinction matters more than it looks. The references are not specifications: they were
 written for different client builds and have been wrong for `BLUS30109` six separate times (the policy path, the gate hostname, the gate port, the version-check byte, the login perks field, and the two appearance bytes character creation discarded
-— see `dev/OBSERVED.md`, "How this file gets things wrong"). The perks field is the instructive one,
+— see `dev/docs/OBSERVED.md`, "How this file gets things wrong"). The perks field is the instructive one,
 because it was transcribed *correctly* from a source that did not apply. Faithful copying of the
 wrong reference looks exactly like diligence.
 
@@ -103,7 +103,7 @@ output exactly, and the same implementation reproduced a session field captured 
 Treat "it's a Konami variant" as folklore; the only real deviation is that the key ships as an
 already-expanded 4168-byte schedule (18 P-array entries then four 256-entry S-boxes) rather than a
 passphrase. Two schedules ship in `src/main/resources/crypto/`: `packet.key` (payloads) and `session.key` (the
-check-session transform). A third, `auth.key`, was removed -- see `dev/CRYPTO.md`. Payloads are zero-padded up to
+check-session transform). A third, `auth.key`, was removed -- see `dev/docs/CRYPTO.md`. Payloads are zero-padded up to
 an 8-byte boundary before encryption and the padding is dropped after decryption.
 
 None of this is a security boundary. The keys are on the game disc.
@@ -147,7 +147,7 @@ connection. The payload, whatever it is, is written straight back as `0x0001`.
 **Client → server**, `CommonGameController.disconnect`. Empty payload. No reply: the handler
 flushes anything already queued and closes the channel.
 
-Confirmed: the real client sends this after the gate's lobby-list exchange (`dev/OBSERVED.md`,
+Confirmed: the real client sends this after the gate's lobby-list exchange (`dev/docs/OBSERVED.md`,
 "Protocol, confirmed working").
 
 ## `0x0005` — ping
@@ -186,7 +186,7 @@ One `0x2003` per batch of 22 (`ENTRIES_PER_PACKET`); with no lobbies, none at al
 | `0x2b` | 2 | u16 | lobby id |
 | `0x2d` | 1 | u8 | restriction bits: `0b1` beginners only, `0b1000` expansion required, `0b10000` no headshots |
 
-**Confirmed end to end.** `dev/OBSERVED.md` records this list being read back out of the client's
+**Confirmed end to end.** `dev/docs/OBSERVED.md` records this list being read back out of the client's
 own memory at `ctx+0x75C` in `0x34`-byte strides with every field correct, and the client's own
 `0x2002`/`0x2003`/`0x2004` parser arms traced. This is the only part of the protocol verified from
 inside the client rather than from our logs.
@@ -477,7 +477,7 @@ forty seconds, never sends `0x3101`, and fails with **`0A41:FFFFFF60`**.
 | --- | --- | --- | --- |
 | `0x00` | 4 | s32 | result — `00000000`, or the same rejection codes `0x3102` uses |
 
-**Flagged: the reply shape is inferred, not read.** `dev/OBSERVED.md` lists `0x3108` among the
+**Flagged: the reply shape is inferred, not read.** `dev/docs/OBSERVED.md` lists `0x3108` among the
 replies parsed as a single s32, on the strength of its sibling result packets (`0x3004`, `0x3102`,
 `0x3104`, `0x3106`) all being parsed that way, and of the request-status arm marking id `0x12`
 complete. The `0x3108` parser itself was not read out of the binary. It works in practice.

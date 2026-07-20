@@ -11,18 +11,18 @@ Sources of truth used, in order of usefulness:
    Everything else is somebody's reading of it. See "Error 090B:00000001" for how to navigate it.
 2. **RPCS3's own log** (`log/RPCS3.log`) — `DnsHook: DNS query for …` gives real hostnames, and
    `Attempting to connect on <ip>:<port>` gives real ports.
-3. **The HTTP/TLS probe** (`dev/http_probe.py`) — exact paths, methods and bodies.
+3. **The HTTP/TLS probe** (`dev/runtime/http_probe.py`) — exact paths, methods and bodies.
 4. **[MiguelRipoll23/mgo2-server](https://github.com/MiguelRipoll23/mgo2-server)** — an independent
    MGO2 server covering the web API that Nomad does not. Nomad is only the game server.
 
 Companion documents:
 
-- **`dev/PROTOCOL.md`** — the TCP command protocol, command by command and byte by byte: framing,
+- **`dev/docs/PROTOCOL.md`** — the TCP command protocol, command by command and byte by byte: framing,
   the XOR and checksum, which payloads are encrypted, and every command this server handles.
-- **`dev/STUN.md`** — the UDP port check ("Adjusting port settings") in full. Separate because it
+- **`dev/docs/STUN.md`** — the UDP port check ("Adjusting port settings") in full. Separate because it
   is UDP, runs on its own thread in the client, and shares nothing with the lobby servers.
-- **`dev/CRYPTO.md`** — every cipher, key and hash, and where each is applied.
-- **`dev/SETUP.md`** — everything outside this repository that has to be true before an unmodified
+- **`dev/docs/CRYPTO.md`** — every cipher, key and hash, and where each is applied.
+- **`dev/docs/SETUP.md`** — everything outside this repository that has to be true before an unmodified
   client can play: emulator settings, the certificate, and the host address the port check needs.
 
 This file is the record of what was *observed and verified*, including the things that turned out
@@ -85,7 +85,7 @@ from the lobby list and can be anything.
 
 ## STUN
 
-**The port check is documented in full in `dev/STUN.md`** — the exchange that works, the reply
+**The port check is documented in full in `dev/docs/STUN.md`** — the exchange that works, the reply
 format, the Docker and secondary-address requirements, the eliminated hypotheses and the remaining
 unknowns. Only the headline facts are kept here.
 
@@ -133,7 +133,7 @@ urn:schemas-upnp-org:service:InternetGatewayDevice:1
 *device* type, and every conformant gateway advertises it that way. This client asks for it as a
 service. A responder that matches only the spec-correct URN answers none of the four, and the
 client waits indefinitely rather than timing out — which is what the first version of
-`dev/upnp_probe.py` did, and it cost a test cycle. Echo back whatever target was asked for.
+`dev/tools/upnp_probe.py` did, and it cost a test cycle. Echo back whatever target was asked for.
 
 ### Where it stops now, and what is ruled out
 
@@ -313,7 +313,7 @@ one on a separate host), but the citation rested on documentation its own code d
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
 ```
-python3 dev/upnp_probe.py --respond --ip 192.168.1.100
+python3 dev/tools/upnp_probe.py --respond --ip 192.168.1.100
 ```
 
 Mappings are logged, not created. Nothing in the harness touches a real router.
@@ -475,7 +475,7 @@ What makes it PASS, stated as the responder must satisfy it:
    distinct server addresses is what the client reads as full-cone (NAT type `0x10`) and passes;
    a differing/absent mapping reads as symmetric (0/1/2) and fails `0692:00000003`.
 
-`dev/stun_probe.py` already emits MAPPED + SOURCE + CHANGED with `peer` as the mapped address
+`dev/runtime/stun_probe.py` already emits MAPPED + SOURCE + CHANGED with `peer` as the mapped address
 (port-preserving) and, given a second address, answers change-IP from it — i.e. it is the right
 shape. The capture removes the last doubt about the format (four attributes are accepted; the
 old "decoder rejects >2 attributes" comment was wrong and is fixed). The remaining risk is
@@ -483,7 +483,7 @@ operational: it must run host-networked (Docker's UDP proxy rewrites the source 
 break the port-preserving mapping) and with the real second address configured. The XOR-MAPPED `0x8020`
 attribute is **required** — a three-attribute reply is rejected, which is how its necessity was
 established. Its obfuscation was later reproduced: it is keyed on the request's transaction id,
-not a magic cookie. See `dev/STUN.md`.
+not a magic cookie. See `dev/docs/STUN.md`.
 
 ## The post-login machines, mapped to the flow (reconciled against the disassembly)
 
@@ -527,7 +527,7 @@ sends four. The missing one is **XOR-MAPPED-ADDRESS**, and two things about it w
 its type is **`0x8020`** (not the RFC-5389 `0x0020`), and it is XORed against the **request
 transaction id**, not the magic cookie (`port ^ txid[0:2]`, `ip ^ txid[0:4]`). Decoded from the
 capture and validated: for txid `eb55d721…`, client `47.205.42.160:5730`, it reproduces the
-captured `port=fd37 ip=c498fd81` exactly. `dev/stun_probe.py` now sends this by default.
+captured `port=fd37 ip=c498fd81` exactly. `dev/runtime/stun_probe.py` now sends this by default.
 
 With the four-attribute reply, the game accepts the response, runs the port check to a verdict,
 and **reaches the online menu.** The verdict is `0692:00000003` ("NAT looks symmetric"), a soft
@@ -580,7 +580,7 @@ with 5730 verified free before launch** (`netstat -ano | findstr :5730`).
 "Adjusting port settings" hang had an unrelated cause: the responder was echoing the client's
 `0xf000` vendor attribute back, which drives the client's decoder into an infinite branch. With
 the echo removed the client completes classification and passes. The two failures share a screen
-and nothing else. See `dev/STUN.md`.
+and nothing else. See `dev/docs/STUN.md`.
 
 ## What stock RPCS3 does and does not do for the port check (read from RPCS3 master)
 
@@ -728,7 +728,7 @@ same word is what decides whether `np=<psn name>` is appended to the login reque
 
 ### That prediction was tested against the real client, and it held
 
-Serving `dev/www/cert-expired.pem` — the same CA, key and common name as the working chain,
+Serving `dev/runtime/www/cert-expired.pem` — the same CA, key and common name as the working chain,
 re-signed over 2020–2021 so that expiry is its only defect — produced exactly the predicted
 outcome:
 
@@ -938,7 +938,7 @@ must also allow TLS 1.0 and legacy ciphers.
 A token is 32 hex characters and the first **16** are returned to the client. The server no
 longer stores a prefix of it: it stores the 32-hex-character value the client will derive, so
 `account.session` is `varchar(32)`. The ruled-out models below are historical — the transform
-was solved, see `dev/CRYPTO.md`. That the client receives 16 characters is confirmed: it matches `mgo2-server`'s login byte for byte
+was solved, see `dev/docs/CRYPTO.md`. That the client receives 16 characters is confirmed: it matches `mgo2-server`'s login byte for byte
 (`sessionToken.slice(0,8)` stored, `slice(0,16)` returned).
 
 **The transform that recovers it is NOT understood, and `SessionIds.decode` is wrong.** This was
@@ -1052,7 +1052,7 @@ name-availability pre-check: savemgo's Nomad names it in a commented-out case,
 observation: the game does reach **Register New Character** with the command unanswered, because
 the stall happens at the *next* step. On entering a name the client waits about forty seconds for
 a `0x3108`, never sends `0x3101`, and fails with `0A41:FFFFFF60`. savemgo ships it commented out;
-that is not evidence it is optional for this client. See `dev/PROTOCOL.md`.
+that is not evidence it is optional for this client. See `dev/docs/PROTOCOL.md`.
 
 ## The client reaches the MGO2 main menu
 

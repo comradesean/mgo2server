@@ -1,6 +1,6 @@
 """Pulls the crypto constants that genuinely live in the game binary.
 
-    python3 dev/extract_keys.py "/path/to/PS3_GAME/USRDIR/o/MGO2.elf"
+    python3 dev/tools/extract_keys.py "/path/to/PS3_GAME/USRDIR/o/MGO2.elf"
 
 The binary is not redistributed with this project -- it is the game, and you are expected to have
 your own copy. This script exists so the constants below are reproducible from a disc rather than

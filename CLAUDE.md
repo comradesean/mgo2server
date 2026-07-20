@@ -44,12 +44,12 @@ not an elimination if the thing varied could not have mattered.
 
 ## Documentation
 
-- `dev/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
+- `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
-- `dev/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
-- `dev/STUN.md` — the UDP port check.
-- `dev/CRYPTO.md` — every cipher, key and hash, and where each is applied.
-- `dev/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.
+- `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
+- `dev/docs/STUN.md` — the UDP port check.
+- `dev/docs/CRYPTO.md` — every cipher, key and hash, and where each is applied.
+- `dev/docs/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.
 
 ## Distinguishing spec from policy
 
