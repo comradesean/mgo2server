@@ -248,12 +248,51 @@ RPCS3's log agrees and is reproducible run to run: one `mgonet_connect_timeo` th
 connecting only to the gate on 15731, then UPnP, then `bind 192.168.1.100:5730`, then no further
 network activity at all. The account lobby is never dialled.
 
-Unresolved, and left here rather than guessed at: `mgo_connect_server_by_index` bounds-checks an
-index against a count at `ctx+0x754`, and that word reads **zero** while the entries sit at
-`+0x75C`. The only writer of `+0x754` anywhere in the mgonet library is `0xD34468`, which stores a
-literal zero — a reset. So either the array base is not `ctx+0x750` as the instruction
-`addi r31, r3, 0x750` implies, or the count is populated through a pointer this search did not
-match. That is the next thread to pull.
+### The lobby-list handshake is verified inside the client
+
+The mgonet packet parser is `0xD361A4`, dispatching on the command word. Reading all three arms
+settles what our gate must do, and confirms it does it:
+
+```
+0x2002  lwzu r31, 0x750(r28)     ; marker at ctx+0x750
+        cmpwi r31, 0 ; bne -> bail   must be 0 to start
+        stw  r31, 4(r28)             count  := 0
+        stw  r0,  0(r28)             marker := -1      "list in progress"
+
+0x2003  addi r28, r28, 0x750     ; entries parsed at 0x34 bytes each,
+        ...                        type at +0xC, name at +0x10
+
+0x2004  lwzu r0, 0x750(r31)      ; marker
+        cmpwi r0, 0 ; beq -> bail    requires 0x2002 to have run
+        li   r4, 0xa ; li r5, 2
+        bl   0xd32e08                fire event 0x0A on channel 2 — "list complete"
+        stw  r0, 0(r31)              marker := 0
+```
+
+The observed context shows the marker back at `0`, which is what a **completed** `0x2004` leaves,
+and the entries populated. So the client ran the whole sequence: start accepted, entries stored,
+completion event fired. **Our `0x2002`/`0x2003`/`0x2004` are correct and fully consumed** — proven
+from the client's own memory and its own code, not from our logs or from a reference server.
+
+Two independent reviews of the reference implementations agree there is nothing more the gate
+does. `mgo2-server` replies with exactly those three packets and never pushes anything unsolicited;
+SaveMGO's Nomad is identical, sends nothing on connect, writes no session or flag, and holds no
+state that gates the onward connect. Both were re-read specifically to look for a missing step and
+found none.
+
+One real divergence did come out of that review and has been fixed: **the list must be ordered by
+id, not by name.** Nomad iterates `NLobbies.get().values()`, a map keyed by lobby id, so the
+canonical seeding makes list index and lobby type coincide — index 0 = type 0 Gate, 1 = Account,
+2 = Game. Ordering by name put Account at index 0 and the Gate at index 2. The client keys
+connections by type in a three-slot table at stride `0x44` while its debug string reads
+`mgo_connect_server_by_index() index=%d, type=%d`, carrying both. Whether the client requires the
+identity is not proven; the change restores parity with the server it was developed against.
+
+Also corrected: `mgo2-server`'s README and `AGENTS.md` advertise a STUN server on 3478/udp and its
+`deno.json` imports `npm:stun`, but **there is no STUN code in that repository** — `grep -rni stun
+src/` returns nothing. This file previously cited that README as evidence STUN is a required
+component. STUN is still needed (the client demonstrably sends binding requests, and SaveMGO ran
+one on a separate host), but the citation rested on documentation its own code does not implement.
 
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
