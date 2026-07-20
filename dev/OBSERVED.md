@@ -158,8 +158,47 @@ Established, each checked rather than assumed:
 - **RPCS3's own UPnP setting is irrelevant.** The client asks 21 `cellNetCtlGetInfo` codes and
   NAT type is not among them; there is no value that setting changes for the game.
 
-So the phase completes its visible work and the client still waits. The next place to look is the
-state machine behind the screen, in the binary, the way 090B was found — not the network.
+So the phase completes its visible work and the client still waits.
+
+### What the screen is actually waiting on
+
+The binary says this is not a NAT screen at all. The post-login state machine at `0x9468B8` has
+seven states, dispatched on a halfword at `+0x68` of its context through a jump table at
+`0x94690C`. **State 2 is where it sits.** It polls `0xD38120`, a thin wrapper on `0xD35E44`, and:
+
+```
+result == 0                       -> advance to state 3
+result == -102 (-0x66) or -64     -> stay in state 2, poll again
+anything else                     -> error 090B with the result as the detail
+```
+
+`-102` and `-64` are this library's "still in progress" codes, which is why the screen neither
+advances nor errors. It polls forever.
+
+The library is the game's own `mgonet`, and its debug strings name the call:
+
+```
+0xE25A50  mgonet_connect_timeo
+0xE25A68  **** wait ***
+0xE25A78  **** poll off ***
+0xE25A90  mgo_connect_server_by_index() index=%d, type=%d
+```
+
+`mgo_connect_server_by_index` is `0xD34B50` — the callee of the poll. It bounds-checks an index
+against a count at `+0x754` of its context, over an array at `+0x750` with a stride of `0x34`,
+which is the parsed lobby list.
+
+**So the client is not stuck adjusting ports. It is stuck trying to connect to a server from the
+lobby list, and that connect never gets going** — which is exactly consistent with the account
+lobby never being contacted and no TCP connect appearing in the log after the gate.
+
+Not yet established, and worth stating so it is not assumed later: `0xD34B50` does **not** call
+the connect-with-timeout poller at `0xD34A38` (checked — there are no calls to it anywhere in the
+`mgonet` range), so the aborted `mgonet_connect_timeo` thread seen in the log is *not* known to be
+the thing blocking this. `0xD34A38` is a separate helper whose caller has not been identified.
+
+The open question is therefore narrow: what does `mgo_connect_server_by_index` wait on between
+being asked for a lobby and opening a socket.
 
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
