@@ -123,10 +123,34 @@ ciphertext.
 The IV is `b0 78 1d 53 65 e3 91 0e` and the 56-byte key is the schedule shipped as
 `crypto/session.key`; both are constants in `SessionField`.
 
-The context is mode 6 of a keyed table inside the client, itself produced by running this same
-transform over a 64-byte blob with a master context. That blob is zero in the game image and is
-materialised at runtime, so it was read out of a live client; the resulting key schedule ships as
-`session.key` and the IV is a constant in `SessionField`.
+### Reproducing `session.key` from a live client
+
+The context is mode 6 of a keyed table inside the client, produced by running this same transform
+over a 64-byte blob with a master context. The blob is zero in the image and written at runtime, so
+this is the one artefact a disc cannot give you. The full recipe, since "it was read out of a live
+client" is not a procedure:
+
+1. **Boot the game to the main menu** so the crypto service has initialised. Earlier is unreliable;
+   the blob is written during startup.
+2. **Dump 64 bytes at `0x10985F0`** — RPCS3's *Tools → Memory Viewer*. This is mode 6's key blob,
+   encrypted. All zeroes means you dumped too early.
+3. **Read 64 bytes at `0xE26DA8`** — the master context. This one is static, so
+   `dev/extract_keys.py` gets it from the disc; no dump needed.
+4. **Decrypt the blob with the master context**, using the transform above: split the master into
+   an 8-byte IV and a 56-byte Blowfish key, schedule the key, then run
+   `C[i] = decrypt(P[i]) XOR P[i-1]` over the 64-byte blob. The result is the **derived context**.
+5. **Split the derived context**: first 8 bytes are the IV (`b0 78 1d 53 65 e3 91 0e`), the
+   remaining 56 are the Blowfish key.
+6. **Expand those 56 bytes** through the standard Blowfish key schedule, seeded from the pi table at
+   `0xE25AEC`, to get the 4168-byte `crypto/session.key`.
+
+Sanity check the result rather than trusting it: `SessionField.of("1888e089ebe181fd")` must equal
+`a5a0dd9199494cf00e06ae9dc4655563`. That pair was captured from a real client, and `SessionFieldTest`
+asserts it.
+
+Worth noting the object at `0x1698DA8` is worth dumping at the same time — `+4` is the master
+context pointer and `+0x34` mode 6's key pointer, which is how those two addresses were found in
+the first place, and how you would find them again on a different build.
 
 Verified against two independent captures from a real client. `SessionFieldTest` pins it to those
 bytes rather than round-tripping against ourselves, which would prove nothing.
