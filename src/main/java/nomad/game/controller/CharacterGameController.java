@@ -46,6 +46,18 @@ public class CharacterGameController implements IGameController {
 
 	public static final int DELETE_CHARACTER_RESULT = 0x3106;
 
+	/**
+	 * Name availability, asked before the client will submit a character for creation.
+	 * <p>
+	 * This is <em>not</em> optional, however it may look elsewhere. savemgo's Nomad names the
+	 * command in a commented-out case and ships without it, but this client blocks on the reply:
+	 * with nothing sent back it waits about forty seconds, never sends {@link #CREATE_CHARACTER},
+	 * and fails with <em>Unable to register character (0A41:FFFFFF60)</em>.
+	 */
+	public static final int CHECK_CHARACTER_NAME = 0x3107;
+
+	public static final int CHECK_CHARACTER_NAME_RESULT = 0x3108;
+
 	private static final int NAME_LENGTH = 16;
 
 	/** Total size of the character list payload, zero-filled up to the trailer. */
@@ -81,6 +93,7 @@ public class CharacterGameController implements IGameController {
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(GET_CHARACTER_LIST, this::getCharacterList);
 		handlers.put(CREATE_CHARACTER, this::createCharacter);
+		handlers.put(CHECK_CHARACTER_NAME, this::checkCharacterName);
 		handlers.put(SELECT_CHARACTER, this::selectCharacter);
 		handlers.put(DELETE_CHARACTER, this::deleteCharacter);
 	}
@@ -159,19 +172,9 @@ public class CharacterGameController implements IGameController {
 
 		var name = readString(payload, NAME_LENGTH);
 
-		var check = CharacterNames.check(name);
-		if (check != CharacterNames.Result.OK) {
-			logger.info("Rejected character name {}: {}", name, check);
-			ctx.write(CREATE_CHARACTER_RESULT, switch (check) {
-				case RESERVED_PREFIX -> GameError.CHARACTER_NAME_PREFIX;
-				case RESERVED_NAME -> GameError.CHARACTER_NAME_RESERVED;
-				default -> GameError.CHARACTER_NAME_INVALID;
-			});
-			return;
-		}
-
-		if (characterService.isNameTaken(name)) {
-			ctx.write(CREATE_CHARACTER_RESULT, GameError.CHARACTER_NAME_TAKEN);
+		var rejection = rejectionFor(name);
+		if (rejection != null) {
+			ctx.write(CREATE_CHARACTER_RESULT, rejection);
 			return;
 		}
 
@@ -196,6 +199,46 @@ public class CharacterGameController implements IGameController {
 		var buffer = ctx.buffer(8);
 		buffer.writeInt(GameError.NONE.result()).writeInt((int) charaId);
 		ctx.write(new GamePacket(CREATE_CHARACTER_RESULT, buffer));
+	}
+
+	/**
+	 * Answers whether a name may be registered, before the client will offer one for creation.
+	 * <p>
+	 * Shares {@link #rejectionFor} with {@link #createCharacter} deliberately. A pre-check that
+	 * answered more leniently than the create it precedes would only move the failure one screen
+	 * later, which is worse than not having one.
+	 */
+	private void checkCharacterName(GameControllerContext ctx) {
+		if (ctx.connection().account() == null) {
+			ctx.write(CHECK_CHARACTER_NAME_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var payload = ctx.packet().getPayload();
+		if (payload.readableBytes() < NAME_LENGTH) {
+			ctx.write(CHECK_CHARACTER_NAME_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		var name = readString(payload, NAME_LENGTH);
+		var rejection = rejectionFor(name);
+
+		ctx.write(CHECK_CHARACTER_NAME_RESULT, rejection == null ? GameError.NONE : rejection);
+	}
+
+	/** The error a name should be refused with, or null if it is free to register. */
+	private GameError rejectionFor(String name) {
+		var check = CharacterNames.check(name);
+		if (check != CharacterNames.Result.OK) {
+			logger.info("Rejected character name {}: {}", name, check);
+			return switch (check) {
+				case RESERVED_PREFIX -> GameError.CHARACTER_NAME_PREFIX;
+				case RESERVED_NAME -> GameError.CHARACTER_NAME_RESERVED;
+				default -> GameError.CHARACTER_NAME_INVALID;
+			};
+		}
+
+		return characterService.isNameTaken(name) ? GameError.CHARACTER_NAME_TAKEN : null;
 	}
 
 	/**

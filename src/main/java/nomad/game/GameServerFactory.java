@@ -8,7 +8,9 @@ import nomad.game.controller.CharacterGameController;
 import nomad.game.controller.EchoGameController;
 import nomad.game.controller.GameListGameController;
 import nomad.game.controller.HostGameController;
+import nomad.game.controller.HubGameController;
 import nomad.game.controller.LobbyGameController;
+import nomad.game.controller.MessageGameController;
 import nomad.game.controller.NewsGameController;
 
 import java.util.ArrayList;
@@ -43,6 +45,8 @@ public class GameServerFactory {
 				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
 				controllers.add(new CharacterConnectController(services.getCharacterService()));
 				controllers.add(new GameListGameController(services.getGameService(), lobbyId));
+				controllers.add(new MessageGameController());
+				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), lobbyId, lobbySubtype));
 			}
