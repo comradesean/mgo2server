@@ -807,7 +807,16 @@ sessions. Hosting is unaffected.
 
 ### Reply `0x4311` — empty
 
-No payload. The client only waits for the acknowledgement.
+**Sufficient, but not known to be complete.** Both references send an empty payload and this client
+accepts it and proceeds, so nothing more is *required*. That is weaker than it was previously
+written here ("the client only waits for the acknowledgement"), which asserted an intent nobody had
+checked.
+
+Against that reading: the client's reply dispatcher (`0xD388A8`–`0xD38948`, a comparison chain over
+reply ids) routes `0x4311` to a real handler at `0xD43550`, not a no-op. It verifies the command id
+and calls into the packet-reader library. Whether it reads any field beyond the header is
+undetermined — if the original server sent something here, we are dropping it and the client is
+tolerating the absence.
 
 ## `0x4150` — lobby disconnect
 
@@ -817,6 +826,10 @@ to the previous screen. Empty request, empty `0x4151` reply.
 Unanswered this hangs on the way **out** rather than the way in, which reads as an unrelated bug —
 everything works until you press cancel. Nothing is torn down server-side: lobby membership is not
 tracked, and the connection stays open because the client reuses it.
+
+Same caveat as `0x4311`: empty is sufficient, not known to be complete. `0x4151` dispatches to a
+handler at `0xD3943C` which verifies the id and calls on, so it is not a no-op; what it reads is
+undetermined.
 
 ## `0x4316` — create game
 
@@ -1079,7 +1092,13 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 21. **`0x4300`'s filter type is read and discarded.** Clan rooms are distinguished by a name prefix
     in the original; unmodelled here.
 
-22. **`0x4316` does not read its request payload at all.** The settings the player configured
+22. **The empty replies `0x4311` and `0x4151` are sufficient but unverified.** Both references
+    send nothing and the client proceeds, so nothing more is required — but each dispatches to a
+    real handler (`0xD43550`, `0xD3943C`) rather than a no-op, so whether the original server sent
+    a payload there is unknown. The dispatcher is a comparison chain at `0xD388A8`–`0xD38948`,
+    which is the place to start if this ever matters.
+
+23. **`0x4316` does not read its request payload at all.** The settings the player configured
     arrive on `0x4310` instead, which we now handle — but store nothing from, since the blob's
     layout is undecoded. So a created game uses defaults regardless of what was chosen on the
     Create Game screens. Confirmed reachable: a game is created and the host enters it.
