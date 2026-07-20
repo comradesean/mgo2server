@@ -80,6 +80,20 @@ as a lobby error, not a NAT one, and is easy to misread.
 `mgo2-server` lists a STUN server on 3478/udp as a required component alongside the gate and
 account servers.
 
+**None of the three reference servers actually implement a STUN responder** — so none of them can
+be copied for the reply shape, and none shares our bugs here:
+
+- **GHzGangster/Nomad** and the savemgo forks: no STUN code at all. Every `stun` match in the
+  source is the in-game *stun grenade* weapon-restriction flag.
+- **MiguelRipoll23/mgo2-server**: the README architecture table lists "STUN server — 3478/udp", but
+  there is no STUN source file in the repo and its compose file has a single service. The entry is
+  aspirational; the code punts.
+- **boiln/echo**: does not hand-roll it either — it runs stock **coturn** in `stun-only` mode, and
+  its `stun.conf` requires two `listening-ip` addresses.
+
+So coturn-on-two-addresses is the only reference-blessed shape, and our responder should behave
+like coturn (notably: send no vendor attribute — see below).
+
 The client does not send a plain binding request. It sends CHANGE-REQUEST attributes — observed
 as `len=12` and `len=24` requests, sourced from the game's own port — asking the server to reply
 from a different port or address, and classifies its NAT from which replies arrive. A responder
@@ -99,6 +113,38 @@ It must run with host networking. Docker's UDP proxy rewrites the source port of
 since a STUN client identifies which address answered, every reply appears to come from a random
 port and discovery never concludes. Published ports look like they work — the reply arrives — but
 from the wrong port.
+
+### Never echo the client's `0xf000` vendor attribute — that is what hangs "Adjusting port settings"
+
+The responder used to echo the Konami `0xf000` vendor attribute back verbatim, on the untested
+theory that "a client that correlates requests by a private attribute will not accept a reply
+without it." **That theory is wrong, and the echo is actively harmful.**
+
+The client's own `DecodePacket` dispatches on the `0xf000` sub-type: values 1 and 3 have handlers;
+**anything else falls through to a logging stub and then an infinite `b .`**. The client sends
+sub-types the server must not parrot — an observed first probe carried
+`0xf000 = 0573000000000002`. Echoing that back feeds the decoder the value that spins it forever,
+which presents as the game sitting on **"Adjusting port settings"** with no error and no timeout.
+
+Running `dev/stun_probe.py` with `--no-vendor` (send no `0xf000` at all) fixes it. This matches the
+only reference that demonstrably works online: `echo` runs stock **coturn**, which has no notion of
+Konami vendor attributes and sends none.
+
+With the echo removed, the client runs the *full* classification instead of stalling after the
+basic probes:
+
+```
+basic request                          -> replied from .100:3478
+CHANGE-REQUEST (change_ip, change_port) -> replied from .201:3479   <- alternate address
+follow-up probes                        -> replied from .100:3478
+```
+
+That change-request leg had never been reached before. **The port check then passes** and the game
+proceeds to log in — the failure moves off STUN entirely and becomes `0910:C0FFEE02`
+(our own `INVALID_SESSION`; see *Session tokens*). Note the two responder addresses were both on
+the client's own subnet with the primary sharing the client's IP, and it still passed — so the
+earlier worry that the mapped address colliding with the server address forces a symmetric verdict
+did **not** turn out to be the blocker.
 
 ## UPnP, and "Adjusting port settings"
 
@@ -915,8 +961,42 @@ must also allow TLS 1.0 and legacy ciphers.
 ## Session tokens
 
 A token is 32 hex characters. The first **8** are stored server-side; the first **16** are returned
-to the client. The client encrypts the stored half into the `0x3003` check-session packet, which is
-why `account.session` is `varchar(8)` and `SessionIds.decode` yields 8 characters.
+to the client. That much is confirmed: it matches `mgo2-server`'s login byte for byte
+(`sessionToken.slice(0,8)` stored, `slice(0,16)` returned).
+
+**The transform that recovers it is NOT understood, and `SessionIds.decode` is wrong.** This was
+long described as "the client encrypts the stored half into the `0x3003` packet", recovered by
+XOR-with-mask then an auth-Blowfish *encrypt*. Captured live from the retail client (BLUS30109),
+that model does not hold:
+
+```
+login reply : 0,122345677,1000000,1888e089ebe181fd     (stored8 = 1888e089)
+0x3003 field: a5a0dd9199494cf00e06ae9dc4655563
+decode()    : 589889e531a57dfc      <- matches neither ASCII "1888e089" (3138383865303839)
+                                       nor hex-decode of the token (1888e089...)
+```
+
+Ruled out empirically against the real auth key table — **do not re-test these**:
+
+- plaintext = ASCII of the stored 8 chars, or hex-decode of the returned 16 chars
+- one-block and two-block (full 16-byte) variants of both
+- Blowfish *encrypt* and *decrypt* directions, with and without the XOR mask
+
+None reproduce the observed field. The decisive tell is the `SPECIAL` sentinel in `SessionIds`:
+it is hard-coded to map one captured 16-byte field to the token `"cafebabe"`, and running that
+same field through `decode` yields `eb018b74d2f66650` (encrypt) or `037fd0a3a234266b` (decrypt) —
+neither is `"cafebabe"` (`6361666562616265`). The sentinel exists *because* the transform was never
+actually inverted; it is a hard-coded patch over a wrong model, not a compatibility shim.
+
+What *is* verified: our XOR mask (`35 d5 c3 8e d0 11 0e a8`) and auth key table (0x1048 bytes =
+P-array + four S-boxes) are byte-identical to `mgo2-server`'s `XOR_SESSION_ID_BYTES` and
+`BLOWFISH_KEY_AUTH`, and its `encryptAuthPayload` is `blowfishEncrypt` — the same direction we use.
+So keys and algorithm match a working server; only the derivation is wrong. Since our decode equals
+`mgo2-server`'s, the same field would miss there too, which suggests `mgo2-server` targets a
+different client build (consistent with its underscore-joined perks, which this client rejects).
+
+This is the current blocker: the client reaches check-session and is refused with
+`INVALID_SESSION`, surfacing as **`0910:C0FFEE02`**.
 
 ## Protocol, confirmed working
 
