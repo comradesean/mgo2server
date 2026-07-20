@@ -43,6 +43,17 @@ public class HubGameController implements IGameController {
 	 * confusing symptom: everything worked until you pressed cancel. Both references reply with an
 	 * empty {@code 0x4151} and treat it as "this session has left the lobby".
 	 */
+	/**
+	 * Purpose unknown. Sent repeatedly while in a game; neither reference names it beyond
+	 * "unknown", and they disagree on the reply — echo sends a four-byte result, while mgo2-server
+	 * registers <em>two</em> handlers for it in different files, one replying empty and one with
+	 * five bytes, so whichever loads last wins. We follow echo, whose shape matches every other
+	 * result packet in this protocol.
+	 */
+	public static final int UNKNOWN_4440 = 0x4440;
+
+	public static final int UNKNOWN_4440_RESULT = 0x4441;
+
 	public static final int LOBBY_DISCONNECT = 0x4150;
 
 	public static final int LOBBY_DISCONNECT_RESULT = 0x4151;
@@ -68,6 +79,7 @@ public class HubGameController implements IGameController {
 		handlers.put(GET_GAME_LOBBY_INFO, this::getGameLobbyInfo);
 		handlers.put(GET_GAME_ENTRY_INFO, this::getGameEntryInfo);
 		handlers.put(LOBBY_DISCONNECT, this::lobbyDisconnect);
+		handlers.put(UNKNOWN_4440, ctx -> ctx.write(UNKNOWN_4440_RESULT, GameError.NONE));
 	}
 
 	private void getGameLobbyInfo(GameControllerContext ctx) {

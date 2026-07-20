@@ -51,6 +51,21 @@ public class HostGameController implements IGameController {
 
 	public static final int CHECK_HOST_SETTINGS_RESULT = 0x4311;
 
+	/** Host assigns a player to a team. Acknowledged; team state is not tracked yet. */
+	public static final int SET_PLAYER_TEAM = 0x4344;
+
+	public static final int SET_PLAYER_TEAM_RESULT = 0x4345;
+
+	/** Host reports round-trip times for the players in its game. */
+	public static final int UPDATE_PINGS = 0x4398;
+
+	public static final int UPDATE_PINGS_RESULT = 0x4399;
+
+	/** Sent on leaving a game. Unanswered, the client sits on a black screen. */
+	public static final int QUIT_GAME = 0x4380;
+
+	public static final int QUIT_GAME_RESULT = 0x4381;
+
 	public static final int CREATE_GAME = 0x4316;
 
 	public static final int CREATE_GAME_RESULT = 0x4317;
@@ -76,6 +91,9 @@ public class HostGameController implements IGameController {
 		handlers.put(GET_HOST_SETTINGS, this::getHostSettings);
 		handlers.put(CHECK_HOST_SETTINGS, this::checkHostSettings);
 		handlers.put(CREATE_GAME, this::createGame);
+		handlers.put(SET_PLAYER_TEAM, this::acknowledge);
+		handlers.put(UPDATE_PINGS, this::acknowledge);
+		handlers.put(QUIT_GAME, this::quitGame);
 	}
 
 	/**
@@ -121,6 +139,50 @@ public class HostGameController implements IGameController {
 		}
 
 		ctx.write(new GamePacket(CHECK_HOST_SETTINGS_RESULT, ctx.buffer(0)));
+	}
+
+	/**
+	 * Acknowledges an in-match report the host sends but which nothing here consumes yet.
+	 * <p>
+	 * {@link #SET_PLAYER_TEAM} and {@link #UPDATE_PINGS} both carry real information — team
+	 * assignments and per-player latency — that a server tracking a live match would use. We track
+	 * neither, so the data is dropped. They are answered because the client blocks on the reply,
+	 * not because the work is done: implementing the match state is what makes them meaningful.
+	 */
+	private void acknowledge(GameControllerContext ctx) {
+		var reply = ctx.packet().getCommand() + 1;
+		ctx.write(new GamePacket(reply, ctx.buffer(0)));
+	}
+
+	/**
+	 * Leaves a game, and tears it down if the leaver was hosting it.
+	 * <p>
+	 * Without a reply the client sits on a black screen after Quit Game — it has already left as
+	 * far as it is concerned and is waiting for the server to agree.
+	 * <p>
+	 * A host leaving deletes the game, which matches both references: the match cannot continue
+	 * without the peer everyone else connects to. Players other than the host are not tracked, so
+	 * for them this is only an acknowledgement.
+	 */
+	private void quitGame(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(QUIT_GAME_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var charaId = account.getCurrentCharaId();
+		if (charaId != null) {
+			for (var game : gameService.getGames(lobbyId)) {
+				if (game.getHostCharaId() == charaId) {
+					logger.info("Character {} left game {}, which it hosted; removing it.",
+						charaId, game.getId());
+					gameService.deleteGame(game.getId());
+				}
+			}
+		}
+
+		ctx.write(new GamePacket(QUIT_GAME_RESULT, ctx.buffer(0)));
 	}
 
 	private void createGame(GameControllerContext ctx) {
