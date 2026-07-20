@@ -222,6 +222,42 @@ public class CharacterService {
 			.execute();
 	}
 
+	/**
+	 * Applies a wardrobe change made from the lobby.
+	 * <p>
+	 * Only the clothing fields are written. Gender, face, voice and pitch are fixed at creation and
+	 * the client does not send them here, so they are left alone rather than overwritten with
+	 * whatever a partially populated object happens to hold.
+	 */
+	public void updateAppearance(long charaId, CharaAppearance a) {
+		jdbi.useHandle(handle -> handle.createUpdate("""
+				update chara_appearance set
+					face_paint = :facePaint,
+					upper = :upper, upper_color = :upperColor,
+					lower = :lower, lower_color = :lowerColor,
+					head = :head, head_color = :headColor,
+					chest = :chest, chest_color = :chestColor,
+					hands = :hands, hands_color = :handsColor,
+					waist = :waist, waist_color = :waistColor,
+					feet = :feet, feet_color = :feetColor,
+					accessory1 = :accessory1, accessory1_color = :accessory1Color,
+					accessory2 = :accessory2, accessory2_color = :accessory2Color
+				where chara_id = :charaId
+				""")
+			.bindBean(a)
+			.bind("charaId", charaId)
+			.execute());
+	}
+
+	/** The free-text comment shown on a character's card. */
+	public void updateComment(long charaId, String comment) {
+		jdbi.useHandle(handle -> handle
+			.createUpdate("update chara set comment = :comment where id = :charaId")
+			.bind("comment", comment)
+			.bind("charaId", charaId)
+			.execute());
+	}
+
 	public void setCurrentCharacter(long accountId, long charaId) {
 		jdbi.useHandle(handle ->
 			handle.createUpdate("update account set current_chara_id=:charaId where id=:id")

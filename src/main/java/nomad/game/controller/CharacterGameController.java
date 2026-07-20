@@ -242,8 +242,14 @@ public class CharacterGameController implements IGameController {
 	}
 
 	/**
-	 * Reads the appearance block. The skipped bytes are fields the client sends but the original
-	 * server discarded, so lower and hands colour are always stored as zero.
+	 * Reads the appearance block.
+	 * <p>
+	 * Two bytes here were long skipped, on an inherited claim that the original server discarded
+	 * them. That was wrong. The wardrobe update (0x4130) carries the same fields in the same order
+	 * and names them: the byte after {@code upper} is {@code lower}, and the byte after
+	 * {@code chestColor} is {@code handsColor}. Both were verified against a live client, whose
+	 * stored {@code lower} went from 0 to a real value the moment 0x4130 was implemented — so
+	 * creation had been silently dropping the player's choices.
 	 */
 	private static CharaAppearance readAppearance(ByteBuf payload) {
 		var a = new CharaAppearance();
@@ -254,7 +260,7 @@ public class CharacterGameController implements IGameController {
 		a.setGender(payload.readByte());
 		a.setFace(payload.readByte());
 		a.setUpper(payload.readByte());
-		payload.skipBytes(1);
+		a.setLower(payload.readByte());
 		a.setFacePaint(payload.readByte());
 		a.setUpperColor(payload.readByte());
 		a.setLowerColor(payload.readByte());
@@ -270,7 +276,7 @@ public class CharacterGameController implements IGameController {
 		a.setAccessory2(payload.readByte());
 		a.setHeadColor(payload.readByte());
 		a.setChestColor(payload.readByte());
-		payload.skipBytes(1);
+		a.setHandsColor(payload.readByte());
 		a.setWaistColor(payload.readByte());
 		a.setFeetColor(payload.readByte());
 		a.setAccessory1Color(payload.readByte());
