@@ -142,6 +142,27 @@ address** (`192.168.1.100` for both), so the mapped address and the server addre
 An earlier theory held that this collision would force a symmetric verdict and had to be avoided.
 That theory is **refuted**: it passed anyway.
 
+## Checking the responder
+
+`dev/stun_selftest.py` probes a running responder and asserts every claim in the section above —
+the four attributes and their order, the `0x8020` tag, that XOR-MAPPED decodes back to
+MAPPED-ADDRESS under the transaction-id key, that SOURCE and CHANGED point where they should, and
+that no `0xf000` comes back. Run it with the stack up:
+
+```
+python3 dev/stun_selftest.py
+```
+
+Thirteen checks, all passing as of the last run. It exists so that a change which would hang the
+game shows up as a named failing assertion rather than as a client stuck on "Adjusting port
+settings" with no other symptom.
+
+The CHANGE-REQUEST leg cannot be checked from inside WSL: the responder answers it correctly and
+the real client receives it, but WSL's mirrored networking will not loop a packet from the
+secondary address back to a WSL-local socket, so the script would wait for a reply that reached
+the emulator perfectly well. It skips that leg with instructions to confirm it from the responder
+log instead. Running the script from a separate host would cover it properly.
+
 ## Docker networking
 
 **Confirmed.** The responder must run with `network_mode: host`, not published ports.
