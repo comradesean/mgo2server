@@ -34,7 +34,6 @@ ATTR_XOR_MAPPED_ADDRESS = 0x8020
 CHANGE_IP = 0x04
 CHANGE_PORT = 0x02
 
-MAGIC_COOKIE = 0x2112A442
 FAMILY_IPV4 = 0x01
 
 
@@ -79,7 +78,7 @@ def describe(kind):
 
 
 def serve(primary_port, advertised_ip, secondary_ip=None,
-          include_changed=True, include_xor=False, echo_vendor=False):
+          include_changed=True, include_xor=True, echo_vendor=False):
     alternate_port = primary_port + 1
     two_addresses = secondary_ip is not None and secondary_ip != advertised_ip
 
@@ -104,6 +103,18 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
     else:
         print(f"STUN responder on {advertised_ip}, ports {primary_port} and {alternate_port} "
               f"(single address: change-IP answered from the alternate port)", flush=True)
+        print("  WARNING: one address cannot classify correctly. RFC 3489 section 8.1 requires all "
+              "four", flush=True)
+        print("  (A1|A2) x (P1|P2) sockets, and RFC 5780 section 6 says a server that cannot "
+              "provide them", flush=True)
+        print("  MUST reject change-requests with a 420 rather than answer from the wrong place. "
+              "Answering", flush=True)
+        print("  change-IP from another port on the same address passes a restricted-cone NAT, "
+              "which filters", flush=True)
+        print("  on address only -- so such a player is told 'full cone' and will attempt direct "
+              "connections", flush=True)
+        print("  that only a real full-cone peer could accept. Pass a second address for "
+              "peer-to-peer to work.", flush=True)
 
     while True:
         for key, _ in selector.select():
@@ -121,6 +132,14 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
             if kind != BIND_REQUEST:
                 continue
 
+            # Validate before walking the attributes. Without this a malformed or spoofed header
+            # sends parse_attributes off the end of the datagram and into whatever else is in the
+            # buffer. Attributes are 4-byte aligned and the header declares the exact body length.
+            if length % 4 or len(data) != 20 + length:
+                print(f"  {received_ip}:{received_on} <- {peer[0]}:{peer[1]} "
+                      f"malformed: declared {length}, got {len(data) - 20}", flush=True)
+                continue
+
             change_flags = 0
             names = []
             vendor = []
@@ -128,7 +147,7 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
                 names.append(describe(attr_type))
                 if attr_type == ATTR_CHANGE_REQUEST and len(value) >= 4:
                     change_flags = struct.unpack("!I", value[:4])[0]
-                elif attr_type >= 0x8000 or attr_type == 0xf000:
+                elif attr_type >= 0x8000:
                     # Konami sends 0xf000 on the game's own probes but not on the plain ones.
                     # Recorded only; echoing it back is off by default and must stay that way.
                     # See echo_vendor below for why.
@@ -141,20 +160,33 @@ def serve(primary_port, advertised_ip, secondary_ip=None,
                   f"attrs=[{', '.join(names) or 'none'}] "
                   f"change_ip={wants_ip} change_port={wants_port}", flush=True)
 
-            reply_port = alternate_port if wants_port else received_on
+            # RFC 3489 section 9.2 Table 1, verbatim. Everything is relative to where the request
+            # arrived (Da:Dp), never to where a previous reply went:
+            #
+            #     flags                      source address   source port   CHANGED-ADDRESS
+            #     none                       Da               Dp            Ca:Cp
+            #     change IP                  Ca               Dp            Ca:Cp
+            #     change port                Da               Cp            Ca:Cp
+            #     change IP and change port  Ca               Cp            Ca:Cp
+            #
+            # CHANGED-ADDRESS is Ca:Cp for every row -- it describes the server's other socket, not
+            # this reply's route. An earlier version derived it from the reply address, so a
+            # change-ip+port request arriving on A1:P1 was answered with CHANGED-ADDRESS = A1:P1,
+            # pointing the client back at the socket it had just used. That went unnoticed because
+            # Test I is the only test that succeeds on a LAN bench, and for Test I the two
+            # derivations agree. It would have mattered to a real player: a client whose Test II
+            # fails re-runs Test I against CHANGED-ADDRESS to detect symmetric NAT, and would have
+            # been comparing the primary socket against itself.
             if two_addresses:
-                # The real thing: reply from the other address when asked to.
-                reply_ip = secondary_ip if wants_ip and received_ip == advertised_ip else (
-                    advertised_ip if wants_ip else received_ip)
+                other_ip = secondary_ip if received_ip == advertised_ip else advertised_ip
             else:
-                # One address only. Answer change-IP from the alternate port so the client can
-                # conclude rather than retry until it fails.
-                reply_ip = received_ip
-                if wants_ip:
-                    reply_port = alternate_port
+                # One address: there is no Ca to name, so only the port can differ. The client is
+                # being told something untrue either way -- see the single-address warning at start.
+                other_ip = received_ip
+            other_port = alternate_port if received_on == primary_port else primary_port
 
-            other_ip = secondary_ip if (two_addresses and reply_ip == advertised_ip) else advertised_ip
-            other_port = alternate_port if reply_port == primary_port else primary_port
+            reply_ip = other_ip if wants_ip else received_ip
+            reply_port = other_port if wants_port else received_on
 
             # A capture of the real MGO2 server (mgo2pc, BLUS30109 client) settles the reply
             # shape: a Binding Response carries FOUR attributes, in this order, and the client
