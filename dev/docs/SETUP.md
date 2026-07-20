@@ -24,7 +24,7 @@ answers the lobby-list request with a start and an end packet and no entries, so
 nowhere to go and reports nothing useful.
 
 ```
-docker compose exec -T postgres psql -U nomad -d nomad < dev/tools/seed.sql
+docker compose exec -T postgres psql -U mgo2server -d mgo2server < dev/tools/seed.sql
 ```
 
 That inserts one lobby of each type — gate, account, game — on ports 15731/15732/15733, plus a test
@@ -101,7 +101,7 @@ Add the secondary to the interface holding the primary:
 sudo ip addr add 192.168.1.201/24 dev <iface>
 ```
 
-Override the defaults with `NOMAD_PUBLIC_IP` and `NOMAD_STUN_SECONDARY_IP` if using other
+Override the defaults with `MGO2SERVER_PUBLIC_IP` and `MGO2SERVER_STUN_SECONDARY_IP` if using other
 addresses. Without it `probe-stun` crash-loops on bind with `Errno 99`.
 
 **This does not survive a reboot**, and on WSL the interface is renamed across restarts (`eth1`,

@@ -1,7 +1,7 @@
 -- Seed for live testing against a real client.
 --
 -- Run against a migrated database:
---   docker compose exec -T postgres psql -U nomad -d nomad < dev/tools/seed.sql
+--   docker compose exec -T postgres psql -U mgo2server -d mgo2server < dev/tools/seed.sql
 --
 -- IMPORTANT: the ip column is what the client is told to connect to next. It must be an address
 -- the console (or RPCS3) can actually reach — the host's LAN address, not 127.0.0.1, unless the
@@ -34,7 +34,7 @@ ON CONFLICT (username) DO NOTHING;
 
 -- Something for the news screen, which is one of the first things the client asks for.
 INSERT INTO public.news (important, title, body)
-VALUES (true, 'nomad-ng', 'Test server online.')
+VALUES (true, 'mgo2server', 'Test server online.')
 ON CONFLICT DO NOTHING;
 
 SELECT id, type, name, ip, port FROM public.lobby ORDER BY id;

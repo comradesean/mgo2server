@@ -5,30 +5,30 @@
 # orchestrators should probe the web server's /health and /ready endpoints directly instead,
 # since they speak HTTP themselves and get a real readiness answer.
 
-name: nomad-ng
+name: mgo2server
 
 x-server-env: &server-env
   # Set to DEBUG to trace every packet, including hex dumps, when testing a real client.
-  NOMAD_LOG_LEVEL: ${NOMAD_LOG_LEVEL:-INFO}
+  MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-INFO}
   # Third field of the login reply; see AuthWebController. Set to try alternatives.
-  NOMAD_LOGIN_PERKS: ${NOMAD_LOGIN_PERKS:-}
-  NOMAD_DB_URL: jdbc:postgresql://postgres:5432/nomad
-  NOMAD_DB_USER: nomad
-  NOMAD_DB_PASSWORD: ${NOMAD_DB_PASSWORD:-nomad}
+  MGO2SERVER_LOGIN_PERKS: ${MGO2SERVER_LOGIN_PERKS:-}
+  MGO2SERVER_DB_URL: jdbc:postgresql://postgres:5432/mgo2server
+  MGO2SERVER_DB_USER: mgo2server
+  MGO2SERVER_DB_PASSWORD: ${MGO2SERVER_DB_PASSWORD:-mgo2server}
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: nomad
-      POSTGRES_USER: nomad
-      POSTGRES_PASSWORD: ${NOMAD_DB_PASSWORD:-nomad}
+      POSTGRES_DB: mgo2server
+      POSTGRES_USER: mgo2server
+      POSTGRES_PASSWORD: ${MGO2SERVER_DB_PASSWORD:-mgo2server}
     ports:
-      - "${NOMAD_DB_PORT:-5432}:5432"
+      - "${MGO2SERVER_DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nomad -d nomad"]
+      test: ["CMD-SHELL", "pg_isready -U mgo2server -d mgo2server"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -36,7 +36,7 @@ services:
   # Runs migrations once, then exits. Both servers wait for it so neither races the schema.
   migrate:
     build: .
-    image: nomad-ng:local
+    image: mgo2server:local
     command: ["migrate"]
     environment: *server-env
     depends_on:
@@ -48,15 +48,15 @@ services:
   # only its own lobby's commands, so all three must run for a client to get past the gate.
   gate:
     build: .
-    image: nomad-ng:local
+    image: mgo2server:local
     command: ["game"]
     environment:
       <<: *server-env
-      NOMAD_LOBBY_TYPE: "0"
-      NOMAD_LOBBY_ID: "1"
+      MGO2SERVER_LOBBY_TYPE: "0"
+      MGO2SERVER_LOBBY_ID: "1"
     ports:
       # Observed from a real client: MGO2 dials the gate on 15731, not 5730.
-      - "${NOMAD_GATE_PORT:-15731}:5730"
+      - "${MGO2SERVER_GATE_PORT:-15731}:5730"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -70,15 +70,15 @@ services:
 
   account:
     build: .
-    image: nomad-ng:local
+    image: mgo2server:local
     command: ["game"]
     environment:
       <<: *server-env
-      NOMAD_LOBBY_TYPE: "1"
-      NOMAD_LOBBY_ID: "2"
-      NOMAD_GAME_PORT: "5731"
+      MGO2SERVER_LOBBY_TYPE: "1"
+      MGO2SERVER_LOBBY_ID: "2"
+      MGO2SERVER_GAME_PORT: "5731"
     ports:
-      - "${NOMAD_ACCOUNT_PORT:-15732}:5731"
+      - "${MGO2SERVER_ACCOUNT_PORT:-15732}:5731"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -92,15 +92,15 @@ services:
 
   gamelobby:
     build: .
-    image: nomad-ng:local
+    image: mgo2server:local
     command: ["game"]
     environment:
       <<: *server-env
-      NOMAD_LOBBY_TYPE: "2"
-      NOMAD_LOBBY_ID: "3"
-      NOMAD_GAME_PORT: "5732"
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "3"
+      MGO2SERVER_GAME_PORT: "5732"
     ports:
-      - "${NOMAD_LOBBY_PORT:-15733}:5732"
+      - "${MGO2SERVER_LOBBY_PORT:-15733}:5732"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -114,11 +114,11 @@ services:
 
   web:
     build: .
-    image: nomad-ng:local
+    image: mgo2server:local
     command: ["web"]
     environment: *server-env
     ports:
-      - "${NOMAD_WEB_PORT:-8080}:8080"
+      - "${MGO2SERVER_WEB_PORT:-8080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -140,12 +140,12 @@ services:
     image: python:3.12-alpine
     command: sh -c 'cp -r /wwwsrc /www && python /probe.py 80'
     environment:
-      NOMAD_WEB_URL: http://web:8080
+      MGO2SERVER_WEB_URL: http://web:8080
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
     ports:
-      - "${NOMAD_PROBE_HTTP:-192.168.1.100:80}:80"
+      - "${MGO2SERVER_PROBE_HTTP:-192.168.1.100:80}:80"
     depends_on:
       web:
         condition: service_healthy
@@ -155,15 +155,15 @@ services:
     image: python:3.12-alpine
     command: sh -c 'cp -r /wwwsrc /www && python /probe.py 443 tls'
     environment:
-      NOMAD_WEB_URL: http://web:8080
+      MGO2SERVER_WEB_URL: http://web:8080
       # cert-expired.pem swaps in a chain whose only defect is its validity window, which the
       # client reports as 070B rather than 090B. See OBSERVED.md, "The certificate branch".
-      NOMAD_TLS_CERT: ${NOMAD_TLS_CERT:-cert.pem}
+      MGO2SERVER_TLS_CERT: ${MGO2SERVER_TLS_CERT:-cert.pem}
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
     ports:
-      - "${NOMAD_PROBE_HTTPS:-192.168.1.100:443}:443"
+      - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.100:443}:443"
     depends_on:
       web:
         condition: service_healthy
@@ -179,7 +179,7 @@ services:
     # arrives. With one address the responder can only answer change-IP from the alternate port,
     # which lets the client conclude but not distinguish full-cone from symmetric. The secondary
     # must be a real address on the host (ip addr add ... dev <iface>).
-    command: python /stun.py 3478 ${NOMAD_PUBLIC_IP:-192.168.1.100} ${NOMAD_STUN_SECONDARY_IP:-192.168.1.201}
+    command: python /stun.py 3478 ${MGO2SERVER_PUBLIC_IP:-192.168.1.100} ${MGO2SERVER_STUN_SECONDARY_IP:-192.168.1.201}
     volumes:
       - ./dev/runtime/stun_probe.py:/stun.py:ro
     # Host networking, not published ports. Docker's UDP proxy rewrites the source port of
@@ -191,3 +191,6 @@ services:
 
 volumes:
   postgres-data:
+    # Pinned to the name the volume already has. The compose project was renamed, and without
+    # this that rename would silently create an empty volume and orphan the existing database.
+    name: nomad-ng_postgres-data

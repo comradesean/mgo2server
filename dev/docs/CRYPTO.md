@@ -197,7 +197,7 @@ tls_ctx.set_ciphers("ALL:@SECLEVEL=0")           # SECLEVEL 0 re-enables 2008-er
 
 `SECLEVEL=0` is the one people miss: modern distributions compile OpenSSL with a security level
 that removes these ciphers entirely, so `ALL` alone still offers the console nothing it can use.
-`probe-https` terminates TLS and proxies through to the web service; `NOMAD_TLS_CERT` selects the
+`probe-https` terminates TLS and proxies through to the web service; `MGO2SERVER_TLS_CERT` selects the
 chain, which allows swapping in a deliberately expired one — the client reports that as `070B`
 rather than `090B`, which is how the certificate branch was originally identified.
 

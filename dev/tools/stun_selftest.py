@@ -96,7 +96,7 @@ try:
 except socket.timeout:
     print("  [SKIP] no reply seen — expected when running inside WSL; see the module docstring.")
     print("         Verify by hand instead:")
-    print("           docker logs nomad-ng-probe-stun-1 | grep -A1 CHANGE-REQUEST")
+    print("           docker logs mgo2server-probe-stun-1 | grep -A1 CHANGE-REQUEST")
     print("         The line after the request must read '-> 192.168.1.201:3479'.")
 
 print("=== keepalive: zero-length request ===")
