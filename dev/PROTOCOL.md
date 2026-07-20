@@ -103,9 +103,8 @@ the loop: a textbook 16-round implementation fed our shipped schedule reproduces
 output exactly, and the same implementation reproduced a session field captured off a real client.
 Treat "it's a Konami variant" as folklore; the only real deviation is that the key ships as an
 already-expanded 4168-byte schedule (18 P-array entries then four 256-entry S-boxes) rather than a
-passphrase. Three schedules ship in
-`src/main/resources/crypto/`: `packet.key` (payloads), `auth.key` (unused by the current session
-code, retained), and `session.key` (the check-session transform). Payloads are zero-padded up to
+passphrase. Two schedules ship in `src/main/resources/crypto/`: `packet.key` (payloads) and `session.key` (the
+check-session transform). A third, `auth.key`, was removed -- see `dev/CRYPTO.md`. Payloads are zero-padded up to
 an 8-byte boundary before encryption and the padding is dropped after decryption.
 
 None of this is a security boundary. The keys are on the game disc.
@@ -495,7 +494,7 @@ id is a character id and the selection is not cleared.
 
 **Client → server**, `CharacterConnectController.connect`. Empty payload.
 
-This is the burst: one request, ten packets back. Sent in this order:
+This is the burst: one request, nine packets back. Sent in this order:
 
 | # | command | payload |
 | --- | --- | --- |
@@ -634,6 +633,11 @@ The 25-byte prefix:
 Undocumented; reproduced byte for byte.
 
 ### `0x4124` — gear catalogue, 651 bytes
+
+**The 123 item ids are a data table, not a derivable sequence.** They are listed in
+`nomad.game.LoadoutWriter` and are not reproduced here; a reimplementation needs that table, which
+was taken from the original server's gear catalogue. Note `0x86` appears twice in it — unchecked
+whether that is faithful or a transcription slip.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |

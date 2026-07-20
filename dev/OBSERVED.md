@@ -476,9 +476,10 @@ What makes it PASS, stated as the responder must satisfy it:
 shape. The capture removes the last doubt about the format (four attributes are accepted; the
 old "decoder rejects >2 attributes" comment was wrong and is fixed). The remaining risk is
 operational: it must run host-networked (Docker's UDP proxy rewrites the source port, which would
-break the port-preserving mapping) and with the real second address configured. The XOR-MAPPED
-`0x8020` attribute uses a client-specific obfuscation not yet reproduced; the three plaintext
-address attributes carry the verdict, so it is optional.
+break the port-preserving mapping) and with the real second address configured. The XOR-MAPPED `0x8020`
+attribute is **required** — a three-attribute reply is rejected, which is how its necessity was
+established. Its obfuscation was later reproduced: it is keyed on the request's transaction id,
+not a magic cookie. See `dev/STUN.md`.
 
 ## The post-login machines, mapped to the flow (reconciled against the disassembly)
 
@@ -1039,11 +1040,11 @@ Sent by the client on the account lobby around the character-registration screen
 name-availability pre-check: savemgo's Nomad names it in a commented-out case,
 `Accounts.checkCharacterName(ctx, in)` (`AccountLobby.java`), and shipped without it.
 
-We do not handle it either. Observed against a live client: the game logs
-`No handler for command 3107; ignoring.` and still reaches **Register New Character**, so it is
-not fatal. Whether the client blocks on a `0x3108` reply during name entry itself is untested —
-if it does, that is where it will show up, and the reply format should be read from the binary
-rather than guessed.
+**It is fatal, and we handle it.** The note that it "is not fatal" was written from a partial
+observation: the game does reach **Register New Character** with the command unanswered, because
+the stall happens at the *next* step. On entering a name the client waits about forty seconds for
+a `0x3108`, never sends `0x3101`, and fails with `0A41:FFFFFF60`. savemgo ships it commented out;
+that is not evidence it is optional for this client. See `dev/PROTOCOL.md`.
 
 ## The client reaches the MGO2 main menu
 

@@ -17,8 +17,25 @@ docker compose up -d
 Brings up postgres, the migrations, the three lobby servers (gate, account, game), the web service,
 and the HTTP/HTTPS/STUN probes.
 
-There is **no registration endpoint**. Insert an account by hand — the client sends the password
-already MD5-hashed, so that hash is what is stored:
+### Seed the lobbies — required
+
+**The migrations create no lobby rows, and an empty `lobby` table is a silent dead end.** The gate
+answers the lobby-list request with a start and an end packet and no entries, so the client has
+nowhere to go and reports nothing useful.
+
+```
+docker exec -i nomad-ng-postgres-1 psql -U nomad -d nomad < dev/seed.sql
+```
+
+That inserts one lobby of each type — gate, account, game — on ports 15731/15732/15733, plus a test
+account and a news item. **Order matters and is by id**: the client refers to a lobby by its index
+in the list it was sent, so the rows must be inserted so that index equals type.
+
+### Create an account
+
+There is **no registration endpoint**. `dev/seed.sql` adds a `tester` account with the password
+`nomad`. For any other, insert it by hand — the client sends the password already MD5-hashed, so
+that hash is what is stored:
 
 ```sql
 insert into account (username, password, slots)
@@ -47,6 +64,12 @@ IP swap list: "mgo2web.konami.com=192.168.1.100&&info.service.konamionline.com=1
 The PS3 validates the server certificate against its own store and **drops the connection before
 sending a request** if the chain does not verify — which looks exactly like the server never being
 contacted. A self-signed certificate is not enough.
+
+The leaf certificate must cover **every hostname in the swap list**, not just one. The login is on
+`mgo2auth.konami.com` and the version check on `mgo2web.konami.com`; a certificate naming only one
+fails the other, and both failures look identical (`090B`). The chain in `dev/www` already carries
+`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/www/ext.cnf`
+if regenerating.
 
 Copy this repository's CA over one of the emulator's certificate slots:
 
@@ -107,6 +130,18 @@ full-cone, which breaks peer-to-peer for them. `dev/STUN.md` has the detail.
   MGO2 servers; none is required here.
 - **Router port forwarding.** The game asks its own UPnP client to forward, and the port check is
   satisfied by the STUN responder regardless.
+
+## Crypto constants
+
+Some are recoverable from your own disc rather than taken on trust:
+
+```
+python3 dev/extract_keys.py "<disc>/PS3_GAME/USRDIR/o/MGO2.elf"
+```
+
+prints the whole-packet XOR key, the HMAC key, the Blowfish pi table and the session master
+context, with offsets. `packet.key` and `session.key` cannot be obtained this way and ship as
+resources; `dev/CRYPTO.md` explains why for each.
 
 ## Gotchas
 
