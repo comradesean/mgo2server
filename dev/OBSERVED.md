@@ -212,8 +212,48 @@ before the exit, so an aborted exit does not strand it.
 connected to the gate and completed normally. No second worker is ever created, and no TCP connect
 is attempted after the gate. Whatever drives the screen is one of the other six states.
 
-So the call chain above is understood but is *not* where it hangs. Which state it is in remains
-open; the state is a halfword at `+0x68` of the machine's context.
+So the call chain above is understood but is *not* where it hangs.
+
+### Read out of the client's own memory
+
+RPCS3's Memory Viewer settles things that disassembly alone cannot. The singleton objects for
+these machines live in a run of pointer slots; each is `*(slot)`, and a slot reading zero means
+that machine is not running.
+
+| slot | machine | observed |
+| --- | --- | --- |
+| `0x166E7F0` | 34-state top-level flow (`0x88CD2C`) | **NULL** |
+| `0x166F04C` | login machine (`0x9455BC`) | **NULL** |
+| `0x166F050` | job worker (`0x9461D8`) | **NULL** |
+| `0x166F054` | connect machine (`0x9468B8`) | **NULL** |
+| `0x166F058` | waiting machine (`0x946F00`) | `0x54CE89D0` — **live** |
+
+The live one is in **state 0** (`*(u16*)(0x54CE89D0+0x68) == 0`), which polls mgonet channel 2 and
+returns without advancing while the result is `-102` or `-64`. Unlike every other state examined,
+**it has no timeout** — no tick counter, no ceiling. That is why the screen waits forever instead
+of erroring, and why cancelling removes the button without ending anything.
+
+Its mgonet context is `[obj+0x60] = 0x501033D0`, and reading it confirms two things:
+
+- **The per-type connection table is empty.** `FF FF FF FF` appears at `0x501033D0`, `+0x44` and
+  `+0x88` — exactly the `type * 0x44` stride `mgo_connect_server_by_index` computes. All three
+  slots are `-1`. No socket is open to any lobby.
+- **The lobby list arrived intact.** At `+0x75C`, in `0x34`-byte strides, entries read
+  `type=1 "Account" 192.168.1.100 :15732 id=2` and `type=2 "Game" … :15733 id=3` — every field of
+  what the gate sent, parsed and stored. (Two entries because this was captured during the
+  gate-removal test.) **The gate encoding is confirmed correct from the client side**, not merely
+  from our own logs.
+
+RPCS3's log agrees and is reproducible run to run: one `mgonet_connect_timeo` thread per session,
+connecting only to the gate on 15731, then UPnP, then `bind 192.168.1.100:5730`, then no further
+network activity at all. The account lobby is never dialled.
+
+Unresolved, and left here rather than guessed at: `mgo_connect_server_by_index` bounds-checks an
+index against a count at `ctx+0x754`, and that word reads **zero** while the entries sit at
+`+0x75C`. The only writer of `+0x754` anywhere in the mgonet library is `0xD34468`, which stores a
+literal zero — a reset. So either the array base is not `ctx+0x750` as the instruction
+`addi r31, r3, 0x750` implies, or the count is populated through a pointer this search did not
+match. That is the next thread to pull.
 
 The multicast does reach WSL from RPCS3 on Windows, so a responder there can serve it:
 
