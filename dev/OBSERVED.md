@@ -1076,3 +1076,39 @@ We do not handle it either. Observed against a live client: the game logs
 not fatal. Whether the client blocks on a `0x3108` reply during name entry itself is untested —
 if it does, that is where it will show up, and the reply format should be read from the binary
 rather than guessed.
+
+## The client reaches the MGO2 main menu
+
+A real client (BLUS30109, stock RPCS3) now completes the whole path against this server: port
+check, login, check-session, character creation, character select, the game-lobby connect burst,
+and the wardrobe update — arriving at the main menu with **Lobby Select, Online News, Mail, Clan,
+Personal Data, Rankings**. No command goes unanswered on the way.
+
+### `FFFFFF60` means "you did not reply"
+
+The single most useful debugging fact found so far. When a command goes unanswered this client does
+not error immediately: it stalls for tens of seconds and then fails with `FFFFFF60`, prefixed by
+whatever screen was open.
+
+| Prefix | Screen | Command that was missing |
+| --- | --- | --- |
+| `0A41` | Register character | `0x3107` check character name |
+| `092E` | Connecting to lobby | `0x4700` connection info, `0x4820` mail |
+| `0A21` | Character select | `0x4900` game lobby info |
+| `1031` | Update character info | `0x4130` update personal info |
+
+So a `FFFFFF60` is never a malformed reply — it is a missing one. Read
+`No handler for command …` out of the lobby log and implement that command.
+
+### Character creation was dropping two of the player's choices
+
+`readAppearance` skipped a byte after `upper` and another after `chestColor`, on an inherited
+comment claiming the original server discarded them. That was wrong, and it cost the player their
+choices silently.
+
+The wardrobe update `0x4130` carries the same fields in the same order and names them: the byte
+after `upper` is `lower`, and the byte after `chestColor` is `handsColor`. Confirmed against a live
+client — a character created with `lower = 0` had a real `lower` the moment `0x4130` was
+implemented and the player changed clothes. Both fields are now read at creation.
+
+This is the sixth time an inherited assertion about "what the original server did" has been wrong.
