@@ -62,6 +62,24 @@ labelled where they appear:
 - **Presentation** — what the client can render. Claims in this category are checkable against the
   binary and usually have not been checked.
 
+## Running the tests
+
+**Always `mvn verify`, never `mvn test`.** Surefire only picks up `*Test`; every `*IT` runs under
+failsafe during `verify`. A green `mvn test` says nothing about the integration suite, and that gap
+has hidden real breakage more than once.
+
+There is no local `mvn`. Integration tests use testcontainers, hence the socket and host network:
+
+```
+docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
+  -v /var/run/docker.sock:/var/run/docker.sock --network host \
+  -e TESTCONTAINERS_HOST_OVERRIDE=localhost \
+  maven:3.9-eclipse-temurin-25 mvn -B verify
+```
+
+Expect two counts in the summary — currently 113 unit and 71 integration. One number means the
+integration tests did not run.
+
 ## Debugging
 
 An unanswered command makes this client **stall and then fail with `FFFFFF60`**, prefixed by
