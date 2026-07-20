@@ -99,9 +99,10 @@ full-cone, which breaks peer-to-peer for them. `dev/STUN.md` has the detail.
   DNS setting at the machine to discover the hostnames a *different* disc or region asks for, which
   is how the swap list above was built. Stop it again afterwards.
 
-  If you remove the DNS server, do not leave RPCS3's `DNS address` pointing at it. Set it to a real
-  resolver (your router, or `1.1.1.1`) so that nothing can stall on a dead address — the setting is
-  inert for the hostnames above, but a hostname outside the swap list would still try to resolve.
+  RPCS3's `DNS address` should therefore point at a **real resolver** — `1.1.1.1`, or your router —
+  not at this server. The setting is inert for the five hostnames above, which the swap list
+  intercepts before any lookup, but a hostname outside that list would still try to resolve and
+  should reach something that answers.
 - **A patched or custom emulator build.** Stock RPCS3 is sufficient. Custom builds exist for other
   MGO2 servers; none is required here.
 - **Router port forwarding.** The game asks its own UPnP client to forward, and the port check is
