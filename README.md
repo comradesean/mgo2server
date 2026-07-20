@@ -34,19 +34,14 @@ entered with a character already selected, so it sends that character's id inste
 
 ### Commands implemented
 
-| Command | Lobby | Meaning |
-| --- | --- | --- |
-| `0x0001` | any | Echo (development aid) |
-| `0x2005` | gate | Get lobby list → `0x2002` / `0x2003` / `0x2004` |
-| `0x2008` | gate | Get news → `0x2009` / `0x200a` / `0x200b` |
-| `0x3003` | account, game | Check session → `0x3004` |
-| `0x3048` | account | Get character list → `0x3049` |
-| `0x3101` | account | Create character → `0x3102` |
-| `0x3103` | account | Select character → `0x3104` |
-| `0x3105` | account | Delete character → `0x3106` |
-| `0x4100` | game | Connect burst → `0x4101`, `0x4120`, `0x4121` ×2, `0x4122`, `0x4124`, `0x4125`, `0x4140`, `0x4142` |
-| `0x4300` | game | Get game list → `0x4301` / `0x4302` / `0x4303` |
-| `0x4316` | game | Create game → `0x4317` |
+Deliberately not listed here. **`dev/PROTOCOL.md`** documents every command with its payload broken
+down field by field, and a summary in two places drifts — this table went stale within a day of the
+last six commands being added, which is exactly the failure this project keeps paying for.
+
+The short version: the gate serves the lobby list and news; the account lobby handles check-session,
+the character list, and creating, checking, selecting and deleting characters; the game lobby
+handles check-session, the connect burst, personal-info updates, connection info, messages, the hub
+and the game list.
 
 Characters are addressed by their index in the last list the client was sent, so every command
 that takes an index resolves it through one ordering rule: live characters by id, with the
@@ -80,6 +75,18 @@ derives two bitfield bytes from them on every request — much easier to verify 
 against free-form JSON. `GameListEntry` owns that packing and each flag is pinned by a test, since
 a wrong bit surfaces as an unrelated option appearing set in the browser rather than as a failure.
 
+## Repository layout
+
+| path | what |
+| --- | --- |
+| `src/` | The server. Java, Netty, Postgres. |
+| `dev/` | Documentation, the probes the stack depends on, and diagnostics — see `dev/README.md`. |
+| `compose.yaml` | The local stack: Postgres, migrations, three lobby servers, the web service, the probes. |
+| `CLAUDE.md` | Conventions, chiefly the evidence hierarchy and how to run the tests. |
+
+`upstream/` is gitignored: local clones of other MGO2 servers, kept for comparison. Nothing depends
+on them, and `CLAUDE.md` explains why they are not treated as specifications.
+
 ## Requirements
 
 - JDK 25
@@ -106,6 +113,9 @@ NOMAD_WEB_PORT=18080 NOMAD_GAME_PORT=15730 NOMAD_DB_PASSWORD=secret docker compo
 ./mvnw verify          # unit tests, then integration tests, then the jar and SBOM
 ./mvnw test            # unit tests only, no Docker needed
 ```
+
+**`verify` is the one that counts.** `test` runs Surefire only, so every `*IT` is silently skipped —
+a green `test` says nothing about the integration suite and has hidden real breakage here before.
 
 Tests are split by naming convention:
 
