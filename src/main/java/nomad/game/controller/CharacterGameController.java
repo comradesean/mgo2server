@@ -54,14 +54,18 @@ public class CharacterGameController implements IGameController {
 	private static final int LIST_PAYLOAD_SIZE = 0x1d7;
 
 	/**
-	 * Fixed trailer the client expects after the character entries. Its meaning is not documented;
-	 * it is reproduced from the original server byte for byte.
+	 * Fixed trailer after the character entries, 35 bytes so the whole payload is 0x1d7. The
+	 * client's parser (0xD3732C) consumes a fixed grid regardless of character count: a 23-byte
+	 * header, then eight 52-byte slots ending at offset 439, then 32 trailing bytes — so the
+	 * first three trailer bytes complete the eighth slot and the rest is the trailing block.
+	 * Both Nomad upstreams and mgo2-server send these exact 35 bytes.
 	 */
 	private static final byte[] LIST_TRAILER = {
 		0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x03, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00,
 	};
 
 	private final AccountService accountService;
