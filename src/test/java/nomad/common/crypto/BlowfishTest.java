@@ -12,10 +12,12 @@ import static org.assertj.core.api.Assertions.*;
 /**
  * Known-answer tests for the MGO2 Blowfish variant.
  * <p>
- * The expected values were produced by running the original Nomad implementation
- * ({@code savemgo.nomad.crypto.Crypto}) over these inputs. They exist so this rewrite cannot
- * silently drift from the behaviour a real game client expects — the algorithm is fixed by the
- * disc and any difference here is a bug, however reasonable the new code looks.
+ * <b>Evidence: regression guard, not a correctness check.</b> The expected values were produced by
+ * running Nomad's {@code savemgo.nomad.crypto.Crypto} over these inputs, so they prove only that
+ * this rewrite matches <em>that</em> implementation. What actually proves the algorithm is
+ * production: a real client's encrypted payloads decrypt with {@code packet.key} and it accepts
+ * ours in return. These vectors exist to catch silent drift, and would not catch both
+ * implementations being wrong together.
  */
 public class BlowfishTest {
 	private static final HexFormat HEX = HexFormat.of();
