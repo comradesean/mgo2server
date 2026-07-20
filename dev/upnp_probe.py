@@ -181,7 +181,26 @@ class Gateway(http.server.BaseHTTPRequestHandler):
 def serve_ssdp(bind_ip, http_port, respond):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("", SSDP_PORT))
+    # Bind the multicast group address, not INADDR_ANY.
+    #
+    # This matters more than it looks. The game binds 192.168.1.100:1900 itself, to hear NOTIFY
+    # announcements, and under WSL's mirrored networking that is the same address space this
+    # process sits in. A probe on 0.0.0.0:1900 takes the port out from under it:
+    #
+    #   sys_net: [Native] Trying to bind 192.168.1.100:1900
+    #   sys_net: Socket error EADDRINUSE
+    #
+    # after which the client falls back to an ephemeral port and behaves differently from a
+    # normal console. Binding the group address still receives everything sent to
+    # 239.255.255.250:1900 while leaving the unicast address free.
+    try:
+        sock.bind((SSDP_ADDR, SSDP_PORT))
+    except OSError:
+        # Not every stack allows binding a multicast address; fall back, but say so, because it
+        # means the client's own bind will fail.
+        log("WARNING: cannot bind the group address; falling back to 0.0.0.0, which will make "
+            "the client's own bind of port 1900 fail with EADDRINUSE")
+        sock.bind(("", SSDP_PORT))
     # Join the group on every interface we were given, and on the default one.
     membership = struct.pack("4s4s", socket.inet_aton(SSDP_ADDR), socket.inet_aton(bind_ip))
     try:
