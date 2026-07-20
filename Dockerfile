@@ -30,7 +30,7 @@ FROM eclipse-temurin:25-jre-noble@sha256:7161e12dbcd2791d1fc8b9cf6f1c1519a84c4ac
 
 LABEL org.opencontainers.image.title="mgo2server" \
       org.opencontainers.image.description="Metal Gear Online 2 server emulator" \
-      org.opencontainers.image.source="https://github.com/comradesean/nomad" \
+      org.opencontainers.image.source="https://github.com/comradesean/mgo2server" \
       org.opencontainers.image.licenses="MIT"
 
 # Unprivileged runtime user; nothing here needs root.
