@@ -1,0 +1,145 @@
+# Backlog
+
+Deliberately deferred work. Each entry records why it is deferred and what the fix would look
+like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
+done.
+
+## Lobby Select population is always 0
+
+*Pinned 2026-07-21.* The lobby-list entry (`0x2003`, offset `0x29`, u16) hardcodes a zero player
+count — `PROTOCOL.md` documents it as "we do not track occupancy". Cosmetic: joining works, but
+Lobby Select claims every lobby is empty even mid-game. Deferred, not endorsed.
+
+Sketches, in ascending effort:
+
+- **Derive from `game_player`.** One query per lobby list, zero new state: count players in games
+  per lobby. Undercounts — players idling in the lobby without a game are invisible — but turns
+  "always 0" into "0 unless a game is up", which already fixes the observed complaint.
+- **Presence table.** The lobby servers are separate JVMs, so live occupancy has to go through
+  postgres: a row per authenticated connection (`lobby_id`, `account_id`, `updated_at`); insert on
+  auth, delete on disconnect, and on process start delete every row for the process's own
+  `lobby_id` so a crash cannot leave phantom occupants. The `0x2005` handler then selects counts
+  grouped by lobby. The gate serves the list but owns no lobby population of its own, which is why
+  the counts must come from shared state rather than in-memory connection counts.
+- Whatever the source, what the client *renders* for the field is a presentation claim and has not
+  been checked against the binary (see `CLAUDE.md` on presentation claims).
+
+## P2P works one direction — post-connection commands (in progress)
+
+*Pinned 2026-07-21.* Reversing the test (mx1 **joining** a game hosted by localhost) got the P2P
+link to actually form: the host sent **`0x4340`** ("player connected to me"), which the client
+only emits *after* a successful peer connection — the first time we have ever seen it. So the
+"host silently drops packets" finding below was **direction-specific** (mx1-as-host, likely its
+UPnP/NAT), not a universal P2P failure. Localhost-as-host accepts the peer.
+
+It hung only because `0x4340` had no handler (→ ack `0x4341`). Fix applied: `HostGameController`
+now acknowledges `0x4340` and `0x4342` (player connected/disconnected), same empty-ack pattern as
+`0x4344`/`0x4398`. That closed the last server gap — **no `No handler` lines appear anywhere in a
+join now.** The joiner goes idle after `0x4321` and waits for P2P game data from the host; it
+needs no further server push (matches all three references).
+
+**Conclusion after exhaustive elimination (2026-07-21):** with the server complete, both firewalls
+open, mx1 classified **full-cone** (Test II answered from `.201`, mx1 reaches `.201` both ways —
+verified live), and addresses correct, sustained P2P game data between the two RPCS3 instances
+*still* does not flow — the joiner spins or hits "unable to connect to host." The host reports
+`0x4340` (brief initial contact) but the bidirectional flow never sustains. Everything we control
+is verified correct; the remaining failure is the emulator-level encrypted P2P, which the earlier
+decryption proved is not our protocol.
+
+**Prime remaining suspect: the co-located `.100` machine** runs the server (mirrored-WSL) *and* a
+native RPCS3 client simultaneously. WSL cannot even see localhost's native P2P egress, and mx1's
+tcpdump during a spin showed no host→joiner game traffic — both consistent with mirrored
+networking interfering with native RPCS3 peer traffic. **Next test: P2P between two machines where
+neither is the server host** (server on a third/headless box). If two clean clients connect, the
+server is proven done and the dual-role `.100` machine was the blocker. Do not reopen server code
+for P2P without evidence contradicting the three-reference agreement and the packet decryption.
+
+## The peer-to-peer connection — the earlier frontier (mx1 as host)
+
+*Pinned 2026-07-21.* The whole TCP join handshake now works end to end and is verified against two
+live clients: `4320 → 4321` succeeds, the joiner is handed the host's endpoint, the client accepts
+it and **attempts the peer connection**. That attempt fails: ~40 s later the client sends `0x4322`
+(join failed), which we now answer so it fails cleanly instead of hanging on `0B08:FFFFFF60`.
+
+**The server side of join is complete — this is now an RPCS3 problem, not a server one.**
+Established by captures on both machines 2026-07-21:
+
+- The `0x4321` reply carries correct bytes (`192.168.1.102:5730`, result 0).
+- The joiner (`.100`) sends a 44-byte UDP packet to the host every ~1.9 s. **mx1's tcpdump shows
+  every one arriving** on `eth0:5730`. Firewall and addressing are conclusively ruled out.
+- **mx1's game socket never replies.** The host receives the hole-punch and ignores it, while
+  sitting in its own game room (checked — not a wrong-screen issue).
+
+**Proven by decrypting the P2P packets (2026-07-21).** The joiner's 44-byte UDP packets to the
+host were captured (Wireshark, joiner side) and decrypted with the game's global keys. The XOR
+method is validated — it turns a captured TCP frame into a clean `cmd=0x0005` ping — and applied
+to the UDP packets it produces garbage that varies per packet. They are **not** MGO2 game packets,
+and carry no `0x0573` STUN magic either. They are **RPCS3's own PSN/P2P signaling**, opaque below
+MGO2. The same capture shows the joiner doing sustained, working RPCN traffic to an external
+server (`104.29.153.67:19295`) while the direct `.100:5730 → .102:5730` punch gets 0 bytes back.
+
+**So the MGO2 server is confirmed complete and not the cause** — the failing packets are not our
+protocol. Our `0x4321` hands over the host address correctly; RPCS3's signaling takes over and the
+host's emulator never authorizes the peer. The stale-socket idea is also dead: `ss` on mx1 showed
+exactly one clean owner of `:5730`.
+
+This is an **RPCS3/RPCN** problem, outside this codebase. Leads, in order:
+
+1. **RPCN NAT type / P2P** in each RPCS3 (Settings → Network). A restrictive type reported to RPCN
+   stops the broker from setting up the direct punch, so the host drops it.
+2. **Two RPCS3 instances, same LAN, RPCN P2P** is known-fiddly — RPCN may hand out the wrong
+   (public vs LAN) peer address or refuse same-account/same-IP pairs. Confirm the two instances use
+   **different RPCN accounts**.
+3. **Host-side `sys_net`/RPCN Trace log** — it will show the signaling layer receiving the punch
+   and why it drops it.
+
+Do not treat `0x4322` being handled as "join works" — it means join *fails politely* (`0B09`).
+Do not reopen the server code for P2P: the decryption proves the failing traffic isn't ours.
+
+## The TCP join handshake (done)
+
+*Pinned 2026-07-21, from the first two-client session.* Join Game, Game Details and Player List
+all failed `0B10:FFFFFF60` on the same missing reply: the client sends `0x4312` (get game
+details) and retries every ~2 s. It never gets far enough to send `0x4320` (join game). Order of
+work:
+
+1. ~~**`0x4312`**~~ — **implemented and verified against a live client 2026-07-21.** The parser
+   at `0xD44388` accepts our reply: Game Details opens. Layout and provenance in PROTOCOL.md.
+2. **Flesh out the `0x4313` player entries — the Player List failure.** *Verified against a live
+   client 2026-07-21:* Player List sends the **same** `0x4312` and consumes the **same** `0x4313`
+   reply as Game Details (packet trace: no distinct command, no `No handler`). Game Details reads
+   only the header and opens; Player List additionally walks the per-player entries, validates
+   each, and rejects ours with **`0B0F:00000000`**. Our entry is minimal — `charaId`, 16-byte
+   name, `ping=0`, `exp=0`. The binary has five `li r3,0x0B0F` raise sites; the player-entry
+   validator reached via `0x904DC0 → 0x883FB4` reads a much larger per-player struct (offsets
+   `0x00`, `0x04`, `0xB0`, `0xB4`, `0x300`, each required non-zero/valid). **Not yet pinned:**
+   which wire field at which offset the player-list consumer requires — that needs tracing the
+   consumer, not the producer. Do that before adding fields; do **not** guess values.
+3. ~~**`0x4320`**~~ — **implemented 2026-07-21** from the reply parser at `0xD440DC` (layout in
+   PROTOCOL.md). Reads game id (+ optional password), serves the host's endpoint. Awaiting live
+   verification — the sender side is not yet located, so the request width is unconfirmed.
+4. ~~**Persist `0x4700`**~~ — **done 2026-07-21.** Stored in `chara_connection` keyed by
+   character; `0x4320` reads it back. The public IP comes off the socket.
+5. **Store the `0x4310` settings blob.** Until then every game row materialises with defaults,
+   which the browser renders as map "----", rule 0, Avg Level 0 and a blank host score —
+   observed against a real client 2026-07-21. The details reply has slots for the rotation,
+   weapon restrictions, timers and uniques that all sit at zero for the same reason; one fix
+   clears the whole cluster.
+
+## Game-list refresh semantics are unverified
+
+*Pinned 2026-07-21.* During the first two-client session, a game created on one machine did not
+appear in a game list already fetched by the other; re-entering the browser showed it. The server
+side is fact (our code): `0x4300` is answered from a snapshot query with no staleness filter, no
+heartbeat, and nothing pushes updates to an open list. **The client side is unverified**: whether
+the browser screen re-polls `0x4300` on a timer, or expects unsolicited updates, has not been
+checked against the ELF or a capture — and an expected-but-unanswered command is this client's
+signature failure mode.
+
+To settle it:
+
+1. Tier 1: find the game-browser screen's state machine in the ELF and see what drives `0x4300`.
+2. Tier 2: run the gamelobby at debug logging, hold an open game list on one client for 60
+   seconds while the other creates a game. Nothing sent → snapshot model confirmed, the empty
+   first list was a request/creation race, and this entry closes. Anything sent and unanswered →
+   promote to a bug.

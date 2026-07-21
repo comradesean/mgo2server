@@ -91,7 +91,11 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 				// Move on to the next request once this one's reply sequence has ended.
 				if (sent[0] < requests.length
 						&& (packet.getCommand() == HostGameController.CREATE_GAME_RESULT
-							|| packet.getCommand() == GameListGameController.GAME_LIST_END)) {
+							|| packet.getCommand() == GameListGameController.GAME_LIST_END
+							|| packet.getCommand() == GameListGameController.GAME_DETAILS
+							|| packet.getCommand() == GameListGameController.JOIN_GAME_RESULT
+							|| packet.getCommand()
+								== CharacterConnectController.UPDATE_CONNECTION_INFO_RESULT)) {
 					ctx.writeAndFlush(requests[sent[0]++]);
 					return;
 				}
@@ -267,6 +271,131 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 		assertThat(payload.getByte(27) & 0b1000).isEqualTo(0b1000);    // friendly fire
 		assertThat(payload.getByte(28) & 0b1000000).isEqualTo(0b1000000); // voice chat
 		assertThat(payload.getByte(28) & 0b10000000).isEqualTo(0b10000000); // team kill kick
+	}
+
+	private static GamePacket getGameDetails(int gameId) {
+		var payload = Unpooled.buffer();
+		payload.writeInt(gameId);
+		return new GamePacket(GameListGameController.GET_GAME_DETAILS, payload);
+	}
+
+	/** Details for a hosted game: the reply the details, join and player-list screens gate on. */
+	@Test
+	public void detailsDescribeAHostedGame() {
+		givenSelectedCharacter("Snake");
+
+		var created = exchange(1, createGame());
+		var gameId = created.get(0).getPayload().getInt(4);
+
+		var replies = exchange(1, getGameDetails(gameId));
+
+		assertThat(replies).hasSize(1);
+		assertThat(replies.get(0).getCommand()).isEqualTo(GameListGameController.GAME_DETAILS);
+
+		var payload = replies.get(0).getPayload();
+		assertThat(payload.readableBytes())
+			.isEqualTo(mgo2server.game.GameDetails.FIXED_SIZE
+				+ mgo2server.game.GameDetails.PLAYER_SIZE);
+		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(payload.getInt(4)).isEqualTo(gameId);
+
+		var name = new byte[16];
+		payload.getBytes(8, name);
+		assertThat(new String(name, StandardCharsets.ISO_8859_1).replace("\0", ""))
+			.isEqualTo("Snake");
+
+		// One player — the host — with the main pool's experience.
+		assertThat(payload.getByte(235)).isEqualTo((byte) 1);
+		var base = mgo2server.game.GameDetails.FIXED_SIZE;
+		assertThat(payload.getInt(base)).isEqualTo((int) charaId);
+		assertThat(payload.getInt(base + 24)).isEqualTo(500);
+	}
+
+	/** A nonzero result is the answer for a game that vanished between list and click. */
+	@Test
+	public void detailsForAMissingGameReturnAnError() {
+		givenSelectedCharacter("Snake");
+
+		var replies = exchange(1, getGameDetails(999_999));
+
+		assertThat(replies).hasSize(1);
+		assertThat(replies.get(0).getCommand()).isEqualTo(GameListGameController.GAME_DETAILS);
+		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(4);
+		assertThat(replies.get(0).getPayload().getInt(0))
+			.isNotEqualTo(GameError.NONE.result());
+	}
+
+	private static GamePacket joinGame(int gameId) {
+		var payload = Unpooled.buffer();
+		payload.writeInt(gameId);
+		return new GamePacket(GameListGameController.JOIN_GAME, payload);
+	}
+
+	private static GamePacket registerEndpoint() {
+		// 0x4700: private port, 16-byte private IP, public port. The public IP comes off the
+		// socket, so it is not in the payload.
+		var payload = Unpooled.buffer();
+		payload.writeShort(5731);
+		var ip = "192.168.1.100";
+		for (var i = 0; i < 16; i++) {
+			payload.writeByte(i < ip.length() ? ip.charAt(i) : 0);
+		}
+		payload.writeShort(5730);
+		return new GamePacket(CharacterConnectController.UPDATE_CONNECTION_INFO, payload);
+	}
+
+	/** A join succeeds once the host has registered its peer-to-peer endpoint. */
+	@Test
+	public void joinReturnsTheHostEndpoint() {
+		givenSelectedCharacter("Snake");
+
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+
+		var replies = exchange(2, registerEndpoint(), joinGame(gameId));
+
+		var join = replies.stream()
+			.filter(p -> p.getCommand() == GameListGameController.JOIN_GAME_RESULT)
+			.toList().get(0);
+		assertThat(join.getPayload().readableBytes()).isEqualTo(mgo2server.game.GameJoin.SIZE);
+		assertThat(join.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		// The public IP is read from the loopback socket the test connects over.
+		var publicIp = new byte[16];
+		join.getPayload().getBytes(4, publicIp);
+		assertThat(new String(publicIp, StandardCharsets.ISO_8859_1).replace("\0", ""))
+			.isNotEmpty();
+		assertThat(join.getPayload().getUnsignedShort(20)).isEqualTo(5730);
+		assertThat(join.getPayload().getUnsignedShort(38)).isEqualTo(5731);
+	}
+
+	/** Without a registered host endpoint a join fails rather than returning a blank success. */
+	@Test
+	public void joinFailsWhenHostHasNoEndpoint() {
+		givenSelectedCharacter("Snake");
+
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+
+		var replies = exchange(1, joinGame(gameId));
+
+		assertThat(replies).hasSize(1);
+		assertThat(replies.get(0).getCommand()).isEqualTo(GameListGameController.JOIN_GAME_RESULT);
+		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(4);
+		assertThat(replies.get(0).getPayload().getInt(0)).isNotEqualTo(GameError.NONE.result());
+	}
+
+	/** A game left over from a previous run is cleared, so it never haunts the browser. */
+	@Test
+	public void staleGamesAreClearedFromLobby() {
+		givenSelectedCharacter("Snake");
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+
+		var lobbyId = column(gameId, "lobby_id", Long.class);
+		var removed = new mgo2server.common.service.GameService(TestDatabase.get().jdbi())
+			.deleteGamesInLobby(lobbyId);
+
+		assertThat(removed).isGreaterThanOrEqualTo(1);
+		assertThat(new mgo2server.common.service.GameService(TestDatabase.get().jdbi())
+			.get(gameId)).isEmpty();
 	}
 
 	@Test

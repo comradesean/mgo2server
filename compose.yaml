@@ -172,16 +172,20 @@ services:
   # MGO2 is peer-to-peer for matches, so the client discovers its public address before it will
   # enter a lobby. Without a reachable STUN server it retries UPnP and then fails, which presents
   # as a lobby error rather than a NAT one.
+  # coturn, STUN-only, is the responder. It replaced the hand-rolled stun_probe.py on 2026-07-21:
+  # coturn is what echo (the reference server confirmed to play online) uses, and swapping it in
+  # got a client past the port check into clean hosting. stun_probe.py is kept under dev/runtime as
+  # a reference/diagnostic; run it with `python stun_probe.py 3478 <ip> <secondary-ip>` if needed.
+  #
+  # A second address is what makes NAT classification possible at all: the client asks the server
+  # to reply from a different address and infers its type from whether that reply arrives. The
+  # secondary must be a real address the host owns on the LAN — a secondary IP on the primary
+  # adapter (see SETUP.md). Edit both IPs in turnserver.conf for a different deployment.
   probe-stun:
-    image: python:3.12-alpine
-    # A second address is what makes NAT classification possible at all: the client asks the
-    # server to reply from a different address and infers its type from whether that reply
-    # arrives. With one address the responder can only answer change-IP from the alternate port,
-    # which lets the client conclude but not distinguish full-cone from symmetric. The secondary
-    # must be a real address on the host (ip addr add ... dev <iface>).
-    command: python /stun.py 3478 ${MGO2SERVER_PUBLIC_IP:-192.168.1.100} ${MGO2SERVER_STUN_SECONDARY_IP:-192.168.1.201}
+    image: instrumentisto/coturn
+    command: -c /etc/turnserver.conf
     volumes:
-      - ./dev/runtime/stun_probe.py:/stun.py:ro
+      - ./dev/runtime/turnserver.conf:/etc/turnserver.conf:ro
     # Host networking, not published ports. Docker's UDP proxy rewrites the source port of
     # replies, and a STUN client checks which address answered — that is the entire mechanism by
     # which it classifies its NAT. Behind the proxy every reply appears to come from a random

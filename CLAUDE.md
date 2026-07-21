@@ -82,7 +82,7 @@ docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
   maven:3.9-eclipse-temurin-25 mvn -B verify
 ```
 
-Expect two counts in the summary — currently 113 unit and 71 integration. One number means the
+Expect two counts in the summary — currently 129 unit and 75 integration. One number means the
 integration tests did not run.
 
 ## Debugging
@@ -90,3 +90,10 @@ integration tests did not run.
 An unanswered command makes this client **stall and then fail with `FFFFFF60`**, prefixed by
 whatever screen was open. It is never a malformed reply — it is a missing one. Read
 `No handler for command …` out of the lobby log.
+
+**`docker logs` can lie after a restart storm.** Observed 2026-07-21: after a container
+crash-looped ~1300 times (postgres outage), `docker logs` served hours-stale output while the
+process wrote normally. An absent `No handler` line is only evidence if the log shows *current*
+activity — check for the startup banner after any restart, and when in doubt read the raw
+json-file at the container's `LogPath` (via a bind-mounted container). `docker restart` resets
+the stream.

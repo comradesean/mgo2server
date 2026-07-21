@@ -44,8 +44,10 @@ public class GameServerFactory {
 			}
 			case GAME -> {
 				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
-				controllers.add(new CharacterConnectController(services.getCharacterService()));
-				controllers.add(new GameListGameController(services.getGameService(), lobbyId));
+				controllers.add(new CharacterConnectController(services.getCharacterService(),
+					services.getGameService()));
+				controllers.add(new GameListGameController(services.getGameService(), lobbyId,
+					lobbySubtype));
 				controllers.add(new MessageGameController());
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
