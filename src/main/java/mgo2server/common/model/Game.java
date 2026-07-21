@@ -22,6 +22,8 @@ public class Game {
 
 	private int map;
 
+	private int flags;
+
 	private int ping;
 
 	private int hostScore;
@@ -130,6 +132,14 @@ public class Game {
 
 	public void setRule(int rule) {
 		this.rule = rule;
+	}
+
+	public int getFlags() {
+		return flags;
+	}
+
+	public void setFlags(int flags) {
+		this.flags = flags;
 	}
 
 	public int getMap() {

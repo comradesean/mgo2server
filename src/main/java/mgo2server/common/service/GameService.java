@@ -157,6 +157,17 @@ public class GameService {
 		});
 	}
 
+	/** Sets a game's active-round rule, map and flags, from the host's {@code 0x4310} push. */
+	public void setGameRotation(long gameId, int rule, int map, int flags) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("update game set rule=:rule, map=:map, flags=:flags where id=:id")
+				.bind("rule", rule)
+				.bind("map", map)
+				.bind("flags", flags)
+				.bind("id", gameId)
+				.execute());
+	}
+
 	public void deleteGame(long gameId) {
 		jdbi.useHandle(handle ->
 			handle.createUpdate("delete from game where id=:id").bind("id", gameId).execute());
