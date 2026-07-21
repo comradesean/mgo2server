@@ -85,7 +85,7 @@ public final class GameDetails {
 		// 0xD4364C says 16 triples then two separate bytes, and the parser wins.)
 		buffer.writeByte(game.getRule())
 			.writeByte(game.getMap())
-			.writeZero(1)
+			.writeByte(game.getFlags())
 			.writeZero((ROUNDS - 1) * 3)
 			.writeZero(2); // two u8s after the rotation; echo zeroes them, meaning unknown
 

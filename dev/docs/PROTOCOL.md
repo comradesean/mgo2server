@@ -795,15 +795,33 @@ name, conditions, comment, match type, map, rules — pushed immediately before 
 **Payload arrives Blowfish-encrypted.** This was the first command other than check-session to
 exercise the inbound decrypt path.
 
+**There is no leading "type" field — the blob starts with the game name at offset 0.** The earlier
+"settings type `1399153006`" was `name[0:4]` read as an int: `1399153006` = `0x5365616E` = ASCII
+`"Sean"`, the game name of that capture. savemgo Nomad's `Hosts.checkSettings` reads the name from
+offset 0; mgo2-server makes the same misread we did.
+
+352 bytes (observed), laid out roughly (offsets from the name at 0; per savemgo `Hosts.checkSettings`
+cross-checked with the `0x4313` layout):
+
 | offset | size | field |
 | --- | --- | --- |
-| `0x00` | 4 | settings type. Observed `1399153006`; the value's meaning is unknown. |
-| `0x04` | n | opaque settings blob. Observed 348 bytes. **Layout not decoded.** |
+| `0x00` | 16 | name (ISO-8859-1, NUL-padded) |
+| `0x10` | 128 | comment |
+| `0x90` | 1 | password enabled |
+| `0x91` | 15 | password |
+| `0xA1` | 1 | dedicated |
+| `0xA2` | 1 | subtype byte (the `u8` before the rotation, as in `0x4313`) |
+| `0xA3` | 45 | rotation: `[rule, map, flags]` × 15, stride 3; `rule==0 && map==0` ends it |
+| `0xE5` | 1 | max players |
+| `0xE6` | 4 | briefing time |
+| `0xFC`… | … | per-rule timers/rounds/tickets, then uniques, commonA/B bitfields, kicks |
 
-**Flagged.** We read and log it but do not store it: `chara_host_settings` is structured per field
-while this is an opaque blob, so there is nowhere faithful to put it. The visible consequence is
-that `0x4304` always returns empty, so the Create Game screen does not remember settings between
-sessions. Hosting is unaffected.
+**Partly stored now.** `HostGameController.checkHostSettings` parses **round 0** of the rotation
+(`rule, map, flags` at `0xA3`) into the connection, and `createGame` writes them onto the game, so
+the browser shows the real match type/map/mode instead of DM/map-0. The rest of the blob is still
+dropped (so `0x4304` remembers nothing across sessions). **One-byte caveat:** the rotation start is
+ambiguous between the references (Model A = `0xA2`, Model B = `0xA3`); we use `0xA3`. Confirm by
+hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3` changes.
 
 ### Reply `0x4311` — empty
 

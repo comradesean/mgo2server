@@ -52,6 +52,17 @@ public class HostGameController implements IGameController {
 	public static final int CHECK_HOST_SETTINGS_RESULT = 0x4311;
 
 	/**
+	 * Byte offset of round 0's {@code [rule, map, flags]} triple in the {@code 0x4310} blob. The
+	 * blob is name(16) + comment(128) + password(17) + dedicated(1) + a subtype byte, then the
+	 * rotation. The exact start is ambiguous by one byte between the references (Model A = 162,
+	 * Model B = 163); this uses <b>Model B</b> — savemgo's push parser {@code Hosts.checkSettings}
+	 * plus our own tier-1 {@code 0x4313} layout, which has a {@code u8} immediately before its
+	 * rotation. <b>Unresolved:</b> host a game changing <em>only</em> the map to confirm whether map
+	 * is at {@code +1} (Model B) or {@code +0} (Model A) of this offset.
+	 */
+	private static final int ROTATION_OFFSET = 163;
+
+	/**
 	 * Host reports that a player's peer-to-peer connection to it succeeded — sent only once the
 	 * P2P link actually forms, so its arrival is the first proof a join reached the host. The
 	 * client blocks on the {@code 0x4341} ack; unanswered, the join hangs. Confirmed against a
@@ -66,10 +77,28 @@ public class HostGameController implements IGameController {
 
 	public static final int PLAYER_DISCONNECTED_RESULT = 0x4343;
 
-	/** Host assigns a player to a team. Acknowledged; team state is not tracked yet. */
+	/**
+	 * Second peer-registration round-trip. The host's per-peer P2P state machine (ELF
+	 * {@code 0x276F60}) issues three blocking register-with-server round-trips —
+	 * {@code 0x4340}, {@code 0x4344}, {@code 0x4346} — and its {@code 0x4345} reply parser
+	 * ({@code 0xD42B40}) is byte-identical to {@code 0x4341}'s: it reads {@code {u32 result,
+	 * u32 key}} and bails on a short read. An empty ack stalls the FSM here until its 30-second
+	 * ({@code 0x7530}) deadline fires and it disconnects the peer ({@code 0x4342}). So this is
+	 * <em>not</em> merely "set team" — the reply must carry {@code result + echoed key}. Handled
+	 * by {@link #playerConnection}.
+	 */
 	public static final int SET_PLAYER_TEAM = 0x4344;
 
 	public static final int SET_PLAYER_TEAM_RESULT = 0x4345;
+
+	/**
+	 * Third peer-registration round-trip (ELF FSM state {@code 0x217}, sender {@code 0xD42E64}).
+	 * Reached only after {@code 0x4344} completes; unhandled, the FSM times out and disconnects.
+	 * Its {@code 0x4347} parser ({@code 0xD42A34}) is the same {@code {result, key}} shape.
+	 */
+	public static final int PLAYER_CONNECT_FINISH = 0x4346;
+
+	public static final int PLAYER_CONNECT_FINISH_RESULT = 0x4347;
 
 	/** Host reports round-trip times for the players in its game. */
 	public static final int UPDATE_PINGS = 0x4398;
@@ -108,7 +137,8 @@ public class HostGameController implements IGameController {
 		handlers.put(CREATE_GAME, this::createGame);
 		handlers.put(PLAYER_CONNECTED, this::playerConnection);
 		handlers.put(PLAYER_DISCONNECTED, this::playerConnection);
-		handlers.put(SET_PLAYER_TEAM, this::acknowledge);
+		handlers.put(SET_PLAYER_TEAM, this::playerConnection);
+		handlers.put(PLAYER_CONNECT_FINISH, this::playerConnection);
 		handlers.put(UPDATE_PINGS, this::acknowledge);
 		handlers.put(QUIT_GAME, this::quitGame);
 	}
@@ -148,11 +178,22 @@ public class HostGameController implements IGameController {
 			return;
 		}
 
+		// The blob begins with the 16-byte game name at offset 0 — there is NO leading u32 "type".
+		// (An earlier reading mistook name[0:4] for a type: PROTOCOL.md recorded 1399153006 =
+		// 0x5365616E = "Sean", a game name read as an int.) We parse only round 0 of the rotation
+		// for now — the rule/map/flags the client shows in the browser — and hand it to create-game.
 		var payload = ctx.packet().getPayload();
-		if (payload.readableBytes() >= Integer.BYTES) {
-			var type = payload.readInt();
-			logger.info("Host settings from account {}: type {}, {} bytes (not stored).",
-				account.getId(), type, payload.readableBytes());
+		var base = payload.readerIndex();
+		if (payload.readableBytes() >= ROTATION_OFFSET + 3) {
+			var rule = payload.getByte(base + ROTATION_OFFSET) & 0xff;
+			var map = payload.getByte(base + ROTATION_OFFSET + 1) & 0xff;
+			var flags = payload.getByte(base + ROTATION_OFFSET + 2) & 0xff;
+			ctx.connection().setHostRotation(rule, map, flags);
+			logger.info("Host settings from account {}: round 0 rule={} map={} flags={} ({} bytes).",
+				account.getId(), rule, map, flags, payload.readableBytes());
+		} else {
+			logger.warn("Host settings from account {}: {} bytes, too short to read the rotation.",
+				account.getId(), payload.readableBytes());
 		}
 
 		ctx.write(new GamePacket(CHECK_HOST_SETTINGS_RESULT, ctx.buffer(0)));
@@ -172,17 +213,19 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * Player connected ({@code 0x4340}) / disconnected ({@code 0x4342}) — the host reporting a peer
-	 * whose P2P connection to it succeeded or dropped.
+	 * The host's peer-registration round-trips: player connected ({@code 0x4340}), disconnected
+	 * ({@code 0x4342}), and the two follow-up phases ({@code 0x4344}, {@code 0x4346}) its per-peer
+	 * P2P state machine (ELF {@code 0x276F60}) issues while establishing a peer.
 	 * <p>
-	 * Unlike the other acknowledgements, the client's reply parser for {@code 0x4341}/{@code 0x4343}
-	 * (at {@code 0xD42D58}/{@code 0xD42C4C}) reads a u32 result <em>and a second u32</em>, and bails
-	 * the whole handler if either read comes up short — only reaching the code that registers the
-	 * peer in the host's game <em>after</em> both are read. An empty ack therefore makes the host
-	 * abort before adding the joining player, so the host runs the game without ever seeing them and
-	 * the joiner sits on a loading spinner despite a live P2P link (observed against two clients
-	 * 2026-07-21). Replying {@code result(0)} then echoing the value the host sent lets the handler
-	 * run through and register the peer.
+	 * All four share one reply shape and one trap: the client's parsers ({@code 0xD42D58},
+	 * {@code 0xD42C4C}, {@code 0xD42B40}, {@code 0xD42A34}) each read a u32 result <em>and a second
+	 * u32 key</em>, and bail the whole handler if either read is short — only registering the peer
+	 * (state → 2, cancelling the FSM's 30s {@code 0x7530} timeout) after both reads. An empty ack
+	 * therefore stalls the FSM in that phase until it times out and disconnects the peer
+	 * ({@code 0x4342}) — the ~28s connect/retry loop observed against two clients. Replying
+	 * {@code result(0)} then echoing the key the host sent lets each phase complete. The second u32
+	 * must be the host's own key (used to index its peer table), which is the leading u32 of the
+	 * request — so echoing the request's first word is correct for every phase.
 	 */
 	private void playerConnection(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
@@ -254,6 +297,13 @@ public class HostGameController implements IGameController {
 			logger.warn("Failed to create game for character {}.", charaId, e);
 			ctx.write(CREATE_GAME_RESULT, GameError.GENERAL);
 			return;
+		}
+
+		// Apply the rule/map/flags the host pushed via 0x4310 just before this, so the game the
+		// browser shows matches what the host actually configured (not the rule=0/map=0 default).
+		var rotation = ctx.connection().hostRotation();
+		if (rotation != null) {
+			gameService.setGameRotation(gameId, rotation[0], rotation[1], rotation[2]);
 		}
 
 		logger.info("Character {} created game {} in lobby {}.", charaId, gameId, lobbyId);

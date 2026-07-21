@@ -24,7 +24,50 @@ Sketches, in ascending effort:
 - Whatever the source, what the client *renders* for the field is a presentation claim and has not
   been checked against the binary (see `CLAUDE.md` on presentation claims).
 
-## P2P works one direction — post-connection commands (in progress)
+## The peer-connect FSM — fully traced; blocker is the UDP handshake
+
+*Pinned 2026-07-21, from a deep ELF trace of the client's peer state machine `0x276F60`.* The
+entire TCP connect path is now understood and the server side is provably complete:
+
+- The host runs a per-peer FSM. State `0x201` sends **`0x4340`** (payload = the joiner's chara id
+  as a u32 key) and blocks on the **`0x4341`** reply, which must be `{u32 result, u32 key}` (8
+  bytes; parser `0xD42D58` stops after two u32s — **there is no address in `0x4341`**). We echo the
+  key correctly.
+- The `result` word is a **P2P role selector**, read at `0x277170`:
+  - `result == 0` → **active** (state `0x203`, `0x2771B8`): builds a connection object at
+    `peer+0x10` via `0x263240`, arms the 30 s (`0x7530`) budget via `0x26C6D8`, and dials the
+    joiner (whose address it has from the incoming connect — *not* from `0x4341`).
+  - `result != 0` → **degenerate stub** (`0x277B20`): `vtable[+4](peer,0)` only, no connection
+    object, no timer → the budget check reports expired on the next tick, the peer is freed
+    (`0x2772DC`→`0x270F58`), and the joiner's next packet recreates it — a ~2 s recycle. **Not a
+    working passive mode.** (Verified live: `result=1` gave exactly this 2 s loop and changed the
+    host's UDP reply 16→25 bytes, but never connected.)
+  - **So `result = 0` is correct.** Do not "flip to passive" — the binary has no passive-via-4341.
+- **No server→peer push exists.** Every inbound `0x434x` (0x4341/4343/4345/4347/4349) is a reply to
+  a client-sent even command; none is an unpaired server-initiated message. There is no
+  "you're admitted"/roster push to add.
+- **Endpoints verified correct** (2026-07-21): `chara_connection` and the `0x4321` both carry
+  `192.168.1.100:5730` (host) / `192.168.1.102:5730` (joiner), public and private — no loopback,
+  no container/WSL address, right port.
+
+**Conclusion: there is no remaining server-side lever in the connect.** The join deadlocks in FSM
+state `0x210` (`0x277254`) polling the UDP transport for `status==8`, which never arrives, then
+tears down at the 30 s budget (the observed `0x4340 → ~28 s → 0x4342 → retry` loop). That status is
+driven by the game-level UDP P2P handshake between the two RPCS3 instances, which the server does
+not participate in.
+
+Remaining, non-server hypotheses (both need external evidence):
+1. **Same-LAN, both-active simultaneous open.** Host goes active (`result=0`) and the joiner is
+   also active (dials from `0x4321`). If retail P2P needs exactly one listener and the asymmetry is
+   created outside this FSM, two co-located active peers may never reach `status==8`.
+2. **Capture a working MGO2PC session** to see whether the host even runs this connect FSM (sends
+   `0x4340`) or accepts passively by another path — that is the fastest way to learn the retail
+   asymmetry. Community (MGO2PC/SaveMGO Discord) is the right source.
+
+Grounded in FSM `0x276F60` (states `0x201`/`0x202`/`0x203`/`0x210`), reply parser `0xD42D58`,
+role branch `0x277170`, teardown `0x2772DC`→`0x270F58`, connection creator `0x263240`.
+
+## P2P works one direction — post-connection commands (superseded by the FSM trace above)
 
 *Pinned 2026-07-21.* Reversing the test (mx1 **joining** a game hosted by localhost) got the P2P
 link to actually form: the host sent **`0x4340`** ("player connected to me"), which the client
