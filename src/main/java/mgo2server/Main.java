@@ -51,8 +51,20 @@ public final class Main {
 		Migrations.migrate(database.dataSource());
 
 		var services = ServicesFactory.createServices(database.jdbi());
+
+		// Games do not survive the server that hosts their lobby: the host's connection is gone,
+		// so any game row left over from a previous run is a ghost that clutters the browser.
+		var lobbyType = LobbyType.fromId(config.lobbyType());
+		if (lobbyType == LobbyType.GAME) {
+			var purged = services.getGameService().deleteGamesInLobby(config.lobbyId());
+			if (purged > 0) {
+				logger.info("Cleared {} stale game(s) from lobby {} on startup.",
+					purged, config.lobbyId());
+			}
+		}
+
 		GameServerFactory.createGameServer(services, config.gamePort(),
-			LobbyType.fromId(config.lobbyType()), config.lobbyId(), config.lobbySubtype()).run();
+			lobbyType, config.lobbyId(), config.lobbySubtype()).run();
 	}
 
 	private static void runWeb(Config config, String[] args) {

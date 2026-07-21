@@ -226,9 +226,15 @@ preserves Vovida attribute ordering. Being conformant it ignores `0xf000`.
 stunserver --mode full --primaryinterface <A1> --altinterface <A2>
 ```
 
-**coturn will not work as a drop-in.** It defines `OLD_STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS (0x8020)`
-but never uses it: in old-STUN mode it sends MAPPED-ADDRESS, SOURCE-ADDRESS and CHANGED-ADDRESS and
-no XOR attribute at all.
+**coturn works, and is now the shipped responder** (`instrumentisto/coturn`, `stun-only`, two
+`listening-ip`s — see `dev/runtime/turnserver.conf`). This corrects an earlier claim here that it
+would not. Verified against `BLUS30109` on 2026-07-21: full two-address classification (change-IP
+answered from the secondary) and Create Game succeeding. Its reply, decoded off the wire, carries
+`0x0020 XOR-MAPPED-ADDRESS` (the RFC 5389 standard code), `0x0001 MAPPED-ADDRESS`, `0x802b
+RESPONSE-ORIGIN` and `0x802c OTHER-ADDRESS` — the client accepts the standard `0x0020` XOR
+attribute, so it did **not** need the non-standard `0x8020` after all. The earlier "no XOR at all"
+reading was of coturn's legacy *old-STUN* mode, which is not the default. `stun_probe.py` is kept
+as a reference/diagnostic and still sends the classic `0x8020`/SOURCE/CHANGED shape.
 
 ## Confidence
 
@@ -249,8 +255,9 @@ checked across all sixteen arrival/flag combinations.
 - Whether MAPPED, SOURCE and CHANGED are each individually required. **XOR-MAPPED is not in
   question: it is mandatory.** An early responder sent three attributes and the client rejected the
   reply; adding `0x8020` is what made the port check proceed. That was an accidental bisection, but
-  a decisive one. (coturn's old-STUN mode sends no XOR attribute at all, so it would not work here
-  as a drop-in — noted under Off-the-shelf alternatives.)
+  a decisive one. **The type code is *not* pinned to `0x8020`, though:** coturn sends XOR-MAPPED at
+  the standard `0x0020` and the client accepts it (verified 2026-07-21). So the requirement is "an
+  XOR-MAPPED attribute", not specifically the non-standard code — see Off-the-shelf alternatives.
 - Behaviour against a STUN error response, or under packet loss.
 - **Where the keepalives come from.** The heartbeat in this module (`0x2408`, via
   `mrdUPnP_STUN_hartbeat` at `0xD8AB78`) sends a 40-byte request with a `0x14` body. What we

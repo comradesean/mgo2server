@@ -831,6 +831,79 @@ Same caveat as `0x4311`: empty is sufficient, not known to be complete. `0x4151`
 handler at `0xD3943C` which verifies the id and calls on, so it is not a no-op; what it reads is
 undetermined.
 
+## `0x4312` — get game details
+
+**Client → server**, `GameListGameController.getGameDetails`. Sent by Game Details, Player List
+and the first step of Join Game; all three stalled into `0B10:FFFFFF60` while it went unanswered,
+with the client retrying every ~2 s.
+
+Request: read as one **u32 game id**. That is what echo and mgo2-server parse and it matches the
+reply's echo of the id, but the sender has not been located in the binary — the handler logs a
+warning if the payload is not exactly 4 bytes, which would be the first sign this is wrong.
+
+### Reply `0x4313` — 372 bytes plus 28 per player
+
+**The layout below is read from the binary**: the reply dispatcher at `0xD38954` routes `0x4313`
+to the parser at `0xD44388`, whose read calls (with the settings sub-structure at `0xD4364C`) fix
+every size and position. The parser reads the fixed 372 bytes unconditionally — **a short payload
+is a parse error and the client keeps waiting**, so unknown fields must be present as zeros.
+Player entries are then read while payload remains, at most 18; a truncated entry is an error,
+never a shorter list. The packet-reader caps payloads at `0x400`, and 372 + 18×28 = 876 fits.
+
+Field *names* are echo's, whose `GameDetailsPacket` matches this parser byte for byte (their
+buffer is `0x36D` — one spare byte past the parser's maximum read, harmlessly ignored).
+mgo2-server's 192-byte reply does **not** fit this parser — its leading game id lands in the
+result slot and trips the error branch — so it targets some other build and was disregarded.
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x000` | 4 | s32 | result — nonzero aborts the parse and surfaces the error |
+| `0x004` | 4 | u32 | game id; if a game is currently selected the client requires this to match |
+| `0x008` | 16 | ISO-8859-1 | game name |
+| `0x018` | 128 | ISO-8859-1 | comment |
+| `0x098` | 2 | — | zero |
+| `0x09a` | 1 | u8 | lobby subtype |
+| `0x09b` | 4 | s32 | average experience across current players |
+| `0x09f` | 4 | u32 | host score |
+| `0x0a3` | 4 | u32 | host votes |
+| `0x0a7` | 1 | u8 | echo writes `1` verbatim; meaning unknown |
+| `0x0a8` | 48 | u8×3 ×16 | round rotation: 16 triples of (rule, map, flags). We fill round 0 from the stored rule and map; the rest are zero until the `0x4310` blob is persisted. Echo splits this region as 15 triples + 5 zeros; the parser reads 16 triples and wins |
+| `0x0d8` | 2 | u8, u8 | two separate reads; echo zeroes both, meaning unknown |
+| `0x0da` | 16 | — | weapon restrictions (echo's `WeaponRestrictions.toBytes()`); zeros until stored |
+| `0x0ea` | 1 | u8 | max players |
+| `0x0eb` | 1 | u8 | current player count |
+| `0x0ec` | 4 | u32 | briefing time |
+| `0x0f0` | 22 | u32,u32,u16,u16,u32,u32,u16 | seven fields the parser reads and echo zeroes; unknown |
+| `0x106` | 1 | u8 | stance |
+| `0x107` | 1 | u8 | level-limit tolerance |
+| `0x108` | 4 | u32 | echo writes `0x16` verbatim; meaning unknown — **regression guard only** |
+| `0x10c` | 68 | u32 ×17 | per-rule timers and rounds (echo: SNE t/r, CAP t/r, RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r); zeros until stored |
+| `0x150` | 2 | u8, u8 | unique characters red/blue (+`0x80` when random); zeros until stored |
+| `0x152` | 7 | u16, u32, u8 | parser reads, echo zeroes; unknown |
+| `0x159` | 1 | u8 | common A — same bitfield as the `0x4302` entry |
+| `0x15a` | 1 | u8 | common B — same bitfield as the `0x4302` entry |
+| `0x15b` | 1 | u8 | zero |
+| `0x15c` | 2 | u16 | idle kick |
+| `0x15e` | 2 | u16 | team-kill kick |
+| `0x160` | 4 | u32 | echo writes `0x2e` verbatim; meaning unknown — **regression guard only** |
+| `0x164` | 2 | u8, u8 | capture extra time; sneaking-mission Snake side. Zeros until stored |
+| `0x166` | 8 | u8 ×8 | byte-sized timers (echo: SDM t/r, INT t, DM r, SCAP t/r, RACE t/r); zeros until stored |
+| `0x16e` | 1 | u8 | zero |
+| `0x16f` | 1 | u8 | extra-time flags; bit 1 = non-stat game (echo) |
+| `0x170` | 4 | — | zero |
+
+Then, per player, host's entry first:
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | u32 | character id |
+| `0x04` | 16 | ISO-8859-1 | character name |
+| `0x14` | 4 | u32 | ping — not tracked, sent as 0 |
+| `0x18` | 4 | u32 | experience, from the account's main/alt pool per character |
+
+**Untested against a live client** as of writing — implemented from the parser the same evening
+the missing handler was identified; the first two-machine session should retire this caveat.
+
 ## `0x4316` — create game
 
 **Client → server**, `HostGameController.createGame`. Request payload is **not read at all**.
@@ -875,9 +948,67 @@ off the socket, and so would we.
 
 `00000000`, or `C0FFEE02` / `C0FFEE01`.
 
-**Flagged: parsed but not persisted.** The values are logged and thrown away. Nothing serves them
-to another player until hosting and joining are wired up, and columns nothing reads would only be
-a guess at what that path needs. Anyone implementing peer connection will have to add storage here.
+**Persisted since 2026-07-21.** The private port, private IP and public port are stored in
+`chara_connection` keyed by the character; the public IP is taken from the socket. `0x4320` serves
+this row back to a joining player. A registration with no selected character or no socket address
+is acknowledged but not stored (logged as a warning), since the client blocks on the reply.
+
+## `0x4320` — join game
+
+**Client → server, payload Blowfish-decrypted.** `GameListGameController.joinGame`. The player has
+picked a game in the browser and asked to join; the reply hands over the host's peer-to-peer
+endpoints so the two connect directly. Unanswered, all three of Join, Game Details and Player List
+stall on `0B10:FFFFFF60` — this is the command whose absence blocked them.
+
+### Request
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | u32 | game id |
+| `0x04` | 16 | ISO-8859-1 | password, NUL-padded — read when present; echo sends it, mgo2-server does not |
+
+The leading game id is agreed by both references; the password field is echo's and read only if
+the payload extends that far. **Sender not yet located in the binary**, so the exact request width
+is unconfirmed — a mismatch shows up as a game-not-found error, not a hang.
+
+### Reply `0x4321`
+
+Read by the parser at `0xD440DC`, which on a nonzero result reads nothing further — so a failure
+is a bare 4-byte result (`C0FFEE01`), returned for a missing game, a wrong password, or a host
+that never registered an endpoint. On success:
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | s32 | result |
+| `0x04` | 16 | ISO-8859-1 | host public IP |
+| `0x14` | 2 | u16 | host public port |
+| `0x16` | 16 | ISO-8859-1 | host private IP |
+| `0x26` | 2 | u16 | host private port |
+| `0x28` | 1 | u8 | one byte the parser reads; echo writes `0` |
+
+The parser stops at offset `0x29` (41 bytes). Echo writes two further bytes (current rule, current
+map) for a 43-byte (`0x2b`) reply; **this client reads neither** — they are reproduced only because
+echo is known-good and trailing bytes are harmless. We write the same 43.
+
+**Verified against a live client 2026-07-21:** the client accepts the reply and proceeds to
+attempt the peer connection. It does *not* mean the peer connection succeeds — see `0x4322`.
+
+## `0x4322` — join failed
+
+**Client → server**, empty payload. `GameListGameController.joinFailed`. The client sends this
+after `0x4321` when it **could not establish the peer-to-peer connection to the host** — the
+loader keeps spinning until it gives up, and unanswered this ends in `0B08:FFFFFF60`. Observed
+live 2026-07-21: `4320 → 4321` succeeds, then ~40 s later the client sends `4322`.
+
+The reply parser at `0xD40904` reads a single u32 result, so `0x4323` is a bare acknowledgement.
+The joiner is removed from the game they failed to enter.
+
+| command | payload |
+| --- | --- |
+| `0x4323` | 4 bytes result |
+
+**Note this is a symptom handler, not a fix.** It converts the hang into a clean failure; it does
+not make the join succeed. The peer connection itself is the open frontier — see BACKLOG.md.
 
 ## `0x4820` — get messages
 
@@ -981,7 +1112,6 @@ Known-sendable, currently unanswered:
 | `0x4141` | update skill sets | The write-back half of `0x4140` |
 | `0x4143` | update gear sets | The write-back half of `0x4142` |
 | `0x4220` | get character card | |
-| `0x4312` | get game details | |
 | `0x4320` | join game | Payload arrives **encrypted** |
 | `0x4340`–`0x4398` | in-game player and round events | |
 | `0x43c0` | (reference name varies) | Payload arrives **encrypted** |

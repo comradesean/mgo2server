@@ -6,7 +6,9 @@ import mgo2server.common.model.Account;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.ChatMacro;
+import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.GameplaySettingsWriter;
@@ -91,8 +93,11 @@ public class CharacterConnectController implements IGameController {
 
 	private final CharacterService characterService;
 
-	public CharacterConnectController(CharacterService characterService) {
+	private final GameService gameService;
+
+	public CharacterConnectController(CharacterService characterService, GameService gameService) {
 		this.characterService = characterService;
+		this.gameService = gameService;
 	}
 
 	@Override
@@ -109,10 +114,10 @@ public class CharacterConnectController implements IGameController {
 	 * <em>Unable to connect to lobby (092E:FFFFFF60)</em>, the same timeout shape as an unanswered
 	 * name check.
 	 * <p>
-	 * The values are read and logged but not yet persisted — nothing serves them to another player
-	 * until hosting and joining are wired up, and columns nothing reads would only be a guess at
-	 * what that path needs. The public address is taken from the socket rather than trusted from
-	 * the payload, which is what the reference servers do.
+	 * The values are persisted against the character so a joining player can be handed them by
+	 * command 0x4321. The public address is taken from the socket rather than trusted from the
+	 * payload, which is what the reference servers do — a client cannot lie about where its
+	 * packets come from.
 	 */
 	private void updateConnectionInfo(GameControllerContext ctx) {
 		var account = ctx.connection().account();
@@ -132,8 +137,27 @@ public class CharacterConnectController implements IGameController {
 		var privateIp = readNulTerminated(payload, PRIVATE_IP_LENGTH);
 		var publicPort = payload.readUnsignedShort();
 
-		logger.info("Account {} reachable on public port {} (private {}:{}).",
-			account.getId(), publicPort, privateIp, privatePort);
+		var charaId = account.getCurrentCharaId();
+		var publicIp = ctx.remoteIp();
+		if (charaId == null || publicIp == null) {
+			// Nothing to key the endpoint to, or no socket address — register nothing but still
+			// acknowledge, since the client blocks on the reply.
+			logger.warn("Connection info from account {} could not be stored (chara {}, ip {}).",
+				account.getId(), charaId, publicIp);
+			ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.NONE);
+			return;
+		}
+
+		var info = new ConnectionInfo();
+		info.setCharaId(charaId);
+		info.setPublicIp(publicIp);
+		info.setPublicPort(publicPort);
+		info.setPrivateIp(privateIp);
+		info.setPrivatePort(privatePort);
+		gameService.saveConnectionInfo(info);
+
+		logger.info("Character {} reachable at {}:{} (private {}:{}).",
+			charaId, publicIp, publicPort, privateIp, privatePort);
 
 		ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.NONE);
 	}

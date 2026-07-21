@@ -51,6 +51,21 @@ public class HostGameController implements IGameController {
 
 	public static final int CHECK_HOST_SETTINGS_RESULT = 0x4311;
 
+	/**
+	 * Host reports that a player's peer-to-peer connection to it succeeded — sent only once the
+	 * P2P link actually forms, so its arrival is the first proof a join reached the host. The
+	 * client blocks on the {@code 0x4341} ack; unanswered, the join hangs. Confirmed against a
+	 * live client 2026-07-21 (mx1 joining a localhost-hosted game).
+	 */
+	public static final int PLAYER_CONNECTED = 0x4340;
+
+	public static final int PLAYER_CONNECTED_RESULT = 0x4341;
+
+	/** Host reports a player left. The disconnect pair of {@link #PLAYER_CONNECTED}. */
+	public static final int PLAYER_DISCONNECTED = 0x4342;
+
+	public static final int PLAYER_DISCONNECTED_RESULT = 0x4343;
+
 	/** Host assigns a player to a team. Acknowledged; team state is not tracked yet. */
 	public static final int SET_PLAYER_TEAM = 0x4344;
 
@@ -91,6 +106,8 @@ public class HostGameController implements IGameController {
 		handlers.put(GET_HOST_SETTINGS, this::getHostSettings);
 		handlers.put(CHECK_HOST_SETTINGS, this::checkHostSettings);
 		handlers.put(CREATE_GAME, this::createGame);
+		handlers.put(PLAYER_CONNECTED, this::playerConnection);
+		handlers.put(PLAYER_DISCONNECTED, this::playerConnection);
 		handlers.put(SET_PLAYER_TEAM, this::acknowledge);
 		handlers.put(UPDATE_PINGS, this::acknowledge);
 		handlers.put(QUIT_GAME, this::quitGame);
@@ -152,6 +169,29 @@ public class HostGameController implements IGameController {
 	private void acknowledge(GameControllerContext ctx) {
 		var reply = ctx.packet().getCommand() + 1;
 		ctx.write(new GamePacket(reply, ctx.buffer(0)));
+	}
+
+	/**
+	 * Player connected ({@code 0x4340}) / disconnected ({@code 0x4342}) — the host reporting a peer
+	 * whose P2P connection to it succeeded or dropped.
+	 * <p>
+	 * Unlike the other acknowledgements, the client's reply parser for {@code 0x4341}/{@code 0x4343}
+	 * (at {@code 0xD42D58}/{@code 0xD42C4C}) reads a u32 result <em>and a second u32</em>, and bails
+	 * the whole handler if either read comes up short — only reaching the code that registers the
+	 * peer in the host's game <em>after</em> both are read. An empty ack therefore makes the host
+	 * abort before adding the joining player, so the host runs the game without ever seeing them and
+	 * the joiner sits on a loading spinner despite a live P2P link (observed against two clients
+	 * 2026-07-21). Replying {@code result(0)} then echoing the value the host sent lets the handler
+	 * run through and register the peer.
+	 */
+	private void playerConnection(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var value = payload.readableBytes() >= Integer.BYTES ? payload.readInt() : 0;
+
+		var buffer = ctx.buffer(2 * Integer.BYTES);
+		buffer.writeInt(GameError.NONE.result())
+			.writeInt(value);
+		ctx.write(new GamePacket(ctx.packet().getCommand() + 1, buffer));
 	}
 
 	/**

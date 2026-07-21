@@ -12,6 +12,7 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | `STUN.md` | The UDP port check. Separate transport, separate thread, shares nothing with the lobby servers. |
 | `CRYPTO.md` | Every cipher, key and hash, where each is applied, and how to obtain them. |
 | `OBSERVED.md` | What was observed and verified against a real client, including the hypotheses that turned out wrong. Read before re-testing anything. |
+| `BACKLOG.md` | Deliberately deferred work, with enough context to pick each item up cold. |
 
 ## Required by the running stack
 
@@ -20,7 +21,8 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | path | role |
 | --- | --- |
 | `http_probe.py` | Serves the HTTP and HTTPS endpoints (`probe-http`, `probe-https`), terminates TLS and proxies to the web service. Holds the TLS-1.0 and `SECLEVEL=0` settings the console needs. |
-| `stun_probe.py` | The STUN responder (`probe-stun`). Answers the port check. |
+| `turnserver.conf` | coturn config for the `probe-stun` service — the STUN responder that answers the port check. |
+| `stun_probe.py` | The former hand-rolled STUN responder, kept as a reference/diagnostic (coturn replaced it). Run standalone: `python stun_probe.py 3478 <ip> <secondary-ip>`. |
 | `www/` | Static documents, and the TLS certificate chain. |
 
 ## Run once
