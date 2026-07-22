@@ -1171,3 +1171,46 @@ never sent** at any point in that complete match. Whatever triggers the round-li
 stat-submission commands, it is not simply "a match being played" — they are conditional
 (mode/stat-game/path dependent), and their layouts remain live-unverified. Do not assume a stat
 report per round when reasoning about experience.
+
+## The Common Settings map, confirmed setting by setting
+
+*2026-07-22, single-variable hosting sweep: one setting flipped per hosted game, every decrypted
+`0x4310` blob archived by the `blob_audit` trigger and diffed against its predecessor. Each row
+below moved exactly its own bits and nothing else.* Nomad's decode went **thirteen for thirteen**
+on everything this build's UI can express.
+
+| setting (UI name) | location | evidence |
+| --- | --- | --- |
+| Friendly Fire | `0x142` bit 3 | single-bit diff |
+| Ghost Pranks | `0x142` bit 4 | single-bit diff |
+| Idle Kick + minutes | `0x142` bit 0, count `0x146` | both moved (3 min) |
+| Teams Switch Positions | `0x143` bit 0 | single-bit diff |
+| Auto Assign Teams | `0x143` bit 1 | single-bit diff |
+| Silent Mode | `0x143` bit 2 | single-bit diff |
+| Enemy Nametag Display | `0x143` bit 3 | single-bit diff |
+| Level Limit + base + ± | `0x143` bit 4, base u32 `0xF8`, tolerance `0xF7` | all three moved (22, ±0/±5/±10) |
+| Voice Chat | `0x143` bit 6 | single-bit diff |
+| Team Kill Kick + count | `0x143` bit 7, count `0x148` | both moved (5) |
+| Dedicated Host Settings | `0xA1` byte | single-byte diff; client also bumps max characters +1 |
+| Weapon Restrictions enable | `0xD5` bit 0 | single-bit diff ("All Unlock") |
+| Weapon ban bits | `0xD5`–`0xE4` per Nomad's table | tab-level: Primary/Secondary/Support "All Lock" each set only Nomad-named bits |
+
+Collateral facts from the sweep:
+
+- **Disable snaps sliders to defaults**: turning a numeric setting off resets its count on the
+  next push (tolerance → 22, team-kill → 3), so a nonzero count with a cleared enable bit is
+  normal, which is why the enables must gate the counts (as `applyHostSettings` does).
+- **The base-game weapon roster is a strict subset of Nomad's table**: "All Lock" per tab set
+  knife/P90/Vz.83/M4/AK-102/M870/Mosin/SVD/shield (primary), Mk.2/GSR (secondary),
+  grenade/stun/chaff/smoke/ELOC/claymore/magazine (support). Every Nomad bit that stayed dark is
+  expansion-era gear (MP5, Patriot, G3A3, Mk.17, XM8, M60, Saiga, VSS, DSR-1, M14, Operator,
+  Mk.23, DE, G18, RPG, WP, colored smokes, SG-mine, C4, SG-satchel) — the pairing of individual
+  weapon to bit within a tab is roster-level evidence, not per-weapon single-variable proof.
+- **`0x142` bit 5 (Nomad: auto-aim) is set in every capture** including all-disabled baselines,
+  and no aim setting exists anywhere in this build's Create screens — later-patch content or fed
+  from player settings. Pinned as an oddity where it is decoded.
+- **`0x142` bit 2 is likewise always set** (the "always" bit our game-list packer has carried
+  from the start); still no observed meaning.
+- **Unique characters could not be tested** — absent from this build's UI; see BACKLOG.
+- **50,000 experience renders as level 22** — first calibration point for the exp→level curve;
+  the level-limit base field is not freely chosen, it tracks the hosting character's level.
