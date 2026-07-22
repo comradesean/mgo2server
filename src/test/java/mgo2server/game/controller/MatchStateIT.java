@@ -356,6 +356,34 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(joinerExp).isEqualTo(4321);
 	}
 
+	/**
+	 * The report length this client actually sends — 167 bytes, confirmed live 2026-07-22 with
+	 * the experience field matching a 50,000-exp account to the byte. Shorter than Nomad's
+	 * assumed minimum, so it has no aborted byte; it must still apply.
+	 */
+	@Test
+	public void a167ByteStatReportApplies() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var stats = new byte[167];
+		writeInt(stats, 0, (int) joiner);
+		writeInt(stats, 0x27, 1234);
+
+		var replies = exchange(
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(stats)));
+
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_STATS_RESULT);
+		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("""
+					select a.alt_exp from account a join chara c on c.account_id = a.id
+					where c.id = :c
+					""")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(joinerExp).isEqualTo(1234);
+	}
+
 	@Test
 	public void passHostRekeysTheGameAndDropsTheOldHost() {
 		givenSelectedCharacter("Snake");

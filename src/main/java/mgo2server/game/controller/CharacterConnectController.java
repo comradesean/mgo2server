@@ -54,6 +54,20 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int CHAT_MACROS = 0x4121;
 
+	/**
+	 * The write-back half of {@link #CHAT_MACROS}: the client saving its macros. First observed
+	 * live 2026-07-22 — the joiner flushed its options as {@code 0x4110} + two of these in one
+	 * burst, 769 bytes each, the exact {@code 0x4121} layout (u8 type, then 12 × 64-byte texts).
+	 * The {@code 0x4115} reply shape is inferred from the sibling result packets, not read from
+	 * the binary; observed accepted by a live client since.
+	 */
+	public static final int UPDATE_CHAT_MACROS = 0x4114;
+
+	public static final int UPDATE_CHAT_MACROS_RESULT = 0x4115;
+
+	/** Fixed width of one macro text on the wire, same as the 0x4121 read side. */
+	private static final int MACRO_TEXT_LENGTH = 64;
+
 	public static final int PERSONAL_INFO = 0x4122;
 
 	public static final int GEAR = 0x4124;
@@ -104,6 +118,7 @@ public class CharacterConnectController implements IGameController {
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(CONNECT, this::connect);
 		handlers.put(UPDATE_CONNECTION_INFO, this::updateConnectionInfo);
+		handlers.put(UPDATE_CHAT_MACROS, this::updateChatMacros);
 	}
 
 	/**
@@ -119,6 +134,42 @@ public class CharacterConnectController implements IGameController {
 	 * payload, which is what the reference servers do — a client cannot lie about where its
 	 * packets come from.
 	 */
+	/**
+	 * Saves a macro-type's grid pushed by the client ({@link #UPDATE_CHAT_MACROS}). The payload
+	 * mirrors what {@code 0x4121} sends down: one type byte, then twelve 64-byte texts. A type
+	 * outside 0/1 is logged and dropped (the table's check constraint would reject it anyway),
+	 * but still acknowledged — an unanswered command is this client's signature failure.
+	 */
+	private void updateChatMacros(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(UPDATE_CHAT_MACROS_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var payload = ctx.packet().getPayload();
+		var charaId = account.getCurrentCharaId();
+		if (charaId != null && payload.readableBytes() >= 1) {
+			var type = payload.readByte() & 0xff;
+			if (type < ChatMacro.TYPES) {
+				var texts = new java.util.ArrayList<String>(ChatMacro.PER_TYPE);
+				while (payload.readableBytes() >= MACRO_TEXT_LENGTH
+						&& texts.size() < ChatMacro.PER_TYPE) {
+					texts.add(readNulTerminated(payload, MACRO_TEXT_LENGTH));
+				}
+				characterService.saveChatMacros(charaId, type, texts);
+				logger.info("Character {} saved {} chat macros of type {}.",
+					charaId, texts.size(), type);
+			} else {
+				logger.warn("Chat-macro save with unknown type {}; dropped.", type);
+			}
+		}
+
+		var buffer = ctx.buffer(Integer.BYTES);
+		buffer.writeInt(GameError.NONE.result());
+		ctx.write(new GamePacket(UPDATE_CHAT_MACROS_RESULT, buffer));
+	}
+
 	private void updateConnectionInfo(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {

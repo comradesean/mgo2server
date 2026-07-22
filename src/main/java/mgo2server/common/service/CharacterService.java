@@ -61,6 +61,25 @@ public class CharacterService {
 	}
 
 	/**
+	 * Saves one type's macro grid, as pushed by the client's write-back ({@code 0x4114}) — all
+	 * twelve slots arrive every time, so this upserts the full row set for the type.
+	 */
+	public void saveChatMacros(long charaId, int type, java.util.List<String> texts) {
+		jdbi.useHandle(handle -> {
+			var batch = handle.prepareBatch("""
+					insert into chara_chat_macro (chara_id, type, index, text)
+					values (:chara, :type, :index, :text)
+					on conflict (chara_id, type, index) do update set text = excluded.text
+					""");
+			for (var index = 0; index < texts.size() && index < ChatMacro.PER_TYPE; index++) {
+				batch.bind("chara", charaId).bind("type", type)
+					.bind("index", index).bind("text", texts.get(index)).add();
+			}
+			batch.execute();
+		});
+	}
+
+	/**
 	 * Chat macros as a dense grid, filling in blanks for any the character has never set. The
 	 * client always expects a full set, so absent rows become empty text rather than gaps.
 	 */

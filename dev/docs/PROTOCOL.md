@@ -730,6 +730,27 @@ strongest evidence that the creation-time skip is wrong.
 The client wants its own values back rather than a bare result code, which is why this is not a
 four-byte reply like its neighbours. Errors are 4 bytes (`C0FFEE02`, `C0FFEE01`).
 
+## `0x4110` — update gameplay options
+
+**Client → server**, `HostGameController.updateSettings` (the constant name predates the
+identity being settled). The write-back half of `0x4120`: first observed live 2026-07-22 as a
+**304-byte** push — the `0x4120` layout minus its 32-byte trailer — sent by a *joiner* in one
+burst with two `0x4114`s when saving options. The body is acknowledged (`0x4111 {u32 0}`,
+required) but **not yet parsed into `chara_settings`**, so option edits do not persist across
+sessions; the layout to parse is `0x4120`'s own, already documented above. An earlier theory
+that this command carried the Common Settings toggles in a 48-byte rules header was wrong — see
+OBSERVED.md.
+
+## `0x4114` — update chat macros
+
+**Client → server**, `CharacterConnectController.updateChatMacros`. The write-back half of
+`0x4121`, first observed live 2026-07-22 (two packets, one per macro type, in the options-save
+burst): `u8 type`, then twelve 64-byte ISO-8859-1 texts — the exact `0x4121` layout. Persisted
+into `chara_chat_macro`, so macro edits survive sessions. Reply `0x4115 {u32 0}` — **shape
+inferred from the sibling result packets, not read from the binary**; the client observably does
+not stall on it. Notably the client fires `0x4110` + both `0x4114`s in a single burst without
+waiting between them.
+
 ## `0x4300` — get game list
 
 **Client → server**, `GameListGameController.getGameList`.
@@ -1086,22 +1107,34 @@ The commands the host's client sends while staging and running a match. All were
 ack-only ("answered because the client blocks, not because the work is done"); since 2026-07-22
 the payloads are parsed and the match state tracked, **with layouts transcribed from
 GHzGangster/Nomad (tier 4)** at the user's request — fetched for these specific named questions
-after the docs and the audit both confirmed the gap. Live standing after the first full captured
-match (2026-07-22, create → join → start → finish → pass → quit): **`0x4398` and `0x43a0` are
-confirmed against the client, payload and effect**; `0x4392`, `0x43ca`, `0x4390` and `0x43a2`
-were **never sent at all** during that match — they are evidently conditional (mode-, stat- or
-path-dependent), so their layouts remain reference claims with zero live sightings, and the tests
-covering them (`MatchStateIT`, `HostSettingsReplyTest`) say "regression guard" in as many words.
+after the docs and the audit both confirmed the gap. Live standing after two captured sessions
+(2026-07-22, including an admin-action sweep): **`0x4398`, `0x43a0`, `0x4392` and `0x4390` are
+all confirmed against the client, payload and effect**; `0x43ca` and `0x43a2` have **never been
+observed on any path** — not staging, not admin restarts (round/stage/next), not a natural
+round end with a declared winner — and are presumed absent from this build's normal vocabulary.
+
+What the host admin menu actually sends, mapped action by action against a live client:
+
+| admin action | server traffic |
+| --- | --- |
+| Restart (Round) / Restart (Stage) | nothing — P2P, plus the `0x4440`/`0x4344` re-register pair |
+| Restart (Next) | `0x4392` rotation advance |
+| Kick (executed) | `0x4500`, then the usual teardown (`0x4390` stats, `0x4342`) |
+| Pass host | `0x43a0` |
+| Edit name/comment/password | `0x43c0` |
+| Team change (accepted) | `0x4440` exchanges |
+| Any joiner *request* (kick, restart, team) | nothing — requests ride the P2P channel; the server hears only executed outcomes |
+
 mgo2-server was checked too and answers all of these as unparsed acks, so Nomad is the only
 layout source; where the two disagree it is noted.
 
 ## `0x4392` — set game (advance the rotation)
 
-**Client → server**, `HostGameController.setGame`. Request is a **single byte**: the index into
-the rotation the host pushed via `0x4310`. The game row's `current_game`, `rule`, `map` and
-`flags` are updated from the stored blob's triple at `0xA3 + 3×index`, so the browser and details
-show the round actually being staged. Reply `0x4393`, 4-byte result 0 (Nomad sends the same; its
-error paths are silent, ours always ack after logging).
+**Client → server**, `HostGameController.setGame`. **Confirmed against a live client 2026-07-22,
+twice** — sent by the host on executing "Restart (Next)", one byte, the rotation index; the
+handler applied it and the browser followed. The game row's `current_game`, `rule`, `map` and
+`flags` are updated from the stored blob's triple at `0xA3 + 3×index`. Reply `0x4393`, 4-byte
+result 0 (Nomad sends the same; its error paths are silent, ours always ack after logging).
 
 ## `0x4398` — update pings
 
@@ -1114,28 +1147,38 @@ disconnects already tear the game down). Reply stays the **empty** `0x4399` that
 Nomad sends a 4-byte 0 instead, and reshaping a working ack on reference evidence is exactly the
 mistake this project keeps regretting.
 
-## `0x43ca` — start round
+## `0x43ca` — start round (never observed)
 
-**Client → server**, `HostGameController.startRound`. Request not read (Nomad reads nothing
-either). Snapshots the roster: every current player's `game_player.played_last_round` is set, and
-that flag is what gates `0x4390` stat application. Reply `0x43cb`, result 0.
+**Client → server**, `HostGameController.startRound`. **Never observed from this client on any
+path** — its handler (which snapshots the roster into `game_round` to gate `0x4390`) is
+Nomad-derived and effectively dormant here: without the snapshot, stat application relies on the
+current-membership check, which drops reports for players who already left (observed live: a
+crashed joiner's straggler report was rejected). See BACKLOG, "The round snapshot never
+populates". Reply `0x43cb`, result 0, if it ever arrives.
 
 ## `0x4390` — update stats
 
-**Client → server**, `HostGameController.updateStats`, one player per packet. **The references
-disagree on the entire layout**: Nomad reads `u32 target chara id` at `0x00`, `u32 experience`
-(an **absolute total**, not a delta) at `0x27` and an aborted flag at `0xB7`, skipping everything
-between; mgo2-server (via echo) reads a single-byte stat struct (kills at 6, deaths at 8, …) with
-no target id at all. Nomad served retail clients, so its read is implemented: experience is
-applied to the target's account pool (main/alt split as everywhere else) when the target is in
-the round snapshot — falling back to current membership, in case `0x43ca` semantics differ for
-our client. An aborted round docks 60 points floored at zero (**Nomad's operator policy,
-inherited knowingly**). Per-stat fields are deliberately not parsed — no trusted layout exists.
-Reply `0x4391`, result 0 always; validation failures are logged, not surfaced.
+**Client → server**, `HostGameController.updateStats`, one player per packet, sent by the host at
+round end and on kick teardown. **Confirmed against a live client 2026-07-22** — this build sends
+**167-byte** reports, and two rounds of captures pinned the fields against known ground truth:
 
-**Live check before trusting it:** play one round, compare the results-screen total against
-`account.main_exp`/`alt_exp`, and confirm rank-relevant experience moves as expected. A garbage
-value here means the offsets are wrong for this build — revert to ack-only rather than guess.
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | u32 | target character id |
+| `0x20`, `0x22`, `0x2E` | 1 each | u8 | flags observed as `01`; meaning unknown |
+| `0x23` | 4 | u32 | **seconds in game** — matched the joiner's connect-to-report interval exactly |
+| `0x27` | 4 | u32 | **experience, absolute total** — matched a 50,000-exp account to the byte |
+| rest | — | — | zeros in all captures (no kills scored); per-stat fields unmapped |
+
+Nomad's offsets for id/experience were exactly right but its **minimum length (`0xB8`) was
+another build's** — its aborted byte at `0xB7` does not exist in a 167-byte report and is read
+only when present (in which case an aborted round docks 60 points floored at zero, **Nomad's
+operator policy, inherited knowingly**). Experience is applied to the target's account pool
+(main/alt split as everywhere else) when the target is in the game or the round snapshot;
+verified applying live ("stats for character 1 — experience 50000"). mgo2-server's entirely
+different single-byte struct (via echo) fits neither the observed length nor the observed fields
+and was disregarded. Reply `0x4391`, result 0 always; validation failures are logged, not
+surfaced.
 
 ## `0x43a0` — pass host
 
@@ -1150,11 +1193,26 @@ request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-se
 `0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass we
 implement.)
 
-## `0x43a2` — round end (meaning unconfirmed)
+## `0x43a2` — round end? (never observed)
 
 **Client → server**, still ack-only (`0x43a3`, result 0). Nomad's comment is literally "Unknown,
-end of round, stats?"; mgo2-server calls it Unknown. Nothing anywhere parses it — the payload is
-dropped knowingly, and any future meaning needs the ELF, not the references.
+end of round, stats?"; mgo2-server calls it Unknown — and this client has **never sent it**,
+including at a genuine round end with a declared winner (the end-of-round conversation observed
+live is just re-registration plus `0x4390` per player). Any future meaning needs the ELF, not the
+references.
+
+## `0x4500` — ADDLIST relationship (meaning not pinned)
+
+**Client → server**, `HostGameController.addList`. Observed live 2026-07-22 from **both roles**:
+the host on executing a kick (`00 00 00 00 02`, trailing bytes = the kicked player's chara id)
+and a joiner while toggling the ADDLIST state on the host (`00 00 00 00 01`). The client's
+ADDLIST is one cycling state per player (friend → blocked → none); mute/unmute and resetting to
+none send **nothing**, so this is some subset of the state changes — or a query, which is the
+open suspicion: our ack is `0x4501 {result=0}`, and if the client reads that result as a
+relationship value, it would explain the target rendering permanently as "friend" (observed).
+Unanswered it wedges the sender ("server unstable" + team-join failures). The references name
+the `0x45xx` range "friends and blocked list" but implement nothing usable. Payload logged,
+nothing stored; isolating which toggle step fires it is the pending experiment.
 
 ## `0x4128` — get post-game info
 
@@ -1277,13 +1335,12 @@ Known-sendable, currently unanswered:
 | `0x3040` | (account) | Sender confirmed in the binary at `0xD37B00`, one u8 slot; reply `0x3041` = s32, then if 0 a u32 and 16 bytes. **No reference implementation answers it** — Nomad v1, v2, mgo2-server and ours all lack a handler. SaveMGO ran without it, so the normal disc flow presumably never sends it |
 | `0x4102` | get personal stats | |
 | `0x4112` | update UI settings | |
-| `0x4114` | update chat macros | The write-back half of `0x4121` |
 | `0x4141` | update skill sets | The write-back half of `0x4140` |
 | `0x4143` | update gear sets | The write-back half of `0x4142` |
 | `0x4220` | get character card | |
 | `0x43d0` | training connect | |
 | `0x4400` | send chat | |
-| `0x4500`/`0x4510`/`0x4580` | friends and blocked list | Would also fill the empty regions in `0x4101` |
+| `0x4510`/`0x4580` | friends and blocked list | `0x4500` is now answered (see its section); these two remain unseen. Would also fill the empty regions in `0x4101` |
 | `0x4600` | search player | |
 | `0x4680` | match history | |
 | `0x4800`/`0x4840`/`0x4860` | send / read / file a message | The rest of the mailbox |

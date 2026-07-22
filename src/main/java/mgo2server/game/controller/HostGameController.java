@@ -167,13 +167,14 @@ public class HostGameController implements IGameController {
 	public static final int POST_GAME_INFO_RESULT = 0x4129;
 
 	/**
-	 * The game-rules update the client sends right after entering a hosted game — <b>this is where
-	 * the Common Settings toggles live</b> (friendly fire, ghost, nametags, silent, auto-assign,
-	 * teams-switch, voice, level-limit/kick enables), in its 48-byte header (payload {@code
-	 * 0x00–0x2F}), verified against serializer {@code 0xD3BFB8}. The {@code 0x4310} push does
-	 * <b>not</b> carry them. Plaintext. Its reply parser ({@code 0xD3B20C}) requires a {@code u32}
-	 * result {@code == 0}; unanswered it stalls the enter-game flow. The header bits are not decoded
-	 * yet — see {@code dev/docs/BACKLOG.md} for the capture plan that would map them.
+	 * The client saving its <b>personal gameplay options</b> — the write-back half of
+	 * {@code 0x4120}, exactly as Nomad reads it. Identity settled live 2026-07-22: a <em>joiner</em>
+	 * (who cannot set game rules) sent it as 304 bytes — the {@code 0x4120} layout minus its
+	 * 32-byte trailer — in one burst with two {@code 0x4114} chat-macro write-backs. The earlier
+	 * theory that its header carried the Common Settings toggles was wrong twice over: the toggles
+	 * live in the {@code 0x4310} blob (capture-proven), and this command never appears in the
+	 * hosting flow at all. The body is not yet parsed into {@code chara_settings}, so options do
+	 * not persist across sessions — see BACKLOG. The reply must carry {@code u32 result == 0}.
 	 */
 	public static final int UPDATE_SETTINGS = 0x4110;
 
@@ -184,6 +185,21 @@ public class HostGameController implements IGameController {
 
 	/** Skill-table entries the results parser reads: a fixed 25, each {id u8, exp u16, pad u8}. */
 	private static final int POST_GAME_SKILLS = 25;
+
+	/**
+	 * The ADDLIST relationship command — <b>meaning not yet pinned</b>. Observed live 2026-07-22
+	 * from BOTH roles: the host on executing a kick (payload {@code 00 00 00 00 02}, trailing
+	 * bytes = the kicked character's id) and a joiner during ADDLIST toggling (payload
+	 * {@code 00 00 00 00 01}, targeting the host). The client's ADDLIST is a single state toggle
+	 * (friend → blocked → none), so this either sets or queries a relationship; mute/unmute and
+	 * resetting to none send nothing. Unanswered it wedges the sender ("server unstable"), so it
+	 * is acked {@code 0x4501 {result=0}} — but note the open suspicion recorded in BACKLOG: if
+	 * this is a <em>query</em>, our constant result 0 may be why the target renders permanently
+	 * as "friend" in the player list. Payload logged for mapping; nothing stored yet.
+	 */
+	public static final int ADD_LIST = 0x4500;
+
+	public static final int ADD_LIST_RESULT = 0x4501;
 
 	/** Sent on leaving a game. Unanswered, the client sits on a black screen. */
 	public static final int QUIT_GAME = 0x4380;
@@ -229,6 +245,21 @@ public class HostGameController implements IGameController {
 		handlers.put(PASS_HOST, this::passHost);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
+		handlers.put(ADD_LIST, this::addList);
+	}
+
+	/**
+	 * Acknowledges an ADDLIST relationship command ({@link #ADD_LIST}) so the sender does not
+	 * wedge waiting — the payload is logged for mapping but nothing is stored or torn down here:
+	 * on a kick the host reports the departure itself via {@code 0x4342}, and roster cleanup
+	 * rides that as usual.
+	 */
+	private void addList(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var bytes = new byte[payload.readableBytes()];
+		payload.getBytes(payload.readerIndex(), bytes);
+		logger.info("ADDLIST command 0x4500 payload: {}.", java.util.HexFormat.of().formatHex(bytes));
+		acknowledgeResult(ctx);
 	}
 
 	/**
@@ -560,11 +591,14 @@ public class HostGameController implements IGameController {
 		var payload = ctx.packet().getPayload();
 		var readable = payload.readableBytes();
 
-		if (game != null && readable >= 0xB8) {
+		// This client sends 167-byte reports (observed live 2026-07-22: exp at 0x27 matched the
+		// account total to the byte, and 0x23 held seconds-in-game), so Nomad's 0xB8 minimum was
+		// a different build's; its aborted byte at 0xB7 is read only when the report reaches it.
+		if (game != null && readable >= 0x2B) {
 			var base = payload.readerIndex();
 			long targetId = payload.getInt(base);
 			var experience = payload.getInt(base + 0x27);
-			var aborted = payload.getByte(base + 0xB7) == 1;
+			var aborted = readable > 0xB7 && payload.getByte(base + 0xB7) == 1;
 
 			// Current members are accepted unconditionally (the reference's first branch); the
 			// round snapshot rescues a target who already left the game mid-round.

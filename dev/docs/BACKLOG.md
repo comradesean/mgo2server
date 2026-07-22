@@ -218,3 +218,23 @@ plus our injected constants round-tripping back in the next push). Still open fr
 entries, now minor: whether the populated `0x4305` should canonicalise as Nomad does
 (`commonA |= 0b100`, kick zeroing, derived `wr[10]`) rather than echo raw — the raw echo works
 against the live client, so it stays.
+
+## The round snapshot never populates — quitter stats are dropped
+
+*Pinned 2026-07-22 (evening).* `game_round` is filled by the `0x43ca` handler, but this client
+never sends `0x43ca` on any observed path, so the snapshot is always empty and `0x4390` stat
+application falls back to current membership alone. Observed consequence: a crashed joiner's
+end-of-round report was rejected ("neither is in the game nor played the round") where the
+mechanism exists precisely to accept it. Fix sketch: populate `game_round` on join (insert on
+`addPlayer` and at create), clearing only on game teardown — approximating "played in this game"
+without needing a round boundary the client never signals. Keep the `0x43ca` handler as-is in
+case another mode sends it.
+
+## 0x4110 gameplay options are acked but not parsed
+
+*Pinned 2026-07-22 (evening).* The options write-back is now identified (304 bytes, the `0x4120`
+layout minus its 32-byte trailer) and its sibling `0x4114` macros are persisted, but `0x4110`
+itself is dropped after the ack, so gameplay/interface option edits do not survive a session.
+The parse is mechanical — invert `GameplaySettingsWriter` into the `chara_settings` columns,
+including its off-by-one stored-vs-wire quirks — and directly serves the no-blobs goal. Verify
+by editing one option, relogging, and checking the Options screen.
