@@ -1179,7 +1179,7 @@ structure, not meaning.
 | `0x0d` | 2 | s16 | **stun / knockout count** | live-confirmed |
 | `0x0f` | 2 | s16 | unknown (one player had 1) | low |
 | `0x11` | 2 | s16 | **headshots dealt** | live-confirmed |
-| `0x13` | 2 | s16 | headshot deaths — **suspect**: in the 1v1 capture it equalled the *enemy's* headshots, which a two-player match cannot distinguish from other "received" stats. Needs a 3+ player match to confirm | low / inferred |
+| `0x13` | 2 | s16 | **headshot deaths** — across three rounds (two TDM, one Rescue) it exactly equalled the enemy's headshot count (5/5/1); strong, but a 3+ player match would make it airtight | medium-high |
 | `0x15`–`0x1b` | — | s16 | zero this match | — |
 | `0x1d` | 2 | s16 | rounds played (1 per report) | medium |
 | `0x23` | 4 | u32 | **seconds in game** (client splits it hi/lo u16) | live-pinned |
