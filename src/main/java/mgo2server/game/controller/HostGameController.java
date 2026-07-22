@@ -1,5 +1,6 @@
 package mgo2server.game.controller;
 
+import mgo2server.common.BufferUtil;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
@@ -199,7 +200,48 @@ public class HostGameController implements IGameController {
 	 */
 	public static final int ADD_LIST = 0x4500;
 
-	public static final int ADD_LIST_RESULT = 0x4501;
+	/**
+	 * Reply to {@link #ADD_LIST} — <b>one added entry</b>, 25 bytes: {@code u32 lead (0 to carry a
+	 * body), u32 target id, u8 state, char[16] name}. Read from the ELF (parser {@code 0xD47110});
+	 * an exhaustive immediate scan found <b>no</b> parser for {@code 0x4501}/{@code 0x4503}, so
+	 * ADDLIST breaks the start/entries/end idiom — {@code 0x4502} alone carries the reply. A lead
+	 * word {@code != 0} makes the client skip the body (an empty / count-only frame).
+	 */
+	public static final int ADD_LIST_ENTRY = 0x4502;
+
+	/**
+	 * The ADDLIST <b>remove</b> — sent when a relationship is cleared to "none", and sent right
+	 * before {@link #ADD_LIST} when one is changed (remove-old-then-add-new). Payload
+	 * {@code {u8 state, u32 target id}}, the state being the one <em>removed</em>. Silently
+	 * dropping it (no handler) was the ADDLIST lock: the client blocks on the {@code 0x4512} reply.
+	 * ELF send builder {@code 0xD46EB0}.
+	 */
+	public static final int REMOVE_LIST = 0x4510;
+
+	/**
+	 * Reply to {@link #REMOVE_LIST} — <b>one removed entry</b>, 9 bytes: {@code u32 lead (0),
+	 * u8 state, u32 target id}. Note the field order differs from {@code 0x4502} (state before id,
+	 * no name). ELF parser {@code 0xD46B60}; like ADDLIST there is no start/end, {@code 0x4512}
+	 * alone is the reply.
+	 */
+	public static final int REMOVE_LIST_ENTRY = 0x4512;
+
+	/**
+	 * Bulk friend/blocked roster fetch — the standalone Friends/Blocked menu, distinct from the
+	 * in-game ADDLIST. Payload is a single {@code u8 state}. Never observed live (the in-game path
+	 * uses {@link #ADD_LIST}/{@link #REMOVE_LIST} plus the {@code 0x4101} login arrays); answered
+	 * defensively so the menu cannot hang. ELF send builder {@code 0xD4628C}, reply triple below.
+	 */
+	public static final int LIST_ROSTER = 0x4580;
+
+	public static final int LIST_ROSTER_START = 0x4581;
+
+	public static final int LIST_ROSTER_ENTRIES = 0x4582;
+
+	public static final int LIST_ROSTER_END = 0x4583;
+
+	/** Fixed name width in a 0x4502 entry, as the ELF parser reads it. */
+	private static final int RELATION_NAME_LENGTH = 16;
 
 	/** Sent on leaving a game. Unanswered, the client sits on a black screen. */
 	public static final int QUIT_GAME = 0x4380;
@@ -246,6 +288,8 @@ public class HostGameController implements IGameController {
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
 		handlers.put(ADD_LIST, this::addList);
+		handlers.put(REMOVE_LIST, this::removeList);
+		handlers.put(LIST_ROSTER, this::listRoster);
 	}
 
 	/**
@@ -254,12 +298,82 @@ public class HostGameController implements IGameController {
 	 * on a kick the host reports the departure itself via {@code 0x4342}, and roster cleanup
 	 * rides that as usual.
 	 */
+	/**
+	 * Adds or changes a relationship ({@link #ADD_LIST}). Request {@code {u8 state, u32 target}} —
+	 * state 0 friend, 1 blocked, confirmed live. Persists the relation (also replayed by the
+	 * {@code 0x4101} login arrays) and replies with the single added entry as {@code 0x4502}, the
+	 * ELF-confirmed reply. On a change the client sends {@link #REMOVE_LIST} for the old state
+	 * first; both must be answered or the ADDLIST locks.
+	 */
 	private void addList(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
 		var payload = ctx.packet().getPayload();
-		var bytes = new byte[payload.readableBytes()];
-		payload.getBytes(payload.readerIndex(), bytes);
-		logger.info("ADDLIST command 0x4500 payload: {}.", java.util.HexFormat.of().formatHex(bytes));
-		acknowledgeResult(ctx);
+
+		if (charaId == null || payload.readableBytes() < 5) {
+			// Nothing to add: a count-only frame (nonzero lead, no body).
+			var buffer = ctx.buffer(Integer.BYTES);
+			buffer.writeInt(1);
+			ctx.write(new GamePacket(ADD_LIST_ENTRY, buffer));
+			return;
+		}
+
+		var base = payload.readerIndex();
+		var state = payload.getByte(base) & 0xff;
+		long targetId = payload.getInt(base + 1);
+		characterService.setRelation(charaId, targetId, state);
+		logger.info("Character {} set relation state {} on character {}.",
+			charaId, state, targetId);
+
+		var name = characterService.get(targetId).map(c -> c.getName()).orElse("");
+		var buffer = ctx.buffer(2 * Integer.BYTES + 1 + RELATION_NAME_LENGTH);
+		buffer.writeInt(0) // lead word 0: an entry body follows
+			.writeInt((int) targetId)
+			.writeByte(state);
+		BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, RELATION_NAME_LENGTH);
+		ctx.write(new GamePacket(ADD_LIST_ENTRY, buffer));
+	}
+
+	/**
+	 * Clears a relationship ({@link #REMOVE_LIST}) — ADDLIST set-to-none, or the first half of a
+	 * change. Request {@code {u8 state, u32 target}} (the state being removed). Deletes the
+	 * relation and replies with the removed entry as {@code 0x4512} ({@code u32 0, u8 state,
+	 * u32 id} — note the order differs from {@code 0x4502}). Answering this is the fix for the
+	 * ADDLIST lock; it was silently dropped before.
+	 */
+	private void removeList(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		var payload = ctx.packet().getPayload();
+
+		var state = 0;
+		long targetId = 0;
+		if (charaId != null && payload.readableBytes() >= 5) {
+			var base = payload.readerIndex();
+			state = payload.getByte(base) & 0xff;
+			targetId = payload.getInt(base + 1);
+			characterService.removeRelation(charaId, targetId);
+			logger.info("Character {} cleared its relation (was state {}) on character {}.",
+				charaId, state, targetId);
+		}
+
+		var buffer = ctx.buffer(2 * Integer.BYTES + 1);
+		buffer.writeInt(0) // lead word 0: an entry body follows
+			.writeByte(state)
+			.writeInt((int) targetId);
+		ctx.write(new GamePacket(REMOVE_LIST_ENTRY, buffer));
+	}
+
+	/**
+	 * The standalone Friends/Blocked roster fetch ({@link #LIST_ROSTER}, request {@code {u8
+	 * state}}). Never observed live and its {@code 0x4582} entry is a 59-byte record whose fields
+	 * beyond id and name are of unknown meaning, so the roster is answered <b>empty</b>
+	 * (start then end, no entries) — enough that the menu cannot hang, without emitting a record
+	 * we cannot fill honestly. Populate once a live {@code 0x4580} is captured.
+	 */
+	private void listRoster(GameControllerContext ctx) {
+		ctx.write(LIST_ROSTER_START, GameError.NONE);
+		ctx.write(LIST_ROSTER_END, GameError.NONE);
 	}
 
 	/**

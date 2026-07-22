@@ -1119,7 +1119,7 @@ What the host admin menu actually sends, mapped action by action against a live 
 | --- | --- |
 | Restart (Round) / Restart (Stage) | nothing — P2P, plus the `0x4440`/`0x4344` re-register pair |
 | Restart (Next) | `0x4392` rotation advance |
-| Kick (executed) | `0x4500`, then the usual teardown (`0x4390` stats, `0x4342`) |
+| Kick (executed) | `0x4510`+`0x4500` ADDLIST churn, then the usual teardown (`0x4390` stats, `0x4342`) |
 | Pass host | `0x43a0` |
 | Edit name/comment/password | `0x43c0` |
 | Team change (accepted) | `0x4440` exchanges |
@@ -1201,18 +1201,57 @@ including at a genuine round end with a declared winner (the end-of-round conver
 live is just re-registration plus `0x4390` per player). Any future meaning needs the ELF, not the
 references.
 
-## `0x4500` — ADDLIST relationship (meaning not pinned)
+# ADDLIST — friend / blocked relationships (`0x4500` / `0x4510` / `0x4580`)
 
-**Client → server**, `HostGameController.addList`. Observed live 2026-07-22 from **both roles**:
-the host on executing a kick (`00 00 00 00 02`, trailing bytes = the kicked player's chara id)
-and a joiner while toggling the ADDLIST state on the host (`00 00 00 00 01`). The client's
-ADDLIST is one cycling state per player (friend → blocked → none); mute/unmute and resetting to
-none send **nothing**, so this is some subset of the state changes — or a query, which is the
-open suspicion: our ack is `0x4501 {result=0}`, and if the client reads that result as a
-relationship value, it would explain the target rendering permanently as "friend" (observed).
-Unanswered it wedges the sender ("server unstable" + team-join failures). The references name
-the `0x45xx` range "friends and blocked list" but implement nothing usable. Payload logged,
-nothing stored; isolating which toggle step fires it is the pending experiment.
+The in-game player list lets a player set another as **friend** or **blocked**, or clear it back
+to **none**. Fully mapped from the ELF and confirmed against a live client 2026-07-22 — a player
+cycled none → friend → blocked → none through the whole loop in one session with every transition
+sticking. All three send/reply pairs are handled in `HostGameController`; the relationships are
+stored in `chara_relation` and replayed into the `0x4101` login arrays.
+
+**Two things make this exchange unlike every other list in the protocol**, both read straight
+from the binary (parsers at `0xD47110`, `0xD46B60`, entries at `0xD467C0`):
+
+- **A change is a remove followed by an add.** Setting friend→blocked sends `0x4510 {state 0}`
+  (remove the friend) then `0x4500 {state 1}` (add the block); clearing to none sends `0x4510`
+  alone. Every `0x4510` blocks on its reply — silently dropping it (as we did until the parser
+  was traced) locks the ADDLIST UI, which was the whole mystery.
+- **The add/remove replies are single packets, not start/entries/end triples.** The client has
+  **no parser for `0x4501`/`0x4503`** (they hit the −0x46 no-handler default); only the bulk
+  roster fetch `0x4580` uses a real triple.
+
+## `0x4500` — add / change relationship
+
+Request `{u8 state, u32 target chara id}`, state **0 friend, 1 blocked** (confirmed both live).
+Persists the relation and replies with the added entry as one **`0x4502`** packet — 25 bytes:
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | u32 | lead word — **0** to carry a body; nonzero = empty/count-only frame |
+| `0x04` | 4 | u32 | target character id |
+| `0x08` | 1 | u8 | state (0 friend, 1 blocked) |
+| `0x09` | 16 | ISO-8859-1 | target name, NUL-padded |
+
+## `0x4510` — remove relationship
+
+Request `{u8 state, u32 target chara id}`, the state being the one **removed**. Deletes the
+relation and replies with one **`0x4512`** packet — 9 bytes, **field order differs from
+`0x4502`** (state before id, no name):
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 4 | u32 | lead word — 0 to carry a body |
+| `0x04` | 1 | u8 | state removed |
+| `0x05` | 4 | u32 | target character id |
+
+## `0x4580` — bulk roster fetch (answered empty)
+
+The standalone Friends/Blocked menu (distinct from the in-game ADDLIST), request a single
+`{u8 state}`. Reply is a real triple: `0x4581` start (4-byte result), N × `0x4582` entries
+(**59-byte** records — u32 id, char[16] name, u16, char[16], u32, char[16], u8; only id and name
+are of known meaning), `0x4583` end. **Never observed live**, and we cannot fill the 59-byte
+record honestly, so it is answered **empty** (start then end) — enough that the menu cannot hang.
+Populate once a real `0x4580` is captured.
 
 ## `0x4128` — get post-game info
 
@@ -1340,7 +1379,6 @@ Known-sendable, currently unanswered:
 | `0x4220` | get character card | |
 | `0x43d0` | training connect | |
 | `0x4400` | send chat | |
-| `0x4510`/`0x4580` | friends and blocked list | `0x4500` is now answered (see its section); these two remain unseen. Would also fill the empty regions in `0x4101` |
 | `0x4600` | search player | |
 | `0x4680` | match history | |
 | `0x4800`/`0x4840`/`0x4860` | send / read / file a message | The rest of the mailbox |
