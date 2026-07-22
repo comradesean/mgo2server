@@ -192,61 +192,17 @@ kills hosts that stopped sending `0x4398` pings. That reaper is why Nomad's `las
 we now track `last_update` from `0x4398` too but deliberately do not reap on it — our
 disconnect teardown covers dead hosts. Supports the snapshot model without proving it.
 
-## The 0x4310 byte 0x142/0x143 conflict — one capture settles three questions
+## ~~The 0x4310 byte 0x142/0x143 conflict~~ — RESOLVED by capture 2026-07-22
 
-*Pinned 2026-07-22, from the Nomad transcription pass (fetched at the user's request for the
-incomplete-protocol build-out).* Nomad's `Hosts.checkSettings` — which served real retail
-clients — parses the `0x4310` blob as: level-limit base **u32 at `0xF8`**, uniques at `0x140`,
-**commonA at `0x142` and commonB at `0x143`** (the full toggle bitfields: idle-kick enable,
-friendly fire, ghosts, auto-aim, uniques / team-switch, auto-assign, silent, nametags,
-level-limit enable, voice chat, team-kill enable — bit maps transcribed in PROTOCOL.md's `0x4305`
-notes and Nomad's decode quoted in the transcription). That contradicts two things we hold:
-
-1. `GameService.applyHostSettings` reads level-limit base as a **u16 at `0x142`** (recorded as
-   coming from serializer `0xD44864`). Under Nomad's map that u16 is `commonA<<8 | commonB` —
-   garbage. Note our idle-kick (`0x145` u16) and team-kill (`0x147` u16) reads are *consistent*
-   with Nomad's byte map (`0x146`/`0x148` bytes with zero padding before them), which makes the
-   lone `0x142` disagreement more suspicious, not less.
-2. The entry below ("Common Settings toggles"), which records three ELF passes concluding the
-   toggles are **not** in the `0x4310` blob at all but in `0x4110`'s header.
-
-Do not resolve this by picking a reference — resolve it with the capture that is now cheap and
-decisive: host twice, changing **only friendly fire**, log the decrypted `0x4310` (whole blob, we
-already store it in `chara_host_settings.blob`) and the `0x4110` header. Whichever bytes differ
-answer (a) where the toggles live, (b) whether `applyHostSettings`' `0x142` read is a bug,
-(c) whether the level-limit base really sits at `0xF8`, and (d) whether the populated `0x4305`
-should canonicalise those bytes the way Nomad does (`commonA |= 0b100`, kick zeroing, derived
-`wr[10]`) instead of echoing the client's raw bytes — `HostSettingsReply`'s javadoc records that
-divergence. Until then the `0x142` read stays as-is (tier-1-claimed beats tier 4) and the toggles
-stay undecoded.
-
-## Common Settings toggles: bit mapping in the 0x4110 header is unmapped
-
-*Pinned 2026-07-22.* The Common Settings on/off toggles (friendly fire, ghost, enemy nametags,
-silent mode, auto-assign, teams-switch, voice chat, and the level-limit / idle-kick / team-kill
-*enable* flags) are **not** in the `0x4310` host-settings blob — verified byte-for-byte against the
-serializer at `0xD44864`. They ride in command **`0x4110`** (plaintext, ~304 bytes, sent right
-after the host enters a match), in its **48-byte header at payload `0x00–0x2F`** (serializer
-`0xD3BFB8`). `HostGameController` answers `0x4110` with `0x4111 {result=0}` (required, or the
-enter-game flow stalls) but does **not** decode the header.
-
-The per-toggle bit positions **cannot be derived statically** — three exhaustive ELF passes found
-no per-checkbox handler and no `commonA`/`commonB` packer in the client; the blob→bitfield
-translation lived on Konami's server, which we do not have. So it needs an **empirical capture**,
-which is now feasible because two-player connect works (both RPCS3 on one clean bridged LAN).
-
-To settle it:
-
-1. Temporarily log the 48-byte header in `HostGameController.updateSettings`
-   (`logger.info("{}", HexFormat.of().formatHex(header))`), or capture the `0x4110` TCP and
-   XOR-decrypt it (whole-packet key `0x5a7085af`, per-packet phase).
-2. Host a **baseline** game with every toggle off; enter it; record the header. Then host **one
-   game per toggle**, flipping exactly that toggle on with **max-players / map / mode / briefing /
-   stance held identical** to the baseline; enter each; record the header. Each diff vs the
-   baseline is that toggle's byte+bit — a single clean bit, since the header is a dedicated rules
-   block with no weapon/max coupling.
-3. Map `{toggle -> header offset, bit}`, cross-check against the `GameListEntry.commonA/commonB`
-   bit scheme, and implement parse (header -> toggle columns) + the existing pack in
-   `GameListEntry`. A real working `0x4313` from SaveMGO gives a check case: header
-   `01 40 40 44 04 00 00 00 00 00 00 22 00 51 55 10 02 01 00 11 b1 …` produced `commonA=0x24`,
-   `commonB=0x4b`.
+**Settled the same day it was pinned** — see OBSERVED.md, "Where the Common Settings toggles
+live". A single-variable hosting capture (only friendly fire flipped) moved exactly byte `0x142`
+bit 3: Nomad's map was right on every count. The toggles are commonA/commonB at `0x142`/`0x143`
+in the `0x4310` blob, level-limit base is a u32 at `0xF8`, and `applyHostSettings`' u16-at-`0x142`
+read was a bug that stored toggle bits as the base — fixed; the decode now feeds the toggle
+columns, and the earlier `0x4110`-header theory (the entry that used to sit below this one) was
+wrong outright: `0x4110` never even appeared in a session with a created game, a joiner, and a
+started match. The populated `0x4305` was also live-verified in the same session (visual pre-fill,
+plus our injected constants round-tripping back in the next push). Still open from the old
+entries, now minor: whether the populated `0x4305` should canonicalise as Nomad does
+(`commonA |= 0b100`, kick zeroing, derived `wr[10]`) rather than echo raw — the raw echo works
+against the live client, so it stays.

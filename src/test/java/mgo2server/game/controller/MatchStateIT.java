@@ -378,6 +378,69 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(oldHostRows).isZero();
 	}
 
+	/**
+	 * The 0x4310 toggle decode, pinned at the offsets the live capture confirmed (2026-07-22:
+	 * flipping only friendly fire moved bit 3 of byte 0x142; the disabled level limit read 0 at
+	 * 0xF8). Bit map is Nomad's, identical to GameListEntry's packers.
+	 */
+	@Test
+	public void appliedBlobDecodesTheToggleBitfields() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var blob = settingsBlob();
+		blob[0xA1] = 1;            // dedicated
+		blob[0xF8] = 0;
+		blob[0xF9] = 0;
+		blob[0xFA] = 0;
+		blob[0xFB] = 42;           // level-limit base, u32
+		blob[0x142] = 0b00101101;  // commonA: idle-kick enable, always-set, friendly fire, auto-aim
+		blob[0x143] = (byte) 0b11010101; // commonB: switch, silent, level limit, voice, tk enable
+		blob[0x146] = 5;           // idle-kick count
+		blob[0x148] = 3;           // team-kill count
+		blob[0x155] = 0b10;        // host options: non-stat
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from game where id=:id").bind("id", gameId)
+				.mapToMap().one());
+		assertThat(row.get("friendly_fire")).isEqualTo(true);
+		assertThat(row.get("ghosts")).isEqualTo(false);
+		assertThat(row.get("auto_aim")).isEqualTo(true);
+		assertThat(row.get("uniques_enabled")).isEqualTo(false);
+		assertThat(row.get("teams_switch")).isEqualTo(true);
+		assertThat(row.get("auto_assign")).isEqualTo(false);
+		assertThat(row.get("silent_mode")).isEqualTo(true);
+		assertThat(row.get("enemy_nametags")).isEqualTo(false);
+		assertThat(row.get("voice_chat")).isEqualTo(true);
+		assertThat(row.get("level_limit_enabled")).isEqualTo(true);
+		assertThat(((Number) row.get("level_limit_base")).intValue()).isEqualTo(42);
+		assertThat(((Number) row.get("idle_kick")).intValue()).isEqualTo(5);
+		assertThat(((Number) row.get("team_kill_kick")).intValue()).isEqualTo(3);
+		assertThat(row.get("non_stat")).isEqualTo(true);
+		assertThat(row.get("dedicated")).isEqualTo(true);
+	}
+
+	/** With the enable bits off, the kick counts are zeroed even when the sliders carry values. */
+	@Test
+	public void disabledKicksAreZeroedRegardlessOfTheirCounts() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var blob = settingsBlob();
+		blob[0x142] = 0b00000100;  // enables off
+		blob[0x143] = 0;
+		blob[0x146] = 5;
+		blob[0x148] = 3;
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select idle_kick, team_kill_kick from game where id=:id")
+				.bind("id", gameId).mapToMap().one());
+		assertThat(((Number) row.get("idle_kick")).intValue()).isZero();
+		assertThat(((Number) row.get("team_kill_kick")).intValue()).isZero();
+	}
+
 	@Test
 	public void postGameInfoCarriesTheCharactersRankAndExperience() {
 		givenSelectedCharacter("Snake");

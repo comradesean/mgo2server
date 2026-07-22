@@ -343,10 +343,6 @@ public class GameService {
 			| ((b[off + 2] & 0xff) << 8) | (b[off + 3] & 0xff);
 	}
 
-	private static int blobU16(byte[] b, int off) {
-		return ((b[off] & 0xff) << 8) | (b[off + 1] & 0xff);
-	}
-
 	/** Reads a fixed-width, NUL-terminated ISO-8859-1 string from the blob. */
 	private static String blobString(byte[] b, int off, int max) {
 		if (off >= b.length) {
@@ -363,34 +359,43 @@ public class GameService {
 	/**
 	 * Applies a host's {@code 0x4310} settings blob to a game: the fields it genuinely carries into
 	 * their columns, plus the raw blob into {@code host_settings} (replayed by the details reply for
-	 * the per-mode timer table at {@code 0xFC} and uniques). Offsets are read from the client's own
-	 * serializer ({@code 0xD44864}), validated against real captures.
+	 * the per-mode timer table at {@code 0xFC} and uniques).
 	 * <p>
-	 * Handled here — every value field, all at ELF-confirmed offsets: name(0x00), comment(0x10),
-	 * password(flag 0x90 / text 0x91), round-0 rule/map/flags(0xA3), max players(0xE5, raw), briefing
-	 * time(0xE6 BE u32), stance(0xF6), level-limit tolerance(0xF7) and base(0x142 u16), idle-kick
-	 * minutes(0x145 u16) and team-kill-kick count(0x147 u16). Level limit is a numeric range, so its
-	 * enabled flag is derived from a non-zero value (there is no separate on/off in this blob); the
-	 * idle-kick and team-kill enables are likewise derived from their counts by the list/details.
+	 * Handled here: name(0x00), comment(0x10), password(flag 0x90 / text 0x91), dedicated(0xA1),
+	 * round-0 rule/map/flags(0xA3), max players(0xE5), briefing time(0xE6 BE u32), stance(0xF6),
+	 * level-limit tolerance(0xF7) and base(0xF8 BE u32), the Common Settings toggle bitfields
+	 * commonA(0x142)/commonB(0x143), idle-kick(0x146) and team-kill-kick(0x148) counts — each
+	 * zeroed when its enable bit (commonA bit 0 / commonB bit 7) is off — and non-stat from the
+	 * host-options byte(0x155, bit 1).
 	 * <p>
-	 * <b>Deliberately not here:</b> the Common Settings <em>on/off toggles</em> (friendly fire,
-	 * ghost, nametags, silent, auto-assign, teams-switch, voice). The {@code 0x4310} blob does
-	 * <b>not</b> transmit those — the client sends them in {@code 0x4110} after entering the game,
-	 * and that bit mapping is not in the binary (Konami's server packed it), so those columns stay at
-	 * the create defaults until a capture pass maps the bits.
+	 * <b>Provenance:</b> the toggle location and the {@code 0xF8} base were <b>confirmed by a live
+	 * capture 2026-07-22</b> — hosting twice with only friendly fire flipped moved exactly bit 3 of
+	 * byte {@code 0x142}, and the level-limit-disabled baseline read 0 at {@code 0xF8} — settling
+	 * the conflict between Nomad's decode and an earlier ELF reading that put a u16 base at
+	 * {@code 0x142} (which had been storing commonA/commonB garbage as the base). The bit map
+	 * matches {@code GameListEntry}'s packers bit for bit, so the list/details replies now
+	 * round-trip real toggles. See OBSERVED.md, "Where the Common Settings toggles live".
 	 */
 	public void applyHostSettings(long gameId, byte[] blob) {
-		if (blob == null || blob.length < 0x149) {
+		if (blob == null || blob.length < 0x156) {
 			return;
 		}
 		var passwordSet = (blob[0x90] & 0xff) != 0;
+		var commonA = blob[0x142] & 0xff;
+		var commonB = blob[0x143] & 0xff;
 		jdbi.useHandle(handle ->
 			handle.createUpdate("""
 					update game set
 						name = :name, comment = :comment, password = :password,
-						rule = :rule, map = :map, flags = :flags,
+						rule = :rule, map = :map, flags = :flags, dedicated = :dedicated,
 						max_players = :maxPlayers, briefing_time = :briefingTime, stance = :stance,
+						level_limit_enabled = :levelLimitEnabled,
 						level_limit_tolerance = :tolerance, level_limit_base = :base,
+						friendly_fire = :friendlyFire, ghosts = :ghosts, auto_aim = :autoAim,
+						uniques_enabled = :uniques, teams_switch = :teamsSwitch,
+						auto_assign = :autoAssign, silent_mode = :silentMode,
+						enemy_nametags = :enemyNametags, voice_chat = :voiceChat,
+						non_stat = :nonStat,
 						idle_kick = :idleKick, team_kill_kick = :teamKillKick,
 						host_settings = :blob
 					where id = :id
@@ -398,6 +403,7 @@ public class GameService {
 				.bind("name", blobString(blob, 0x00, 16))
 				.bind("comment", blobString(blob, 0x10, 128))
 				.bind("password", passwordSet ? blobString(blob, 0x91, 16) : null)
+				.bind("dedicated", (blob[0xA1] & 0xff) != 0)
 				.bind("rule", blob[0xA3] & 0xff)
 				.bind("map", blob[0xA4] & 0xff)
 				.bind("flags", blob[0xA5] & 0xff)
@@ -405,9 +411,20 @@ public class GameService {
 				.bind("briefingTime", blobU32(blob, 0xE6))
 				.bind("stance", blob[0xF6] & 0xff)
 				.bind("tolerance", blob[0xF7] & 0xff)
-				.bind("base", blobU16(blob, 0x142))
-				.bind("idleKick", blobU16(blob, 0x145))
-				.bind("teamKillKick", blobU16(blob, 0x147))
+				.bind("base", blobU32(blob, 0xF8))
+				.bind("levelLimitEnabled", (commonB & 0b10000) != 0)
+				.bind("friendlyFire", (commonA & 0b1000) != 0)
+				.bind("ghosts", (commonA & 0b10000) != 0)
+				.bind("autoAim", (commonA & 0b100000) != 0)
+				.bind("uniques", (commonA & 0b10000000) != 0)
+				.bind("teamsSwitch", (commonB & 0b1) != 0)
+				.bind("autoAssign", (commonB & 0b10) != 0)
+				.bind("silentMode", (commonB & 0b100) != 0)
+				.bind("enemyNametags", (commonB & 0b1000) != 0)
+				.bind("voiceChat", (commonB & 0b1000000) != 0)
+				.bind("nonStat", (blob[0x155] & 0b10) != 0)
+				.bind("idleKick", (commonA & 0b1) != 0 ? blob[0x146] & 0xff : 0)
+				.bind("teamKillKick", (commonB & 0b10000000) != 0 ? blob[0x148] & 0xff : 0)
 				.bind("blob", blob)
 				.bind("id", gameId)
 				.execute());
