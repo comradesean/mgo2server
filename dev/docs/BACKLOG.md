@@ -186,3 +186,34 @@ To settle it:
    seconds while the other creates a game. Nothing sent → snapshot model confirmed, the empty
    first list was a request/creation race, and this entry closes. Anything sent and unanswered →
    promote to a bug.
+
+## Common Settings toggles: bit mapping in the 0x4110 header is unmapped
+
+*Pinned 2026-07-22.* The Common Settings on/off toggles (friendly fire, ghost, enemy nametags,
+silent mode, auto-assign, teams-switch, voice chat, and the level-limit / idle-kick / team-kill
+*enable* flags) are **not** in the `0x4310` host-settings blob — verified byte-for-byte against the
+serializer at `0xD44864`. They ride in command **`0x4110`** (plaintext, ~304 bytes, sent right
+after the host enters a match), in its **48-byte header at payload `0x00–0x2F`** (serializer
+`0xD3BFB8`). `HostGameController` answers `0x4110` with `0x4111 {result=0}` (required, or the
+enter-game flow stalls) but does **not** decode the header.
+
+The per-toggle bit positions **cannot be derived statically** — three exhaustive ELF passes found
+no per-checkbox handler and no `commonA`/`commonB` packer in the client; the blob→bitfield
+translation lived on Konami's server, which we do not have. So it needs an **empirical capture**,
+which is now feasible because two-player connect works (both RPCS3 on one clean bridged LAN).
+
+To settle it:
+
+1. Temporarily log the 48-byte header in `HostGameController.updateSettings`
+   (`logger.info("{}", HexFormat.of().formatHex(header))`), or capture the `0x4110` TCP and
+   XOR-decrypt it (whole-packet key `0x5a7085af`, per-packet phase).
+2. Host a **baseline** game with every toggle off; enter it; record the header. Then host **one
+   game per toggle**, flipping exactly that toggle on with **max-players / map / mode / briefing /
+   stance held identical** to the baseline; enter each; record the header. Each diff vs the
+   baseline is that toggle's byte+bit — a single clean bit, since the header is a dedicated rules
+   block with no weapon/max coupling.
+3. Map `{toggle -> header offset, bit}`, cross-check against the `GameListEntry.commonA/commonB`
+   bit scheme, and implement parse (header -> toggle columns) + the existing pack in
+   `GameListEntry`. A real working `0x4313` from SaveMGO gives a check case: header
+   `01 40 40 44 04 00 00 00 00 00 00 22 00 51 55 10 02 01 00 11 b1 …` produced `commonA=0x24`,
+   `commonB=0x4b`.

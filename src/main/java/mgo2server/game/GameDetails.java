@@ -52,6 +52,18 @@ public final class GameDetails {
 	/** In echo's extra-time flags byte, bit 1 marks a non-stat game. */
 	private static final int EXTRA_NON_STAT = 0b10;
 
+	// Offsets into the raw 0x4310 host-settings blob for the blocks replayed here verbatim. Each
+	// block is the same field order and byte encoding as the 0x4313 slot it fills.
+	private static final int WEAPON_OFFSET = 0xD5;        // 16-byte weapon-restriction block
+
+	private static final int RULE_TIMERS_OFFSET = 0xFC;   // 17 u32: per-mode time/rounds/tickets
+
+	private static final int UNIQUES_OFFSET = 0x140;      // unique characters red/blue
+
+	private static final int CAP_EXTRA_OFFSET = 0x149;    // capture extra time, sneaking-Snake side
+
+	private static final int BYTE_TIMERS_OFFSET = 0x14B;  // SDM/INT/DM/SCAP/RACE byte-sized timers
+
 	private GameDetails() {
 	}
 
@@ -89,26 +101,31 @@ public final class GameDetails {
 			.writeZero((ROUNDS - 1) * 3)
 			.writeZero(2); // two u8s after the rotation; echo zeroes them, meaning unknown
 
-		buffer.writeZero(16) // weapon restrictions, not yet stored
-			.writeByte(game.getMaxPlayers())
+		// The per-mode timers/rounds/tickets and uniques are replayed verbatim from the stored
+		// 0x4310 blob (same field order and encoding as here), so the browser shows the host's real
+		// values instead of zeros. Everything else stays derived from the game columns.
+		var blob = game.getHostSettings();
+
+		copyOrZero(buffer, blob, WEAPON_OFFSET, 16); // weapon restrictions, replayed from the blob
+		buffer.writeByte(game.getMaxPlayers())
 			.writeByte(players.size())
 			.writeInt(game.getBriefingTime())
 			.writeZero(22) // u32,u32,u16,u16,u32,u32,u16 in the parser; echo zeroes all of it
 			.writeByte(game.getStance())
 			.writeByte(game.getLevelLimitTolerance())
-			.writeInt(UNKNOWN_INT_A)
-			.writeZero(17 * Integer.BYTES) // per-rule timers and round counts, not yet stored
-			.writeZero(2) // unique characters red/blue, not yet stored
-			.writeZero(7)
+			.writeInt(UNKNOWN_INT_A);
+		copyOrZero(buffer, blob, RULE_TIMERS_OFFSET, 17 * Integer.BYTES); // per-rule times/rounds/tickets
+		copyOrZero(buffer, blob, UNIQUES_OFFSET, 2); // unique characters red/blue
+		buffer.writeZero(7)
 			.writeByte(GameListEntry.commonA(game))
 			.writeByte(GameListEntry.commonB(game))
 			.writeZero(1)
 			.writeShort(game.getIdleKick())
 			.writeShort(game.getTeamKillKick())
-			.writeInt(UNKNOWN_INT_B)
-			.writeZero(2) // capture extra time, sneaking-Snake side; not yet stored
-			.writeZero(8) // per-rule byte-sized timers, not yet stored
-			.writeZero(1)
+			.writeInt(UNKNOWN_INT_B);
+		copyOrZero(buffer, blob, CAP_EXTRA_OFFSET, 2); // capture extra time, sneaking-Snake side
+		copyOrZero(buffer, blob, BYTE_TIMERS_OFFSET, 8); // per-rule byte-sized timers
+		buffer.writeZero(1)
 			.writeByte(game.isNonStat() ? EXTRA_NON_STAT : 0)
 			.writeZero(4);
 
@@ -120,6 +137,15 @@ public final class GameDetails {
 			BufferUtil.writeString(buffer, player.name(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 			buffer.writeInt(0); // ping, not tracked
 			buffer.writeInt(player.experience());
+		}
+	}
+
+	/** Copies {@code count} bytes from the host-settings blob at {@code offset}, or zero-fills. */
+	private static void copyOrZero(ByteBuf buffer, byte[] blob, int offset, int count) {
+		if (blob != null && offset + count <= blob.length) {
+			buffer.writeBytes(blob, offset, count);
+		} else {
+			buffer.writeZero(count);
 		}
 	}
 }

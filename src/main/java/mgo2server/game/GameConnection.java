@@ -16,11 +16,13 @@ public final class GameConnection {
 	private Account account;
 
 	/**
-	 * The active round's rule/map/flags the host pushed via {@code 0x4310} just before creating a
-	 * game. Held here because create-game ({@code 0x4316}) carries no settings of its own — it
-	 * relies on the preceding push. {@code null} until a push arrives.
+	 * The raw host-settings blob the host pushed via {@code 0x4310} just before creating a game.
+	 * Held here because create-game ({@code 0x4316}) carries no settings of its own — it relies on
+	 * the preceding push. {@code null} until a push arrives. Stored whole so the fields the
+	 * game-details reply needs (rotation, rule timers, uniques) can be replayed without naming
+	 * every one.
 	 */
-	private int[] hostRotation;
+	private byte[] hostSettings;
 
 	private GameConnection() {
 	}
@@ -51,18 +53,18 @@ public final class GameConnection {
 		this.account = account;
 	}
 
-	/** Record the round-0 {@code [rule, map, flags]} from a host-settings push. */
-	public void setHostRotation(int rule, int map, int flags) {
-		this.hostRotation = new int[] { rule, map, flags };
+	/** Record the raw host-settings blob from a {@code 0x4310} push. */
+	public void setHostSettings(byte[] hostSettings) {
+		this.hostSettings = hostSettings;
 	}
 
-	/** The pushed round-0 {@code [rule, map, flags]}, or null if the host pushed nothing. */
-	public int[] hostRotation() {
-		return hostRotation;
+	/** The raw host-settings blob, or null if the host pushed nothing. */
+	public byte[] hostSettings() {
+		return hostSettings;
 	}
 
 	public void clear() {
 		this.account = null;
-		this.hostRotation = null;
+		this.hostSettings = null;
 	}
 }

@@ -24,6 +24,8 @@ public class Game {
 
 	private int flags;
 
+	private byte[] hostSettings;
+
 	private int ping;
 
 	private int hostScore;
@@ -140,6 +142,14 @@ public class Game {
 
 	public void setFlags(int flags) {
 		this.flags = flags;
+	}
+
+	public byte[] getHostSettings() {
+		return hostSettings;
+	}
+
+	public void setHostSettings(byte[] hostSettings) {
+		this.hostSettings = hostSettings;
 	}
 
 	public int getMap() {
