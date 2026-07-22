@@ -785,11 +785,10 @@ public class HostGameController implements IGameController {
 				gameService.applyRoundExperience(targetId, experience, aborted);
 				// Scoreboard: the stat-struct-A slots confirmed by the 2026-07-22 capture (signed
 				// u16 at 0x05 + 2*i). kills A0, deaths A1, score A3, stun A4, headshots A6.
-				// A7 (0x13) is stored as headshot-deaths but is NOT firmly validated: in the 1v1
-				// capture it equalled the *enemy's* headshots, which in a two-player match is
-				// indistinguishable from several other "received"-type stats. Treat the
-				// headshot_deaths column as suspect until a 3+ player match separates it — a wrong
-				// label here only mislabels one stat column, it does not corrupt the others.
+				// A7 (0x13) = headshot-deaths. Across three captured rounds (two TDM, one Rescue)
+				// it exactly equalled the enemy's headshot count every time (5/5/1) — i.e. deaths
+				// by headshot. Strong, but still a 1v1, so a 3+ player match would make it airtight;
+				// a wrong label here only mislabels this one column, not the others.
 				var stats = new GameService.RoundStats(
 					payload.getShort(base + 0x05), payload.getShort(base + 0x07),
 					payload.getShort(base + 0x0b), payload.getShort(base + 0x11),

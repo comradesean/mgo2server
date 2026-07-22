@@ -1334,3 +1334,39 @@ breakdown (probably per-weapon/per-category), not the eight scoreboard categorie
 (`B36`, 12/2) was numerically near the "Other" count (13/2) but that is an off-by-one coincidence,
 not a confirmed link.
 A match exercising those would pin them the same way.
+
+## The 0x4390 stat layout is mode-independent; scoring categories are mode-specific
+
+*2026-07-22, Rescue Mission capture (rule 2, map 12 Midtown Maelstrom) compared to the earlier
+TDM match.* The stat report's byte layout does **not** change with game mode: kills (`0x05`),
+deaths (`0x07`), score (`0x0b`), stun (`0x0d`), headshots (`0x11`) all held their offsets and read
+correctly for Rescue. What changes is which slots the results screen surfaces as **scoring
+categories** and how they weight into the total:
+
+- **TDM categories:** Kill, Death, Headshot, Hacking, Assist, Stun, Wake, Other.
+- **Rescue categories:** Kill, Headshot, Stun, **Team Win**, Assist, **Goal**, **Target Defence**,
+  Other. (No "Death Count" line — deaths are still tracked in the report at `A1`, just not scored;
+  and a death is not penalised in Rescue, where rawr kept score 22 with 1 death.)
+
+So the report is a fixed-layout superset; each mode displays/scores a subset with its own
+weights. This is good for persistence: the fixed slots we store (`chara_stats`) are correct in
+every mode without mode-branching.
+
+**Mode-specific scoring weights**, from Sean's Rescue row (score 25 reproduced exactly):
+`kill·7 + headshot·3 + stun·7 + teamWin·5 + goal·3 + targetDefence·3 + other·1`. Compare TDM's
+`kill·3 − death·2 + headshot·2 + …`. So the same counts score differently per mode — the client
+computes the total; we just store its score field, which stays correct.
+
+Objective categories (Rescue's Team Win / Goal / Target Defence / Assist) occupy the fixed slots
+that are zero in deathmatch, but the capture had **every objective count equal to 1**, so they
+cannot be told apart yet:
+
+- **`A14` (`0x21`) = Team Win *or* Target Defence** (both were 1 for Sean; 0 for rawr, who won
+  neither). NOT Goal — Sean's Goal count was 0. The other of the two sits in the `0x2f` struct-B
+  block (Sean B had several 1-valued slots). A match where these differ would split them.
+- `A7` = **headshot-deaths, now strongly supported**: across all three rounds rawr's `A7` exactly
+  equalled Sean's headshot count (5/5/1), i.e. rawr's deaths-by-headshot. Still 1v1 so not
+  airtight, but consistent three times.
+
+Rule/map numbers confirmed this session: rule 1 = Team Deathmatch, rule 2 = Rescue Mission;
+map 2 and map 12 (Midtown Maelstrom) observed.
