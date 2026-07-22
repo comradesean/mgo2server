@@ -1122,3 +1122,37 @@ something outside the database depends on are not an implementation detail.**
 Before that, the same file had been re-run with an `ON CONFLICT DO NOTHING` guard that had no
 unique constraint to conflict against, silently doubling the lobby list. The client addresses a
 lobby by its index in the list it was sent, so that corrupts Lobby Select specifically.
+
+
+## Where the Common Settings toggles live — settled by capture
+
+*2026-07-22, live client, single-variable hosting experiment.* Two games were hosted by the same
+character minutes apart, identical except the second enabled **only Friendly Fire** (plus known
+timer/count changes that land in already-confirmed offsets). The decrypted `0x4310` blobs were
+archived by a database trigger and diffed byte for byte. Every declared change appeared exactly
+where Nomad's `Hosts.checkSettings` reads it — TDM time/rounds/tickets in the 17×u32 timer table
+at `0xFC`, max characters at `0xE5`, briefing at `0xE6` — and the friendly-fire flip moved
+**exactly one other bit: byte `0x142`, bit 3**, Nomad's `commonA.friendlyFire`.
+
+So, settled:
+
+- **The Common Settings toggles are in the `0x4310` blob**, at `0x142` (commonA) / `0x143`
+  (commonB), with Nomad's bit map — which is bit-for-bit the map our `0x4302` game-list entry has
+  always used. The earlier conclusion from three ELF passes that the blob does not carry them
+  (and that they ride in `0x4110`'s header) was **wrong**; `0x4110` was never even observed this
+  session, including with a created game and a joined second player.
+- **Level-limit base is a u32 at `0xF8`** (0 in both captures, level limit disabled), not a u16
+  at `0x142`. The previous read had been storing `commonA<<8 | commonB` — 9216 for the baseline —
+  as the base of every hosted game. Seventh entry for the "inherited/claimed offsets that were
+  wrong" ledger, and the first one where the wrong claim cited the ELF rather than a reference.
+- **The populated `0x4305` reply is parsed by the client at the transcribed offsets.** The second
+  Create Game screen opened pre-filled with the first game's settings (confirmed visually), and —
+  the clincher — the two constants our reply injects per Nomad (`0x02`, `0x20`) came back in the
+  second `0x4310` push at exactly the request offsets that map to their reply positions
+  (`0xEA` ← reply `0x0ED`, `0x144` ← reply `0x147`). The client read our reply, stored those
+  fields, and round-tripped them. They are evidently real (unknown-meaning) fields, not padding.
+- `0x4398` ping reports decoded live: `{u32 host ping, then u32 chara id + u32 ping pairs}` —
+  a captured 12-byte payload read `host=100, {chara 2, ping 100}` and landed correctly on the
+  game row and roster.
+- `0x4440` carries a 1-byte payload observed as `01`, sent by host and joiner around team-select
+  time — consistent with Nomad's "Set Team" comment, still unproven.

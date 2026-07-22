@@ -11,10 +11,12 @@ import io.netty.buffer.ByteBuf;
  * which served real retail clients. The reply is <em>not</em> the request blob echoed back: the
  * field set matches, but the reply drops the subtype byte, inserts two constants ({@code 0x02} at
  * {@code 0x0ED}, {@code 0x20} at {@code 0x147}) and re-bases every offset, so this class re-maps
- * the stored request-shaped blob into the reply shape. The {@code 0x4305} parser has not been
- * located in the ELF; until the populated path is verified against a live client, treat a
- * Create-Game hang after a settings save as this class's prime suspect — the empty path (128
- * zero bytes) is the known-good fallback.
+ * the stored request-shaped blob into the reply shape. <b>Live-verified 2026-07-22</b>: a real
+ * client re-opened Create Game pre-filled from this reply, and the two injected constants came
+ * back in its next {@code 0x4310} push at the matching request offsets — so the client parses
+ * this layout and stores those fields (see OBSERVED.md, "Where the Common Settings toggles
+ * live"). The empty path (128 zero bytes) remains the fallback for a character with nothing
+ * saved.
  * <p>
  * <b>Known divergence, chosen deliberately: this class echoes the client's own bytes where Nomad
  * reconstructs them.</b> Nomad round-trips the blob through parsed JSON and its reply therefore

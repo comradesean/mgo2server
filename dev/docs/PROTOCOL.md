@@ -787,15 +787,17 @@ The empty path is confirmed working: the Create Game screen opens.
 A host with nothing saved gets 128 zero bytes, which is what both references send and what the
 client reads as "no saved settings".
 
-**Populated (implemented 2026-07-22, reference-derived, NOT yet verified live):** the raw `0x4310`
-blob the character last pushed is stored per (character, lobby subtype) and re-mapped into the
-reply shape transcribed from Nomad's `Hosts.getSettings()` — a `0x163`-byte structure that is
-*not* the request blob echoed: the subtype byte is dropped, two constants are inserted (`0x02` at
-`0x0ED`, `0x20` at `0x147`) and every offset is re-based. Full mapping in
-`mgo2server.game.HostSettingsReply` and its test. The client's `0x4305` parser has not been
-located in the ELF; if Create Game ever hangs after a settings save, suspect this reply first —
-the 128-zero fallback is the known-good path. (mgo2-server instead sends `u32 type` + a blob it
-stored as JSON text, which is garbage by construction; disregarded.)
+**Populated (implemented 2026-07-22, verified against a live client the same day):** the raw
+`0x4310` blob the character last pushed is stored per (character, lobby subtype) and re-mapped
+into the reply shape transcribed from Nomad's `Hosts.getSettings()` — a `0x163`-byte structure
+that is *not* the request blob echoed: the subtype byte is dropped, two constants are inserted
+(`0x02` at `0x0ED`, `0x20` at `0x147`) and every offset is re-based. Full mapping in
+`mgo2server.game.HostSettingsReply` and its test. **Live evidence** (OBSERVED.md, "Where the
+Common Settings toggles live"): the Create Game screen re-opened pre-filled with the saved
+settings, and the two injected constants came back in the next `0x4310` push at the request
+offsets corresponding to their reply positions — the client parses this reply at these offsets
+and stores those fields. (mgo2-server instead sends `u32 type` + a blob it stored as JSON text,
+which is garbage by construction; disregarded.)
 
 ## `0x4310` — check host settings
 
@@ -835,13 +837,13 @@ rotation start is ambiguous between the references (Model A = `0xA2`, Model B = 
 `0xA3`. Confirm by hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3`
 changes.
 
-**Open conflict at `0x142`/`0x143`:** our `applyHostSettings` reads level-limit base as a u16 at
-`0x142` (recorded as ELF-derived), but Nomad reads level-limit base as a **u32 at `0xF8`** and
-decodes `0x142`/`0x143` as the **commonA/commonB toggle bitfields** (friendly fire, ghosts,
-auto-aim, uniques / team-switch, auto-assign, silent, nametags, level-limit enable, voice,
-team-kill enable). Both cannot be right, and this also contradicts the BACKLOG claim that the
-toggles are not in this blob at all. One capture settles it — see BACKLOG, "The 0x4310 byte
-0x142/0x143 conflict".
+**Resolved by capture 2026-07-22** (OBSERVED.md, "Where the Common Settings toggles live"):
+`0x142`/`0x143` are the **commonA/commonB toggle bitfields** — same bit map as the `0x4302`
+entry — and level-limit base is a **u32 at `0xF8`**; flipping only friendly fire moved exactly
+`0x142` bit 3. `applyHostSettings` decodes the toggles into their columns, zeroes the idle/team-kill
+counts (`0x146`/`0x148`) when their enable bits (commonA bit 0 / commonB bit 7) are off, and reads
+non-stat from the host-options byte at `0x155` bit 1. An earlier read of a u16 base at `0x142` was
+a bug that stored toggle bits as the base.
 
 ### Reply `0x4311` — empty
 
