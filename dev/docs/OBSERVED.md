@@ -1156,3 +1156,18 @@ So, settled:
   game row and roster.
 - `0x4440` carries a 1-byte payload observed as `01`, sent by host and joiner around team-select
   time — consistent with Nomad's "Set Team" comment, still unproven.
+
+### The first full match, end to end
+
+*Same session, 2026-07-22.* Create → second client joins → match starts → finishes → **host
+passed to the joiner** → original host quits. Zero `No handler` lines. `0x43a0` arrived as
+`{u32 own chara id, u32 target chara id}` and the succession worked completely: game re-keyed,
+old host dropped from the roster, new host's client took over the `0x4398` heartbeat and
+re-registered its peers. Both players were served the populated `0x4129` results card without
+complaint.
+
+The negative result matters as much: **`0x43ca`, `0x4390`, `0x43a2`, `0x4392` and `0x4110` were
+never sent** at any point in that complete match. Whatever triggers the round-lifecycle and
+stat-submission commands, it is not simply "a match being played" — they are conditional
+(mode/stat-game/path dependent), and their layouts remain live-unverified. Do not assume a stat
+report per round when reasoning about experience.
