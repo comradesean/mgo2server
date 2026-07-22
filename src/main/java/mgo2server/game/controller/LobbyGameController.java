@@ -3,6 +3,7 @@ package mgo2server.game.controller;
 import io.netty.buffer.ByteBuf;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.model.Lobby;
+import mgo2server.common.service.GameService;
 import mgo2server.common.service.LobbyService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -41,8 +42,11 @@ public class LobbyGameController implements IGameController {
 
 	private final LobbyService lobbyService;
 
-	public LobbyGameController(LobbyService lobbyService) {
+	private final GameService gameService;
+
+	public LobbyGameController(LobbyService lobbyService, GameService gameService) {
 		this.lobbyService = lobbyService;
+		this.gameService = gameService;
 	}
 
 	@Override
@@ -52,6 +56,9 @@ public class LobbyGameController implements IGameController {
 
 	private void getLobbyList(GameControllerContext ctx) {
 		var lobbies = lobbyService.getLobbies();
+		// Occupancy is players-in-games per lobby; a lobby with no games running reads 0 even if
+		// players are connected to it. See countPlayersByLobby for why that trade was taken.
+		var occupancy = gameService.countPlayersByLobby();
 
 		ctx.write(LOBBY_LIST_START, GameError.NONE);
 
@@ -61,7 +68,8 @@ public class LobbyGameController implements IGameController {
 
 			var buffer = ctx.buffer(batch.size() * ENTRY_SIZE);
 			for (var i = 0; i < batch.size(); i++) {
-				writeEntry(buffer, start + i, batch.get(i));
+				var lobby = batch.get(i);
+				writeEntry(buffer, start + i, lobby, occupancy.getOrDefault(lobby.getId(), 0));
 			}
 
 			ctx.write(new GamePacket(LOBBY_LIST_ENTRIES, buffer));
@@ -70,7 +78,7 @@ public class LobbyGameController implements IGameController {
 		ctx.write(LOBBY_LIST_END, GameError.NONE);
 	}
 
-	private static void writeEntry(ByteBuf buffer, int index, Lobby lobby) {
+	private static void writeEntry(ByteBuf buffer, int index, Lobby lobby, int playerCount) {
 		var restriction = 0;
 		if (lobby.isBeginnersOnly()) {
 			restriction |= 0b1;
@@ -86,8 +94,7 @@ public class LobbyGameController implements IGameController {
 		BufferUtil.writeString(buffer, lobby.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 		BufferUtil.writeString(buffer, lobby.getIp(), StandardCharsets.ISO_8859_1, IP_LENGTH);
 		buffer.writeShort(lobby.getPort())
-			// Player counts are not tracked yet; the client renders 0 without complaint.
-			.writeShort(0)
+			.writeShort(playerCount)
 			.writeShort((int) lobby.getId())
 			.writeByte(restriction);
 	}

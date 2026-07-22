@@ -135,7 +135,7 @@ public final class GameDetails {
 		for (var player : players) {
 			buffer.writeInt((int) player.charaId());
 			BufferUtil.writeString(buffer, player.name(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
-			buffer.writeInt(0); // ping, not tracked
+			buffer.writeInt(player.ping()); // host-reported via 0x4398; 0 until a report arrives
 			buffer.writeInt(player.experience());
 		}
 	}

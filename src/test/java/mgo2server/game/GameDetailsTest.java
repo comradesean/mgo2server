@@ -34,8 +34,8 @@ public class GameDetailsTest {
 	}
 
 	private static List<GameService.GamePlayer> players() {
-		return List.of(new GameService.GamePlayer(2, "SolidHost", 500),
-			new GameService.GamePlayer(9, "Joiner", 120));
+		return List.of(new GameService.GamePlayer(2, "SolidHost", 500, 32),
+			new GameService.GamePlayer(9, "Joiner", 120, 64));
 	}
 
 	private static io.netty.buffer.ByteBuf written() {
@@ -165,7 +165,7 @@ public class GameDetailsTest {
 		buffer.getBytes(base + 4, name);
 		assertThat(new String(name, StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("SolidHost");
-		assertThat(buffer.getInt(base + 20)).isZero(); // ping is not tracked
+		assertThat(buffer.getInt(base + 20)).isEqualTo(32); // host-reported ping (0x4398)
 		assertThat(buffer.getInt(base + 24)).isEqualTo(500);
 
 		assertThat(buffer.getInt(base + GameDetails.PLAYER_SIZE)).isEqualTo(9);

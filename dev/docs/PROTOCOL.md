@@ -183,7 +183,7 @@ One `0x2003` per batch of 22 (`ENTRIES_PER_PACKET`); with no lobbies, none at al
 | `0x08` | 16 | ISO-8859-1 | lobby name, NUL-padded |
 | `0x18` | 15 | ISO-8859-1 | lobby IP as a dotted-quad string, NUL-padded |
 | `0x27` | 2 | u16 | port |
-| `0x29` | 2 | u16 | player count — **always 0**; we do not track occupancy |
+| `0x29` | 2 | u16 | player count — players currently **in games** in that lobby, derived from `game_player`. Operator policy: idle lobby members are not counted (see BACKLOG) |
 | `0x2b` | 2 | u16 | lobby id |
 | `0x2d` | 1 | u8 | restriction bits: `0b1` beginners only, `0b1000` expansion required, `0b10000` no headshots |
 
@@ -778,15 +778,24 @@ modelled, so every game in the lobby is listed whatever was asked for.
 **Client → server**, `HostGameController.getHostSettings`. Sent when Create Game opens, so the
 screen can be pre-filled with whatever the player hosted last time. Empty request.
 
-### Reply `0x4305` — 128 bytes
+### Reply `0x4305` — 128 bytes empty, `0x163` populated
 
 **The only payload this server encrypts on the way out.** Until this command was implemented
 nothing sent `0x4305`, so the Blowfish encrypt direction had never produced a byte the client saw.
-It is now confirmed working: the Create Game screen opens.
+The empty path is confirmed working: the Create Game screen opens.
 
 A host with nothing saved gets 128 zero bytes, which is what both references send and what the
-client reads as "no saved settings". Populated, mgo2-server writes a `u32` type followed by the
-settings blob, zero-padded to at least 128 — **untested here**, since we never store settings.
+client reads as "no saved settings".
+
+**Populated (implemented 2026-07-22, reference-derived, NOT yet verified live):** the raw `0x4310`
+blob the character last pushed is stored per (character, lobby subtype) and re-mapped into the
+reply shape transcribed from Nomad's `Hosts.getSettings()` — a `0x163`-byte structure that is
+*not* the request blob echoed: the subtype byte is dropped, two constants are inserted (`0x02` at
+`0x0ED`, `0x20` at `0x147`) and every offset is re-based. Full mapping in
+`mgo2server.game.HostSettingsReply` and its test. The client's `0x4305` parser has not been
+located in the ELF; if Create Game ever hangs after a settings save, suspect this reply first —
+the 128-zero fallback is the known-good path. (mgo2-server instead sends `u32 type` + a blob it
+stored as JSON text, which is garbage by construction; disregarded.)
 
 ## `0x4310` — check host settings
 
@@ -819,10 +828,20 @@ cross-checked with the `0x4313` layout):
 
 **Partly stored now.** `HostGameController.checkHostSettings` parses **round 0** of the rotation
 (`rule, map, flags` at `0xA3`) into the connection, and `createGame` writes them onto the game, so
-the browser shows the real match type/map/mode instead of DM/map-0. The rest of the blob is still
-dropped (so `0x4304` remembers nothing across sessions). **One-byte caveat:** the rotation start is
-ambiguous between the references (Model A = `0xA2`, Model B = `0xA3`); we use `0xA3`. Confirm by
-hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3` changes.
+the browser shows the real match type/map/mode instead of DM/map-0. Since 2026-07-22 the **raw
+blob is also persisted** per (character, lobby subtype) in `chara_host_settings.blob`, which is
+what the populated `0x4304` reply and the `0x4392` rotation advance read. **One-byte caveat:** the
+rotation start is ambiguous between the references (Model A = `0xA2`, Model B = `0xA3`); we use
+`0xA3`. Confirm by hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3`
+changes.
+
+**Open conflict at `0x142`/`0x143`:** our `applyHostSettings` reads level-limit base as a u16 at
+`0x142` (recorded as ELF-derived), but Nomad reads level-limit base as a **u32 at `0xF8`** and
+decodes `0x142`/`0x143` as the **commonA/commonB toggle bitfields** (friendly fire, ghosts,
+auto-aim, uniques / team-switch, auto-assign, silent, nametags, level-limit enable, voice,
+team-kill enable). Both cannot be right, and this also contradicts the BACKLOG claim that the
+toggles are not in this blob at all. One capture settles it — see BACKLOG, "The 0x4310 byte
+0x142/0x143 conflict".
 
 ### Reply `0x4311` — empty
 
@@ -1029,6 +1048,93 @@ The joiner is removed from the game they failed to enter.
 **Note this is a symptom handler, not a fix.** It converts the hang into a clean failure; it does
 not make the join succeed. The peer connection itself is the open frontier — see BACKLOG.md.
 
+# In-match host commands
+
+The commands the host's client sends while staging and running a match. All were originally
+ack-only ("answered because the client blocks, not because the work is done"); since 2026-07-22
+the payloads are parsed and the match state tracked, **with layouts transcribed from
+GHzGangster/Nomad (tier 4)** at the user's request — fetched for these specific named questions
+after the docs and the audit both confirmed the gap. Every layout below is a **reference claim,
+unverified against `BLUS30109`**; the tests covering them (`MatchStateIT`,
+`HostSettingsReplyTest`) say "regression guard" in as many words. mgo2-server was checked too and
+answers all of these as unparsed acks, so Nomad is the only layout source; where the two disagree
+it is noted.
+
+## `0x4392` — set game (advance the rotation)
+
+**Client → server**, `HostGameController.setGame`. Request is a **single byte**: the index into
+the rotation the host pushed via `0x4310`. The game row's `current_game`, `rule`, `map` and
+`flags` are updated from the stored blob's triple at `0xA3 + 3×index`, so the browser and details
+show the round actually being staged. Reply `0x4393`, 4-byte result 0 (Nomad sends the same; its
+error paths are silent, ours always ack after logging).
+
+## `0x4398` — update pings
+
+**Client → server**, `HostGameController.updatePings`. Request: `u32` host ping, then repeated
+`{u32 chara id, u32 ping}` pairs; a zero id is skipped (as in Nomad). The host ping lands on the
+game row (`0x4302` offset `0x1e`), each player's on their roster row (`0x4313` player entry offset
+`0x14`), and the game's `last_update` is touched — in Nomad this report doubles as the heartbeat
+that keeps a game from being reaped; we track the timestamp but do not reap on it (host
+disconnects already tear the game down). Reply stays the **empty** `0x4399` that is live-verified;
+Nomad sends a 4-byte 0 instead, and reshaping a working ack on reference evidence is exactly the
+mistake this project keeps regretting.
+
+## `0x43ca` — start round
+
+**Client → server**, `HostGameController.startRound`. Request not read (Nomad reads nothing
+either). Snapshots the roster: every current player's `game_player.played_last_round` is set, and
+that flag is what gates `0x4390` stat application. Reply `0x43cb`, result 0.
+
+## `0x4390` — update stats
+
+**Client → server**, `HostGameController.updateStats`, one player per packet. **The references
+disagree on the entire layout**: Nomad reads `u32 target chara id` at `0x00`, `u32 experience`
+(an **absolute total**, not a delta) at `0x27` and an aborted flag at `0xB7`, skipping everything
+between; mgo2-server (via echo) reads a single-byte stat struct (kills at 6, deaths at 8, …) with
+no target id at all. Nomad served retail clients, so its read is implemented: experience is
+applied to the target's account pool (main/alt split as everywhere else) when the target is in
+the round snapshot — falling back to current membership, in case `0x43ca` semantics differ for
+our client. An aborted round docks 60 points floored at zero (**Nomad's operator policy,
+inherited knowingly**). Per-stat fields are deliberately not parsed — no trusted layout exists.
+Reply `0x4391`, result 0 always; validation failures are logged, not surfaced.
+
+**Live check before trusting it:** play one round, compare the results-screen total against
+`account.main_exp`/`alt_exp`, and confirm rank-relevant experience moves as expected. A garbage
+value here means the offsets are wrong for this build — revert to ack-only rather than guess.
+
+## `0x43a0` — pass host
+
+**Client → server**, `HostGameController.passHost`. Request: `u32` sender's own chara id (unused,
+as in Nomad), `u32` new host's chara id. The game is re-keyed to the target and the old host
+leaves the roster (Nomad's semantics: you pass because you are quitting). Joins keep working
+because `0x4320` reads the host endpoint from `chara_connection` by the game's host id at join
+time and the new host registered its own on lobby entry. The target must be another player in the
+game or the request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-server
+calls `0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass
+we implement.)
+
+## `0x43a2` — round end (meaning unconfirmed)
+
+**Client → server**, still ack-only (`0x43a3`, result 0). Nomad's comment is literally "Unknown,
+end of round, stats?"; mgo2-server calls it Unknown. Nothing anywhere parses it — the payload is
+dropped knowingly, and any future meaning needs the ELF, not the references.
+
+## `0x4128` — get post-game info
+
+**Client → server**, `HostGameController.postGameInfo`. Reply `0x4129` is the `0x8b`-byte results
+card (reply shape ELF-confirmed — see the constant's javadoc). Populated since 2026-07-22 at
+reference parity: both references source exactly two fields from storage — the character's
+**rank** and **experience** (grade points mirror experience) — and fabricate the rest; the
+25-entry skill table repeats what the `0x4125` catalogue advertises (`0x6000`, or `0x2000` for
+skills 17/20/22), the clan fields stay 0, and the trailing u32 echoes the character id.
+
+## `0x4440` — unknown
+
+Still ack-only (`0x4441`, result 0, echo's shape). The references now *name* it but do not agree:
+Nomad's comment says "Set Team" (nothing parsed), mgo2-server registers it twice — once as
+unknown-ack, once as "GetPlayerOptions" reading a u8 and replying 5 bytes `{u32 0, u8 0}` —
+with whichever loads last winning. Neither is evidence worth acting on.
+
 ## `0x4820` — get messages
 
 **Client → server**, `MessageGameController.getMessages`. The mailbox, read as soon as the client
@@ -1047,8 +1153,17 @@ The selector values are named after the reference servers and are unverified.
 | `0x4823` | 4 bytes result |
 
 Start then end with nothing between is a real answer, not a stub: a player with no mail is the
-ordinary case. **`0x4822`'s payload layout is therefore entirely undocumented here** — we have
-never written one.
+ordinary case — and it is also all either reference does for the *mail* selector (`0x0f`): Nomad
+never stores mail and never emits a `0x4822` for it, mgo2-server likewise. So an empty mailbox is
+reference parity, not a gap.
+
+For the record (transcribed from Nomad 2026-07-22, used only for **clan applications**, selector
+`0x10`, which we do not model), a `0x4822` entry is 266 bytes: `u8 mtype(0), u8 index, u8 1,
+name[128], comment[128], u32 time, u8 0, u8 important, u8 read`. Reference-derived and never sent
+by us. The rest of Nomad's mailbox: `0x4800` send implements only clan applications (reply
+`0x4801` = `{u32 status, u8 0, u32 error count, then name[16]+u32 code per error}`), `0x4840`
+get-contents replies with **command `0x4341`, empty** — almost certainly a Nomad typo for
+`0x4841`; do not copy it — and `0x4860` is a no-op `0x4861 {0}`.
 
 ## `0x4900` — get game lobby info
 
@@ -1124,16 +1239,11 @@ Known-sendable, currently unanswered:
 | --- | --- | --- |
 | `0x3040` | (account) | Sender confirmed in the binary at `0xD37B00`, one u8 slot; reply `0x3041` = s32, then if 0 a u32 and 16 bytes. **No reference implementation answers it** — Nomad v1, v2, mgo2-server and ours all lack a handler. SaveMGO ran without it, so the normal disc flow presumably never sends it |
 | `0x4102` | get personal stats | |
-| `0x4110` | update gameplay options | The write-back half of `0x4120` |
 | `0x4112` | update UI settings | |
 | `0x4114` | update chat macros | The write-back half of `0x4121` |
-| `0x4128` | get post-game info | |
 | `0x4141` | update skill sets | The write-back half of `0x4140` |
 | `0x4143` | update gear sets | The write-back half of `0x4142` |
 | `0x4220` | get character card | |
-| `0x4320` | join game | Payload arrives **encrypted** |
-| `0x4340`–`0x4398` | in-game player and round events | |
-| `0x43c0` | (reference name varies) | Payload arrives **encrypted** |
 | `0x43d0` | training connect | |
 | `0x4400` | send chat | |
 | `0x4500`/`0x4510`/`0x4580` | friends and blocked list | Would also fill the empty regions in `0x4101` |
@@ -1235,8 +1345,9 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 
 19. **`0x4121`'s two macro types.** Both references also just call them "type".
 
-20. **`0x4820`'s mailbox selectors** `0x0f` and `0x10` are reference names. And since we have never
-    sent a `0x4822`, the message payload layout is entirely undocumented.
+20. **`0x4820`'s mailbox selectors** `0x0f` and `0x10` are reference names. We still never send a
+    `0x4822`; Nomad's clan-application entry layout is transcribed in the `0x4820` section as
+    reference material, but no *mail* entry layout exists anywhere — Nomad never sends one either.
 
 21. **`0x4300`'s filter type is read and discarded.** Clan rooms are distinguished by a name prefix
     in the original; unmodelled here.
@@ -1248,9 +1359,9 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
     which is the place to start if this ever matters.
 
 23. **`0x4316` does not read its request payload at all.** The settings the player configured
-    arrive on `0x4310` instead, which we now handle — but store nothing from, since the blob's
-    layout is undecoded. So a created game uses defaults regardless of what was chosen on the
-    Create Game screens. Confirmed reachable: a game is created and the host enters it.
+    arrive on `0x4310` instead, which is parsed into the game row (`applyHostSettings`) and stored
+    raw per character since 2026-07-22. Confirmed reachable: a game is created and the host
+    enters it.
 
 23. **`0x3103` clamps an out-of-range index to the first character and `0x3105` to the last.** The
     asymmetry is claimed to match the original. Unverified, and unreachable in practice since the
