@@ -126,10 +126,20 @@ public class HostGameController implements IGameController {
 
 	public static final int IN_GAME_INFO_RESULT = 0x43c1;
 
-	/** Host presses Start: begin the round. Answered {@code result(0)}; without it no match starts. */
-	public static final int START_ROUND = 0x43ca;
+	/**
+	 * Host presses Start: begin the round. Request {@code {u32, u8}} (ELF builder {@code 0xD40CB4};
+	 * the u32 reads as a round/rotation index, the u8 a flag). Reply {@code 0x43c9} must be
+	 * {@code {u32 result, u32 token}}: the client's parser ({@code 0xD3FEAC}) gates the round on
+	 * {@code result == 0}, then retains a nonzero second word as a round handle (stored at
+	 * {@code ctx+0x32F8}). We send {@code result = 0} and the game id as the token.
+	 * <p>
+	 * <b>Renumbered from {@code 0x43ca}/{@code 0x43cb}</b> — the full send-site scan found no
+	 * builder for {@code 0x43ca}; the client sends {@code 0x43c8} and parses {@code 0x43c9}. The
+	 * old ids were a two-off transcription slip (and the reason the round snapshot never fired).
+	 */
+	public static final int START_ROUND = 0x43c8;
 
-	public static final int START_ROUND_RESULT = 0x43cb;
+	public static final int START_ROUND_RESULT = 0x43c9;
 
 	/** Host cycles the rule/map in the rotation while staging. Answered {@code result(0)}. */
 	public static final int SET_GAME = 0x4392;
@@ -228,9 +238,13 @@ public class HostGameController implements IGameController {
 
 	/**
 	 * Bulk friend/blocked roster fetch — the standalone Friends/Blocked menu, distinct from the
-	 * in-game ADDLIST. Payload is a single {@code u8 state}. Never observed live (the in-game path
-	 * uses {@link #ADD_LIST}/{@link #REMOVE_LIST} plus the {@code 0x4101} login arrays); answered
-	 * defensively so the menu cannot hang. ELF send builder {@code 0xD4628C}, reply triple below.
+	 * in-game ADDLIST. Request is a single {@code u8 state} (0 friends, 1 blocked); the reply is a
+	 * triple, one list per state. Populated from {@code chara_relation}. <b>Not observed live</b>
+	 * (the in-game path uses {@link #ADD_LIST}/{@link #REMOVE_LIST} plus the {@code 0x4101} login
+	 * arrays), so the reply is built from the ELF parser ({@code 0x4581} start `0xD469C0`,
+	 * {@code 0x4582} entries `0xD467C0`, {@code 0x4583} end `0xD465D4`) and unverified against a
+	 * client — if the Friends menu ever misbehaves, this is the suspect; the empty form was the
+	 * prior known-safe fallback. ELF send builder {@code 0xD4628C}.
 	 */
 	public static final int LIST_ROSTER = 0x4580;
 
@@ -239,6 +253,18 @@ public class HostGameController implements IGameController {
 	public static final int LIST_ROSTER_ENTRIES = 0x4582;
 
 	public static final int LIST_ROSTER_END = 0x4583;
+
+	/**
+	 * A {@code 0x4582} roster entry: {@code u32 id, char[16] name}, then five fields whose meaning
+	 * the ELF trace could not pin (a u16, two more 16-byte strings, a u32, a trailing byte) — sent
+	 * zero, the same unknown-as-zero convention the other list replies use. Total 59 bytes.
+	 */
+	private static final int ROSTER_ENTRY_SIZE = 59;
+
+	/** Entries per {@code 0x4582} packet: the parser accumulates across packets, capped at 32 total. */
+	private static final int ROSTER_PER_PACKET = 17; // 17 × 59 = 1003 ≤ the 1023 payload max
+
+	private static final int ROSTER_MAX = 32;
 
 	/** Fixed name width in a 0x4502 entry, as the ELF parser reads it. */
 	private static final int RELATION_NAME_LENGTH = 16;
@@ -365,15 +391,46 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * The standalone Friends/Blocked roster fetch ({@link #LIST_ROSTER}, request {@code {u8
-	 * state}}). Never observed live and its {@code 0x4582} entry is a 59-byte record whose fields
-	 * beyond id and name are of unknown meaning, so the roster is answered <b>empty</b>
-	 * (start then end, no entries) — enough that the menu cannot hang, without emitting a record
-	 * we cannot fill honestly. Populate once a live {@code 0x4580} is captured.
+	 * The standalone Friends/Blocked roster fetch ({@link #LIST_ROSTER}). Reads the requested
+	 * state ({@code u8}: 0 friends, 1 blocked) and replies with that state's relations from
+	 * {@code chara_relation}: a {@code 0x4581} start carrying the entry <em>count</em> (the parser
+	 * treats 0 as an empty list), then {@code 0x4582} packets of up to {@value #ROSTER_PER_PACKET}
+	 * entries each (id + name, the five unmapped trailing fields zeroed), then a {@code 0x4583}
+	 * end. Capped at {@value #ROSTER_MAX}, the client's own limit.
 	 */
 	private void listRoster(GameControllerContext ctx) {
-		ctx.write(LIST_ROSTER_START, GameError.NONE);
-		ctx.write(LIST_ROSTER_END, GameError.NONE);
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		var payload = ctx.packet().getPayload();
+		var state = payload.readableBytes() >= 1 ? payload.getByte(payload.readerIndex()) & 0xff : 0;
+
+		var entries = charaId == null ? java.util.List.<CharacterService.Relation>of()
+			: characterService.relations(charaId).stream()
+				.filter(relation -> relation.state() == state)
+				.limit(ROSTER_MAX)
+				.toList();
+
+		// Start carries the count — the parser reads 0 as "empty list", nonzero as the number of
+		// entries that follow.
+		var start = ctx.buffer(Integer.BYTES);
+		start.writeInt(entries.size());
+		ctx.write(new GamePacket(LIST_ROSTER_START, start));
+
+		for (var offset = 0; offset < entries.size(); offset += ROSTER_PER_PACKET) {
+			var batch = entries.subList(offset, Math.min(offset + ROSTER_PER_PACKET, entries.size()));
+			var buffer = ctx.buffer(batch.size() * ROSTER_ENTRY_SIZE);
+			for (var relation : batch) {
+				buffer.writeInt((int) relation.targetId());
+				BufferUtil.writeString(buffer, relation.name(), StandardCharsets.ISO_8859_1,
+					RELATION_NAME_LENGTH);
+				buffer.writeZero(ROSTER_ENTRY_SIZE - Integer.BYTES - RELATION_NAME_LENGTH);
+			}
+			ctx.write(new GamePacket(LIST_ROSTER_ENTRIES, buffer));
+		}
+
+		var end = ctx.buffer(Integer.BYTES);
+		end.writeInt(GameError.NONE.result());
+		ctx.write(new GamePacket(LIST_ROSTER_END, end));
 	}
 
 	/**
@@ -650,11 +707,16 @@ public class HostGameController implements IGameController {
 	 */
 	private void startRound(GameControllerContext ctx) {
 		var game = hostedGame(ctx);
+		var token = game != null ? (int) game.getId() : 0;
 		if (game != null) {
 			gameService.markRoundPlayers(game.getId());
 			logger.info("Game {} started a round.", game.getId());
 		}
-		acknowledgeResult(ctx);
+		// {u32 result, u32 token}: result 0 lets the client proceed; the token is the round
+		// handle it retains (0xD3FEAC stores a nonzero second word). The game id serves.
+		var buffer = ctx.buffer(2 * Integer.BYTES);
+		buffer.writeInt(GameError.NONE.result()).writeInt(token);
+		ctx.write(new GamePacket(START_ROUND_RESULT, buffer));
 	}
 
 	/**

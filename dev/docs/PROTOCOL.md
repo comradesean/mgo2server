@@ -1162,23 +1162,38 @@ populates". Reply `0x43cb`, result 0, if it ever arrives.
 round end and on kick teardown. **Confirmed against a live client 2026-07-22** — this build sends
 **167-byte** reports, and two rounds of captures pinned the fields against known ground truth:
 
-| offset | size | type | meaning |
-| --- | --- | --- | --- |
-| `0x00` | 4 | u32 | target character id |
-| `0x20`, `0x22`, `0x2E` | 1 each | u8 | flags observed as `01`; meaning unknown |
-| `0x23` | 4 | u32 | **seconds in game** — matched the joiner's connect-to-report interval exactly |
-| `0x27` | 4 | u32 | **experience, absolute total** — matched a 50,000-exp account to the byte |
-| rest | — | — | zeros in all captures (no kills scored); per-stat fields unmapped |
+The full 167-byte frame, from the ELF builder `0xD42178` (the `statB`-present path, cross-checked
+against the three live-pinned offsets). The counter *positions* are read from the binary; their
+*labels* (which u16 is kills vs deaths vs score) are **not** — that needs tracing where the stat
+structs are incremented during gameplay, which has not been done, so the block is documented as
+structure, not meaning.
 
-Nomad's offsets for id/experience were exactly right but its **minimum length (`0xB8`) was
-another build's** — its aborted byte at `0xB7` does not exist in a 167-byte report and is read
-only when present (in which case an aborted round docks 60 points floored at zero, **Nomad's
-operator policy, inherited knowingly**). Experience is applied to the target's account pool
-(main/alt split as everywhere else) when the target is in the game or the round snapshot;
-verified applying live ("stats for character 1 — experience 50000"). mgo2-server's entirely
-different single-byte struct (via echo) fits neither the observed length nor the observed fields
-and was disregarded. Reply `0x4391`, result 0 always; validation failures are logged, not
-surfaced.
+| offset | size | type | meaning | confidence |
+| --- | --- | --- | --- | --- |
+| `0x00` | 4 | u32 | target character id | live-pinned |
+| `0x04` | 1 | u8 | flag byte (aborted / result) | high |
+| `0x05` | 30 | 15 × u16 | scoreboard counters (from stat struct A) — labels unmapped | positions high, labels low |
+| `0x23` | 4 | u32 | **seconds in game** (client splits it hi/lo u16) | live-pinned |
+| `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
+| `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
+| `0x2f` | 116 | 58 × u16 | detailed stat block (from stat struct B) — labels unmapped | positions high, labels low |
+| `0xa3` | 4 | u32 | trailing value | low |
+
+A kill-less match sends this whole frame with the counter slots zero (hence the earlier "rest is
+zeros" reading). When stat struct B is absent the builder emits a **short ~51-byte** form instead
+(`u32=0` at `0x2b`, then the trailing word). The u16 counters are u32 stat values truncated on the
+wire, so any counter above 65535 wraps.
+
+**What we consume:** only the character id, the experience (applied to the account pool, main/alt
+split, verified live — "stats for character 1 — experience 50000"), and the flag byte for the
+aborted-round dock (−60, floored at 0 — Nomad's operator policy, inherited knowingly). Experience
+applies when the target is in the game or the round-membership set (`game_round`). **The
+scoreboard counters (`0x05`, `0x2f`) are still dropped** — persisting them needs the label trace;
+see BACKLOG. Reply `0x4391`, result 0 always; validation failures are logged, not surfaced.
+
+(Nomad's `0xB8`-minimum layout was another build's — its aborted byte at `0xB7` does not exist in
+a 167-byte report; mgo2-server's single-byte struct fits neither the length nor the fields. Both
+disregarded.)
 
 ## `0x43a0` — pass host
 

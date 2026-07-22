@@ -297,3 +297,31 @@ emits that the client has **no parser for** — it is waiting on a different id.
 
 None is repointed here — each needs a live capture or parser trace first, per the project's
 standing rule against guessing layouts/ids.
+
+## Scoreboard stats persistence — layout known, counter labels not
+
+*Pinned 2026-07-22 (evening).* The `0x4390` end-of-round report is fully mapped structurally
+(PROTOCOL.md): a flag byte, 15 u16 counters from stat-struct A at `0x05`, seconds-in-game, the
+experience, then 58 u16 from stat-struct B at `0x2f`. We consume **experience only**; the K/D/
+score scoreboard is dropped. To persist it we need to **label the counters** — which u16 is kills,
+deaths, score, stuns, headshots, etc. — and that cannot be read from the stat serializer alone;
+it needs a trace of where the client increments the r27 (struct A) / r28 (struct B) fields during
+gameplay, or a live capture correlating a known final scoreboard to the byte values. Once labelled,
+add stat columns (or a `chara_stats` lifetime table) and accumulate in `updateStats`. The source
+struct offsets are in the enumeration output for matching. Until then, dropping the counters is
+honest — storing unlabelled u16s would be a blob, which this project is trying to eliminate, not
+add.
+
+## 0x4140 / 0x4142 loadout sets go nowhere on this build
+
+*Pinned 2026-07-22 (evening).* We send saved skill sets as `0x4140` and gear sets as `0x4142` in
+the `0x4100` connect burst, but the duplex ELF scan proved the client has **no parser for either**
+— they are silently-ignored dead sends. The candidate alternates `0x4103`/`0x4105`/`0x4107` (which
+the client *does* parse) were traced and are **not** skill/gear sets: no 63-byte set-name read
+exists in any of them, and their shapes (profile record / numeric arrays) do not match the
+set structs. So the saved-loadout-slots feature has **no known delivery command** on this build —
+either it is cut, or its home id is elsewhere and unidentified. **Verify first with one live
+glance**: on a character, do the three skill-set and three gear-set slots show saved loadouts, or
+are they empty/default? If empty, the feature is inert regardless of what we send and the
+`0x4140`/`0x4142` sends can be dropped from the burst; if populated, they arrive by a path we have
+not found. Do not change the working burst before that check.
