@@ -1367,27 +1367,50 @@ So when a client stalls and then throws an `FFFFFF60`, the first move is always 
 server log for `No handler for command ....` immediately before the stall. Every command in the
 GAME section above was found exactly that way.
 
-Known-sendable, currently unanswered:
+## The complete sendable set, from the ELF (2026-07-22)
 
-| command | reference name | notes |
+An exhaustive scan of the binary's packet builder (`0xD5CF40`, the single "begin packet" call)
+found **115 send sites, every one using a literal command id** — the client never computes or
+table-dispatches a command id, so this list is complete for the lobby packet library. (The
+pre-lobby handshake, where `0x0001` lives, uses a separate path outside this library and is not
+in the scan.) 110 unique ids can be sent; we answer 45 of them. The other **65 are potential
+`FFFFFF60` stalls if their menu is ever reached** — but reachability varies wildly, so they are
+grouped by how likely normal play is to hit them, not listed flat.
+
+**Two corrections the scan forced, both worth acting on:**
+
+- **`0x43ca` is never sent — the client sends `0x43c8`** (builder `0xD40CB4`, payload `{u32,
+  u8}`). Our "start round" handler is bound to `0x43ca`, which has no builder anywhere, so it is
+  **dead code** — and this is exactly why the `game_round` snapshot never populates (BACKLOG).
+  `0x43c8` is the likely real trigger. This reads as a two-off transcription slip inherited from
+  a reference. Do not blindly repoint — capture a `0x43c8` and confirm its semantics first — but
+  it is the strongest lead on the round-lifecycle gap.
+- **`0x3040` has a live builder** (`0xD37B6C`, one u8) — it *can* be sent, correcting the earlier
+  "normal flow never sends it" note. Still unanswered by every reference; reply shape unknown.
+
+**Reachable in ordinary flow (highest priority to resolve):** the in-match/host family we have
+only partly covered — `0x4348`, `0x4394` (large struct), `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
+`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4102`,
+`0x4112`, `0x4132`, `0x4210`, `0x4220`. None has surfaced as a stall in testing yet, so each is
+conditional on a specific action/menu we have not exercised.
+
+**Whole unmodelled subsystems (only reached if that feature's menu is opened):**
+
+| block | ids | subsystem |
 | --- | --- | --- |
-| `0x3040` | (account) | Sender confirmed in the binary at `0xD37B00`, one u8 slot; reply `0x3041` = s32, then if 0 a u32 and 16 bytes. **No reference implementation answers it** — Nomad v1, v2, mgo2-server and ours all lack a handler. SaveMGO ran without it, so the normal disc flow presumably never sends it |
-| `0x4102` | get personal stats | |
-| `0x4112` | update UI settings | |
-| `0x4141` | update skill sets | The write-back half of `0x4140` |
-| `0x4143` | update gear sets | The write-back half of `0x4142` |
-| `0x4220` | get character card | |
-| `0x43d0` | training connect | |
-| `0x4400` | send chat | |
-| `0x4600` | search player | |
-| `0x4680` | match history | |
-| `0x4800`/`0x4840`/`0x4860` | send / read / file a message | The rest of the mailbox |
-| `0x4b00`–`0x4b90` | clans, ~30 commands | Nothing clan-related exists here |
+| `0x4bxx` | 23 consecutive (`0x4b00`–`0x4b90`) | clans / GHQ — nothing clan-related is modelled |
+| `0x49xx` extended | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
+| `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified |
+| mailbox rest | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail (we do only `0x4820` get) |
+| social | `0x4600`, `0x4680`, `0x4684` | player search, match history |
+| misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
 
-Every name in that table is a **reference name** from echo or mgo2-server and is unverified for our
-client. Their payload layouts are deliberately not reproduced here: writing down a layout we have
-never parsed would create exactly the kind of plausible-looking wrong documentation this file
-exists to avoid.
+Builder addresses and best-effort payload shapes for every gap id are recorded in the enumeration
+task output; they are **not** transcribed here as field layouts, because an unparsed shape written
+as documentation is exactly the plausible-looking wrong spec this file exists to avoid. Reply
+shapes matter: the ADDLIST proved a bare ack does not satisfy commands that expect a bodied reply,
+so each gap needs its own parser trace (as `0x4500`/`0x4510` got) before implementation, not a
+blanket empty ack.
 
 ---
 
