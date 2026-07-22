@@ -6,6 +6,33 @@ from an exhaustive scan of the packet builder (`0xD5CF40`, 115 literal-id call s
 table-driven); the receive side from the inbound reply dispatcher. Where a command's meaning and
 byte layout are worked out, `PROTOCOL.md` holds the detail — this file is the index.
 
+## Two architectures — what is ours and what is not
+
+The binary has **two fully independent packet stacks**, proven from the ELF to share no builder,
+no dispatcher, and no serialization primitive. Everything in this file is **Channel A**. Channel B
+is the emulator-level peer link the P2P work in `BACKLOG.md` concluded "is not our protocol" — and
+now that conclusion is exact, not inferred.
+
+| | **Channel A — lobby TCP (our server)** | **Channel B — in-game host ↔ peer** |
+| --- | --- | --- |
+| what | gate/account/game lobby, characters, hosting, browser, mail, ADDLIST | the direct console-to-console gameplay link during a match |
+| reaches our server? | **yes — this is the entire server** | **no — never touches us** |
+| send builder | `0xD5CF40` | `0xD824D0` (separate) |
+| parse dispatchers | `0xD361E8` / `0xD37074` / `0xD38804` | `0xD78CC8` (its own session object) |
+| framing | 24-byte header + XOR + selective Blowfish | its own; **zero** calls to any lobby primitive |
+| id space | `0x0004`/`0x0005`, `0x2xxx`, `0x3xxx`, `0x41xx`–`0x4Exx` | `0x1101`–`0x1918`, `0x2101`–`0x240c`, `0x3001`–`0x3632`, `0x4004`–`0x4080`, `0x52xx`/`0x56xx` |
+| size | 110 sent / 204 parsed | 212 dispatched |
+
+**The two id spaces are disjoint except for one value: `0x3004`** — a lobby check-session ack in A,
+an unrelated session message in B. Every other number belongs unambiguously to one channel.
+
+The crux for our scope: **join (`0x4320`/`0x4321`) and peer-register (`0x4340`–`0x4346`) are
+Channel A** — the client telling the *lobby server* about a peer event over TCP, which we answer.
+The `0x43xx` range is entirely absent from B. So the boundary is clean: **we implement all of A,
+none of B**, and B's gameplay traffic (the host↔peer link that the join hands off to) is the
+emulator's, exactly as the P2P backlog concluded. Channel B is not enumerated here; its 212 ids
+live in the task output (`/tmp/p2p_set.txt`) if that layer is ever investigated.
+
 Legend: **✓ handled** — the server sends/answers it today. **gap** — the client uses it but we do
 not. **dead** — we have code for it but the client never uses that id.
 
