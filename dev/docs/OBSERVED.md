@@ -1214,3 +1214,38 @@ Collateral facts from the sweep:
 - **Unique characters could not be tested** — absent from this build's UI; see BACKLOG.
 - **50,000 experience renders as level 22** — first calibration point for the exp→level curve;
   the level-limit base field is not freely chosen, it tracks the hosting character's level.
+
+### The weapon-restriction table, confirmed weapon by weapon
+
+*2026-07-22, continuation of the sweep: one weapon unlocked per hosted game against an
+all-locked baseline, each a single-variable diff.* Nomad's per-weapon bit table went
+**nineteen for nineteen** — every base-game item confirmed individually, names exact (the one
+apparent mismatch, "SBMC.GUN", turned out to be a menu grouping; the weapon's in-game name is
+Vz.83). This retires the earlier "roster-level evidence" caveat: the pairing is now per-weapon.
+
+| item (UI name) | byte | bit |
+| --- | --- | --- |
+| restrictions enable | `0xD5` | `0x01` |
+| Knife | `0xD5` | `0x02` |
+| Mk.2 Pistol | `0xD5` | `0x04` |
+| GSR | `0xD5` | `0x80` |
+| P90 | `0xD7` | `0x10` |
+| Vz.83 | `0xD7` | `0x80` |
+| M4 Custom | `0xD8` | `0x01` |
+| AK-102 | `0xD8` | `0x02` |
+| M870 Custom | `0xD9` | `0x20` |
+| Mosin-Nagant | `0xDA` | `0x08` |
+| SVD | `0xDA` | `0x10` |
+| Grenade | `0xDB` | `0x10` |
+| Stun G. | `0xDB` | `0x40` |
+| Chaff G. | `0xDB` | `0x80` |
+| Smoke G. | `0xDC` | `0x01` |
+| E.Locator | `0xDC` | `0x80` |
+| Claymore | `0xDD` | `0x01` |
+| Magazine | `0xDD` | `0x20` |
+| Shield | `0xDE` | `0x02` |
+
+Every other bit in Nomad's table (MP5, Patriot, G3A3, Mk.17, XM8, M60, Saiga, VSS, DSR-1, M14,
+Operator, Mk.23, DE, G18, RPG, WP, colored smokes, SG-mine, SG-satchel, C4, and the attachment
+bits) belongs to expansion-era gear this build's UI cannot express — dark in every capture,
+reference-only, same standing as the uniques fields.
