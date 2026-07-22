@@ -77,6 +77,14 @@ public final class LoadoutWriter {
 		}
 	}
 
+	/**
+	 * The experience the catalogue advertises for a skill — also what the post-game results card
+	 * ({@code 0x4129}) repeats, so the two screens agree while skill progression does not exist.
+	 */
+	public static int advertisedSkillExperience(int skill) {
+		return isLowExperience(skill) ? SKILL_EXPERIENCE_LOW : SKILL_EXPERIENCE;
+	}
+
 	private static boolean isLowExperience(int skill) {
 		for (var low : LOW_EXPERIENCE_SKILLS) {
 			if (low == skill) {

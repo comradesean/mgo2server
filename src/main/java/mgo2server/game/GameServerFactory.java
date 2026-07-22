@@ -34,7 +34,8 @@ public class GameServerFactory {
 
 		switch (lobbyType) {
 			case GATE -> {
-				controllers.add(new LobbyGameController(services.getLobbyService()));
+				controllers.add(new LobbyGameController(services.getLobbyService(),
+					services.getGameService()));
 				controllers.add(new NewsGameController(services.getNewsService()));
 			}
 			case ACCOUNT -> {

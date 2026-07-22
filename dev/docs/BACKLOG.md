@@ -4,17 +4,16 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
-## Lobby Select population is always 0
+## Lobby Select population — derived counts shipped, presence table still open
 
-*Pinned 2026-07-21.* The lobby-list entry (`0x2003`, offset `0x29`, u16) hardcodes a zero player
-count — `PROTOCOL.md` documents it as "we do not track occupancy". Cosmetic: joining works, but
-Lobby Select claims every lobby is empty even mid-game. Deferred, not endorsed.
+*Pinned 2026-07-21; first sketch implemented 2026-07-22.* The lobby-list entry (`0x2003`, offset
+`0x29`, u16) now carries **players-in-games per lobby**, derived from `game_player`
+(`GameService.countPlayersByLobby`, served by `LobbyGameController`). That was the cheapest of the
+sketches: zero new state, but players idling in a lobby without having joined a game are
+invisible, so the count reads "0 unless games are up" rather than true occupancy.
 
-Sketches, in ascending effort:
+Still open if true occupancy is ever wanted:
 
-- **Derive from `game_player`.** One query per lobby list, zero new state: count players in games
-  per lobby. Undercounts — players idling in the lobby without a game are invisible — but turns
-  "always 0" into "0 unless a game is up", which already fixes the observed complaint.
 - **Presence table.** The lobby servers are separate JVMs, so live occupancy has to go through
   postgres: a row per authenticated connection (`lobby_id`, `account_id`, `updated_at`); insert on
   auth, delete on disconnect, and on process start delete every row for the process's own
@@ -186,6 +185,37 @@ To settle it:
    seconds while the other creates a game. Nothing sent → snapshot model confirmed, the empty
    first list was a request/creation race, and this entry closes. Anything sent and unanswered →
    promote to a bug.
+
+*Reference data point (2026-07-22):* Nomad also has **no push and no re-poll trigger** — its
+`0x4300` is pure request/response, and games vanish from the next poll when a 60-second reaper
+kills hosts that stopped sending `0x4398` pings. That reaper is why Nomad's `lastUpdate` exists;
+we now track `last_update` from `0x4398` too but deliberately do not reap on it — our
+disconnect teardown covers dead hosts. Supports the snapshot model without proving it.
+
+## The 0x4310 byte 0x142/0x143 conflict — one capture settles three questions
+
+*Pinned 2026-07-22, from the Nomad transcription pass (fetched at the user's request for the
+incomplete-protocol build-out).* Nomad's `Hosts.checkSettings` — which served real retail
+clients — parses the `0x4310` blob as: level-limit base **u32 at `0xF8`**, uniques at `0x140`,
+**commonA at `0x142` and commonB at `0x143`** (the full toggle bitfields: idle-kick enable,
+friendly fire, ghosts, auto-aim, uniques / team-switch, auto-assign, silent, nametags,
+level-limit enable, voice chat, team-kill enable — bit maps transcribed in PROTOCOL.md's `0x4305`
+notes and Nomad's decode quoted in the transcription). That contradicts two things we hold:
+
+1. `GameService.applyHostSettings` reads level-limit base as a **u16 at `0x142`** (recorded as
+   coming from serializer `0xD44864`). Under Nomad's map that u16 is `commonA<<8 | commonB` —
+   garbage. Note our idle-kick (`0x145` u16) and team-kill (`0x147` u16) reads are *consistent*
+   with Nomad's byte map (`0x146`/`0x148` bytes with zero padding before them), which makes the
+   lone `0x142` disagreement more suspicious, not less.
+2. The entry below ("Common Settings toggles"), which records three ELF passes concluding the
+   toggles are **not** in the `0x4310` blob at all but in `0x4110`'s header.
+
+Do not resolve this by picking a reference — resolve it with the capture that is now cheap and
+decisive: host twice, changing **only friendly fire**, log the decrypted `0x4310` (whole blob, we
+already store it in `chara_host_settings.blob`) and the `0x4110` header. Whichever bytes differ
+answer (a) where the toggles live, (b) whether `applyHostSettings`' `0x142` read is a bug, and
+(c) whether the level-limit base really sits at `0xF8`. Until then the `0x142` read stays as-is
+(tier-1-claimed beats tier 4) and the toggles stay undecoded.
 
 ## Common Settings toggles: bit mapping in the 0x4110 header is unmapped
 

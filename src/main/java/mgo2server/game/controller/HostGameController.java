@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
+import mgo2server.game.LoadoutWriter;
 import mgo2server.game.GameConnection;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -218,14 +219,14 @@ public class HostGameController implements IGameController {
 		handlers.put(PLAYER_DISCONNECTED, this::playerConnection);
 		handlers.put(SET_PLAYER_TEAM, this::playerConnection);
 		handlers.put(PLAYER_CONNECT_FINISH, this::playerConnection);
-		handlers.put(UPDATE_PINGS, this::acknowledge);
+		handlers.put(UPDATE_PINGS, this::updatePings);
 		handlers.put(QUIT_GAME, this::quitGame);
 		handlers.put(IN_GAME_INFO, this::editHostSettings);
-		handlers.put(START_ROUND, this::acknowledgeResult);
-		handlers.put(SET_GAME, this::acknowledgeResult);
-		handlers.put(UPDATE_STATS, this::acknowledgeResult);
+		handlers.put(START_ROUND, this::startRound);
+		handlers.put(SET_GAME, this::setGame);
+		handlers.put(UPDATE_STATS, this::updateStats);
 		handlers.put(ROUND_END, this::acknowledgeResult);
-		handlers.put(PASS_HOST, this::acknowledgeResult);
+		handlers.put(PASS_HOST, this::passHost);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
 	}
@@ -242,36 +243,47 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * Answers the end-of-round results request ({@link #GET_POST_GAME_INFO}) with a nonzero result,
-	 * the one reply shape that clears the client's wait without a stall — see the constant's note.
-	 * We do not track match results, so no card is rendered.
+	 * Answers the end-of-round results request ({@link #GET_POST_GAME_INFO}) with the character's
+	 * real rank and experience — both references source exactly these two fields from storage and
+	 * fabricate the rest, so a populated card here is at parity with them. The skill experience
+	 * repeats what the {@code 0x4125} catalogue advertises (skill progression does not exist), and
+	 * grade points mirror experience, as in both references.
 	 */
 	private void postGameInfo(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		var charaId = account != null && account.getCurrentCharaId() != null
 			? account.getCurrentCharaId() : 0L;
 
-		// result=0 then the full fixed-size results structure the parser reads: rank, exp, a
-		// 25-entry skill table, grade/clan/emblem fields. We track no match stats, so everything is
-		// zeroed except the fixed counts and the character id the client expects echoed back.
+		var rank = 0;
+		var experience = 0;
+		if (account != null && charaId != 0L) {
+			var chara = characterService.get(charaId).orElse(null);
+			if (chara != null) {
+				rank = chara.getRank();
+				experience = charaId == (account.getMainCharaId() != null
+					? account.getMainCharaId() : 0L)
+					? account.getMainExp() : account.getAltExp();
+			}
+		}
+
 		var buffer = ctx.buffer(POST_GAME_INFO_SIZE);
 		buffer.writeInt(GameError.NONE.result()) // result
-			.writeByte(0)   // rank
-			.writeInt(0)    // experience
+			.writeByte(rank)
+			.writeInt(experience)
 			.writeByte(0)
 			.writeInt(POST_GAME_SKILLS); // skill count
 		for (var i = 0; i < POST_GAME_SKILLS; i++) {
 			buffer.writeByte(i + 1) // skill id
-				.writeShort(0)      // skill exp
+				.writeShort(LoadoutWriter.advertisedSkillExperience(i + 1))
 				.writeByte(0);
 		}
 		buffer.writeInt(0)
-			.writeInt(0)          // grade points
+			.writeInt(experience) // grade points mirror experience in both references
 			.writeInt(0xffffff)
-			.writeInt(0)          // clan id
+			.writeInt(0)          // clan id — clans are not modelled
 			.writeShort(0)
 			.writeByte(1)
-			.writeByte(0)         // emblem
+			.writeByte(0)         // emblem — no clans, no emblem
 			.writeInt((int) charaId)
 			.writeByte(0);
 
@@ -330,13 +342,28 @@ public class HostGameController implements IGameController {
 	/**
 	 * Returns the host's saved settings, or an empty block when there are none.
 	 * <p>
-	 * Nothing is persisted here yet: {@code chara_host_settings} exists but is never written, so
-	 * this always takes the empty path. That is correct rather than a stub — a player who has not
-	 * hosted has no settings to restore — but it means the populated path is untested.
+	 * The populated path re-maps the raw {@code 0x4310} blob the character pushed last time into
+	 * the reply shape — see {@link mgo2server.game.HostSettingsReply} for the layout and its
+	 * tier-4 provenance. A character that never pushed settings (or pushed a short blob) gets the
+	 * 128 zero bytes both references send, which the client reads as "no saved settings" and which
+	 * is the live-verified path.
 	 */
 	private void getHostSettings(GameControllerContext ctx) {
-		if (ctx.connection().account() == null) {
+		var account = ctx.connection().account();
+		if (account == null) {
 			ctx.write(HOST_SETTINGS_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var charaId = account.getCurrentCharaId();
+		var blob = charaId != null
+			? gameService.getHostSettingsBlob(charaId, lobbySubtype).orElse(null)
+			: null;
+
+		if (mgo2server.game.HostSettingsReply.canWrite(blob)) {
+			var buffer = ctx.buffer(mgo2server.game.HostSettingsReply.SIZE);
+			mgo2server.game.HostSettingsReply.write(buffer, blob);
+			ctx.write(new GamePacket(HOST_SETTINGS_RESULT, buffer));
 			return;
 		}
 
@@ -372,6 +399,14 @@ public class HostGameController implements IGameController {
 		payload.getBytes(base, bytes);
 		ctx.connection().setHostSettings(bytes);
 
+		// Persist the raw blob per (character, subtype) so 0x4304 pre-fills next session. The
+		// reference skips persisting clan-room rotations (rule 11); we have no clan rooms, so
+		// nothing is special-cased. Stored raw: the parsed-column path stays applyHostSettings's.
+		var charaId = account.getCurrentCharaId();
+		if (charaId != null) {
+			gameService.saveHostSettingsBlob(charaId, lobbySubtype, bytes);
+		}
+
 		if (bytes.length >= ROTATION_OFFSET + 3) {
 			logger.info("Host settings from account {}: round 0 rule={} map={} flags={} ({} bytes).",
 				account.getId(), bytes[ROTATION_OFFSET] & 0xff, bytes[ROTATION_OFFSET + 1] & 0xff,
@@ -385,29 +420,170 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * Acknowledges an in-match report the host sends but which nothing here consumes yet.
-	 * <p>
-	 * {@link #SET_PLAYER_TEAM} and {@link #UPDATE_PINGS} both carry real information — team
-	 * assignments and per-player latency — that a server tracking a live match would use. We track
-	 * neither, so the data is dropped. They are answered because the client blocks on the reply,
-	 * not because the work is done: implementing the match state is what makes them meaningful.
-	 */
-	private void acknowledge(GameControllerContext ctx) {
-		var reply = ctx.packet().getCommand() + 1;
-		ctx.write(new GamePacket(reply, ctx.buffer(0)));
-	}
-
-	/**
 	 * Acknowledges a host-admin command with a {@code result(0)} word, the four-byte "OK" both
-	 * references send for the staging and round-lifecycle commands ({@code 0x43ca} start round,
-	 * {@code 0x4392} set game, {@code 0x4390} stats, {@code 0x43a2}, {@code 0x43a0}). Their parsers
-	 * read a result and block on it, so unlike {@link #acknowledge}'s empty reply these must carry
-	 * the word. The match state they describe is not tracked yet, so the payload is dropped.
+	 * references send for the round-lifecycle commands. Their parsers read a result and block on
+	 * it. Still used for {@code 0x43a2} (round end), whose payload no reference parses — its
+	 * meaning is unconfirmed everywhere, so the data is dropped knowingly.
 	 */
 	private void acknowledgeResult(GameControllerContext ctx) {
 		var buffer = ctx.buffer(Integer.BYTES);
 		buffer.writeInt(GameError.NONE.result());
 		ctx.write(new GamePacket(ctx.packet().getCommand() + 1, buffer));
+	}
+
+	/** The game this character hosts here, or null — the guard every in-match command shares. */
+	private mgo2server.common.model.Game hostedGame(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		if (charaId == null) {
+			return null;
+		}
+		return gameService.getHostedGame(lobbyId, charaId).orElse(null);
+	}
+
+	/**
+	 * The host cycling the rotation while staging ({@link #SET_GAME}). Request is a single byte:
+	 * the index into the rotation pushed via {@code 0x4310} (reference layout — Nomad reads one
+	 * byte and stores it as {@code currentGame}). The rule/map/flags the index resolves to come
+	 * from the game's stored blob, so the browser reflects the round actually being staged.
+	 */
+	private void setGame(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+
+		if (game != null && payload.readableBytes() >= 1) {
+			var index = payload.readByte() & 0xff;
+			var blob = game.getHostSettings();
+			var offset = ROTATION_OFFSET + index * 3;
+			if (index < 15 && blob != null && blob.length >= offset + 3) {
+				gameService.setCurrentGame(game.getId(), index,
+					blob[offset] & 0xff, blob[offset + 1] & 0xff, blob[offset + 2] & 0xff);
+				logger.info("Game {} advanced to rotation entry {} (rule={} map={}).",
+					game.getId(), index, blob[offset] & 0xff, blob[offset + 1] & 0xff);
+			} else {
+				logger.warn("Game {}: set-game index {} has no stored rotation entry; ignoring.",
+					game.getId(), index);
+			}
+		}
+
+		acknowledgeResult(ctx);
+	}
+
+	/**
+	 * The host's latency report ({@link #UPDATE_PINGS}): a u32 of its own ping, then
+	 * {@code {u32 chara id, u32 ping}} pairs for everyone in its game (reference layout; a zero
+	 * id is skipped, as Nomad does). Applied to the game row and the roster so the browser and
+	 * player list show real latencies. Also the game's heartbeat in the reference; we track
+	 * {@code last_update} the same way without yet reaping on it.
+	 * <p>
+	 * The reply stays the live-verified empty {@code 0x4399} — reshaping a working ack on
+	 * reference evidence is how this project has been burned before.
+	 */
+	private void updatePings(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+
+		if (game != null && payload.readableBytes() >= Integer.BYTES) {
+			var hostPing = payload.readInt();
+			var pings = new java.util.HashMap<Long, Integer>();
+			while (payload.readableBytes() >= 2 * Integer.BYTES) {
+				var charaId = payload.readInt();
+				var ping = payload.readInt();
+				if (charaId != 0) {
+					pings.put((long) charaId, ping);
+				}
+			}
+			gameService.updatePings(game.getId(), hostPing, pings);
+		}
+
+		ctx.write(new GamePacket(UPDATE_PINGS_RESULT, ctx.buffer(0)));
+	}
+
+	/**
+	 * Host presses Start ({@link #START_ROUND}). The request carries nothing the reference reads;
+	 * the work is the roster snapshot — everyone in the game now "played this round", which is
+	 * what {@link #updateStats} checks before applying a stat report to a character.
+	 */
+	private void startRound(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		if (game != null) {
+			gameService.markRoundPlayers(game.getId());
+			logger.info("Game {} started a round.", game.getId());
+		}
+		acknowledgeResult(ctx);
+	}
+
+	/**
+	 * Host hands the game to another player ({@link #PASS_HOST}). Request is two u32s — the
+	 * current host's chara id (unused, as in the reference) then the new host's. The game is
+	 * re-keyed to the target and the old host leaves the roster; joins pick up the new host's
+	 * endpoint automatically because {@code 0x4320} reads {@code chara_connection} by the game's
+	 * host id at join time.
+	 */
+	private void passHost(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+
+		if (game != null && payload.readableBytes() >= 2 * Integer.BYTES) {
+			payload.readInt(); // the sender's own chara id; the session already proves it
+			long targetId = payload.readInt();
+			var isPlayer = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
+				.anyMatch(player -> player.charaId() == targetId);
+			if (isPlayer && targetId != game.getHostCharaId()) {
+				gameService.passHost(game.getId(), game.getHostCharaId(), targetId);
+				logger.info("Game {} host passed from character {} to {}.",
+					game.getId(), game.getHostCharaId(), targetId);
+			} else {
+				logger.warn("Game {}: pass-host target {} is not another player in the game.",
+					game.getId(), targetId);
+			}
+		}
+
+		acknowledgeResult(ctx);
+	}
+
+	/**
+	 * End-of-round stat submission from the host ({@link #UPDATE_STATS}), one player per packet.
+	 * <p>
+	 * <b>Reference layout (tier 4), and the references disagree</b>: Nomad reads
+	 * {@code u32 target chara id} at 0, {@code u32 experience} (absolute total) at {@code 0x27}
+	 * and an aborted byte at {@code 0xB7}, skipping everything else; mgo2-server reads a
+	 * completely different single-byte stat struct with no target id at all. Nomad served retail
+	 * clients, so its read is implemented — but only the experience is applied, and only when the
+	 * target verifiably played (round snapshot, falling back to current membership in case the
+	 * {@code 0x43ca} snapshot semantics differ for our client). Per-stat fields (kills, deaths…)
+	 * are deliberately not parsed: no trusted layout exists. Verify live by comparing a host's
+	 * results-screen total to the stored value after one round.
+	 */
+	private void updateStats(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+		var readable = payload.readableBytes();
+
+		if (game != null && readable >= 0xB8) {
+			var base = payload.readerIndex();
+			long targetId = payload.getInt(base);
+			var experience = payload.getInt(base + 0x27);
+			var aborted = payload.getByte(base + 0xB7) == 1;
+
+			var played = gameService.playedLastRound(game.getId(), targetId);
+			var inGame = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
+				.anyMatch(player -> player.charaId() == targetId);
+			if (played || inGame) {
+				gameService.applyRoundExperience(targetId, experience, aborted);
+				logger.info("Game {}: stats for character {} — experience {}{}{}.",
+					game.getId(), targetId, experience, aborted ? " (aborted round)" : "",
+					played ? "" : " (not in the round snapshot; applied on membership)");
+			} else {
+				logger.warn("Game {}: stat report for character {} who is not in the game; dropped.",
+					game.getId(), targetId);
+			}
+		} else if (game != null) {
+			logger.warn("Game {}: stat report of {} bytes, shorter than the reference layout; dropped.",
+				game.getId(), readable);
+		}
+
+		acknowledgeResult(ctx);
 	}
 
 	/**

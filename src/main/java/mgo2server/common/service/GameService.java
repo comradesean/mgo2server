@@ -33,6 +33,25 @@ public class GameService {
 				.findOne());
 	}
 
+	/**
+	 * Players currently sitting in games, grouped by lobby — the occupancy figure the gate's lobby
+	 * list shows. Derived from {@code game_player} rather than a live presence table, so players
+	 * idling in a lobby without having joined a game are invisible; that turns "always 0" into
+	 * "0 unless games are up", the cheapest of the sketches in {@code dev/docs/BACKLOG.md}.
+	 * Operator policy, not protocol: nothing pins what the original counted here.
+	 */
+	public java.util.Map<Long, Integer> countPlayersByLobby() {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select g.lobby_id as lobby_id, count(*) as players
+					from game_player gp
+					join game g on g.id = gp.game_id
+					group by g.lobby_id
+					""")
+				.map((rs, ctx) -> java.util.Map.entry(rs.getLong("lobby_id"), rs.getInt("players")))
+				.collectToMap(java.util.Map.Entry::getKey, java.util.Map.Entry::getValue));
+	}
+
 	public int countPlayers(long gameId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("select count(*) from game_player where game_id=:id")
@@ -61,7 +80,7 @@ public class GameService {
 	}
 
 	/** One row of a game's player list, as the details reply needs it. */
-	public record GamePlayer(long charaId, String name, int experience) {
+	public record GamePlayer(long charaId, String name, int experience, int ping) {
 	}
 
 	/**
@@ -71,7 +90,7 @@ public class GameService {
 	public List<GamePlayer> getPlayers(long gameId, long hostCharaId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
-					select c.id, c.name,
+					select c.id, c.name, gp.ping,
 						case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end as exp
 					from game_player gp
 					join chara c on c.id = gp.chara_id
@@ -82,8 +101,159 @@ public class GameService {
 				.bind("id", gameId)
 				.bind("host", hostCharaId)
 				.map((rs, ctx) -> new GamePlayer(rs.getLong("id"), rs.getString("name"),
-					rs.getInt("exp")))
+					rs.getInt("exp"), rs.getInt("ping")))
 				.list());
+	}
+
+	/** The game a character hosts in a lobby, if any — a character hosts at most one. */
+	public Optional<Game> getHostedGame(long lobbyId, long hostCharaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from game where lobby_id=:lobby and host_chara_id=:host")
+				.bind("lobby", lobbyId)
+				.bind("host", hostCharaId)
+				.mapTo(Game.class)
+				.findOne());
+	}
+
+	/**
+	 * Saves the raw {@code 0x4310} settings blob a character pushed, keyed by lobby subtype like
+	 * the parsed settings row, so {@code 0x4304} can replay it next session. Upserts because the
+	 * push arrives before create-game materialises the settings row on first use.
+	 */
+	public void saveHostSettingsBlob(long charaId, int type, byte[] blob) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					insert into chara_host_settings (chara_id, type, blob) values (:id, :type, :blob)
+					on conflict (chara_id, type) do update set blob = excluded.blob
+					""")
+				.bind("id", charaId)
+				.bind("type", type)
+				.bind("blob", blob)
+				.execute());
+	}
+
+	/** The last {@code 0x4310} blob a character pushed for a lobby subtype, if any. */
+	public Optional<byte[]> getHostSettingsBlob(long charaId, int type) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select blob from chara_host_settings
+					where chara_id=:id and type=:type and blob is not null
+					""")
+				.bind("id", charaId)
+				.bind("type", type)
+				.mapTo(byte[].class)
+				.findOne());
+	}
+
+	/**
+	 * The host advanced the rotation ({@code 0x4392}): record which entry is current and the
+	 * rule/map/flags it resolves to, so the browser and details reflect the round actually up.
+	 */
+	public void setCurrentGame(long gameId, int index, int rule, int map, int flags) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					update game set current_game=:index, rule=:rule, map=:map, flags=:flags,
+						last_update=now()
+					where id=:id
+					""")
+				.bind("index", index)
+				.bind("rule", rule)
+				.bind("map", map)
+				.bind("flags", flags)
+				.bind("id", gameId)
+				.execute());
+	}
+
+	/**
+	 * The host's latency report ({@code 0x4398}): its own ping onto the game row (shown in the
+	 * browser), each player's onto their roster row (shown in the player list), and the game's
+	 * {@code last_update} touched — the report doubles as the host's heartbeat, which is what the
+	 * reference uses it for.
+	 */
+	public void updatePings(long gameId, int hostPing, java.util.Map<Long, Integer> playerPings) {
+		jdbi.useHandle(handle -> {
+			handle.createUpdate("update game set ping=:ping, last_update=now() where id=:id")
+				.bind("ping", hostPing)
+				.bind("id", gameId)
+				.execute();
+			var batch = handle.prepareBatch(
+				"update game_player set ping=:ping where game_id=:game and chara_id=:chara");
+			playerPings.forEach((charaId, ping) ->
+				batch.bind("game", gameId).bind("chara", charaId).bind("ping", ping).add());
+			batch.execute();
+		});
+	}
+
+	/**
+	 * Hands a game to a new host ({@code 0x43a0}). The old host leaves the roster, matching the
+	 * reference: it passed hosting because it is quitting. Joins keep working unchanged because
+	 * {@code 0x4320} reads the host's endpoint from {@code chara_connection} by the game's host id
+	 * at join time, and the new host registered its own endpoint on lobby entry.
+	 */
+	public void passHost(long gameId, long oldHostCharaId, long newHostCharaId) {
+		jdbi.useHandle(handle -> {
+			handle.createUpdate("update game set host_chara_id=:host, last_update=now() where id=:id")
+				.bind("host", newHostCharaId)
+				.bind("id", gameId)
+				.execute();
+			handle.createUpdate("delete from game_player where game_id=:game and chara_id=:chara")
+				.bind("game", gameId)
+				.bind("chara", oldHostCharaId)
+				.execute();
+		});
+	}
+
+	/**
+	 * Snapshots the roster at round start ({@code 0x43ca}): everyone currently in the game played
+	 * this round; anyone joining later keeps the default false until the next start. The flag is
+	 * what {@link #playedLastRound} checks before a stat report is applied.
+	 */
+	public void markRoundPlayers(long gameId) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("update game_player set played_last_round=true where game_id=:id")
+				.bind("id", gameId)
+				.execute());
+	}
+
+	public boolean playedLastRound(long gameId, long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select played_last_round from game_player
+					where game_id=:game and chara_id=:chara
+					""")
+				.bind("game", gameId)
+				.bind("chara", charaId)
+				.mapTo(Boolean.class)
+				.findOne()
+				.orElse(false));
+	}
+
+	/**
+	 * Applies the host's end-of-round experience report ({@code 0x4390}) to a character's account
+	 * pool — the main pool if the target is the account's main character, the alt pool otherwise,
+	 * the same split every other experience read uses. The value is an <b>absolute total</b>, not
+	 * a delta, per the reference. An aborted round instead docks 60 points, floored at zero —
+	 * that penalty is the reference's <em>operator policy</em>, inherited knowingly.
+	 */
+	public void applyRoundExperience(long charaId, int experience, boolean aborted) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					update account a set
+						main_exp = case
+							when a.main_chara_id = :chara then
+								case when :aborted then greatest(0, a.main_exp - 60) else :exp end
+							else a.main_exp end,
+						alt_exp = case
+							when a.main_chara_id = :chara then a.alt_exp
+							else case when :aborted then greatest(0, a.alt_exp - 60) else :exp end
+							end
+					from chara c
+					where c.account_id = a.id and c.id = :chara
+					""")
+				.bind("chara", charaId)
+				.bind("aborted", aborted)
+				.bind("exp", experience)
+				.execute());
 	}
 
 	/**
