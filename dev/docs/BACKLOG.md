@@ -55,6 +55,15 @@ tears down at the 30 s budget (the observed `0x4340 → ~28 s → 0x4342 → ret
 driven by the game-level UDP P2P handshake between the two RPCS3 instances, which the server does
 not participate in.
 
+**Now proven at the architecture level (2026-07-22).** A full ELF classification (see
+`dev/docs/COMMANDS.md`, "Two architectures") showed the in-game host↔peer link is a **completely
+separate packet stack** — its own builder (`0xD824D0`), dispatcher (`0xD78CC8`), framing, and
+session object, sharing **zero** serialization primitives with the lobby protocol, and an id space
+(`0x1101`–`0x56xx`) disjoint from the lobby's except for one value. Join and peer-register are
+lobby-TCP (Channel A, ours); the gameplay link the join hands off to is Channel B, which never
+reaches our server. So "the server does not participate in P2P" is no longer an inference from
+packet decryption — it is a structural fact of the binary.
+
 Remaining, non-server hypotheses (both need external evidence):
 1. **Same-LAN, both-active simultaneous open.** Host goes active (`result=0`) and the joiner is
    also active (dials from `0x4321`). If retail P2P needs exactly one listener and the asymmetry is
