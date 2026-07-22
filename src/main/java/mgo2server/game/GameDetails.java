@@ -106,7 +106,10 @@ public final class GameDetails {
 		// values instead of zeros. Everything else stays derived from the game columns.
 		var blob = game.getHostSettings();
 
-		copyOrZero(buffer, blob, WEAPON_OFFSET, 16); // weapon restrictions, replayed from the blob
+		// Weapon restrictions, replayed opaquely from the blob (1 bit per item, 1 = locked).
+		// Byte-by-bit map in PROTOCOL.md, "Weapon restrictions": 19 bits capture-confirmed on
+		// this build, the remainder expansion-era gear transcribed from Nomad and unverifiable.
+		copyOrZero(buffer, blob, WEAPON_OFFSET, 16);
 		buffer.writeByte(game.getMaxPlayers())
 			.writeByte(players.size())
 			.writeInt(game.getBriefingTime())

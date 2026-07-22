@@ -57,7 +57,10 @@ public final class HostSettingsReply {
 		// triples; the reader stops at the first rule==0 && map==0, so trailing zeros are inert.
 		copy(out, 0x0A6, blob, 0xA3, 0x2D);
 		// 0x0D3..0x0D8 zero padding.
-		copy(out, 0x0D8, blob, 0xD5, 0x10);  // weapon restrictions
+		// Weapon restrictions, echoed opaquely (1 bit per item, 1 = locked; bit 0 of the first
+		// byte is the enable). The per-weapon bit map — 19 bits capture-confirmed on this build,
+		// the rest expansion-era per Nomad — is in PROTOCOL.md, "Weapon restrictions".
+		copy(out, 0x0D8, blob, 0xD5, 0x10);
 		copy(out, 0x0E8, blob, 0xE5, 1);     // max players
 		copy(out, 0x0E9, blob, 0xE6, 4);     // briefing time
 		out[0x0ED] = 0x02;                   // constant Nomad writes; meaning unknown
