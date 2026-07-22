@@ -837,6 +837,36 @@ rotation start is ambiguous between the references (Model A = `0xA2`, Model B = 
 `0xA3`. Confirm by hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3`
 changes.
 
+### Weapon restrictions — the 16-byte bitfield at `0xD5`
+
+One bit per item, **1 = locked**; byte `0xD5` bit 0 is the master "restrictions enabled" flag.
+The server never decodes individual weapon bits — the block is copied opaquely into the game row
+and replayed by `0x4313`/`0x4305` — so this table is documentation, not code. Two provenance
+tiers in one map: bits marked ✓ were **confirmed one weapon at a time against the live client**
+(2026-07-22 sweep, OBSERVED.md "The weapon-restriction table, confirmed weapon by weapon");
+everything else is **transcribed from Nomad and unverifiable on `BLUS30109`** — expansion-era
+weapons and attachments this build's UI cannot express, dark in every capture. Do not treat the
+unverified names as fact for another build without re-testing.
+
+| byte | confirmed on this build ✓ | Nomad-only (expansion/attachments, unverified) |
+| --- | --- | --- |
+| `0xD5` | `0x01` enable ✓, `0x02` Knife ✓, `0x04` Mk.2 ✓, `0x80` GSR ✓ | `0x08` Operator, `0x10` Mk.23 |
+| `0xD6` | — | `0x01` Desert Eagle, `0x80` G18 |
+| `0xD7` | `0x10` P90 ✓, `0x80` Vz.83 ✓ | `0x04` MP5, `0x40` Patriot |
+| `0xD8` | `0x01` M4 Custom ✓, `0x02` AK-102 ✓ | `0x04` G3A3, `0x40` Mk.17, `0x80` XM8 |
+| `0xD9` | `0x20` M870 Custom ✓ | `0x08` M60, `0x40` Saiga, `0x80` VSS |
+| `0xDA` | `0x08` Mosin-Nagant ✓, `0x10` SVD ✓ | `0x02` DSR-1, `0x04` M14 |
+| `0xDB` | `0x10` Grenade ✓, `0x40` Stun G. ✓, `0x80` Chaff G. ✓ | `0x04` RPG, `0x20` WP |
+| `0xDC` | `0x01` Smoke G. ✓, `0x80` E.Locator ✓ | `0x02/0x04/0x08` colored smokes (r/g/y) |
+| `0xDD` | `0x01` Claymore ✓, `0x20` Magazine ✓ | `0x02` SG-mine, `0x04` C4, `0x08` SG-satchel |
+| `0xDE` | `0x02` Shield ✓ | `0x04` Masterkey, `0x08` XM320, `0x10` GP30, `0x20` Suppressor |
+| `0xDF` | — | Nomad derives `0x0E` from !suppressor on its encode side only; we echo raw |
+| `0xE0` | — | `0x10` Scope, `0x20` Sight, `0x80` Light (LG) |
+| `0xE1` | — | `0x01` Laser, `0x02` Light (HG), `0x04` Grip |
+| `0xE2` | — | `0x04` Drum |
+| `0xE3` | — | `0x40` ENVG |
+| `0xE4` | — | no bits named anywhere |
+
 **Resolved by capture 2026-07-22** (OBSERVED.md, "Where the Common Settings toggles live"):
 `0x142`/`0x143` are the **commonA/commonB toggle bitfields** — same bit map as the `0x4302`
 entry — and level-limit base is a **u32 at `0xF8`**; flipping only friendly fire moved exactly
