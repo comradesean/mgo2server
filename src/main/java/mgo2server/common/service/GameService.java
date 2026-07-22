@@ -204,28 +204,38 @@ public class GameService {
 	}
 
 	/**
-	 * Snapshots the roster at round start ({@code 0x43ca}): everyone currently in the game played
-	 * this round; anyone joining later keeps the default false until the next start. The flag is
-	 * what {@link #playedLastRound} checks before a stat report is applied.
+	 * Snapshots the roster at round start ({@code 0x43ca}) into {@code game_round}, replacing the
+	 * previous round's snapshot. The snapshot lives apart from the roster on purpose: its whole
+	 * job is to let {@link #playedLastRound} answer true for a player who has since <em>left</em>
+	 * the game, so the host's end-of-round stat report for a quitter still applies — the case the
+	 * reference's {@code playersLastRound} list exists for.
 	 */
 	public void markRoundPlayers(long gameId) {
-		jdbi.useHandle(handle ->
-			handle.createUpdate("update game_player set played_last_round=true where game_id=:id")
+		jdbi.useTransaction(handle -> {
+			handle.createUpdate("delete from game_round where game_id=:id")
 				.bind("id", gameId)
-				.execute());
+				.execute();
+			handle.createUpdate("""
+					insert into game_round (game_id, chara_id)
+					select game_id, chara_id from game_player where game_id=:id
+					""")
+				.bind("id", gameId)
+				.execute();
+		});
 	}
 
+	/** Whether a character was in the game when the current round started, roster or not. */
 	public boolean playedLastRound(long gameId, long charaId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
-					select played_last_round from game_player
-					where game_id=:game and chara_id=:chara
+					select exists (
+						select 1 from game_round where game_id=:game and chara_id=:chara
+					)
 					""")
 				.bind("game", gameId)
 				.bind("chara", charaId)
 				.mapTo(Boolean.class)
-				.findOne()
-				.orElse(false));
+				.one());
 	}
 
 	/**

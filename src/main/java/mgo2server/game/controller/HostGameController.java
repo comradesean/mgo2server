@@ -344,9 +344,10 @@ public class HostGameController implements IGameController {
 	 * <p>
 	 * The populated path re-maps the raw {@code 0x4310} blob the character pushed last time into
 	 * the reply shape — see {@link mgo2server.game.HostSettingsReply} for the layout and its
-	 * tier-4 provenance. A character that never pushed settings (or pushed a short blob) gets the
-	 * 128 zero bytes both references send, which the client reads as "no saved settings" and which
-	 * is the live-verified path.
+	 * tier-4 provenance. A character that never pushed settings (or pushed a short blob) gets 128
+	 * zero bytes. Provenance of that empty block, precisely: mgo2-server's empty path plus our own
+	 * live verification (Create Game opens on it) — <b>not</b> Nomad, which has no empty path at
+	 * all; it materialises a default settings blob and always answers populated.
 	 */
 	private void getHostSettings(GameControllerContext ctx) {
 		var account = ctx.connection().account();
@@ -376,11 +377,9 @@ public class HostGameController implements IGameController {
 	 * Accepts the host's configured settings. The reply carries no payload; the client only waits
 	 * for the acknowledgement before moving on to create the game.
 	 * <p>
-	 * The settings are read but <b>not stored</b>. Our {@code chara_host_settings} table is
-	 * structured per field, while the client sends an opaque blob whose layout is not decoded here,
-	 * so there is nowhere faithful to put it. The consequence is visible but small: the Create Game
-	 * screen will not remember these settings next time, because {@link #getHostSettings} has
-	 * nothing to return. Hosting itself is unaffected.
+	 * The blob is kept three ways: on the connection for the imminent create-game, parsed into
+	 * the game row's columns by {@code applyHostSettings}, and stored raw per (character, lobby
+	 * subtype) so {@link #getHostSettings} can pre-fill the Create Game screen next session.
 	 */
 	private void checkHostSettings(GameControllerContext ctx) {
 		var account = ctx.connection().account();
@@ -550,10 +549,11 @@ public class HostGameController implements IGameController {
 	 * and an aborted byte at {@code 0xB7}, skipping everything else; mgo2-server reads a
 	 * completely different single-byte stat struct with no target id at all. Nomad served retail
 	 * clients, so its read is implemented — but only the experience is applied, and only when the
-	 * target verifiably played (round snapshot, falling back to current membership in case the
-	 * {@code 0x43ca} snapshot semantics differ for our client). Per-stat fields (kills, deaths…)
-	 * are deliberately not parsed: no trusted layout exists. Verify live by comparing a host's
-	 * results-screen total to the stored value after one round.
+	 * target verifiably played: a current roster member, or a member of the round snapshot taken
+	 * at {@code 0x43ca} — the snapshot is what keeps a report for a player who <em>quit
+	 * mid-round</em> applicable, which is the case the reference's own list exists for. Per-stat
+	 * fields (kills, deaths…) are deliberately not parsed: no trusted layout exists. Verify live
+	 * by comparing a host's results-screen total to the stored value after one round.
 	 */
 	private void updateStats(GameControllerContext ctx) {
 		var game = hostedGame(ctx);
@@ -566,17 +566,19 @@ public class HostGameController implements IGameController {
 			var experience = payload.getInt(base + 0x27);
 			var aborted = payload.getByte(base + 0xB7) == 1;
 
-			var played = gameService.playedLastRound(game.getId(), targetId);
+			// Current members are accepted unconditionally (the reference's first branch); the
+			// round snapshot rescues a target who already left the game mid-round.
 			var inGame = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
 				.anyMatch(player -> player.charaId() == targetId);
-			if (played || inGame) {
+			var played = inGame || gameService.playedLastRound(game.getId(), targetId);
+			if (played) {
 				gameService.applyRoundExperience(targetId, experience, aborted);
 				logger.info("Game {}: stats for character {} — experience {}{}{}.",
 					game.getId(), targetId, experience, aborted ? " (aborted round)" : "",
-					played ? "" : " (not in the round snapshot; applied on membership)");
+					inGame ? "" : " (left mid-round; accepted from the round snapshot)");
 			} else {
-				logger.warn("Game {}: stat report for character {} who is not in the game; dropped.",
-					game.getId(), targetId);
+				logger.warn("Game {}: stat report for character {} who neither is in the game nor "
+					+ "played the round; dropped.", game.getId(), targetId);
 			}
 		} else if (game != null) {
 			logger.warn("Game {}: stat report of {} bytes, shorter than the reference layout; dropped.",
