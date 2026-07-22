@@ -67,6 +67,26 @@ public class HostSettingsReplyTest {
 		assertThat(reply.getByte(0x158)).isEqualTo((byte) 0x55); // host options <- 0x155
 	}
 
+	/**
+	 * The last byte of every multi-byte region, so a wrong copy length fails and not just a wrong
+	 * offset — a region shortened by one would otherwise zero its tail silently.
+	 */
+	@Test
+	public void copiesEachRegionToItsFullLength() {
+		var reply = written();
+
+		assertThat(reply.getByte(0x013)).isEqualTo((byte) 0x0F); // name[15]
+		assertThat(reply.getByte(0x093)).isEqualTo((byte) 0x8F); // comment[127]
+		assertThat(reply.getByte(0x0A4)).isEqualTo((byte) 0xA0); // password block end
+		assertThat(reply.getByte(0x0D2)).isEqualTo((byte) 0xCF); // rotation entry 14, flags
+		assertThat(reply.getByte(0x0E7)).isEqualTo((byte) 0xE4); // weapon restrictions [15]
+		assertThat(reply.getByte(0x0EC)).isEqualTo((byte) 0xE9); // briefing time low byte
+		assertThat(reply.getByte(0x0FE)).isEqualTo((byte) 0xFB); // level-limit base low byte
+		assertThat(reply.getByte(0x142)).isEqualTo((byte) 0x3F); // timer 17 low byte
+		assertThat(reply.getByte(0x144)).isEqualTo((byte) 0x41); // unique blue
+		assertThat(reply.getByte(0x155)).isEqualTo((byte) 0x52); // race rounds
+	}
+
 	/** The two constants Nomad writes verbatim, and the gaps it leaves zero. */
 	@Test
 	public void writesNomadsConstantsAndZeroGaps() {

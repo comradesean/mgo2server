@@ -213,9 +213,12 @@ notes and Nomad's decode quoted in the transcription). That contradicts two thin
 Do not resolve this by picking a reference — resolve it with the capture that is now cheap and
 decisive: host twice, changing **only friendly fire**, log the decrypted `0x4310` (whole blob, we
 already store it in `chara_host_settings.blob`) and the `0x4110` header. Whichever bytes differ
-answer (a) where the toggles live, (b) whether `applyHostSettings`' `0x142` read is a bug, and
-(c) whether the level-limit base really sits at `0xF8`. Until then the `0x142` read stays as-is
-(tier-1-claimed beats tier 4) and the toggles stay undecoded.
+answer (a) where the toggles live, (b) whether `applyHostSettings`' `0x142` read is a bug,
+(c) whether the level-limit base really sits at `0xF8`, and (d) whether the populated `0x4305`
+should canonicalise those bytes the way Nomad does (`commonA |= 0b100`, kick zeroing, derived
+`wr[10]`) instead of echoing the client's raw bytes — `HostSettingsReply`'s javadoc records that
+divergence. Until then the `0x142` read stays as-is (tier-1-claimed beats tier 4) and the toggles
+stay undecoded.
 
 ## Common Settings toggles: bit mapping in the 0x4110 header is unmapped
 

@@ -266,6 +266,62 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(hostPing).isEqualTo(48);
 	}
 
+	/**
+	 * The snapshot's reason to exist: a player who leaves mid-round must still receive the host's
+	 * end-of-round report. The roster row is deleted between round start and the report, mid
+	 * exchange, exactly as a quit would do it.
+	 */
+	@Test
+	public void statsStillApplyToAPlayerWhoLeftMidRound() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var stats = new byte[0xB8];
+		writeInt(stats, 0, (int) joiner);
+		writeInt(stats, 0x27, 2500);
+
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				switch (packet.getCommand()) {
+					case AccountGameController.CHECK_SESSION_RESULT ->
+						ctx.writeAndFlush(new GamePacket(HostGameController.START_ROUND));
+					case HostGameController.START_ROUND_RESULT -> {
+						// The joiner quits after the round started.
+						TestDatabase.get().jdbi().useHandle(handle ->
+							handle.createUpdate("delete from game_player where chara_id=:c")
+								.bind("c", joiner).execute());
+						ctx.writeAndFlush(new GamePacket(HostGameController.UPDATE_STATS,
+							Unpooled.wrappedBuffer(stats)));
+					}
+					case HostGameController.UPDATE_STATS_RESULT -> ctx.close();
+					default -> { }
+				}
+			}
+		});
+
+		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("""
+					select a.alt_exp from account a join chara c on c.account_id = a.id
+					where c.id = :c
+					""")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(joinerExp).isEqualTo(2500);
+	}
+
 	@Test
 	public void statsApplyOnlyToPlayersInTheRound() {
 		givenSelectedCharacter("Snake");

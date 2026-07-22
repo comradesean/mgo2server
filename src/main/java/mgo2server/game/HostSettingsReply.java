@@ -15,6 +15,18 @@ import io.netty.buffer.ByteBuf;
  * located in the ELF; until the populated path is verified against a live client, treat a
  * Create-Game hang after a settings save as this class's prime suspect — the empty path (128
  * zero bytes) is the known-good fallback.
+ * <p>
+ * <b>Known divergence, chosen deliberately: this class echoes the client's own bytes where Nomad
+ * reconstructs them.</b> Nomad round-trips the blob through parsed JSON and its reply therefore
+ * fabricates several values we replay verbatim instead: it forces {@code commonA |= 0b100} (bit 2
+ * always set — note our own {@code 0x4302} game-list entry does the same), drops {@code commonA}
+ * bits 1/6 and {@code commonB} bit 5, derives {@code wr[10]} from the suppressor bit instead of
+ * echoing it, zeroes the idle/team-kill kick counts when their enable bits are off, and zeroes
+ * the whole password block when the password flag is off. Echoing raw is the safer bet while the
+ * {@code 0x142}/{@code 0x143} byte meaning is contested (see BACKLOG, "The 0x4310 byte
+ * 0x142/0x143 conflict") — the client sent these bytes, so replaying them cannot invent state,
+ * whereas canonicalising on Nomad's decode would bake in the contested reading. If the capture
+ * pass confirms Nomad's map and the client misbehaves on the raw echo, canonicalise here.
  */
 public final class HostSettingsReply {
 	/** Reply size Nomad allocates: result word plus the settings structure. */
