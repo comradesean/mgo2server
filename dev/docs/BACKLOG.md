@@ -221,14 +221,25 @@ against the live client, so it stays.
 
 ## The round snapshot never populates — quitter stats are dropped
 
-*Pinned 2026-07-22 (evening).* `game_round` is filled by the `0x43ca` handler, but this client
-never sends `0x43ca` on any observed path, so the snapshot is always empty and `0x4390` stat
-application falls back to current membership alone. Observed consequence: a crashed joiner's
-end-of-round report was rejected ("neither is in the game nor played the round") where the
-mechanism exists precisely to accept it. Fix sketch: populate `game_round` on join (insert on
-`addPlayer` and at create), clearing only on game teardown — approximating "played in this game"
-without needing a round boundary the client never signals. Keep the `0x43ca` handler as-is in
-case another mode sends it.
+*Pinned 2026-07-22 (evening); root cause found same day.* `game_round` is filled by the `0x43ca`
+handler, but this client **never sends `0x43ca`** — the full-binary send-site enumeration
+(2026-07-22) found no builder for `0x43ca` at all, while it *does* build **`0x43c8`** (`0xD40CB4`,
+payload `{u32, u8}`). So our start-round handler is **dead code bound to the wrong id**, which is
+why the snapshot is always empty and `0x4390` stat application falls back to current membership
+alone (observed: a crashed joiner's end-of-round report was rejected where the mechanism exists to
+accept it).
+
+Two paths to fix, in order of confidence:
+
+1. **Cheap and certain:** populate `game_round` on join (insert on `addPlayer` and at create),
+   clearing only on game teardown — approximates "played in this game" without needing any round
+   boundary. Independent of the id question.
+2. **The real trigger:** `0x43c8` is the likely actual start-round command. Capture one against a
+   live client (host a match, start a round, read the payload) and confirm before repointing the
+   handler — do NOT swap `0x43ca`→`0x43c8` blind; that would repeat the guess-the-layout mistake.
+   Its `{u32, u8}` shape needs a parser trace like `0x4500`/`0x4510` got.
+
+See PROTOCOL.md, "The complete sendable set" for the enumeration and the sibling gaps.
 
 ## 0x4110 gameplay options are acked but not parsed
 
@@ -238,3 +249,17 @@ itself is dropped after the ack, so gameplay/interface option edits do not survi
 The parse is mechanical — invert `GameplaySettingsWriter` into the `chara_settings` columns,
 including its off-by-one stored-vs-wire quirks — and directly serves the no-blobs goal. Verify
 by editing one option, relogging, and checking the Options screen.
+
+## 0x4440 carries an undecoded team/spectator byte
+
+*Pinned 2026-07-22 (evening).* 0x4440 was long treated as a contentless in-match ping (acked with
+result 0, byte discarded). Live traffic shows its **1-byte payload varies** — mostly `01`, but a
+`02` appeared exactly when a player switched to **spectator**. So the byte is a team/side/spectator
+selector, and we drop it on every ack, leaving team composition untracked server-side
+(`game_player.team` exists but nothing writes it). Not a missing ack — a missing decode.
+
+To map it: labeled sweep like the settings pass — switch deliberately to Auto / Red / Blue /
+Spectator one at a time and record each byte value (only `01`/`02` seen so far). Then parse the
+byte into `game_player.team` in the 0x4440 handler and, if useful, reflect it in game details.
+Low urgency for a host-authoritative P2P match; a clean fit for the no-blobs goal. Do NOT guess
+which value is which from the single `02`=spectator coincidence — capture each.
