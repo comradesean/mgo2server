@@ -308,8 +308,10 @@ scoreboard"): kills/deaths/score/stun/headshots/headshot-deaths now accumulate i
 Still unlabelled — all were zero in that match, so nothing to correlate:
 
 - `0x0f` (one player had a lone `1`), and the hacking / assist / wake / "Other" score categories.
-- The 58-slot **struct-B detail block at `0x2f`** — a secondary breakdown (`B36` tracked "Other" ≈
-  12/2); likely per-weapon or per-category. Positions are known, meanings are not.
+- The 58-slot **struct-B detail block at `0x2f`** — a separate itemised breakdown, likely
+  per-weapon or per-category, distinct from the eight scoreboard categories in struct A. Positions
+  known, meanings not. (`B36` was numerically near the "Other" count — 12 vs 13 — but off by one,
+  a coincidence rather than a link.)
 
 To finish: play a match that actually exercises those (use hacking/assist/support weapons, several
 weapon types) and correlate the reported per-category totals to the slots, same method. Or trace
