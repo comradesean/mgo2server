@@ -28,7 +28,10 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 
 	private final Map<Integer, Consumer<GameControllerContext>> handlers = new HashMap<>();
 
+	private final List<IGameController> controllers;
+
 	public GameServerHandler(List<IGameController> controllers) {
+		this.controllers = controllers;
 		for (var controller : controllers) {
 			var map = new HashMap<Integer, Consumer<GameControllerContext>>();
 			controller.register(map);
@@ -75,6 +78,17 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) {
 		logger.info("Disconnected: {}", ctx.channel().remoteAddress());
+		// A dropped socket sends no Quit Game, so tear down anything this connection was holding —
+		// otherwise a crash or network drop leaves a ghost game or player behind. Failures here must
+		// not stop the disconnect from propagating.
+		var connection = GameConnection.of(ctx.channel());
+		for (var controller : controllers) {
+			try {
+				controller.onDisconnect(connection);
+			} catch (Exception e) {
+				logger.error("Disconnect teardown failed in {}", controller.getClass().getSimpleName(), e);
+			}
+		}
 		ctx.fireChannelInactive();
 	}
 

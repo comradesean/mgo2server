@@ -5,6 +5,7 @@ import mgo2server.common.model.Game;
 import mgo2server.common.model.HostSettings;
 import org.jdbi.v3.core.Jdbi;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -157,14 +158,99 @@ public class GameService {
 		});
 	}
 
-	/** Sets a game's active-round rule, map and flags, from the host's {@code 0x4310} push. */
-	public void setGameRotation(long gameId, int rule, int map, int flags) {
+	private static int blobU32(byte[] b, int off) {
+		return ((b[off] & 0xff) << 24) | ((b[off + 1] & 0xff) << 16)
+			| ((b[off + 2] & 0xff) << 8) | (b[off + 3] & 0xff);
+	}
+
+	private static int blobU16(byte[] b, int off) {
+		return ((b[off] & 0xff) << 8) | (b[off + 1] & 0xff);
+	}
+
+	/** Reads a fixed-width, NUL-terminated ISO-8859-1 string from the blob. */
+	private static String blobString(byte[] b, int off, int max) {
+		if (off >= b.length) {
+			return "";
+		}
+		var limit = Math.min(off + max, b.length);
+		var end = off;
+		while (end < limit && b[end] != 0) {
+			end++;
+		}
+		return new String(b, off, end - off, StandardCharsets.ISO_8859_1);
+	}
+
+	/**
+	 * Applies a host's {@code 0x4310} settings blob to a game: the fields it genuinely carries into
+	 * their columns, plus the raw blob into {@code host_settings} (replayed by the details reply for
+	 * the per-mode timer table at {@code 0xFC} and uniques). Offsets are read from the client's own
+	 * serializer ({@code 0xD44864}), validated against real captures.
+	 * <p>
+	 * Handled here — every value field, all at ELF-confirmed offsets: name(0x00), comment(0x10),
+	 * password(flag 0x90 / text 0x91), round-0 rule/map/flags(0xA3), max players(0xE5, raw), briefing
+	 * time(0xE6 BE u32), stance(0xF6), level-limit tolerance(0xF7) and base(0x142 u16), idle-kick
+	 * minutes(0x145 u16) and team-kill-kick count(0x147 u16). Level limit is a numeric range, so its
+	 * enabled flag is derived from a non-zero value (there is no separate on/off in this blob); the
+	 * idle-kick and team-kill enables are likewise derived from their counts by the list/details.
+	 * <p>
+	 * <b>Deliberately not here:</b> the Common Settings <em>on/off toggles</em> (friendly fire,
+	 * ghost, nametags, silent, auto-assign, teams-switch, voice). The {@code 0x4310} blob does
+	 * <b>not</b> transmit those — the client sends them in {@code 0x4110} after entering the game,
+	 * and that bit mapping is not in the binary (Konami's server packed it), so those columns stay at
+	 * the create defaults until a capture pass maps the bits.
+	 */
+	public void applyHostSettings(long gameId, byte[] blob) {
+		if (blob == null || blob.length < 0x149) {
+			return;
+		}
+		var passwordSet = (blob[0x90] & 0xff) != 0;
 		jdbi.useHandle(handle ->
-			handle.createUpdate("update game set rule=:rule, map=:map, flags=:flags where id=:id")
-				.bind("rule", rule)
-				.bind("map", map)
-				.bind("flags", flags)
+			handle.createUpdate("""
+					update game set
+						name = :name, comment = :comment, password = :password,
+						rule = :rule, map = :map, flags = :flags,
+						max_players = :maxPlayers, briefing_time = :briefingTime, stance = :stance,
+						level_limit_tolerance = :tolerance, level_limit_base = :base,
+						idle_kick = :idleKick, team_kill_kick = :teamKillKick,
+						host_settings = :blob
+					where id = :id
+					""")
+				.bind("name", blobString(blob, 0x00, 16))
+				.bind("comment", blobString(blob, 0x10, 128))
+				.bind("password", passwordSet ? blobString(blob, 0x91, 16) : null)
+				.bind("rule", blob[0xA3] & 0xff)
+				.bind("map", blob[0xA4] & 0xff)
+				.bind("flags", blob[0xA5] & 0xff)
+				.bind("maxPlayers", blob[0xE5] & 0xff)
+				.bind("briefingTime", blobU32(blob, 0xE6))
+				.bind("stance", blob[0xF6] & 0xff)
+				.bind("tolerance", blob[0xF7] & 0xff)
+				.bind("base", blobU16(blob, 0x142))
+				.bind("idleKick", blobU16(blob, 0x145))
+				.bind("teamKillKick", blobU16(blob, 0x147))
+				.bind("blob", blob)
 				.bind("id", gameId)
+				.execute());
+	}
+
+	/**
+	 * Updates the name, comment and password of the game a character is hosting — the in-game host
+	 * edit ({@code 0x43c0}). A character hosts at most one game per lobby, so this keys on the host
+	 * character rather than a game id the edit does not carry. A {@code null} password clears the
+	 * lock.
+	 */
+	public void updateGameSettings(long lobbyId, long hostCharaId, String name, String comment,
+			String password) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					update game set name = :name, comment = :comment, password = :password
+					where lobby_id = :lobbyId and host_chara_id = :host
+					""")
+				.bind("name", name)
+				.bind("comment", comment)
+				.bind("password", password)
+				.bind("lobbyId", lobbyId)
+				.bind("host", hostCharaId)
 				.execute());
 	}
 
