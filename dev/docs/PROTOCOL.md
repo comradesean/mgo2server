@@ -1056,11 +1056,14 @@ The commands the host's client sends while staging and running a match. All were
 ack-only ("answered because the client blocks, not because the work is done"); since 2026-07-22
 the payloads are parsed and the match state tracked, **with layouts transcribed from
 GHzGangster/Nomad (tier 4)** at the user's request — fetched for these specific named questions
-after the docs and the audit both confirmed the gap. Every layout below is a **reference claim,
-unverified against `BLUS30109`**; the tests covering them (`MatchStateIT`,
-`HostSettingsReplyTest`) say "regression guard" in as many words. mgo2-server was checked too and
-answers all of these as unparsed acks, so Nomad is the only layout source; where the two disagree
-it is noted.
+after the docs and the audit both confirmed the gap. Live standing after the first full captured
+match (2026-07-22, create → join → start → finish → pass → quit): **`0x4398` and `0x43a0` are
+confirmed against the client, payload and effect**; `0x4392`, `0x43ca`, `0x4390` and `0x43a2`
+were **never sent at all** during that match — they are evidently conditional (mode-, stat- or
+path-dependent), so their layouts remain reference claims with zero live sightings, and the tests
+covering them (`MatchStateIT`, `HostSettingsReplyTest`) say "regression guard" in as many words.
+mgo2-server was checked too and answers all of these as unparsed acks, so Nomad is the only
+layout source; where the two disagree it is noted.
 
 ## `0x4392` — set game (advance the rotation)
 
@@ -1106,14 +1109,16 @@ value here means the offsets are wrong for this build — revert to ack-only rat
 
 ## `0x43a0` — pass host
 
-**Client → server**, `HostGameController.passHost`. Request: `u32` sender's own chara id (unused,
-as in Nomad), `u32` new host's chara id. The game is re-keyed to the target and the old host
-leaves the roster (Nomad's semantics: you pass because you are quitting). Joins keep working
-because `0x4320` reads the host endpoint from `chara_connection` by the game's host id at join
-time and the new host registered its own on lobby entry. The target must be another player in the
-game or the request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-server
-calls `0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass
-we implement.)
+**Client → server**, `HostGameController.passHost`. **Confirmed against a live client
+2026-07-22**: a real host change arrived as `00000001 00000002` — `u32` sender's own chara id
+(unused, as in Nomad), `u32` new host's chara id — the game was re-keyed to the target, the old
+host left the roster and returned to the browser, and the new host's client took over the
+`0x4398` heartbeat and re-registered, all without a hiccup. Joins keep working because `0x4320`
+reads the host endpoint from `chara_connection` by the game's host id at join time and the new
+host registered its own on lobby entry. The target must be another player in the game or the
+request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-server calls
+`0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass we
+implement.)
 
 ## `0x43a2` — round end (meaning unconfirmed)
 
