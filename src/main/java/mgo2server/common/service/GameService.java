@@ -211,17 +211,18 @@ public class GameService {
 	 * reference's {@code playersLastRound} list exists for.
 	 */
 	public void markRoundPlayers(long gameId) {
-		jdbi.useTransaction(handle -> {
-			handle.createUpdate("delete from game_round where game_id=:id")
-				.bind("id", gameId)
-				.execute();
+		// Insert-only, no delete: game_round accumulates everyone who has been in the game (it is
+		// also populated on join/create) so a mid-round quitter's stats still apply. Refreshing
+		// the current roster here is redundant with that but harmless — kept for the 0x43c8
+		// start-round path if this client ever sends it.
+		jdbi.useHandle(handle ->
 			handle.createUpdate("""
 					insert into game_round (game_id, chara_id)
 					select game_id, chara_id from game_player where game_id=:id
+					on conflict do nothing
 					""")
 				.bind("id", gameId)
-				.execute();
-		});
+				.execute());
 	}
 
 	/** Whether a character was in the game when the current round started, roster or not. */
@@ -330,6 +331,15 @@ public class GameService {
 				.one();
 
 			handle.createUpdate("insert into game_player (game_id, chara_id) values (:game, :chara)")
+				.bind("game", gameId)
+				.bind("chara", hostCharaId)
+				.execute();
+
+			// Also into game_round: anyone who has been in the game counts as "played", so the
+			// host's end-of-round stat report (0x4390) still applies to a player who quit
+			// mid-round. This is populated here and on join rather than depending on the round
+			// snapshot (0x43ca/0x43c8), which this client rarely sends.
+			handle.createUpdate("insert into game_round (game_id, chara_id) values (:game, :chara)")
 				.bind("game", gameId)
 				.bind("chara", hostCharaId)
 				.execute();
@@ -519,6 +529,16 @@ public class GameService {
 		jdbi.useHandle(handle ->
 			handle.createUpdate("""
 					insert into game_player (game_id, chara_id) values (:game, :chara)
+					on conflict do nothing
+					""")
+				.bind("game", gameId)
+				.bind("chara", charaId)
+				.execute());
+		// Record round membership too — see createGame. A quitter stays in game_round so their
+		// end-of-round stats still apply.
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					insert into game_round (game_id, chara_id) values (:game, :chara)
 					on conflict do nothing
 					""")
 				.bind("game", gameId)

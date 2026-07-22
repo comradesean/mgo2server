@@ -530,6 +530,98 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(info.getInt(0xA9)).isEqualTo((int) blocked); // first blocked id
 	}
 
+	/**
+	 * Start round ({@code 0x43c8}) replies {@code {u32 result, u32 token}} — the ELF parser gates
+	 * on result 0 and retains the token; we send the game id. (Renumbered from the dead
+	 * {@code 0x43ca}.)
+	 */
+	@Test
+	public void startRoundReplyCarriesResultAndToken() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var replies = exchange(new GamePacket(HostGameController.START_ROUND));
+
+		var reply = replies.get(0);
+		assertThat(reply.getCommand()).isEqualTo(HostGameController.START_ROUND_RESULT);
+		assertThat(reply.getPayload().readableBytes()).isEqualTo(8);
+		assertThat(reply.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(reply.getPayload().getInt(4)).isEqualTo((int) gameId);
+	}
+
+	/** Joining records round membership so a quitter's later stats still apply (0x43c8-independent). */
+	@Test
+	public void joiningRecordsRoundMembership() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		services.getGameService().addPlayer(gameId, joiner);
+
+		var inRound = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from game_round where game_id=:g and chara_id=:c")
+				.bind("g", gameId).bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(inRound).isEqualTo(1);
+	}
+
+	/**
+	 * The standalone roster fetch ({@code 0x4580}) returns the requested state's relations as a
+	 * count-led {@code 0x4581}/{@code 0x4582}/{@code 0x4583} triple, 59-byte entries. ELF-derived,
+	 * not yet client-verified.
+	 */
+	@Test
+	public void rosterFetchReturnsTheRequestedStatesRelations() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var friend = givenJoinedPlayer(gameId, "Otacon");
+		var blocked = givenJoinedPlayer(gameId, "Ocelot");
+		services.getCharacterService().setRelation(charaId, friend, CharacterService.RELATION_FRIEND);
+		services.getCharacterService().setRelation(charaId, blocked, CharacterService.RELATION_BLOCKED);
+
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+		var replies = new ArrayList<GamePacket>();
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
+					var req = Unpooled.buffer();
+					req.writeByte(CharacterService.RELATION_FRIEND); // ask for the friends list
+					ctx.writeAndFlush(new GamePacket(HostGameController.LIST_ROSTER, req));
+					return;
+				}
+				replies.add(packet);
+				if (packet.getCommand() == HostGameController.LIST_ROSTER_END) {
+					ctx.close();
+				}
+			}
+		});
+
+		assertThat(replies).extracting(GamePacket::getCommand).containsExactly(
+			HostGameController.LIST_ROSTER_START,
+			HostGameController.LIST_ROSTER_ENTRIES,
+			HostGameController.LIST_ROSTER_END);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(1); // only the one friend
+		var entry = replies.get(1).getPayload();
+		assertThat(entry.readableBytes()).isEqualTo(59);
+		assertThat(entry.getInt(0)).isEqualTo((int) friend);
+		var name = new byte[16];
+		entry.getBytes(4, name);
+		assertThat(new String(name, java.nio.charset.StandardCharsets.ISO_8859_1).replace("\0", ""))
+			.isEqualTo("Otacon");
+		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+	}
+
 	@Test
 	public void postGameInfoCarriesTheCharactersRankAndExperience() {
 		givenSelectedCharacter("Snake");
