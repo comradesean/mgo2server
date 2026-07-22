@@ -1249,3 +1249,35 @@ Every other bit in Nomad's table (MP5, Patriot, G3A3, Mk.17, XM8, M60, Saiga, VS
 Operator, Mk.23, DE, G18, RPG, WP, colored smokes, SG-mine, SG-satchel, C4, and the attachment
 bits) belongs to expansion-era gear this build's UI cannot express — dark in every capture,
 reference-only, same standing as the uniques fields.
+
+## The admin-action sweep and the stats layout, settled live
+
+*Evening 2026-07-22, two-client session with the host admin menu worked action by action.*
+
+- **`0x4390` cracked and confirmed applying.** This build sends 167-byte reports (not Nomad's
+  ≥0xB8): target chara id at `0x00`, u32 **seconds-in-game at `0x23`** (matched the joiner's
+  connect-to-report interval exactly), u32 **absolute experience at `0x27`** (matched a
+  50,000-exp account to the byte), flag bytes `01` at `0x20/0x22/0x2E`, all else zero in a
+  kill-less match. After the length-guard fix, live application verified: "stats for character 1
+  — experience 50000". Sent at natural round end and on kick teardown, NOT only at match end.
+- **`0x4392` confirmed twice** — "Restart (Next)" sends the one-byte rotation index; handler
+  applied it both times.
+- **`0x43ca` and `0x43a2` do not exist in this build's observed vocabulary.** Not sent at
+  staging, any admin restart (round/stage/next), team change, kick, pass-host, or a natural
+  round end with a declared winner. The end-of-round conversation is re-registration + `0x4390`
+  per player, nothing else.
+- **`0x4110` identity settled**: 304 bytes (the `0x4120` layout minus trailer), sent by a joiner
+  alongside two `0x4114` chat-macro write-backs (769 bytes each, the `0x4121` layout) in one
+  non-blocking burst when saving options. It is the personal-options write-back, and the old
+  48-byte-rules-header theory is disproven a second way. `0x4114` is now parsed and persisted;
+  `0x4110` is acked but unparsed (BACKLOG).
+- **`0x4500` fired from both roles**: host-on-kick (`…02`, the kicked player's id) and
+  joiner-toggling-ADDLIST (`…01`, the host's id). ADDLIST is one cycling state (friend → blocked
+  → none); isolated tests eliminated mute, unmute, unfriend and unblock as triggers. Open
+  suspicion: it may be a *query*, and our constant `{result=0}` ack may be why the target renders
+  permanently as "friend" (observed). Not yet pinned — isolated add-side toggles are the pending
+  experiment.
+- **Crash teardown verified**: an RPCS3 host crash produced a clean "left game 85 (on
+  disconnect), which it hosted; removing it", zero orphan rows; and a crashed joiner's straggler
+  stat report was correctly rejected — which also exposed that the `game_round` snapshot never
+  populates on this build (its trigger, `0x43ca`, never arrives). See BACKLOG.
