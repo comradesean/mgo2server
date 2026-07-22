@@ -14,9 +14,10 @@ Three levels of confidence are used throughout:
   records how.
 - **Ours** — this is what our code does. It may still be wrong for the client; it is simply what
   goes on the wire today.
-- **Reference** — the meaning comes from `upstream/echo-upstream` (Java, `@Command(0x....)`),
-  `upstream/mgo2-server-upstream` (TypeScript, `@GameCommandHandler(0x....)`) or the Nomad
-  upstreams. **Unverified against our client** unless separately marked.
+- **Reference** — the meaning came from echo (Java, `@Command(0x....)`), mgo2-server (TypeScript,
+  `@GameCommandHandler(0x....)`) or the Nomad servers, recorded here when it was read. Those repos
+  are **not vendored** — do not go re-read them; what was learned is already written down here.
+  **Unverified against our client** unless separately marked.
 
 Companion documents: **`dev/docs/OBSERVED.md`** records what was observed and verified against the real
 client, including the hypotheses that turned out to be wrong. **`dev/docs/STUN.md`** covers the UDP port

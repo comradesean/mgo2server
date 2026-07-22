@@ -14,7 +14,13 @@ expensively. When deciding what the server should do, sources rank:
    Konami servers. Authoritative for behaviour, silent on intent.
 3. **Published standards** — RFCs and drafts, where the game implements one (the port check is
    `draft-ietf-behave-rfc3489bis-02`; Blowfish is Blowfish).
-4. **Other server implementations** — `upstream/*`. **Not specifications.**
+4. **Other server implementations** — echo, mgo2-server, the Nomad servers. **Not specifications.**
+
+   **Do not go read them.** They are deliberately not vendored in this repo. Trawling them has
+   repeatedly burned six figures of tokens for no payoff, and every behaviour worth knowing from
+   them is already transcribed into `dev/docs/PROTOCOL.md` and `dev/docs/OBSERVED.md` — read those
+   instead. Only fetch one from GitHub if a *specific, named* question survives after the ELF and
+   the docs have both failed to answer it, and say why first.
 
    Note the near-collision: this project is **`mgo2server`**; **`mgo2-server`** (hyphenated) is
    MiguelRipoll23's separate project, cited throughout as a reference. When the docs say
@@ -82,7 +88,7 @@ docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
   maven:3.9-eclipse-temurin-25 mvn -B verify
 ```
 
-Expect two counts in the summary — currently 129 unit and 75 integration. One number means the
+Expect two counts in the summary — currently 129 unit and 76 integration. One number means the
 integration tests did not run.
 
 ## Debugging

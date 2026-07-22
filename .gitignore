@@ -38,8 +38,9 @@ build/
 .DS_Store
 
 ### Nomad ###
-# Reference clones of upstream repos, not part of this project
-upstream/
+# The decrypted MGO2.elf and other local reference binaries — tier-1 authority for disassembly,
+# but a large copyrighted game binary that must not be committed. Keep it here locally.
+dev/ref/
 
 # Local tooling state
 .claude/
