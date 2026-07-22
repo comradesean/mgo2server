@@ -415,7 +415,14 @@ public class GameService {
 				.bind("levelLimitEnabled", (commonB & 0b10000) != 0)
 				.bind("friendlyFire", (commonA & 0b1000) != 0)
 				.bind("ghosts", (commonA & 0b10000) != 0)
+				// Oddity, pinned 2026-07-22: bit 5 (Nomad: auto-aim) is set in EVERY capture from
+				// this client, all-disabled baselines included, and no aim setting exists anywhere
+				// in this build's Create screens — later-patch content or fed from player settings.
+				// Decoded as transcribed; on this client the column simply always reads true.
 				.bind("autoAim", (commonA & 0b100000) != 0)
+				// Uniques (bit 7, selectors 0x140/0x141) are the one commonA field the capture
+				// sweep could NOT verify: the setting is absent from this build's Create screens
+				// (expansion-era content). Reference-only — see BACKLOG, "Unique characters".
 				.bind("uniques", (commonA & 0b10000000) != 0)
 				.bind("teamsSwitch", (commonB & 0b1) != 0)
 				.bind("autoAssign", (commonB & 0b10) != 0)

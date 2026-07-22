@@ -192,6 +192,18 @@ kills hosts that stopped sending `0x4398` pings. That reaper is why Nomad's `las
 we now track `last_update` from `0x4398` too but deliberately do not reap on it — our
 disconnect teardown covers dead hosts. Supports the snapshot model without proving it.
 
+## Unique characters: bit 0x142/7 and bytes 0x140/0x141 are unverifiable on this build
+
+*Pinned 2026-07-22, during the per-setting capture sweep.* Every other commonA/commonB bit was
+confirmed by single-variable hosting (see OBSERVED.md, "The Common Settings map, confirmed
+setting by setting"), but **uniques could not be tested: the setting does not appear in this
+client's Create Game screens** — the operator's read is that unique characters arrived in a later
+update/expansion, which squares with the lobby list's "expansion required" restriction bit. The
+decode (`0x142` bit 7 → `uniques_enabled`) and the red/blue selectors at `0x140/0x141` stay
+implemented as transcribed from Nomad, harmless while the client never sets them. If an expansion
+client (or a capture from one) ever surfaces, that is the moment to verify; until then treat the
+uniques fields as reference-only.
+
 ## ~~The 0x4310 byte 0x142/0x143 conflict~~ — RESOLVED by capture 2026-07-22
 
 **Settled the same day it was pinned** — see OBSERVED.md, "Where the Common Settings toggles
