@@ -50,18 +50,25 @@ services:
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking, not a published port. Under WSL2 mirrored networking, Docker's userland
+    # proxy binds published ports inconsistently — sometimes to 0.0.0.0 (reachable only via
+    # loopback, NOT the mirrored LAN interface), so LAN/VM clients get connection-refused. Host
+    # networking (like probe-stun) skips the proxy: the server binds the LAN interface directly, so
+    # the game dials the gate on 15731 straight through. The container listens on 15731 itself.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "0"
       MGO2SERVER_LOBBY_ID: "1"
-    ports:
       # Observed from a real client: MGO2 dials the gate on 15731, not 5730.
-      - "${MGO2SERVER_GATE_PORT:-15731}:5730"
+      MGO2SERVER_GAME_PORT: "15731"
+      # Host networking loses the "postgres" service DNS name; reach it via the published host port.
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5730"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15731"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -72,18 +79,19 @@ services:
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "1"
       MGO2SERVER_LOBBY_ID: "2"
-      MGO2SERVER_GAME_PORT: "5731"
-    ports:
-      - "${MGO2SERVER_ACCOUNT_PORT:-15732}:5731"
+      MGO2SERVER_GAME_PORT: "15732"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5731"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15732"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -94,18 +102,19 @@ services:
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "3"
-      MGO2SERVER_GAME_PORT: "5732"
-    ports:
-      - "${MGO2SERVER_LOBBY_PORT:-15733}:5732"
+      MGO2SERVER_GAME_PORT: "15733"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5732"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15733"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -118,7 +127,7 @@ services:
     command: ["web"]
     environment: *server-env
     ports:
-      - "${MGO2SERVER_WEB_PORT:-8080}:8080"
+      - "192.168.1.100:${MGO2SERVER_WEB_PORT:-8080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
