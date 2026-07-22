@@ -74,10 +74,10 @@ the check-session field as an invertible transform — a model that turned out t
 class has been deleted. Nothing in production ever loaded it, nothing verified it was the game's
 key, and it was inherited rather than derived here.
 
-It is recoverable if ever needed: byte-identical copies are vendored at
-`upstream/mgo2-server-upstream/src/core/constants/crypto-keys-constants.ts` (`BLOWFISH_KEY_AUTH`)
-and `upstream/nomad-upstream/src/main/java/savemgo/nomad/crypto/Constants.java`. Both were checked
-against our copy before deletion and matched exactly, all 4168 bytes.
+It is recoverable if ever needed: byte-identical copies live in mgo2-server at
+`src/core/constants/crypto-keys-constants.ts` (`BLOWFISH_KEY_AUTH`) and in Nomad at
+`src/main/java/savemgo/nomad/crypto/Constants.java` — both on GitHub, not vendored here. Both were
+checked against our copy before deletion and matched exactly, all 4168 bytes.
 
 ### Which payloads are encrypted
 

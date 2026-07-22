@@ -84,8 +84,9 @@ a wrong bit surfaces as an unrelated option appearing set in the browser rather 
 | `compose.yaml` | The local stack: Postgres, migrations, three lobby servers, the web service, the probes. |
 | `CLAUDE.md` | Conventions, chiefly the evidence hierarchy and how to run the tests. |
 
-`upstream/` is gitignored: local clones of other MGO2 servers, kept for comparison. Nothing depends
-on them, and `CLAUDE.md` explains why they are not treated as specifications.
+Other MGO2 servers (echo, mgo2-server, the Nomad servers) are cited in the docs for comparison but
+are not vendored here — consult them on GitHub if needed. `CLAUDE.md` explains why they are not
+treated as specifications.
 
 ## Requirements
 

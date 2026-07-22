@@ -59,8 +59,8 @@ if you would rather not: sign a leaf with `ext.cnf`'s SANs and install your CA i
 Swapping them in via `MGO2SERVER_TLS_CERT` makes the client report `070B` instead of `090B`, which is how
 the certificate branch was identified in the first place.
 
-## About `upstream/`
+## About the other MGO2 servers
 
-Referenced by these documents but **not part of the repository** — it is gitignored. It holds local
-clones of other MGO2 servers, kept for comparison only. Nothing here depends on them, and
-`CLAUDE.md` explains why they are not specifications.
+echo, mgo2-server and the Nomad servers are cited by these documents for comparison, but are **not
+vendored in this repository** — consult them on GitHub if a comparison is genuinely needed. Nothing
+here depends on them, and `CLAUDE.md` explains why they are not specifications.
