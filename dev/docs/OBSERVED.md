@@ -1319,7 +1319,7 @@ labelling the scoreboard:
 | A3 `0x0b` | 53 | 0 | score (signed; rawr's round 2 was −3) |
 | A4 `0x0d` | 0 | 1 | stun / knockout |
 | A6 `0x11` | 10 | 2 | headshots dealt |
-| A7 `0x13` | 2 | 10 | headshot deaths (= the enemy's headshots, 1v1) |
+| A7 `0x13` | 2 | 10 | headshot deaths — **inferred, not validated**: equals the enemy's headshots, which a 1v1 can't tell apart from other received stats (needs 3+ players) |
 | A13 `0x1d` | 2 | 2 | rounds played |
 
 rawr's score reproduced the client's formula exactly: `4·3 − 10·2 + 2·2 (hs) + 1·2 (stun) + 2·1
