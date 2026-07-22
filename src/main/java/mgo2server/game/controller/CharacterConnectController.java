@@ -68,6 +68,9 @@ public class CharacterConnectController implements IGameController {
 	/** Fixed width of one macro text on the wire, same as the 0x4121 read side. */
 	private static final int MACRO_TEXT_LENGTH = 64;
 
+	/** Each 0x4101 list region holds at most this many 4-byte ids. */
+	private static final int MAX_LIST_IDS = 32;
+
 	public static final int PERSONAL_INFO = 0x4122;
 
 	public static final int GEAR = 0x4124;
@@ -320,10 +323,19 @@ public class CharacterConnectController implements IGameController {
 			.writeInt(now)
 			.writeZero(1);
 
-		// Friend and blocked lists are fixed-width regions of 4-byte ids. Neither is modelled
-		// yet, so both are left empty and the regions are zero-filled, as is the tail — which
-		// is what the client actually received from the original server.
+		// Friend and blocked lists: fixed-width regions of 4-byte ids, filled from the stored
+		// ADDLIST relations (0x4500) and zero-padded. These arrays are how the client learns its
+		// authoritative list state at login — leaving them zero is why relationships could never
+		// be changed twice in a session or survive one (observed live 2026-07-22).
+		for (var id : characterService.relationIds(chara.getId(),
+				CharacterService.RELATION_FRIEND, MAX_LIST_IDS)) {
+			buffer.writeInt(id.intValue());
+		}
 		padTo(buffer, FRIENDS_END);
+		for (var id : characterService.relationIds(chara.getId(),
+				CharacterService.RELATION_BLOCKED, MAX_LIST_IDS)) {
+			buffer.writeInt(id.intValue());
+		}
 		padTo(buffer, BLOCKED_END);
 		padTo(buffer, INFO_PAYLOAD_SIZE);
 

@@ -60,6 +60,78 @@ public class CharacterService {
 				.findOne());
 	}
 
+	/** Wire value the ADDLIST uses for a friend; see {@code V14__chara_relations.sql}. */
+	public static final int RELATION_FRIEND = 0;
+
+	/** Wire value the ADDLIST uses for a blocked player. */
+	public static final int RELATION_BLOCKED = 1;
+
+	/**
+	 * Records an ADDLIST relationship change ({@code 0x4500}): the state a character assigned to
+	 * another player. Upserts — the client sends one change per target and expects the stored
+	 * lists back at next login via the {@code 0x4101} arrays.
+	 */
+	public void setRelation(long charaId, long targetCharaId, int state) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					insert into chara_relation (chara_id, target_chara_id, state)
+					values (:chara, :target, :state)
+					on conflict (chara_id, target_chara_id) do update
+						set state = excluded.state, updated_at = now()
+					""")
+				.bind("chara", charaId)
+				.bind("target", targetCharaId)
+				.bind("state", state)
+				.execute());
+	}
+
+	/** Character ids holding the given relation state, oldest first, capped for the 0x4101 grid. */
+	public java.util.List<Long> relationIds(long charaId, int state, int limit) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select target_chara_id from chara_relation
+					where chara_id=:chara and state=:state
+					order by updated_at
+					limit :limit
+					""")
+				.bind("chara", charaId)
+				.bind("state", state)
+				.bind("limit", limit)
+				.mapTo(Long.class)
+				.list());
+	}
+
+	/** Clears a relationship — the ADDLIST "set to none" ({@code 0x4510}), keyed by the pair. */
+	public void removeRelation(long charaId, long targetCharaId) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					delete from chara_relation where chara_id=:chara and target_chara_id=:target
+					""")
+				.bind("chara", charaId)
+				.bind("target", targetCharaId)
+				.execute());
+	}
+
+	/** One ADDLIST entry as the {@code 0x4502} reply needs it: target id, name, and state. */
+	public record Relation(long targetId, String name, int state) {
+	}
+
+	/** A character's whole relationship list, friends then blocked, oldest first within each. */
+	public java.util.List<Relation> relations(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select r.target_chara_id, c.name, r.state
+					from chara_relation r
+					join chara c on c.id = r.target_chara_id
+					where r.chara_id = :chara
+					order by r.state, r.updated_at
+					""")
+				.bind("chara", charaId)
+				.map((rs, ctx) -> new Relation(rs.getLong("target_chara_id"),
+					rs.getString("name"), rs.getInt("state")))
+				.list());
+	}
+
 	/**
 	 * Saves one type's macro grid, as pushed by the client's write-back ({@code 0x4114}) — all
 	 * twelve slots arrive every time, so this upserts the full row set for the type.

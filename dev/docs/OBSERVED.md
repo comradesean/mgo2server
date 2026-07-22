@@ -1281,3 +1281,26 @@ reference-only, same standing as the uniques fields.
   disconnect), which it hosted; removing it", zero orphan rows; and a crashed joiner's straggler
   stat report was correctly rejected — which also exposed that the `game_round` snapshot never
   populates on this build (its trigger, `0x43ca`, never arrives). See BACKLOG.
+
+## ADDLIST (friend/blocked) solved from the ELF
+
+*Evening 2026-07-22.* The in-game friend/blocked toggle had wedged all session — set a state, and
+it stuck, "server unstable" on further changes. Chasing the reply shape (bare result, {result,
+state}, start/end triple, full-list echo) was the wrong track: an Opus ELF trace found the real
+cause and the real layouts.
+
+- **A change is remove-then-add.** friend→blocked sends `0x4510 {state 0}` (remove friend) then
+  `0x4500 {state 1}` (add block); clear-to-none sends `0x4510` alone. **`0x4510` had no handler**
+  and was silently dropped every time — that was the entire wedge. The client blocks on its
+  `0x4512` reply.
+- **Replies are single packets, not triples.** The client has no parser for `0x4501`/`0x4503`
+  (they hit −0x46 no-handler); `0x4502` (add, 25 B: `u32 0, u32 id, u8 state, name[16]`) and
+  `0x4512` (remove, 9 B: `u32 0, u8 state, u32 id` — note the reordered fields) each stand alone.
+- **`0x4580`** is a separate bulk roster fetch (`{u8 state}` → `0x4581`/`0x4582`×N/`0x4583`,
+  59-byte entries); never seen live, answered empty for now.
+
+Implemented all three, storing relations in `chara_relation` and replaying them into the `0x4101`
+login arrays (the first non-zero bytes those friend/blocked regions have ever carried). **Verified
+live**: a full none→friend→blocked→none cycle in one session, every transition sticking, no
+relog. The lesson repeats an old one — the answer was in the binary; the session lost an hour to
+guessing reply shapes before tracing the actual dispatch.

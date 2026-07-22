@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
 import mgo2server.common.crypto.SessionField;
+import mgo2server.common.service.CharacterService;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameDetails;
 import mgo2server.game.GameError;
@@ -467,6 +468,66 @@ public class MatchStateIT extends BaseGameClientServerIT {
 				.bind("id", gameId).mapToMap().one());
 		assertThat(((Number) row.get("idle_kick")).intValue()).isZero();
 		assertThat(((Number) row.get("team_kill_kick")).intValue()).isZero();
+	}
+
+	/**
+	 * The ADDLIST cycle: add friend (0x4500 → 0x4502), then clear it (0x4510 → 0x4512). Layouts
+	 * and reply ids are ELF-confirmed; a live client ran the full none→friend→blocked→none loop
+	 * in one session 2026-07-22.
+	 */
+	@Test
+	public void addListSetsAndClearsARelationship() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var target = givenJoinedPlayer(gameId, "Raiden");
+
+		var add = Unpooled.buffer();
+		add.writeByte(1).writeInt((int) target); // state 1 = blocked
+		var remove = Unpooled.buffer();
+		remove.writeByte(1).writeInt((int) target);
+
+		var replies = exchange(
+			new GamePacket(HostGameController.ADD_LIST, add),
+			new GamePacket(HostGameController.REMOVE_LIST, remove));
+
+		// 0x4502 add reply: {u32 0, u32 id, u8 state, name[16]} = 25 bytes.
+		var added = replies.get(0);
+		assertThat(added.getCommand()).isEqualTo(HostGameController.ADD_LIST_ENTRY);
+		assertThat(added.getPayload().readableBytes()).isEqualTo(25);
+		assertThat(added.getPayload().getInt(0)).isZero();
+		assertThat(added.getPayload().getInt(4)).isEqualTo((int) target);
+		assertThat(added.getPayload().getByte(8)).isEqualTo((byte) 1);
+
+		// 0x4512 remove reply: {u32 0, u8 state, u32 id} = 9 bytes, and the row the add wrote is
+		// gone (the add is proven by the 0x4502 above; both requests run before this returns).
+		var removed = replies.get(1);
+		assertThat(removed.getCommand()).isEqualTo(HostGameController.REMOVE_LIST_ENTRY);
+		assertThat(removed.getPayload().readableBytes()).isEqualTo(9);
+		assertThat(removed.getPayload().getByte(4)).isEqualTo((byte) 1);
+		assertThat(removed.getPayload().getInt(5)).isEqualTo((int) target);
+		var remaining = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_relation where chara_id=:c")
+				.bind("c", charaId).mapTo(Integer.class).one());
+		assertThat(remaining).isZero();
+	}
+
+	/** The stored relations replay into the 0x4101 login arrays — friend ids at 0x29, blocked at 0xA9. */
+	@Test
+	public void relationsPopulateTheLoginArrays() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var friend = givenJoinedPlayer(gameId, "Otacon");
+		var blocked = givenJoinedPlayer(gameId, "Ocelot");
+		services.getCharacterService().setRelation(charaId, friend, CharacterService.RELATION_FRIEND);
+		services.getCharacterService().setRelation(charaId, blocked, CharacterService.RELATION_BLOCKED);
+
+		var replies = exchange(new GamePacket(CharacterConnectController.CONNECT));
+
+		var info = replies.stream()
+			.filter(p -> p.getCommand() == CharacterConnectController.CHARACTER_INFO)
+			.findFirst().orElseThrow().getPayload();
+		assertThat(info.getInt(0x29)).isEqualTo((int) friend);  // first friend id
+		assertThat(info.getInt(0xA9)).isEqualTo((int) blocked); // first blocked id
 	}
 
 	@Test
