@@ -1172,24 +1172,38 @@ structure, not meaning.
 | --- | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | target character id | live-pinned |
 | `0x04` | 1 | u8 | flag byte (aborted / result) | high |
-| `0x05` | 30 | 15 × u16 | scoreboard counters (from stat struct A) — labels unmapped | positions high, labels low |
+| `0x05` | 2 | s16 | **kills** | live-confirmed |
+| `0x07` | 2 | s16 | **deaths** | live-confirmed |
+| `0x09` | 2 | s16 | (zero this match) | — |
+| `0x0b` | 2 | s16 | **score** (signed — a round can go negative) | live-confirmed |
+| `0x0d` | 2 | s16 | **stun / knockout count** | live-confirmed |
+| `0x0f` | 2 | s16 | unknown (one player had 1) | low |
+| `0x11` | 2 | s16 | **headshots dealt** | live-confirmed |
+| `0x13` | 2 | s16 | **headshot deaths** (= enemy headshots in the 1v1 capture) | medium |
+| `0x15`–`0x1b` | — | s16 | zero this match | — |
+| `0x1d` | 2 | s16 | rounds played (1 per report) | medium |
 | `0x23` | 4 | u32 | **seconds in game** (client splits it hi/lo u16) | live-pinned |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
-| `0x2f` | 116 | 58 × u16 | detailed stat block (from stat struct B) — labels unmapped | positions high, labels low |
+| `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — a secondary breakdown, `B36` ≈ the "Other" score category; the rest unlabelled | positions high, labels low |
 | `0xa3` | 4 | u32 | trailing value | low |
 
-A kill-less match sends this whole frame with the counter slots zero (hence the earlier "rest is
-zeros" reading). When stat struct B is absent the builder emits a **short ~51-byte** form instead
-(`u32=0` at `0x2b`, then the trailing word). The u16 counters are u32 stat values truncated on the
-wire, so any counter above 65535 wraps.
+The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
+totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
+"The 0x4390 scoreboard". The score formula the client shows is
+`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist·3 + stun·2 + wake·2 + other·1`, and the
+captured rawr row (`4·3 − 10·2 + 2·2 + 1·2 + 2·1 = 0`) reproduced it exactly. Each report is one
+round for one player; a kill-less round sends the frame with these slots zero. When stat struct B
+is absent the builder emits a **short ~51-byte** form (`u32=0` at `0x2b`, then the trailing word).
+Counters are u32 values truncated to u16 on the wire, so any above 65535 wrap.
 
-**What we consume:** only the character id, the experience (applied to the account pool, main/alt
-split, verified live — "stats for character 1 — experience 50000"), and the flag byte for the
-aborted-round dock (−60, floored at 0 — Nomad's operator policy, inherited knowingly). Experience
-applies when the target is in the game or the round-membership set (`game_round`). **The
-scoreboard counters (`0x05`, `0x2f`) are still dropped** — persisting them needs the label trace;
-see BACKLOG. Reply `0x4391`, result 0 always; validation failures are logged, not surfaced.
+**What we consume:** character id; experience (applied to the account pool, main/alt split); the
+aborted flag for the −60 dock (Nomad policy); and the six confirmed scoreboard slots, accumulated
+into `chara_stats` (lifetime totals, summed across rounds). The unlabelled counters — hacking,
+assist, wake, "other", `0x0f`, and the `0x2f` detail block — were all zero in the capture, so they
+are dropped rather than guessed; a match exercising them would let them be labelled. Experience
+and stats apply when the target is in the game or the round-membership set (`game_round`). Reply
+`0x4391`, result 0 always; validation failures are logged, not surfaced.
 
 (Nomad's `0xB8`-minimum layout was another build's — its aborted byte at `0xB7` does not exist in
 a 167-byte report; mgo2-server's single-byte struct fits neither the length nor the fields. Both

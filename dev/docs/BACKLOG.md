@@ -298,19 +298,23 @@ emits that the client has **no parser for** — it is waiting on a different id.
 None is repointed here — each needs a live capture or parser trace first, per the project's
 standing rule against guessing layouts/ids.
 
-## Scoreboard stats persistence — layout known, counter labels not
+## Scoreboard stats — core slots done; secondary counters still unlabelled
 
-*Pinned 2026-07-22 (evening).* The `0x4390` end-of-round report is fully mapped structurally
-(PROTOCOL.md): a flag byte, 15 u16 counters from stat-struct A at `0x05`, seconds-in-game, the
-experience, then 58 u16 from stat-struct B at `0x2f`. We consume **experience only**; the K/D/
-score scoreboard is dropped. To persist it we need to **label the counters** — which u16 is kills,
-deaths, score, stuns, headshots, etc. — and that cannot be read from the stat serializer alone;
-it needs a trace of where the client increments the r27 (struct A) / r28 (struct B) fields during
-gameplay, or a live capture correlating a known final scoreboard to the byte values. Once labelled,
-add stat columns (or a `chara_stats` lifetime table) and accumulate in `updateStats`. The source
-struct offsets are in the enumeration output for matching. Until then, dropping the counters is
-honest — storing unlabelled u16s would be a blob, which this project is trying to eliminate, not
-add.
+*Pinned 2026-07-22 (evening); core resolved same day by live capture.* The `0x4390` scoreboard was
+labelled by a two-round TDM match whose totals matched the slots exactly (OBSERVED.md, "The 0x4390
+scoreboard"): kills/deaths/score/stun/headshots/headshot-deaths now accumulate into `chara_stats`
+(lifetime totals) in `updateStats`. **Resolved for the stats that matter.**
+
+Still unlabelled — all were zero in that match, so nothing to correlate:
+
+- `0x0f` (one player had a lone `1`), and the hacking / assist / wake / "Other" score categories.
+- The 58-slot **struct-B detail block at `0x2f`** — a secondary breakdown (`B36` tracked "Other" ≈
+  12/2); likely per-weapon or per-category. Positions are known, meanings are not.
+
+To finish: play a match that actually exercises those (use hacking/assist/support weapons, several
+weapon types) and correlate the reported per-category totals to the slots, same method. Or trace
+where the client increments the struct fields during gameplay. Low priority — the primary
+scoreboard is captured.
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 

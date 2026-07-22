@@ -783,8 +783,18 @@ public class HostGameController implements IGameController {
 			var played = inGame || gameService.playedLastRound(game.getId(), targetId);
 			if (played) {
 				gameService.applyRoundExperience(targetId, experience, aborted);
-				logger.info("Game {}: stats for character {} — experience {}{}{}.",
-					game.getId(), targetId, experience, aborted ? " (aborted round)" : "",
+				// Scoreboard: the stat-struct-A slots confirmed by the 2026-07-22 capture (signed
+				// u16 at 0x05 + 2*i). kills A0, deaths A1, score A3, stun A4, headshots A6,
+				// headshot-deaths A7. The rest of the report is not yet labelled — see PROTOCOL.md.
+				var stats = new GameService.RoundStats(
+					payload.getShort(base + 0x05), payload.getShort(base + 0x07),
+					payload.getShort(base + 0x0b), payload.getShort(base + 0x11),
+					payload.getShort(base + 0x13), payload.getShort(base + 0x0d));
+				gameService.accumulateStats(targetId, stats);
+				logger.info("Game {}: stats for character {} — {} kills, {} deaths, score {}, "
+						+ "experience {}{}{}.",
+					game.getId(), targetId, stats.kills(), stats.deaths(), stats.score(),
+					experience, aborted ? " (aborted round)" : "",
 					inGame ? "" : " (left mid-round; accepted from the round snapshot)");
 			} else {
 				logger.warn("Game {}: stat report for character {} who neither is in the game nor "
