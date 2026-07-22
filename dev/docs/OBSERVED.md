@@ -1329,5 +1329,8 @@ the earlier single-round capture turned out to be headshots-dealt / headshots-re
 second kills counter — the ambiguity only resolved once round 2 made the columns diverge.
 
 Left unlabelled (all zero this match): `0x0f` (one player had 1), the hacking/assist/wake/"other"
-categories, and the 58-slot struct-B detail block at `0x2f` (where `B36` tracked "Other" ≈ 12/2).
+categories, and the 58-slot struct-B detail block at `0x2f`. Struct B is a separate itemised
+breakdown (probably per-weapon/per-category), not the eight scoreboard categories — one slot
+(`B36`, 12/2) was numerically near the "Other" count (13/2) but that is an off-by-one coincidence,
+not a confirmed link.
 A match exercising those would pin them the same way.

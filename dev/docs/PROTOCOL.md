@@ -1185,7 +1185,7 @@ structure, not meaning.
 | `0x23` | 4 | u32 | **seconds in game** (client splits it hi/lo u16) | live-pinned |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
-| `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — a secondary breakdown, `B36` ≈ the "Other" score category; the rest unlabelled | positions high, labels low |
+| `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — a separate itemised breakdown (probably per-weapon/per-category), **not** the scoreboard categories, which live in struct A above. Unmapped. (`B36` was numerically near "Other" — 12 vs 13 — but that is a weak coincidence, off by one, not a confirmed link) | positions high, labels unknown |
 | `0xa3` | 4 | u32 | trailing value | low |
 
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
