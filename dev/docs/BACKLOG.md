@@ -263,3 +263,28 @@ Spectator one at a time and record each byte value (only `01`/`02` seen so far).
 byte into `game_player.team` in the 0x4440 handler and, if useful, reflect it in game details.
 Low urgency for a host-authoritative P2P match; a clean fit for the no-blobs goal. Do NOT guess
 which value is which from the single `02`=spectator coincidence — capture each.
+
+## Phantom / misnumbered reply ids (from the duplex ELF cross-check)
+
+*Pinned 2026-07-22 (evening).* Enumerating both directions of the protocol from the binary (send
+builders and the inbound dispatchers, see `dev/docs/COMMANDS.md`) exposed reply ids the server
+emits that the client has **no parser for** — it is waiting on a different id. In priority order:
+
+1. **`0x43ca`/`0x43cb` should be `0x43c8`/`0x43c9`.** The client sends `0x43c8` (start round) and
+   parses `0x43c9`; it never sends `0x43ca` nor parses `0x43cb`. Our handler is bound to the
+   wrong id on both halves — same off-by-2 as the `game_round`-never-populates bug. Capture a
+   `0x43c8` live, confirm its `{u32, u8}` payload and the `0x43c9` reply shape, then repoint.
+2. **`0x4140` (skill sets) and `0x4142` (gear sets) in the `0x4100` connect burst have no client
+   parser.** The client instead parses `0x4103`/`0x4105`/`0x4107` (which we never send). This is
+   inherited echo numbering, and it may mean saved skill-set / gear-set slots have never actually
+   populated on this client — a latent bug hidden because the rest of the burst works and nobody
+   checked the set slots. **Verify first**: on a live character, do the three skill-set and
+   three gear-set slots show saved loadouts? If they are empty/default, trace `0x4103`/`0x4105`/
+   `0x4107`'s parsers and remap. Do not change the working burst blind.
+3. **`0x4115`** (our `0x4114` chat-macro reply) has no parser — harmless since `0x4114` is
+   fire-and-forget, but the reply should not be sent.
+4. **`0x4442`** is parsed by the client but we only send `0x4441`; check whether the `0x4440`
+   team/spectator exchange expects `0x4442` too.
+
+None is repointed here — each needs a live capture or parser trace first, per the project's
+standing rule against guessing layouts/ids.
