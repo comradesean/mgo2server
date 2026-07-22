@@ -239,6 +239,42 @@ public class GameService {
 				.one());
 	}
 
+	/** The confirmed scoreboard fields of one {@code 0x4390} round report. */
+	public record RoundStats(int kills, int deaths, int score, int headshots,
+			int headshotDeaths, int stuns) {
+	}
+
+	/**
+	 * Accumulates one round's scoreboard into a character's lifetime {@code chara_stats}, creating
+	 * the row on first use. Called once per {@code 0x4390} report, so totals sum across rounds and
+	 * matches. Only the slots confirmed by the 2026-07-22 capture are stored; the report's
+	 * unlabelled counters are dropped rather than guessed.
+	 */
+	public void accumulateStats(long charaId, RoundStats stats) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					insert into chara_stats
+						(chara_id, kills, deaths, score, headshots, headshot_deaths, stuns, rounds)
+					values (:id, :kills, :deaths, :score, :headshots, :headshotDeaths, :stuns, 1)
+					on conflict (chara_id) do update set
+						kills = chara_stats.kills + excluded.kills,
+						deaths = chara_stats.deaths + excluded.deaths,
+						score = chara_stats.score + excluded.score,
+						headshots = chara_stats.headshots + excluded.headshots,
+						headshot_deaths = chara_stats.headshot_deaths + excluded.headshot_deaths,
+						stuns = chara_stats.stuns + excluded.stuns,
+						rounds = chara_stats.rounds + 1
+					""")
+				.bind("id", charaId)
+				.bind("kills", stats.kills())
+				.bind("deaths", stats.deaths())
+				.bind("score", stats.score())
+				.bind("headshots", stats.headshots())
+				.bind("headshotDeaths", stats.headshotDeaths())
+				.bind("stuns", stats.stuns())
+				.execute());
+	}
+
 	/**
 	 * Applies the host's end-of-round experience report ({@code 0x4390}) to a character's account
 	 * pool — the main pool if the target is the account's main character, the alt pool otherwise,

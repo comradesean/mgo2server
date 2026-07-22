@@ -385,6 +385,55 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(joinerExp).isEqualTo(1234);
 	}
 
+	/**
+	 * The scoreboard slots confirmed by the live capture, accumulated into chara_stats. Two
+	 * reports for the same character sum, as per-round reports do across a match.
+	 */
+	@Test
+	public void statReportAccumulatesTheScoreboard() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		// Two rounds: kills 5 then 3, deaths 2 then 4, score 26 then -3, headshots 5 then 2,
+		// headshot-deaths 2 then 0, stuns 1 then 0.
+		var r1 = statReport((int) joiner, 5, 2, 26, 5, 2, 1);
+		var r2 = statReport((int) joiner, 3, 4, -3, 2, 0, 0);
+		exchange(
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r1)),
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r2)));
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from chara_stats where chara_id=:c")
+				.bind("c", joiner).mapToMap().one());
+		assertThat(((Number) row.get("kills")).intValue()).isEqualTo(8);
+		assertThat(((Number) row.get("deaths")).intValue()).isEqualTo(6);
+		assertThat(((Number) row.get("score")).intValue()).isEqualTo(23);
+		assertThat(((Number) row.get("headshots")).intValue()).isEqualTo(7);
+		assertThat(((Number) row.get("headshot_deaths")).intValue()).isEqualTo(2);
+		assertThat(((Number) row.get("stuns")).intValue()).isEqualTo(1);
+		assertThat(((Number) row.get("rounds")).intValue()).isEqualTo(2);
+	}
+
+	/** A 167-byte report with the confirmed scoreboard slots set (signed s16 at 0x05 + 2*i). */
+	private static byte[] statReport(int charaId, int kills, int deaths, int score, int headshots,
+			int headshotDeaths, int stuns) {
+		var r = new byte[167];
+		writeInt(r, 0, charaId);
+		writeShort(r, 0x05, kills);
+		writeShort(r, 0x07, deaths);
+		writeShort(r, 0x0b, score);
+		writeShort(r, 0x0d, stuns);
+		writeShort(r, 0x11, headshots);
+		writeShort(r, 0x13, headshotDeaths);
+		return r;
+	}
+
+	private static void writeShort(byte[] bytes, int offset, int value) {
+		bytes[offset] = (byte) (value >>> 8);
+		bytes[offset + 1] = (byte) value;
+	}
+
 	@Test
 	public void passHostRekeysTheGameAndDropsTheOldHost() {
 		givenSelectedCharacter("Snake");

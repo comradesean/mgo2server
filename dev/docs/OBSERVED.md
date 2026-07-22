@@ -1304,3 +1304,30 @@ login arrays (the first non-zero bytes those friend/blocked regions have ever ca
 live**: a full none→friend→blocked→none cycle in one session, every transition sticking, no
 relog. The lesson repeats an old one — the answer was in the binary; the session lost an hour to
 guessing reply shapes before tracing the actual dispatch.
+
+## The 0x4390 scoreboard, decoded from a live match
+
+*2026-07-22.* A two-round TDM match (Sean char 1 vs rawr char 2) captured all four `0x4390`
+reports at DEBUG, and the end-of-game scoreboard totals were read off the screen. Summing each
+report's stat-struct-A slots across both rounds matched the reported per-player totals **exactly**,
+labelling the scoreboard:
+
+| slot (off) | Sean total | rawr total | stat |
+| --- | --- | --- | --- |
+| A0 `0x05` | 10 | 4 | kills |
+| A1 `0x07` | 4 | 10 | deaths |
+| A3 `0x0b` | 53 | 0 | score (signed; rawr's round 2 was −3) |
+| A4 `0x0d` | 0 | 1 | stun / knockout |
+| A6 `0x11` | 10 | 2 | headshots dealt |
+| A7 `0x13` | 2 | 10 | headshot deaths (= the enemy's headshots, 1v1) |
+| A13 `0x1d` | 2 | 2 | rounds played |
+
+rawr's score reproduced the client's formula exactly: `4·3 − 10·2 + 2·2 (hs) + 1·2 (stun) + 2·1
+(other) = 0`. The reports are **per-round** (A0 = 5 kills each round → 10 total), which is why
+`accumulateStats` sums every report into lifetime `chara_stats`. The A6/A7 "duplicate" pair from
+the earlier single-round capture turned out to be headshots-dealt / headshots-received, not a
+second kills counter — the ambiguity only resolved once round 2 made the columns diverge.
+
+Left unlabelled (all zero this match): `0x0f` (one player had 1), the hacking/assist/wake/"other"
+categories, and the 58-slot struct-B detail block at `0x2f` (where `B36` tracked "Other" ≈ 12/2).
+A match exercising those would pin them the same way.
