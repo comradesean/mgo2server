@@ -199,8 +199,13 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 
 	// ---------- match history ----------
 
+	/**
+	 * While the record fields are being mapped, history serves the TEMPORARY fingerprint rows.
+	 * The wire-shape assertions (25-byte records, count-not-status start/end) are the durable
+	 * part; the row contents change when real match records land.
+	 */
 	@Test
-	public void matchHistoryIsAnEmptyList() {
+	public void matchHistoryServesFingerprintRows() {
 		givenSelectedCharacter("Snake");
 
 		var request = Unpooled.buffer();
@@ -208,24 +213,30 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		var replies = loginThen(new GamePacket(SocialGameController.GET_MATCH_HISTORY, request),
 			SocialGameController.MATCH_HISTORY_END);
 
-		assertThat(replies).hasSize(2);
+		assertThat(replies).hasSize(3);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_START);
 		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(4);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
-		assertThat(replies.get(1).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_END);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(5);
+		var entries = replies.get(1);
+		assertThat(entries.getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_ENTRIES);
+		assertThat(entries.getPayload().readableBytes()).isEqualTo(5 * 25);
+		assertThat(entries.getPayload().getInt(25 + 4)).isEqualTo(9102); // row 2 entry id
+		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_END);
 	}
 
 	@Test
-	public void matchDetailsIsAnEmptyList() {
+	public void matchDetailsServesFingerprintRows() {
 		givenSelectedCharacter("Snake");
 
 		var request = Unpooled.buffer();
-		request.writeInt(1);
+		request.writeInt(9101);
 		var replies = loginThen(new GamePacket(SocialGameController.GET_MATCH_DETAILS, request),
 			SocialGameController.MATCH_DETAILS_END);
 
-		assertThat(replies).hasSize(2);
+		assertThat(replies).hasSize(3);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_START);
-		assertThat(replies.get(1).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_END);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(3);
+		assertThat(replies.get(1).getPayload().readableBytes()).isEqualTo(3 * 93);
+		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_END);
 	}
 }

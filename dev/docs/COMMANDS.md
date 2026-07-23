@@ -56,7 +56,7 @@ settings · `0x4310` push host
 settings · `0x4312` game details · `0x4316` create game · `0x4320` join game · `0x4322` join
 failed · `0x4340`/`0x4342`/`0x4344`/`0x4346` peer register · `0x4380` quit game · `0x4390` stats ·
 `0x4392` set game · `0x4398` pings · `0x43a0` pass host · `0x43a2` round end? · `0x43c0` in-game
-info · `0x43ca` start round **(dead — see gaps)** · `0x4440` team/spectator · `0x4500` add
+info · `0x43c8` start round *(renumbered from dead `0x43ca`, 2026-07-23)* · `0x4440` team/spectator · `0x4500` add
 relation · `0x4510` remove relation · `0x4580` roster fetch · `0x4600` player search ·
 `0x4680` match history · `0x4684` match detail · `0x4700` connection info ·
 `0x4820` get messages · `0x4900` game-lobby info · `0x4990` game entry info
@@ -66,9 +66,9 @@ relation · `0x4510` remove relation · `0x4580` roster fetch · `0x4600` player
 Potential `FFFFFF60` stalls *if the triggering menu is reached*; grouped by reachability.
 
 **Corrections the scan forced:**
-- `0x43c8` (`0xD40CB4`, `{u32, u8}`) — the client's real "start round"; our handler is bound to
-  `0x43ca`, which **has no builder** and is never sent. Likely a two-off transcription slip.
-  Capture and trace before repointing. This is why `game_round` never populates (BACKLOG).
+- `0x43c8` (`0xD40CB4`, `{u32, u8}`) — the client's real "start round"; our handler was bound
+  to `0x43ca`, which **has no builder** and is never sent. **Resolved 2026-07-23:** handler
+  renumbered to `0x43c8`/`0x43c9`; `game_round` also populates on create/join now (BACKLOG).
 - `0x3040` (`0xD37B6C`, `u8`) — has a live builder after all; still unanswered by any reference.
 
 **Reachable in ordinary flow (priority):** `0x4112`, `0x4210`, `0x4220`
@@ -126,7 +126,7 @@ emit one of these instead, it never advances → `FFFFFF60`.
 
 | we send | the client parses | verdict |
 | --- | --- | --- |
-| `0x43cb` (start-round reply) | `0x43c9` | **off-by-2**: client sends `0x43c8`, parses `0x43c9`; our whole `0x43ca`/`0x43cb` pair is misnumbered. High priority. |
+| `0x43cb` (start-round reply) | `0x43c9` | **resolved 2026-07-23**: the pair is renumbered to `0x43c8`/`0x43c9` in code. |
 | `0x4140` (skill sets, in the connect burst) | *no parser* | **latent**: client has no `0x4140` parser, so saved skill-set slots may never populate. (`0x4103`/`0x4105`/`0x4107` turned out to be the personal-stats burst, now sent — but the `0x4133` outfit readback is the likelier loadout path; its entry semantics are uncaptured.) Verify against a live character before changing — the burst otherwise works. |
 | `0x4142` (gear sets, in the connect burst) | *no parser* | same as `0x4140` for gear-set slots. |
 | `0x4115` (chat-macro write-back reply) | *no parser* | harmless: `0x4114` is fire-and-forget (observed non-blocking), so the ignored reply costs nothing — but it should not be sent. |

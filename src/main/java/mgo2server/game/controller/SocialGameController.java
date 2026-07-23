@@ -131,30 +131,69 @@ public class SocialGameController implements IGameController {
 		ctx.write(countPacket(ctx, PLAYER_SEARCH_END, matches.size()));
 	}
 
+	/** TEMPORARY fingerprint rows served while the record fields are being mapped. */
+	private static final int HISTORY_FINGERPRINT_ROWS = 5;
+
+	/** 2001-01-01 00:00:00 UTC; each fingerprint row steps by one day, hour, minute, second. */
+	private static final int HISTORY_FINGERPRINT_EPOCH = 978307200;
+
+	private static final int DETAIL_FINGERPRINT_ROWS = 3;
+
 	/**
-	 * Match history ({@code 0x4680}, u32 character id): match outcomes are not recorded yet, so
-	 * every history is empty — start and end with a zero count, no item packets. When they are,
-	 * the record is 25 bytes (u32, u32, 16-byte string, u8) and the client's table caps at 64.
+	 * Match history ({@code 0x4680}, u32 character id). The 25-byte record layout (u32, u32,
+	 * 16-byte string, u8) is ELF-traced but unlabelled; candidate labels {timestamp, entry id,
+	 * name, ?} come from a tier-4 Nomad test payload (PROTOCOL.md).
+	 * <p>
+	 * TEMPORARY fingerprint payload, 2026-07-23: each field carries a recognizable marker —
+	 * ascending 2001 dates if the first u32 renders as the history date, ids 91xx (echoed back
+	 * in {@code 0x4684} if the second u32 is the entry id — watch the log), names FP-ROW-n,
+	 * u8 4n. Replace with real match records once the mapping and storage design land.
 	 */
 	private void getMatchHistory(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 		if (payload.readableBytes() >= Integer.BYTES) {
 			logger.debug("Match history requested for character {}.", payload.readInt());
 		}
-		writeCountedList(ctx, MATCH_HISTORY_START, MATCH_HISTORY_END, 0);
+
+		ctx.write(countPacket(ctx, MATCH_HISTORY_START, HISTORY_FINGERPRINT_ROWS));
+		var buffer = ctx.buffer(HISTORY_FINGERPRINT_ROWS * 25);
+		for (var i = 1; i <= HISTORY_FINGERPRINT_ROWS; i++) {
+			buffer.writeInt(HISTORY_FINGERPRINT_EPOCH + i * 90061); // +1d 1h 1m 1s per row
+			buffer.writeInt(9100 + i);
+			BufferUtil.writeString(buffer, "FP-ROW-" + i, StandardCharsets.ISO_8859_1,
+				NAME_LENGTH);
+			buffer.writeByte(40 + i);
+		}
+		ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
+		ctx.write(countPacket(ctx, MATCH_HISTORY_END, HISTORY_FINGERPRINT_ROWS));
 	}
 
 	/**
-	 * Match details ({@code 0x4684}, u32 entry id from the history list). Unreachable while every
-	 * history is empty, but answered anyway so a stale selection can never stall. The record is
-	 * 93 bytes (u32, 64-byte string, 16-byte string, u8, u32, u32); the client's table caps at 32.
+	 * Match details ({@code 0x4684}, u32 entry id from the history list — the logged id reveals
+	 * which list field the client echoes). 93-byte records (u32, 64-byte string, 16-byte string,
+	 * u8, u32, u32), ELF-traced, fully unlabelled; TEMPORARY fingerprint markers as above.
 	 */
 	private void getMatchDetails(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 		if (payload.readableBytes() >= Integer.BYTES) {
-			logger.debug("Match details requested for entry {}.", payload.readInt());
+			// Deliberately INFO: this echo identifies the entry-id field of the 0x4682 record.
+			logger.info("Match details requested for entry {}.", payload.readInt());
 		}
-		writeCountedList(ctx, MATCH_DETAILS_START, MATCH_DETAILS_END, 0);
+
+		ctx.write(countPacket(ctx, MATCH_DETAILS_START, DETAIL_FINGERPRINT_ROWS));
+		var buffer = ctx.buffer(DETAIL_FINGERPRINT_ROWS * 93);
+		for (var i = 1; i <= DETAIL_FINGERPRINT_ROWS; i++) {
+			buffer.writeInt(9200 + i);
+			BufferUtil.writeString(buffer, "FP-DETAIL-LONG-" + i, StandardCharsets.ISO_8859_1,
+				64);
+			BufferUtil.writeString(buffer, "FP-D16-" + i, StandardCharsets.ISO_8859_1,
+				NAME_LENGTH);
+			buffer.writeByte(50 + i);
+			buffer.writeInt(9300 + i);
+			buffer.writeInt(9400 + i);
+		}
+		ctx.write(new GamePacket(MATCH_DETAILS_ENTRIES, buffer));
+		ctx.write(countPacket(ctx, MATCH_DETAILS_END, DETAIL_FINGERPRINT_ROWS));
 	}
 
 	/** An empty list: the start/end pair with the same count and nothing between. */

@@ -228,7 +228,13 @@ entries, now minor: whether the populated `0x4305` should canonicalise as Nomad 
 (`commonA |= 0b100`, kick zeroing, derived `wr[10]`) rather than echo raw — the raw echo works
 against the live client, so it stays.
 
-## The round snapshot never populates — quitter stats are dropped
+## The round snapshot never populates — quitter stats are dropped ✅ RESOLVED
+
+*Resolved 2026-07-23: both proposed fixes are applied in code — `game_round` is populated on
+game create and on join (`GameService.createGame`/`addPlayer`), and the start-round handler is
+renumbered to the real `0x43c8`/`0x43c9` pair (`HostGameController.START_ROUND`). The section
+below is kept as history; note a live capture of `0x43c8`'s payload semantics is still worth
+recording in OBSERVED.md when one is next taken.*
 
 *Pinned 2026-07-22 (evening); root cause found same day.* `game_round` is filled by the `0x43ca`
 handler, but this client **never sends `0x43ca`** — the full-binary send-site enumeration
