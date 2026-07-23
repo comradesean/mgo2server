@@ -8,8 +8,8 @@ doc: |
   switches between them [CONFIRMED, fingerprint v9]. Parser 0xd3e53c stores into
   T+0x138 + mode*0x48 + page*0x360 + column*4; the grid reader is the cluster at 0x9193BC+.
 
-  Client-side derivations (never on the wire): the OTHER row = category total − headshot −
-  lockon, clamped at 0 [CONFIRMED v6]; the ALL row = sum of the displayed rows [CONFIRMED
+  Client-side derivations (never on the wire): the OTHER row = the category's minuend
+  column − headshot − lockon, clamped at 0 [CONFIRMED v6]; the ALL row = sum of the displayed rows [CONFIRMED
   v8]; the whole Total page and header play time = per-column sums over mode rows 0..6
   [CONFIRMED v5/v6]; title and medal unlocks derive from these values plus 0x4107.
 doc-ref: dev/docs/PROTOCOL.md "0x4102 — get personal stats"
@@ -47,27 +47,29 @@ types:
   mode_stats:
     doc: "18 u32 columns. 16 of 18 mapped [CONFIRMED v5/v6/v8]; 13 and 15 open."
     seq:
-      - id: kills_total
+      - id: other_kills_minuend
         type: u4
         doc: |
-          col 0. Category total incl. "other". Display: only used to derive OTHER KILLS
-          (this − hs − lockon, clamped ≥0); the ALL row is client-summed. Send as
-          other + hs + lockon. [CONFIRMED v6+v8]
-      - id: deaths_total
+          col 0. PROVEN role only: the client renders OTHER KILLS = this − hs_kills −
+          lockon_kills, clamped ≥0 [CONFIRMED v6], and this value itself never renders
+          [CONFIRMED v8]. Therefore a server wanting OTHER to show x must send
+          x + hs + lockon. Whether the original server semantically treated it as
+          "total kills" is [UNKNOWN] — the name states the derivation, not a meaning.
+      - id: other_deaths_minuend
         type: u4
-        doc: "col 1. As kills_total, for deaths. [CONFIRMED]"
+        doc: "col 1. As other_kills_minuend, for deaths (OTHER DEATHS = this − hs − lockon). [CONFIRMED v6]"
       - id: lockon_kills
         type: u4
         doc: "col 2. [CONFIRMED]"
       - id: score
         type: s4
         doc: "col 3. Signed — round score can be negative. [CONFIRMED position; sign by analogy to 0x4390]"
-      - id: stuns_total
+      - id: other_stuns_minuend
         type: u4
-        doc: "col 4. As kills_total, for stuns. [CONFIRMED]"
-      - id: stuns_received_total
+        doc: "col 4. As other_kills_minuend, for stuns. [CONFIRMED v6]"
+      - id: other_stuns_received_minuend
         type: u4
-        doc: "col 5. As kills_total, for stuns received. [CONFIRMED]"
+        doc: "col 5. As other_kills_minuend, for stuns received. [CONFIRMED v6]"
       - id: hs_kills
         type: u4
         doc: "col 6. Headshot kills. [CONFIRMED]"

@@ -1581,3 +1581,12 @@ time slots included (00:33:35 = 2015 s = slot 15). Host Rating / Instructor Scor
 (0 cumulative / 1 weekly), 0x4107 record 1/2 = cumulative/weekly personal scores. Schema
 follows: chara_mode_stats keys (chara, page, mode); chara_personal_scores keys (chara, period).
 Weekly reset cadence is operator policy.
+
+### Epistemic correction on columns 0/1/4/5: role proven, meaning not
+
+The v6/v8 entries above call these columns "stored ALL totals" — an over-interpretation. What
+the probes prove is only the derivation: OTHER = column − HS − lockon (clamped, v6) and the
+column never renders directly (v8). "Total" was inferred from that arithmetic (any server
+wanting OTHER = x is forced to send x + HS + lockon), then repeated as if observed. The specs
+and PROTOCOL.md now name these fields `*_minuend` — the proven role — and leave the original
+semantic explicitly unknown.
