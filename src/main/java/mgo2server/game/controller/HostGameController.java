@@ -1,5 +1,6 @@
 package mgo2server.game.controller;
 
+import io.netty.buffer.ByteBufUtil;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
@@ -765,6 +766,14 @@ public class HostGameController implements IGameController {
 		var payload = ctx.packet().getPayload();
 		var readable = payload.readableBytes();
 
+		// Reporting-model tripwire (PROTOCOL.md, "two established truths"): only hosts have
+		// ever sent reports. A non-host report means the model needs revisiting — flag it
+		// loudly, then ack as before.
+		if (game == null) {
+			logger.warn("0x4390 from a NON-HOST connection — reporting-model deviation. Payload: {}",
+				ByteBufUtil.hexDump(payload));
+		}
+
 		// This client sends 167-byte reports (observed live 2026-07-22: exp at 0x27 matched the
 		// account total to the byte, and 0x23 held seconds-in-game), so Nomad's 0xB8 minimum was
 		// a different build's; its aborted byte at 0xB7 is read only when the report reaches it.
@@ -802,10 +811,18 @@ public class HostGameController implements IGameController {
 				} else if (detail.length == 0 && readable >= 0x33) {
 					trailing = payload.getInt(base + 0x2F) & 0xFFFFFFFFL;
 				}
+				// Second tripwire: the trailing word has been 0 in every observed report; a
+				// nonzero value would be the in-frame identifier the model says does not exist.
+				if (trailing != 0) {
+					logger.warn("0x4390 trailing word nonzero ({}) — possible identifier echo, "
+						+ "reporting-model deviation.", trailing);
+				}
 				gameService.insertRoundReport(new GameService.RoundReport(
 					game.getId(), game.getHostCharaId(), targetId,
 					payload.getByte(base + 0x04) & 0xFF, structA,
-					payload.getInt(base + 0x23) & 0xFFFFFFFFL, experience & 0xFFFFFFFFL,
+					// Wire 0x23 is {u16 team slot, u16 seconds}, not a u32 (OBSERVED.md).
+					payload.getUnsignedShort(base + 0x23), payload.getUnsignedShort(base + 0x25),
+					experience & 0xFFFFFFFFL,
 					detailPresent & 0xFFFFFFFFL, detail, trailing, aborted));
 				logger.info("Game {}: stats for character {} — {} kills, {} deaths, score {}, "
 						+ "experience {}{}{}.",
