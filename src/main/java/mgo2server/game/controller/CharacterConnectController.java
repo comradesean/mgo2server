@@ -103,7 +103,7 @@ public class CharacterConnectController implements IGameController {
 	 * Their meaning is undocumented; they are reproduced from the original server byte for
 	 * byte.
 	 */
-	private static final byte[] INFO_PREFIX = {
+	static final byte[] INFO_PREFIX = {
 		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,
 		(byte) 0x01, (byte) 0x3E, (byte) 0x01, (byte) 0x50,
 	};
