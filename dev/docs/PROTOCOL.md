@@ -1367,11 +1367,28 @@ Populate once a real `0x4580` is captured.
 
 **Client → server**, `SocialGameController`. All three observed live 2026-07-23 (each stalled its
 screen unanswered) and traced from the binary the same day. All three are **start / item / end
-list triples** like the game browser, each keyed to a wait state the client blocks on (`0x53`,
-`0x1D`, `0x1E` respectively). **No packet in the family carries a status code**: start and end are
-a bare `{u32 count}`, and item packets are records back to back with **no per-packet count** — the
-parser reads until the payload ends, so records may be split across item packets freely. A missing
-session therefore gets an empty list, not an error.
+list triples** like the game browser, each keyed to a subsystem index the client blocks on
+(`0x53`, `0x1D`, `0x1E` respectively). The start and end packets each carry a
+`{u32 result code}` — **0 for success, not a count**. An earlier reading of these as counts was
+wrong and only *looked* right because every live answer had been the empty triple (count 0 ≡
+result 0); the first non-empty history produced `1032:00000005` — our count of 5 echoed as an
+error (OBSERVED.md, "Error 1032:00000005"). Traced mechanics, common to all three (status setter
+`0xD32E08`, result setter `0xD32E70`, per-subsystem slots):
+
+- A **nonzero start** completes the transaction as failed immediately; the value is stored
+  verbatim and rendered `%08X` in the screen's error dialog (screen codes: search `0x0C13`,
+  history `0x1032`, details `0x1034`). A zero start resets the entry count and proceeds.
+- The **end packet's u32 is stored into the same result slot unconditionally** and marks
+  completion — the end value is the operative result on the success path, so **both start and
+  end must be 0**.
+- The client **counts item records itself** (table caps: search 100, history 64, details 32).
+  Item packets are records back to back with **no per-packet count** — the parser reads until
+  the payload ends, so records may be split across item packets freely.
+- Player search alone also treats `-611` (`-0x263`) as an accepted "no results found" sentinel
+  (start handler `0xD45DF0` branches on it; dialog screen `0x0C11` pairs with it). Traced but
+  never tested live; we send the plain empty success triple instead.
+
+A missing session gets an empty success list, not an error.
 
 ### `0x4600` — player search (sender `0xD46128`, replies `0x4601`/`0x4602`/`0x4603`)
 
@@ -1395,15 +1412,56 @@ Request: u32 character id. Records (`0x4682`, parser `0xd3b5fc`, 25 bytes each, 
 2026-07-23, OBSERVED.md) fills them as {u32 Unix timestamp, u32 id, 16-byte player/host name,
 u8 0}. The client's history UI has a `%Y/%m/%d %H:%M:%S` format resource in the ELF menu blob
 (found during the title/medal extraction), so a timestamp field is expected; the `0x4684`
-request needs one field to be the selectable entry id. Fingerprint before trusting. Match
-outcomes are not recorded server-side yet, so every history is answered as the empty triple.
+request needs one field to be the selectable entry id. The first fingerprint attempt
+(2026-07-23) put the row count in the start/end packets and the client refused the screen with
+`1032:00000005` before reading any record — that is what exposed the result-code semantics
+above; the corrected triple (result 0 both ends) is what is served now.
+
+**Live fingerprint results (2026-07-23, same day):** the screen is a **met-players history** —
+one row per player encountered, not per match. The leading u32 is **confirmed** a Unix
+timestamp (sent 2001-01-02 01:01:01 UTC, rendered "01-02-2001 04:01:01" — date exact, time
++3h, emulated-clock timezone unresolved; rendered format MM-DD-YYYY, not the `%Y/%m/%d` ELF
+resource). The 16-byte string is **confirmed** the row's player-name label. The second u32 is
+a candidate character id: selecting a row opens a player context menu (Player Details /
+Create Mail / Add to Friend List / Add to Block List), all player-scoped. "Player Details"
+sends **`0x4220`** (player-card family, unhandled at the time — see that family's section
+once traced), NOT `0x4684`; what triggers `0x4684` is unknown again. Encounters are not
+recorded server-side yet; TEMPORARY fingerprint rows are still served.
 
 ### `0x4684` — match detail (sender `0xD3B778`, replies `0x4685`/`0x4686`/`0x4687`)
 
 Request: u32 entry id selected from the `0x4682` list. Records (`0x4686`, parser `0xd3b42c`,
 93 bytes each, table caps at **32**): u32, 64-byte string, 16-byte string, u8, u32, u32 —
-plausibly per-player lines of one match. Answered as the empty triple, unreachable while every
-history is empty, but handled so a stale selection can never stall.
+plausibly per-player lines of one match. TEMPORARY fingerprint rows are served (result 0 both
+ends), but the trigger is unknown: the history row's "Player Details" menu item sends
+`0x4220`, not `0x4684` (live, 2026-07-23), so no UI path to `0x4684` has been observed yet.
+
+## `0x4220` — player details (sender `0xD3B950`, single reply `0x4221`)
+
+**Client → server**, `SocialGameController`. Observed live 2026-07-23 (the met-players history
+row's "Player Details" menu item, unhandled at first — `No handler for command 4220`) and
+traced from the binary the same day. Request: one u32, the selected player's id (both traced
+call sites pass a stored per-row id — which history-record field that is gets confirmed by our
+request log). Subsystem index `0x1C` (status/result setters `0xD32E08`/`0xD32E70`, as with the
+list triples).
+
+Reply `0x4221` is a **single packet, not a triple** (the dispatcher has no `0x4222`/`0x4223`):
+201 bytes — `{u32 result}` (0 = success; nonzero skips every field read, completes the
+transaction as failed, and the open screen's poll raises the error dialog — no fixed screen
+constant in this path) followed by 197 bytes of fields, parser `0xD3D874`: u32 id echo,
+16B **name** (confirmed), u32, u8, u8, u32, u32, u8, 128B **comment** (confirmed), u32,
+16B string (clan? sent but rendered "---"), u8, u32, u32, u8, u32 — with the u32 at wire
+0x22 confirmed as **play time in seconds** (fingerprint 9503 → "02:38:23"). The card also
+renders a LEVEL never sent literally (likely table-derived from an exp-like u32; candidates
+at wire 0x18/0x1E). Its square button ("more details") sends `0x4102` for the card's
+character. Byte-exact layout with client struct destinations and per-field fingerprint
+results: `dev/proto/mgo2_cmd_4221.ksy`. TEMPORARY fingerprint markers are served (id echoed,
+u32s 95xx, u8s 61–65, `FP-DTL-*` strings).
+
+Sibling, **not yet observed**: `0x4210` (sender `0xD3A7D4`, no payload, subsystem `0x20`)
+expects a reply triple `0x4211`/`0x4212`/`0x4213` (parsers `0xD3B01C`/`0xD3B2D0`/`0xD3AF24`,
+records not yet decoded) — the "own player card / overview" family, distinct from `0x4220`'s
+by-id detail. Unhandled; the no-handler log now dumps payload hex if it ever fires.
 
 ## `0x4128` — get post-game info
 
@@ -1557,7 +1615,7 @@ testing yet, so each is conditional on a specific action/menu we have not exerci
 | `0x49xx` extended | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
 | `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified |
 | mailbox rest | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail (we do only `0x4820` get) |
-| social | `0x4600`, `0x4680`, `0x4684` | player search, match history |
+| social | `0x4600`, `0x4680`, `0x4684`, `0x4220` | player search, met-players history, player details |
 | misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
 
 Builder addresses and best-effort payload shapes for every gap id are recorded in the enumeration

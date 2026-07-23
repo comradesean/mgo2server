@@ -23,4 +23,11 @@ To view a capture against a spec, load both into the Kaitai WebIDE
 Specs (pilot, 2026-07-23): the `0x4102` personal-stats burst —
 `mgo2_cmd_4103.ksy` (character info, 648 B), `mgo2_cmd_4105.ksy` (per-mode grid,
 584 B, sent once per period page), `mgo2_cmd_4107.ksy` (personal scores, 588 B,
-terminal).
+terminal) — and the social family: `mgo2_cmd_4682.ksy` (met-players history record, 25 B),
+`mgo2_cmd_4686.ksy` (match-detail record, 93 B), and `mgo2_cmd_4221.ksy` (player-details
+card, 201 B single reply).
+
+List-triple start/end packets (`0x4601`/`0x4603`, `0x4681`/`0x4683`, `0x4685`/`0x4687`)
+are not specced separately: each is a single u32 **result code**, 0 for success in both
+start and end — never a count; the client counts item records itself. Sending a count
+there produced the `1032:00000005` error (OBSERVED.md).

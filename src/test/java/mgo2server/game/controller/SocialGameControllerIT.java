@@ -22,10 +22,12 @@ import static org.assertj.core.api.Assertions.*;
  * Player search and match history, end to end.
  * <p>
  * The reply shapes assert what the client's parsers consume, traced from the binary: start and
- * end are a bare u32 count (parsers {@code 0xD45DF0}/{@code 0xD45CF4} for search,
- * {@code 0xD3ADF4}/{@code 0xD3ACF8} for history), and each search record is 59 bytes
- * ({@code 0xD45F38}). The matching semantics themselves — substring for partial, and the case
- * toggle — are operator policy; those assertions are regression guards, not correctness checks.
+ * end carry a u32 result code that must be 0 — a nonzero value aborts the screen with an error
+ * dialog (observed live as {@code 1032:00000005} when a count of 5 was sent; handlers
+ * {@code 0xD3ADF4}/{@code 0xD3ACF8} for history, {@code 0xD45DF0}/{@code 0xD45CF4} for search),
+ * and the client counts the records itself; each search record is 59 bytes ({@code 0xD45F38}).
+ * The matching semantics themselves — substring for partial, and the case toggle — are operator
+ * policy; those assertions are regression guards, not correctness checks.
  */
 public class SocialGameControllerIT extends BaseGameClientServerIT {
 	private static final String TOKEN = "abcd1234abcd1234";
@@ -144,7 +146,7 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(3);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.PLAYER_SEARCH_START);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(2);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
 
 		var entries = replies.get(1);
 		assertThat(entries.getCommand()).isEqualTo(SocialGameController.PLAYER_SEARCH_ENTRIES);
@@ -154,7 +156,7 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(entries.getPayload().getInt(SEARCH_ENTRY_SIZE)).isEqualTo((int) eater);
 		assertThat(nameAt(entries.getPayload(), SEARCH_ENTRY_SIZE + 4)).isEqualTo("SnakeEater");
 
-		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(2);
+		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
 	}
 
 	@Test
@@ -166,7 +168,7 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 			SocialGameController.PLAYER_SEARCH_END);
 
 		assertThat(replies).hasSize(3);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(1);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
 		assertThat(nameAt(replies.get(1).getPayload(), 4)).isEqualTo("Snake");
 	}
 
@@ -182,7 +184,7 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		var insensitive = loginThen(searchPacket(0, 0, "snake"),
 			SocialGameController.PLAYER_SEARCH_END);
 		assertThat(insensitive).hasSize(3);
-		assertThat(insensitive.get(0).getPayload().getInt(0)).isEqualTo(1);
+		assertThat(insensitive.get(0).getPayload().getInt(0)).isEqualTo(0);
 	}
 
 	/** A name of SQL wildcards must match literally (i.e. nothing), not every character. */
@@ -201,7 +203,7 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 
 	/**
 	 * While the record fields are being mapped, history serves the TEMPORARY fingerprint rows.
-	 * The wire-shape assertions (25-byte records, count-not-status start/end) are the durable
+	 * The wire-shape assertions (25-byte records, result-code-0 start/end) are the durable
 	 * part; the row contents change when real match records land.
 	 */
 	@Test
@@ -216,12 +218,30 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(replies).hasSize(3);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_START);
 		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(4);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(5);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
 		var entries = replies.get(1);
 		assertThat(entries.getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_ENTRIES);
 		assertThat(entries.getPayload().readableBytes()).isEqualTo(5 * 25);
 		assertThat(entries.getPayload().getInt(25 + 4)).isEqualTo(9102); // row 2 entry id
 		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_END);
+		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
+	}
+
+	/** The 201-byte reply shape is ELF-traced (parser 0xD3D874): u32 result 0, then 197 bytes. */
+	@Test
+	public void playerDetailsEchoesIdInFingerprintCard() {
+		givenSelectedCharacter("Snake");
+
+		var request = Unpooled.buffer();
+		request.writeInt(9101);
+		var replies = loginThen(new GamePacket(SocialGameController.GET_PLAYER_DETAILS, request),
+			SocialGameController.PLAYER_DETAILS_RESULT);
+
+		assertThat(replies).hasSize(1);
+		var payload = replies.get(0).getPayload();
+		assertThat(payload.readableBytes()).isEqualTo(201);
+		assertThat(payload.getInt(0)).isEqualTo(0);    // result code
+		assertThat(payload.getInt(4)).isEqualTo(9101); // id echo
 	}
 
 	@Test
@@ -235,8 +255,9 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(3);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_START);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(3);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
 		assertThat(replies.get(1).getPayload().readableBytes()).isEqualTo(3 * 93);
 		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_END);
+		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
 	}
 }

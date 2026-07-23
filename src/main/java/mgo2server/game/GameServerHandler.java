@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -46,8 +47,10 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 			var handler = handlers.get(command);
 			if (handler == null) {
 				// Silently dropping these makes a stalled client impossible to diagnose: the
-				// connection looks healthy and simply stops.
-				logger.warn("No handler for command {}; ignoring.", String.format("%04x", command));
+				// connection looks healthy and simply stops. The payload hex is the only record
+				// of what the client asked for, so dump it here.
+				logger.warn("No handler for command {}; ignoring. Payload: {}",
+					String.format("%04x", command), ByteBufUtil.hexDump(packet.getPayload()));
 			}
 			if (handler != null) {
 				var allocations = new ArrayList<ByteBuf>();

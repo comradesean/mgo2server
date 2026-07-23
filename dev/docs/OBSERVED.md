@@ -1635,3 +1635,68 @@ Chased the one lead — the `.bak` blob variants in GHzGangster/Nomad: `personal
 Conclusion: no original-server bytes are publicly recoverable. Live fingerprinting of the retail
 client (this project's method) is the authoritative path; a direct ask to the SaveMGO team is
 the only route to the surviving partial capture, if ever wanted.
+
+## Error 1032:00000005 — the list-triple start/end u32 is a result code, not a count
+
+2026-07-23, first live test of the match-history fingerprint payload. Opening match history
+produced "Unable to acquire match history. (1032:00000005)" — no stall, no `FFFFFF60`, and the
+lobby log showed the request handled. The `00000005` is our own byte reflected back: the server
+sent `0x4681` with u32 = 5, intended as the record count.
+
+ELF trace (same day) settled it. The `0x4681` handler (`0xD3ADF4`) branches on the payload u32:
+**nonzero** marks the transaction complete-with-error and stores the value verbatim in a
+per-subsystem result slot (`ctx + 0x33C + idx*4`, idx `0x1D` for match history); the history UI
+polls that slot (`0x91F958: li r3,0x1032` → error dialog `0x885A08(0x1032, result)`), which is
+exactly the observed dialog. **Zero** initialises the entry count to 0 and lets the transaction
+proceed. The `0x4683` end handler (`0xD3ACF8`) stores its u32 into the same result slot
+unconditionally and marks completion — so both start and end must carry **0**. The client counts
+the 25-byte `0x4682` records itself (`0xD3B5FC`, count capped at 64, stored stride 28 bytes);
+no packet ever tells it a count.
+
+Why the earlier "bare u32 count" reading survived: every prior live answer in this family was
+the **empty** triple, and a count of 0 is byte-identical to a result of 0. The mistake only
+became visible the first time a nonzero list was served.
+
+Same-day trace of the sibling families (player search `0x4601`/`0x4603`, match details
+`0x4685`/`0x4687`) — see PROTOCOL.md for the per-family verdicts.
+
+## The 0x4680 history fingerprint read live: a met-players list; Player Details sends 0x4220
+
+2026-07-23, immediately after the result-code fix above. The five FP rows rendered, settling
+three questions and opening one:
+
+- **Leading u32 = Unix timestamp, confirmed.** Row 1 carried 2001-01-02 01:01:01 UTC and
+  rendered as "01-02-2001 04:01:01": date exact, time +3h (emulated PS3 clock/timezone,
+  unresolved — note before trusting server-side timestamps to render as intended). Rendered
+  format was MM-DD-YYYY, not the `%Y/%m/%d` resource found in the ELF menu blob.
+- **16-byte string = player name, confirmed** — rendered verbatim as the row label.
+- **The screen is a met-players history**, one row per player encountered: selecting a row
+  opens a player context menu — Player Details / Create Mail / Add to Friend List / Add to
+  Block List. The second u32 (fingerprint 91xx) is therefore a strong character-id candidate;
+  the u8 (fingerprint 40+row) rendered nothing visible.
+- **"Player Details" sent `0x4220`** — the parked player-card family — not `0x4684`. It went
+  unhandled (`No handler for command 4220`), stalling that screen. Payload not captured (the
+  no-handler log did not dump hex then; it does now). No observed UI path reaches `0x4684`.
+
+## The 0x4221 player-details card fingerprinted; square = 0x4102; 1036:00000001 explained
+
+2026-07-23, minutes after the 0x4220 handler shipped. Clicking "Player Details" on FP-ROW-1
+rendered the card and settled, in one pass:
+
+- **The 0x4682 history record's second u32 is the character id, confirmed** — the row carried
+  fingerprint 9101 and the client sent `0x4220` with payload 9101 (server log).
+- **0x4221 card fields confirmed:** the 16B string at wire 0x08 is NAME (FP-DTL-NAME rendered);
+  the 128B string at 0x27 is COMMENTS; the u32 at 0x22 (dest T+0x494) is **play time in
+  seconds** — 9503 rendered as "02:38:23" = 9503 s.
+- **LEVEL rendered 22 — a value never sent.** Likely derived from an exp-like u32 through a
+  level table; candidates are the unrendered u32s 9501 (T+0x120) and 9502 (T+0x484). Varying
+  one at a time next fingerprint round splits them.
+- **CLAN rendered "---" despite FP-DTL-CLAN being sent** in the 16B slot at 0xAB — the clan
+  label is wrong or the display is gated (perhaps on the preceding u32 at 0xA7 being a valid
+  clan id; 9504 was sent).
+- **The card's square button ("more details") sends `0x4102`** — the personal-stats burst —
+  for the card's character. With fake id 9101 the server correctly answered not-found
+  (status 1 in `0x4103`), and the client rendered "Unable to acquire character information.
+  (1036:00000001)": our own status code echoed. Not a bug — resolves itself once history rows
+  carry real character ids. Bonus mappings: screen `0x1036` = character information, and the
+  ELF-traced context-menu arm that sends `0x4102` (idx `0x16`) is this button.

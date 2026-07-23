@@ -13,15 +13,22 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * The social family: player search ({@code 0x4600}) and match history ({@code 0x4680}/
- * {@code 0x4684}). All three are start/item/end list triples like the game browser, traced from
- * the binary 2026-07-23 (senders {@code 0xD46128}/{@code 0xD3B864}/{@code 0xD3B778}; parsers
- * {@code 0xD45DF0}+ / {@code 0xD3ADF4}+ / {@code 0xD3ABC8}+). Unanswered, each stalls its screen
- * into {@code FFFFFF60}.
+ * The social family: player search ({@code 0x4600}), met-players history ({@code 0x4680}/
+ * {@code 0x4684}), and player details ({@code 0x4220}). The first three are start/item/end list
+ * triples like the game browser, traced from the binary 2026-07-23 (senders
+ * {@code 0xD46128}/{@code 0xD3B864}/{@code 0xD3B778}; parsers {@code 0xD45DF0}+ /
+ * {@code 0xD3ADF4}+ / {@code 0xD3ABC8}+); player details is a single-reply card. Unanswered,
+ * each stalls its screen into {@code FFFFFF60}.
  * <p>
- * The start and end packets carry a bare u32 <em>count</em>, not a result code — none of these
- * replies has a status field. Item packets carry records back to back with no per-packet count;
- * the client reads until the payload ends, so records may be split across packets freely.
+ * The start and end packets carry a u32 <em>result code</em>, 0 for success — <strong>not</strong>
+ * a count. A nonzero start aborts the transaction and surfaces the value verbatim in the screen's
+ * error dialog (search {@code 0C13:%08x}, history {@code 1032:%08x}, details {@code 1034:%08x});
+ * the end packet's value overwrites the same result slot unconditionally, so both must be 0.
+ * Observed live 2026-07-23 as {@code 1032:00000005} when a count of 5 was mistaken for a result.
+ * Player search alone also accepts −611 ({@code -0x263}) as a "no results found" sentinel —
+ * traced but untested, so not used. The client learns the entry count only by counting item
+ * records itself. Item packets carry records back to back with no per-packet count; the client
+ * reads until the payload ends, so records may be split across packets freely.
  */
 public class SocialGameController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
@@ -41,6 +48,18 @@ public class SocialGameController implements IGameController {
 	public static final int MATCH_HISTORY_ENTRIES = 0x4682;
 
 	public static final int MATCH_HISTORY_END = 0x4683;
+
+	/**
+	 * Player details ({@code 0x4220}, u32 character id): the history row's "Player Details"
+	 * menu item (observed live 2026-07-23). Sender {@code 0xD3B950}, subsystem {@code 0x1C}.
+	 */
+	public static final int GET_PLAYER_DETAILS = 0x4220;
+
+	/**
+	 * Single reply (no triple): u32 result code (0 = success, nonzero surfaces via the open
+	 * screen's error dialog), then 197 bytes of fields — parser {@code 0xD3D874}.
+	 */
+	public static final int PLAYER_DETAILS_RESULT = 0x4221;
 
 	public static final int GET_MATCH_DETAILS = 0x4684;
 
@@ -76,6 +95,7 @@ public class SocialGameController implements IGameController {
 		handlers.put(PLAYER_SEARCH, this::playerSearch);
 		handlers.put(GET_MATCH_HISTORY, this::getMatchHistory);
 		handlers.put(GET_MATCH_DETAILS, this::getMatchDetails);
+		handlers.put(GET_PLAYER_DETAILS, this::getPlayerDetails);
 	}
 
 	/**
@@ -83,10 +103,10 @@ public class SocialGameController implements IGameController {
 	 * {@code 0xD46128} rejects anything else), a u8 match-case toggle, and a 16-byte name.
 	 */
 	private void playerSearch(GameControllerContext ctx) {
-		// These replies have no status field, so a missing session cannot be refused with an
-		// error code the way other handlers do it; an empty result unblocks the client instead.
+		// A nonzero result here would raise the 0xC13 error dialog; a missing session or bad
+		// request gets the empty success list instead, which unblocks the client quietly.
 		if (ctx.connection().account() == null) {
-			writeCountedList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END, 0);
+			writeEmptyList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END);
 			return;
 		}
 
@@ -94,7 +114,7 @@ public class SocialGameController implements IGameController {
 		if (payload.readableBytes() < 2 + NAME_LENGTH) {
 			logger.warn("Player search with {} payload bytes; expected {}.",
 				payload.readableBytes(), 2 + NAME_LENGTH);
-			writeCountedList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END, 0);
+			writeEmptyList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END);
 			return;
 		}
 		var fullMatch = payload.readByte() != 0;
@@ -102,13 +122,13 @@ public class SocialGameController implements IGameController {
 		var name = readNulTerminated(payload, NAME_LENGTH);
 
 		if (name.isEmpty()) {
-			writeCountedList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END, 0);
+			writeEmptyList(ctx, PLAYER_SEARCH_START, PLAYER_SEARCH_END);
 			return;
 		}
 
 		var matches = characterService.search(name, fullMatch, caseSensitive, SEARCH_LIMIT);
 
-		ctx.write(countPacket(ctx, PLAYER_SEARCH_START, matches.size()));
+		ctx.write(resultPacket(ctx, PLAYER_SEARCH_START));
 
 		for (var start = 0; start < matches.size(); start += SEARCH_ENTRIES_PER_PACKET) {
 			var end = Math.min(start + SEARCH_ENTRIES_PER_PACKET, matches.size());
@@ -128,7 +148,7 @@ public class SocialGameController implements IGameController {
 			ctx.write(new GamePacket(PLAYER_SEARCH_ENTRIES, buffer));
 		}
 
-		ctx.write(countPacket(ctx, PLAYER_SEARCH_END, matches.size()));
+		ctx.write(resultPacket(ctx, PLAYER_SEARCH_END));
 	}
 
 	/** TEMPORARY fingerprint rows served while the record fields are being mapped. */
@@ -155,7 +175,7 @@ public class SocialGameController implements IGameController {
 			logger.debug("Match history requested for character {}.", payload.readInt());
 		}
 
-		ctx.write(countPacket(ctx, MATCH_HISTORY_START, HISTORY_FINGERPRINT_ROWS));
+		ctx.write(resultPacket(ctx, MATCH_HISTORY_START));
 		var buffer = ctx.buffer(HISTORY_FINGERPRINT_ROWS * 25);
 		for (var i = 1; i <= HISTORY_FINGERPRINT_ROWS; i++) {
 			buffer.writeInt(HISTORY_FINGERPRINT_EPOCH + i * 90061); // +1d 1h 1m 1s per row
@@ -165,7 +185,7 @@ public class SocialGameController implements IGameController {
 			buffer.writeByte(40 + i);
 		}
 		ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
-		ctx.write(countPacket(ctx, MATCH_HISTORY_END, HISTORY_FINGERPRINT_ROWS));
+		ctx.write(resultPacket(ctx, MATCH_HISTORY_END));
 	}
 
 	/**
@@ -180,7 +200,7 @@ public class SocialGameController implements IGameController {
 			logger.info("Match details requested for entry {}.", payload.readInt());
 		}
 
-		ctx.write(countPacket(ctx, MATCH_DETAILS_START, DETAIL_FINGERPRINT_ROWS));
+		ctx.write(resultPacket(ctx, MATCH_DETAILS_START));
 		var buffer = ctx.buffer(DETAIL_FINGERPRINT_ROWS * 93);
 		for (var i = 1; i <= DETAIL_FINGERPRINT_ROWS; i++) {
 			buffer.writeInt(9200 + i);
@@ -193,19 +213,58 @@ public class SocialGameController implements IGameController {
 			buffer.writeInt(9400 + i);
 		}
 		ctx.write(new GamePacket(MATCH_DETAILS_ENTRIES, buffer));
-		ctx.write(countPacket(ctx, MATCH_DETAILS_END, DETAIL_FINGERPRINT_ROWS));
+		ctx.write(resultPacket(ctx, MATCH_DETAILS_END));
 	}
 
-	/** An empty list: the start/end pair with the same count and nothing between. */
-	private void writeCountedList(GameControllerContext ctx, int startCommand, int endCommand,
-			int count) {
-		ctx.write(countPacket(ctx, startCommand, count));
-		ctx.write(countPacket(ctx, endCommand, count));
+	/**
+	 * Player details ({@code 0x4220}). The 201-byte reply layout is ELF-traced field by field
+	 * (parser {@code 0xD3D874}): u32 result, u32 (id echo?), 16B string, u32, u8, u8, u32, u32,
+	 * u8, 128B string (comment?), u32, 16B string (clan?), u8, u32, u32, u8, u32. Only the
+	 * result code's meaning is confirmed; everything else is TEMPORARY fingerprint markers —
+	 * u32s 95xx in field order, u8s 6x, strings FP-*. The logged request id is the experiment:
+	 * it reveals whether the history row's second u32 (91xx) is the character id.
+	 */
+	private void getPlayerDetails(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var playerId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() : 0;
+		// Deliberately INFO: this echo identifies which history-record field the client sends.
+		logger.info("Player details requested for character {}.", playerId);
+
+		var buffer = ctx.buffer(201);
+		buffer.writeInt(0);        // result code: 0 = success
+		buffer.writeInt(playerId); // candidate id echo — echoed to test the label
+		BufferUtil.writeString(buffer, "FP-DTL-NAME", StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		buffer.writeInt(9501);
+		buffer.writeByte(61);
+		buffer.writeByte(62);
+		buffer.writeInt(9502);
+		buffer.writeInt(9503);
+		buffer.writeByte(63);
+		BufferUtil.writeString(buffer, "FP-DTL-COMMENT-128", StandardCharsets.ISO_8859_1, 128);
+		buffer.writeInt(9504);
+		BufferUtil.writeString(buffer, "FP-DTL-CLAN", StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		buffer.writeByte(64);
+		buffer.writeInt(9505);
+		buffer.writeInt(9506);
+		buffer.writeByte(65);
+		buffer.writeInt(9507);
+		ctx.write(new GamePacket(PLAYER_DETAILS_RESULT, buffer));
 	}
 
-	private GamePacket countPacket(GameControllerContext ctx, int command, int count) {
+	/** An empty list, delivered as success: the start/end pair with nothing between. */
+	private void writeEmptyList(GameControllerContext ctx, int startCommand, int endCommand) {
+		ctx.write(resultPacket(ctx, startCommand));
+		ctx.write(resultPacket(ctx, endCommand));
+	}
+
+	/**
+	 * A start/end packet: u32 result code 0, success. The end packet's value overwrites the
+	 * client's result slot unconditionally, so both must be 0; anything else surfaces in the
+	 * screen's error dialog.
+	 */
+	private GamePacket resultPacket(GameControllerContext ctx, int command) {
 		var buffer = ctx.buffer(Integer.BYTES);
-		buffer.writeInt(count);
+		buffer.writeInt(0);
 		return new GamePacket(command, buffer);
 	}
 

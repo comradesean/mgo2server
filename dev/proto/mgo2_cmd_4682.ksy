@@ -4,15 +4,20 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Item packet of the 0x4680 match-history triple (0x4681 start {u32 count} / 0x4682 items /
-  0x4683 end {u32 count}). Records are packed back to back with no per-packet count — the
-  parser (0xd3b5fc) reads until the payload ends; client table caps at 64 entries, 25 bytes
-  each on the wire (struct stride 0x1c).
+  Item packet of the 0x4680 match-history triple (0x4681 start {u32 result} / 0x4682 items /
+  0x4683 end {u32 result}). The start/end u32 is a RESULT CODE, not a count — 0 required in
+  both (a nonzero start aborts the screen with dialog 1032:%08X, and the end value overwrites
+  the client's result slot unconditionally; handlers 0xd3adf4/0xd3acf8, live-confirmed
+  2026-07-23 when sending a count of 5 produced 1032:00000005). Records are packed back to
+  back with no per-packet count — the parser (0xd3b5fc) reads until the payload ends and the
+  client counts them itself; table caps at 64 entries, 25 bytes each on the wire (struct
+  stride 0x1c).
 
-  Field POSITIONS are READ from the ELF parser. LABELS are candidates only: the SaveMGO
-  Nomad dev-era test payload (tier 4, decoded 2026-07-23) and the ELF's history-UI
-  %Y/%m/%d %H:%M:%S date resource support {timestamp, id, name, u8} — awaiting live
-  fingerprint confirmation. One field must be the entry id the 0x4684 detail request echoes.
+  Field POSITIONS are READ from the ELF parser. Live fingerprint 2026-07-23: the screen is a
+  MET-PLAYERS history, one row per player encountered — each row shows the timestamp and the
+  name, and selecting a row opens a player context menu (Player Details / Create Mail /
+  Add to Friend List / Add to Block List). "Player Details" sends 0x4220 (the player-card
+  family), NOT 0x4684 — what triggers 0x4684 is now unknown again.
 doc-ref: dev/docs/PROTOCOL.md "0x4600 / 0x4680 / 0x4684 — player search and match history"
 seq:
   - id: records
@@ -24,17 +29,22 @@ types:
       - id: timestamp
         type: u4
         doc: |
-          [CANDIDATE] Unix seconds — Nomad's test payload puts a timestamp here and the
-          history UI renders a %Y/%m/%d %H:%M:%S date. Unconfirmed against the live client.
-      - id: entry_id
+          [CONFIRMED] Unix seconds, rendered as the row's date. Live fingerprint 2026-07-23:
+          sent 978397261 (2001-01-02 01:01:01 UTC), screen showed "01-02-2001 04:01:01" —
+          date exact, time +3h (emulated-clock timezone handling unresolved; note the
+          rendered format was MM-DD-YYYY, not the %Y/%m/%d ELF resource).
+      - id: chara_id
         type: u4
         doc: |
-          [CANDIDATE] id — plausibly the selectable entry id echoed by the 0x4684 detail
-          request (u32). Nomad's test payload put a character id here. Unconfirmed.
+          [CONFIRMED] character id. Live 2026-07-23: row 1 carried fingerprint 9101 and
+          selecting "Player Details" sent 0x4220 with payload 9101 (server log) — the
+          client echoes this field as the id for the row's player-scoped actions.
       - id: name
         type: str
         size: 16
-        doc: "[CANDIDATE] NUL-padded name (host? game?). A 16-byte string field per the parser; content label unconfirmed."
+        doc: |
+          [CONFIRMED] NUL-padded player name — rendered verbatim as the row label
+          (FP-ROW-1..5 displayed) on the met-players history screen.
       - id: unknown_flag
         type: u1
-        doc: "[UNKNOWN] Nomad's test payload sent 0."
+        doc: "[UNKNOWN] Fingerprint 40+row sent; nothing visibly rendered. Nomad's test payload sent 0."
