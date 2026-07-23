@@ -751,6 +751,86 @@ inferred from the sibling result packets, not read from the binary**; the client
 not stall on it. Notably the client fires `0x4110` + both `0x4114`s in a single burst without
 waiting between them.
 
+## `0x4102` — get personal stats
+
+**Client → server**, `PersonalStatsController`. First observed live 2026-07-23 (the personal-stats
+screen; stalled unanswered), then traced in full from the binary the same day. Payload: one u32
+character id — the viewer's own (pulled from the connect-burst record) or, in principle, any id.
+Sender `0xD3BA3C` (single build site `0xd3bab0`), wait slot `0x16`.
+
+The reply is a **three-packet burst into one struct**, all keyed to slot `0x16`; there are no
+`0x4104`/`0x4106` requests (no builders exist — `0x4105`/`0x4107` only ever arrive as part of this
+burst):
+
+| command | parser | size | role |
+| --- | --- | --- | --- |
+| `0x4103` | `0xd3e9ac` | `0x288` = 648 | status u32, then character info, comment, ratings |
+| `0x4105` | `0xd3e53c` | `0x248` = 584 | status u32, **page u32 (must be 0 or 1)**, then the per-mode stat grid: 8 modes × 18 u32, mode-major |
+| `0x4107` | `0xd3db1c` | `0x24C` = 588 | status u32, then two 73-u32 records; **terminal** — sets slot `0x16` complete (`0xd3e4b0`), so it must be sent last |
+
+**Byte-exact, machine-checkable layouts for all three replies live in `dev/proto/*.ksy`**
+(Kaitai Struct; compiles clean, every byte assigned, per-field confidence tags). The prose
+below is the summary; the `.ksy` files are the canonical field-level truth.
+
+`0x4103` opens with a real status code: nonzero error-completes the slot and skips the body
+(`0xd3ea38`), so a bad id is answered with a 4-byte `0x4103` alone. Head (wire order): u32 status,
+u32 char id, 16-byte name, the `0x4101` constant block (4×u16), u32 experience, 2×u32 login
+times, u8, 32×u32 friend ids, 32×u32 blocked ids (both confirmed flat id arrays from the parser
+loops, not stats) — 301 bytes. The 347-byte tail is a **flat, packed field sequence** (no tables,
+no conditional layouts; full second trace 2026-07-23), in wire order:
+
+u8 · u32 · 16-byte string · u8 · 12×u16 · u32 · 9×u8 · u32 · 14×u8 · 10×u8 · 5×u32 · u8 · u32 ·
+**128-byte comment** (wire offset 413, `T+0x1E24` — confirmed live by fingerprint) · u8 · 9×u8 ·
+9×u32 (the block the stats screen reads at `T+0x32D0`) · u32 (stored to `obj+0x30`, not the
+struct) · 16-byte string · u32 · u32 · 16-byte string · u8 · 3×u32 · u32.
+
+Semantic labels for the tail integers (Host Rating, Instructor Score, "generation", etc.) are
+positioned but not yet named — that needs an aligned capture; the live fingerprint session
+(OBSERVED.md) is working through them.
+
+**`0x4105`'s second u32 is a page selector, not a count: any value > 1 makes the parser bail
+(error −0x47) and skip the whole matrix.** Page 0 zeroes then fills the grid region; the wire
+carries 8 modes (the parser's 12-slot mode loop skips indices 6/8/9/10) × 18 u32 stats each.
+This matrix — not `0x4103` — is what the per-mode grids on the stats screen render (reader
+cluster `0x9193BC`+, striding `0x48`/mode and `0x360`/page). Capture-proven map (fingerprint v5,
+OBSERVED.md): modes in wire order are Deathmatch, Team Deathmatch, Rescue, Capture, Sneaking,
+Base, a hidden seventh included in the client's computed totals (no page of its own — plausibly
+a slot reserved for a mode that never shipped; identity parked, not pursued — **serve zeros** so
+the visible pages account for every Total), and an unused eighth; columns:
+0 All Kills, 1 All Deaths, 2 Lockon Kills, 3 Score, 4 All Stuns, 5 All Stuns Received, 6–9 HS
+Kills/Deaths/Stuns/Stuns-Received, 10 Lockon Stuns, 11 Lockon Deaths, 12 Lockon Stuns-Received,
+14 Rounds, 16 Wins, 17 Play-time-seconds; 13 and 15 are unmapped (markers surfaced nowhere).
+Columns 0/1/4/5 are category totals whose only display role is recovering the OTHER row
+(OTHER = wire value − HS − lockon, clamped at 0); the ALL row is then client-summed from the
+displayed rows and never shows the wire value directly (proven by probe, v8) — so send them as
+other + HS + lockon. The Total page, the header time and title/award unlocks are likewise
+computed client-side. Page 0 is cumulative and page 1 is weekly — the stats screen's
+cumulative/weekly toggle switches page, paired with `0x4107` record 1 (cumulative) / record 2
+(weekly), which share one slot layout (capture-proven). Send both pages and both records.
+
+Title history and award ("medal") history on the same screen are **not** fed by this burst, by
+any command, or by the record tables earlier suspected (`T+0x26d14` and `T+0x3330` turned out
+to be match-history list storage for `0x4682`/`0x4212` records) — they are **computed
+client-side from the stat values**, against a 22-title resource table (VA `0xe14eb0`) and a
+39-row medal threshold table (VA `0xe139c0`, `{u32 id, u32 name-hash, u32 threshold}`,
+13 medals × 3 tiers). The thresholds are transcribed in OBSERVED.md; the server's only job is
+honest stats.
+
+## `0x4132` — outfit commit
+
+**Client → server**, `PersonalInfoController.commitOutfit`. First observed live 2026-07-23: closing
+the outfit screen fires the `0x4130` updates (answered) and then this, **empty payload** (confirmed
+from the sender `0xd3a844` — zero appends), blocking on wait slot `0x1b`.
+
+The `0x4133` reply is **not a result code**. The parser (`0xd3c77c`) zeroes the client's loadout
+table (`0x60c` bytes) and then reads: u32 **entry count**, `count ×` `{u8 slot, u32 value}`
+loadout entries (12-byte records into `charTable+0x26a0+slot*0xc`, slot ≤ `0x80`), then a fixed
+**fifteen** `{u8 slot, u8 bit}` equipped-bit pairs — total `34 + 5·count` bytes. A nonzero first
+u32 would be read as a count, not an error, and the read primitives do not check payload length
+(the `0x4101` caveat again). We send the 34-byte empty readback (count 0, zero pairs); what the
+original filled the entries with — presumably the skill/gear loadout — awaits a capture, and note
+the zero pairs redundantly touch bit 0 of slot 0, as no distinct no-op encoding is known.
+
 ## `0x4300` — get game list
 
 **Client → server**, `GameListGameController.getGameList`.
@@ -1282,6 +1362,38 @@ are of known meaning), `0x4583` end. **Never observed live**, and we cannot fill
 record honestly, so it is answered **empty** (start then end) — enough that the menu cannot hang.
 Populate once a real `0x4580` is captured.
 
+## `0x4600` / `0x4680` / `0x4684` — player search and match history
+
+**Client → server**, `SocialGameController`. All three observed live 2026-07-23 (each stalled its
+screen unanswered) and traced from the binary the same day. All three are **start / item / end
+list triples** like the game browser, each keyed to a wait state the client blocks on (`0x53`,
+`0x1D`, `0x1E` respectively). **No packet in the family carries a status code**: start and end are
+a bare `{u32 count}`, and item packets are records back to back with **no per-packet count** — the
+parser reads until the payload ends, so records may be split across item packets freely. A missing
+session therefore gets an empty list, not an error.
+
+### `0x4600` — player search (sender `0xD46128`, replies `0x4601`/`0x4602`/`0x4603`)
+
+Request, 18 bytes: `u8` match criteria (0 = partial, 1 = full — the builder rejects other values),
+`u8` match case (both toggles are packed nibbles of one UI control byte), then a 16-byte name.
+The client does no matching of its own — **all four semantics combinations are server policy**;
+ours is substring for partial, SQL-escaped. Result records (`0x4602`, parser `0xd45f38`,
+59 bytes each, client table caps at **100**): u32 id, 16-byte name, u16, 16 bytes (likely clan
+name), u32, 16 bytes, u8 — tail fields inferred only from width; we send zeros there.
+
+### `0x4680` — match history list (sender `0xD3B864`, replies `0x4681`/`0x4682`/`0x4683`)
+
+Request: u32 character id. Records (`0x4682`, parser `0xd3b5fc`, 25 bytes each, table caps at
+**64**): u32, u32, 16-byte string, u8 — unlabelled; match outcomes are not recorded server-side
+yet, so every history is answered as the empty triple.
+
+### `0x4684` — match detail (sender `0xD3B778`, replies `0x4685`/`0x4686`/`0x4687`)
+
+Request: u32 entry id selected from the `0x4682` list. Records (`0x4686`, parser `0xd3b42c`,
+93 bytes each, table caps at **32**): u32, 64-byte string, 16-byte string, u8, u32, u32 —
+plausibly per-player lines of one match. Answered as the empty triple, unreachable while every
+history is empty, but handled so a stale selection can never stall.
+
 ## `0x4128` — get post-game info
 
 **Client → server**, `HostGameController.postGameInfo`. Reply `0x4129` is the `0x8b`-byte results
@@ -1419,9 +1531,10 @@ grouped by how likely normal play is to hit them, not listed flat.
 
 **Reachable in ordinary flow (highest priority to resolve):** the in-match/host family we have
 only partly covered — `0x4348`, `0x4394` (large struct), `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
-`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4102`,
-`0x4112`, `0x4132`, `0x4210`, `0x4220`. None has surfaced as a stall in testing yet, so each is
-conditional on a specific action/menu we have not exercised.
+`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4112`,
+`0x4210`, `0x4220`. (`0x4102` and `0x4132` were on this list until 2026-07-23, when both surfaced
+as live stalls and were traced and handled — see their sections.) The rest have not surfaced in
+testing yet, so each is conditional on a specific action/menu we have not exercised.
 
 **Whole unmodelled subsystems (only reached if that feature's menu is opened):**
 
