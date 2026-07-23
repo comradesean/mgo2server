@@ -1380,13 +1380,23 @@ Request, 18 bytes: `u8` match criteria (0 = partial, 1 = full — the builder re
 The client does no matching of its own — **all four semantics combinations are server policy**;
 ours is substring for partial, SQL-escaped. Result records (`0x4602`, parser `0xd45f38`,
 59 bytes each, client table caps at **100**): u32 id, 16-byte name, u16, 16 bytes (likely clan
-name), u32, 16 bytes, u8 — tail fields inferred only from width; we send zeros there.
+name), u32, 16 bytes, u8 — tail fields inferred only from width; we send zeros there. The
+SaveMGO Nomad dev-era test payload (`search-player.bin`, tier 4, decoded 2026-07-23 —
+OBSERVED.md) fills the record as a **presence card**: {u32 chara id, 16B name, u16 = 36
+(level/rank?), 16B current lobby name, u32 = 1 (in-game flag?), 16B current game name,
+u8 = 4 (lobby id?)} — plausible labels worth a fingerprint pass if search results ever
+need to show location.
 
 ### `0x4680` — match history list (sender `0xD3B864`, replies `0x4681`/`0x4682`/`0x4683`)
 
 Request: u32 character id. Records (`0x4682`, parser `0xd3b5fc`, 25 bytes each, table caps at
-**64**): u32, u32, 16-byte string, u8 — unlabelled; match outcomes are not recorded server-side
-yet, so every history is answered as the empty triple.
+**64**): u32, u32, 16-byte string, u8 — positions from the ELF; labels are **candidates only**
+(tier 4): the SaveMGO Nomad repo's dev-era test payload (`match-history.bin`, decoded
+2026-07-23, OBSERVED.md) fills them as {u32 Unix timestamp, u32 id, 16-byte player/host name,
+u8 0}. The client's history UI has a `%Y/%m/%d %H:%M:%S` format resource in the ELF menu blob
+(found during the title/medal extraction), so a timestamp field is expected; the `0x4684`
+request needs one field to be the selectable entry id. Fingerprint before trusting. Match
+outcomes are not recorded server-side yet, so every history is answered as the empty triple.
 
 ### `0x4684` — match detail (sender `0xD3B778`, replies `0x4685`/`0x4686`/`0x4687`)
 
@@ -1522,8 +1532,10 @@ grouped by how likely normal play is to hit them, not listed flat.
 **Two corrections the scan forced, both worth acting on:**
 
 - **`0x43ca` is never sent — the client sends `0x43c8`** (builder `0xD40CB4`, payload `{u32,
-  u8}`). Our "start round" handler is bound to `0x43ca`, which has no builder anywhere, so it is
-  **dead code** — and this is exactly why the `game_round` snapshot never populates (BACKLOG).
+  u8}`). Our "start round" handler *was* bound to `0x43ca`, which has no builder anywhere —
+  dead code that kept the `game_round` snapshot empty. **Resolved 2026-07-23:** the handler is
+  renumbered to `0x43c8`/`0x43c9`, and the snapshot now populates on game create and join
+  regardless (BACKLOG, marked resolved).
   `0x43c8` is the likely real trigger. This reads as a two-off transcription slip inherited from
   a reference. Do not blindly repoint — capture a `0x43c8` and confirm its semantics first — but
   it is the strongest lead on the round-lifecycle gap.

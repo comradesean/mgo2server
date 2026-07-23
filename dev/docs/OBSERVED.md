@@ -1280,7 +1280,8 @@ reference-only, same standing as the uniques fields.
 - **Crash teardown verified**: an RPCS3 host crash produced a clean "left game 85 (on
   disconnect), which it hosted; removing it", zero orphan rows; and a crashed joiner's straggler
   stat report was correctly rejected — which also exposed that the `game_round` snapshot never
-  populates on this build (its trigger, `0x43ca`, never arrives). See BACKLOG.
+  populated at the time (its then-trigger, `0x43ca`, never arrives). Since resolved: the
+  handler is renumbered to `0x43c8` and the snapshot populates on create/join. See BACKLOG.
 
 ## ADDLIST (friend/blocked) solved from the ELF
 
@@ -1590,3 +1591,30 @@ column never renders directly (v8). "Total" was inferred from that arithmetic (a
 wanting OTHER = x is forced to send x + HS + lockon), then repeated as if observed. The specs
 and PROTOCOL.md now name these fields `*_minuend` — the proven role — and leave the original
 semantic explicitly unknown.
+
+## The SaveMGO Nomad capture blobs: dev-era test data, not Konami captures — but useful
+
+2026-07-23, investigating the match-record design. GHzGangster/Nomad ships `.bin` payloads
+wired (commented out) for playback on history/stats commands. Hypothesis was original-era
+Konami captures; **decode disproved it**: `match-history.bin`'s leading u32 is `0x58AB6955` =
+2017-02-20, and the record's name is "president trump" — SaveMGO dev-era test data, tier 4.
+
+Still worth keeping (fetched to scratchpad, findings only recorded here):
+
+- `match-history.bin` (25 B = exactly one `0x4682` record; the size matching our ELF-traced
+  grid cross-validates the trace): their placement = {u32 Unix timestamp, u32 id = 2,
+  16B name, u8 = 0}. Candidate labels only.
+- `search-player.bin` (59 B = exactly one `0x4602` record; string boundaries land precisely
+  on our traced offsets — mutual validation): their placement = {u32 id, 16B name,
+  u16 = 36, 16B "dev-lobby", u32 = 1, 16B "Host Name", u8 = 4} — a presence card.
+- `personal-stats-1.bin` (1024 B ≠ our 648): their own ASCII-position-marker **fingerprint
+  payload** ("A0A1A2A3…X9") — the same technique this project used this week, nine years
+  earlier. The size difference suggests they targeted a different client build; not usable
+  as labels for ours.
+- `player-overview.bin` (207 B): likely the `0x4212`-family player card (name + "Master the
+  grid." comment + small ints); parked until that family is traced.
+
+The `%Y/%m/%d %H:%M:%S` date-format resource found in the ELF menu blob during the
+title/medal extraction (previously unrecorded) is now noted in PROTOCOL.md's `0x4680`
+section: the history UI renders a timestamp, so the record's leading-u32-as-timestamp
+candidate is structurally plausible. Fingerprinting the live screen is the confirmation path.
