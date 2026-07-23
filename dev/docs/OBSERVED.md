@@ -1790,10 +1790,16 @@ skill-gated, not pressure-gated: with CQC 3 equipped the grab works from any inp
 2026-07-23 TDM (game 107), DEBUG per-connection trace: every inbound 0x4390 arrived on the
 host's connection — the joiner, alive and playing through round 1, sent none for himself. The
 host speaks for all players (one 167-byte packet each), so the server-side stats pipeline
-trusts the host entirely; a joiner has no channel of his own. After the joiner *crashed*
-mid-round-2, the host still filed a batch including him (all-zero, accepted via
-roster/snapshot) — evidence for "SaveMGO dropped quitter reports" over "the host never sends
-them", pending a deliberate quit test. Same round also upgraded A `0x0f` to **stuns received**
+trusts the host entirely; a joiner has no channel of his own. A batch including the joiner
+(all-zero) arrived around his mid-round-2 crash, but the crash time relative to the batch
+was never established — **inconclusive** for the does-the-host-report-departed-players
+question. The evidence on that question stands at exactly one observation (2026-07-22): a
+**crashed** joiner's end-of-round report arrived (and was then rejected by the pre-snapshot
+membership check). A **voluntary mid-round quit** has never been tested on this server and
+may behave differently (a crash leaves the host's peer FSM to time out; a menu-quit may
+remove the player from the host's round model immediately — the SaveMGO no-stats result is
+consistent with that). The clean experiment: joiner menu-quits mid-round with DEBUG tracing
+on; watch for a 0x4390 naming him at quit time, at round end, or never. Same round also upgraded A `0x0f` to **stuns received**
 (matched opposing stuns-dealt in every round to date), added new one-observation slots A
 `0x15` (dealt) / A `0x17` (received) and B24 — candidate events: stun-sniper headshot,
 knife-kill on a sleeping body (the dart headshot did NOT tick the headshot counter, matching
