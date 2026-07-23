@@ -68,9 +68,16 @@ seq:
   - id: round_won
     type: s2
     doc: "[CONFIRMED] winner-only across seven rounds, then transferred on the reporter's first loss. No score contribution."
+  - id: team_slot
+    type: u2
+    doc: |
+      [CONFIRMED] team slot index (decoded 2026-07-23 late): constant per player per game,
+      0 for everyone in DM, grouped the killers correctly in a 3-player TDM. NOT the team
+      color — the index-to-color mapping varies per game. Was misread as the high half of a
+      u32 seconds field ("garbage seconds").
   - id: seconds_in_game
-    type: u4
-    doc: "[CONFIRMED] seconds in game (client splits hi/lo u16)."
+    type: u2
+    doc: "[CONFIRMED] seconds in game/round — equal for co-present players of a full round."
   - id: experience_total
     type: u4
     doc: "[CONFIRMED] experience, absolute total (not a delta)."
@@ -127,9 +134,13 @@ types:
       - id: unknown_b11
         type: s2
         doc: "slot 11. [PAIR-RECEIVED with b10] 11 during grab practice with zero deaths/stuns."
-      - id: unknown_b12
+      - id: other_count
         type: s2
-        doc: "slot 12. [OPEN] 3 in each explosive-kill round; stray 1 in knife/rifle/CQC rounds; 0 in lock-on round and practice. Explosions caused? The stray 1 is unexplained."
+        doc: |
+          slot 12. [CONFIRMED-ACCOUNTING] the OTHER scoreboard category: the stage screen's
+          Other=2 matched this slot's per-round sum, and +1 per count closes otherwise
+          undecomposable scores exactly (scores x1). WHAT earns an other-point remains
+          unidentified: 3 per explosive-kill round, 1/round in several others, 0 in some.
       - id: unknown_b13
         type: s2
         doc: "slot 13. [UNKNOWN] never observed nonzero."
