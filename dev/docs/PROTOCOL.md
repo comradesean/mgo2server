@@ -1253,11 +1253,15 @@ live reports; the server actively flags deviations):**
    sends them — joiners have no reporting channel (verified: an active joiner sent zero).
    Timing: present players at round end; a mid-round quitter immediately at quit (real
    values, 84 ms after the leave command, twice reproduced) and **not again** at round end.
-2. **No in-frame game identifier; attribution is connection-implicit.** Nothing in the frame
-   names the game or lobby — the server resolves the game as "the one this connection's
-   character hosts", and a character hosts at most one. The start-round reply's token is
-   retained by the client but has never been echoed in a report (trailing word 0 in all 14).
-   `round_report.game_id`/`host_chara_id` are stamped from connection context, not parsed.
+2. **No in-frame game identifier; attribution is connection-implicit — now BINARY-PROVEN
+   (ELF trace 2026-07-23).** Nothing in the frame names the game or lobby — the server
+   resolves the game as "the one this connection's character hosts", and a character hosts
+   at most one. The start-round reply's token is stored at one client location
+   (`session+0x57d8+0x32f8`) and read exactly once in the whole binary — into a local UI
+   record via memory-copy helpers, never a packet writer; the `0x43c8`, `0x43a2` and
+   `0x4390` builders provably never touch it. The `0x43c8` request itself is two config
+   bytes, not an id. `round_report.game_id`/`host_chara_id` are stamped from connection
+   context, not parsed.
 
 Deviation tripwires in `updateStats`: a `0x4390` on a non-host connection and a nonzero
 trailing word each log a WARN with payload hex — if either fires, these truths need revisiting.
@@ -1351,13 +1355,25 @@ request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-se
 `0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass we
 implement.)
 
-## `0x43a2` — round end? (never observed)
+## `0x43a2` — round-end slot-tally list (observed and ELF-decoded 2026-07-23)
 
-**Client → server**, still ack-only (`0x43a3`, result 0). Nomad's comment is literally "Unknown,
-end of round, stats?"; mgo2-server calls it Unknown — and this client has **never sent it**,
-including at a genuine round end with a declared winner (the end-of-round conversation observed
-live is just re-registration plus `0x4390` per player). Any future meaning needs the ELF, not the
-references.
+**Client → server**, acked `0x43a3` (result 0). The 2026-07-22 "never sent" verdict was DM-era:
+natural **TDM** round ends send it, once per round, between the per-player `0x4390` reports.
+ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
+
+```
+u32 header      — observed 1; copied from the round-summary record header, semantic open
+u32 count       — number of entries (client caps the list at 0x7f; caller caps count at 50)
+count × { u8 slot_index (1-based), u16, u16, u16 }   — 7 bytes per entry
+```
+
+The caller walks a 127-slot, 3-bytes-per-slot client table and emits one entry per non-zero
+slot. Observed decodes: headshot rounds → `{slot 25: 1,1,0}`; the dart+sleep-stab round →
+`{slot 1: 1,0,0}, {slot 43: 0,1,1}`. What the slot table indexes (players? weapons? event
+types?) is open — but **it carries no token, no game/room id, and no round counter**
+(the caller references none of the token storage; see the reporting-model note under
+`0x4390`). We ack and store nothing; decode-and-store is future work once the slot table's
+meaning is pinned.
 
 # ADDLIST — friend / blocked relationships (`0x4500` / `0x4510` / `0x4580`)
 
