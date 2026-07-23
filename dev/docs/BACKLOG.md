@@ -347,14 +347,28 @@ per-round `0x4390` report (kills/deaths/score/stuns/headshots/seconds/exp all li
 plus the `game_round` roster snapshot. Today we fold reports into lifetime totals and discard
 the round-level detail; history is what falls out of keeping it.
 
-**Phase 1 — keep the round reports.** A `round_report` table, one row per `0x4390` report:
+**Storage principle (settled 2026-07-23): bare minimum — `round_report` is the single new
+table, and every stats/history screen derives from it at query time.** No weekly or per-mode
+accumulator tables, no encounter table: period views are time-window sums over `reported_at`,
+per-mode views join `game` for the mode, encounters are the phase-2 self-join. This
+supersedes the `chara_mode_stats` / `chara_personal_scores` schema sketched in OBSERVED.md
+("The cumulative/weekly toggle") — those were never built and now should not be.
+`chara_stats` (lifetime sums, already shipped) stays: it is the only record of rounds played
+before `round_report` exists, and ripping out a working accumulator buys nothing — but no new
+derived state gets added. Revisit materialization only if the table ever becomes too large,
+which at this population it will not. On fidelity: the original backend's schema is
+unobservable — no capture can reveal it — so "recreate the original" can only ever mean
+matching its *wire behaviour* (tiers 1–2). What the history and weekly screens prove is that
+Konami's backend kept per-round, per-player data; a raw round-report table is the minimal
+store consistent with that evidence, which is exactly why it is the right shape.
+
+**Phase 1 — keep the round reports.** The `round_report` table, one row per `0x4390` report:
 game id, round, reporter (host) id, target chara id, the parsed fields as typed columns
 (kills, deaths, score, stuns, headshots dealt/taken, seconds, exp-total, aborted flag), and
 the still-unlabelled counters as named-by-offset columns (`counter_0x0f`, struct-B slots) —
-decoded columns, not blobs, per the no-blobs rule. Cheap, and it future-proofs everything
-below plus weekly-stat rebuilds and the secondary-counter labelling work (see "Scoreboard
-stats" entry). Accumulate play seconds per character here if `0x4390`'s seconds field is not
-already applied — the `0x4221` card's PLAY TIME (confirmed, seconds) needs it.
+decoded columns, not blobs, per the no-blobs rule; plus `reported_at`. A non-cascading
+relationship to `chara` (deleted players must not vanish from others' histories). Play time
+for the `0x4221` card (confirmed, seconds) is then `sum(seconds)` — derived, not accumulated.
 
 **Phase 2 — serve `0x4680` by deriving encounters from `round_report`.** No separate
 encounter table (a `chara_encounter` materialization was considered and rejected 2026-07-23:
