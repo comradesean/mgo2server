@@ -356,14 +356,16 @@ below plus weekly-stat rebuilds and the secondary-counter labelling work (see "S
 stats" entry). Accumulate play seconds per character here if `0x4390`'s seconds field is not
 already applied — the `0x4221` card's PLAY TIME (confirmed, seconds) needs it.
 
-**Phase 2 — encounters, serving `0x4680`.** A `chara_encounter` table: viewer chara id, met
-chara id, met name (denormalized: survives deletes and renames honestly — "the name you saw"),
-last-met timestamp. Upsert per (viewer, met) pair at round teardown, walking the round roster
-pairwise in the same transaction that applies stats. Serve the newest 64 (client table cap;
-retention beyond that is operator policy), record layout per `mgo2_cmd_4682.ksy` — all four
-fields labelled, u8 sent 0 (cosmetically inert in the fingerprint). Join-time writing was
-considered and rejected: teardown has ground truth of who actually played, and shares the
-existing transaction.
+**Phase 2 — serve `0x4680` by deriving encounters from `round_report`.** No separate
+encounter table (a `chara_encounter` materialization was considered and rejected 2026-07-23:
+at this population it buys nothing and adds an upsert hook, a prune policy, and derived state
+that can drift). Who the viewer met is a self-join — other players with a report in the same
+(game, round) — grouped by met-chara with `max(reported_at)`, newest 64 (client table cap),
+name joined from `chara`. Record layout per `mgo2_cmd_4682.ksy` — all four fields labelled,
+u8 sent 0 (cosmetically inert in the fingerprint). Two decisions this derivation forces on
+the phase-1 migration: character deletion must not cascade into `round_report` (soft-delete
+or preserve rows, else deleted players vanish from every history), and history depth equals
+`round_report` retention — which is "keep indefinitely", since stats want it anyway.
 
 **Phase 3 — `0x4221` player details from real data.** Name and comment from the chara row,
 play time from phase 1, id echo as implemented. LEVEL is client-derived from an exp-like u32
