@@ -127,7 +127,7 @@ services:
     command: ["web"]
     environment: *server-env
     ports:
-      - "192.168.1.100:${MGO2SERVER_WEB_PORT:-8080}:8080"
+      - "192.168.1.200:${MGO2SERVER_WEB_PORT:-8080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -154,7 +154,7 @@ services:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
     ports:
-      - "${MGO2SERVER_PROBE_HTTP:-192.168.1.100:80}:80"
+      - "${MGO2SERVER_PROBE_HTTP:-192.168.1.200:80}:80"
     depends_on:
       web:
         condition: service_healthy
@@ -172,7 +172,7 @@ services:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
     ports:
-      - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.100:443}:443"
+      - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.200:443}:443"
     depends_on:
       web:
         condition: service_healthy

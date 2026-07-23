@@ -6,7 +6,9 @@ The server side is `docker compose up`. Everything else is emulator and host con
 comes down to **four required changes** plus one host address for the port check.
 
 Assumed throughout: stock **RPCS3 v0.0.41**, retail disc **BLUS30109**, and a server reachable at
-`<SERVER_IP>` — written below as `192.168.1.100`, the value the defaults use.
+`<SERVER_IP>` — written below as `192.168.1.200`, the value the defaults use. The server owns its
+own address, distinct from the machine's primary (`.100`), so a native RPCS3 client can run on
+the same machine without sharing an IP with the server — see the host section below.
 
 ## Server
 
@@ -60,7 +62,7 @@ Redirects Konami's hostnames to the server. **Settings → Network → IP swap l
 `config/config.yml`:
 
 ```
-IP swap list: "mgo2web.konami.com=192.168.1.100&&info.service.konamionline.com=192.168.1.100&&mgo2gateus.konamionline.com=192.168.1.100&&mgo2stunna.konamionline.com=192.168.1.100&&mgo2auth.konami.com=192.168.1.100"
+IP swap list: "mgo2web.konami.com=192.168.1.200&&info.service.konamionline.com=192.168.1.200&&mgo2gateus.konamionline.com=192.168.1.200&&mgo2stunna.konamionline.com=192.168.1.200&&mgo2auth.konami.com=192.168.1.200"
 ```
 
 ### 2. The CA certificate
@@ -96,18 +98,28 @@ sign-in check.
 
 **Settings → Network → Internet → Connected.** Self-evident, but it is off by default.
 
-## Host — a second IP for the port check
+## Host — the server's own addresses
 
-NAT discovery needs the STUN responder to answer from a **different address**, so it binds two:
-the primary and a secondary the host owns on the same LAN. The responder is **coturn** (see
-`dev/runtime/turnserver.conf`); edit both `listening-ip` lines there for a different deployment.
-Without a bindable secondary, the client classifies symmetric and cannot host.
+The host machine carries **three** addresses on the primary Ethernet adapter (layout since
+2026-07-23; before that the server shared the machine's `.100`):
 
-**The winning configuration (verified end-to-end against two clients 2026-07-21).** Add the
-secondary as a **secondary IP on the primary Ethernet adapter, with `SkipAsSource`** — in an
-**admin** PowerShell on the host:
+- `.100` — the machine's DHCP primary. **Not used by the server.** Free for a native RPCS3
+  client, whose game UDP port would otherwise conflict with nothing but whose separation keeps
+  client and server observably distinct on the wire.
+- `.200` — the **server's** address: every game/web/probe bind, the lobby rows, the client swap
+  list, and the STUN primary.
+- `.201` — the STUN **secondary**. NAT discovery needs the responder to answer from a
+  *different* address than the one asked: the client infers its NAT type from whether that
+  reply arrives. The responder is **coturn** (see `dev/runtime/turnserver.conf`); edit both
+  `listening-ip` lines there for a different deployment. Without a bindable secondary, the
+  client classifies symmetric and cannot host.
+
+**The winning configuration (verified end-to-end against two clients 2026-07-21; `.200` added
+by the same recipe 2026-07-23).** Add each server address as a **secondary IP on the primary
+Ethernet adapter, with `SkipAsSource`** — in an **admin** PowerShell on the host:
 
 ```powershell
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.200 -PrefixLength 24 -SkipAsSource $true
 New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.201 -PrefixLength 24 -SkipAsSource $true
 ```
 
@@ -116,15 +128,17 @@ Two things about this command are load-bearing:
 - **Use `New-NetIPAddress`, not `netsh ... add address`.** On a DHCP adapter the positional `netsh`
   form *replaces* the primary instead of adding (confirmed, and it is documented that a DHCP
   adapter refuses a second static via the GUI/`netsh`). `New-NetIPAddress` adds a Manual secondary
-  that coexists with the DHCP primary — `ipconfig` then shows **both** `.100` and `.201`.
+  that coexists with the DHCP primary — `ipconfig` then shows all of `.100`, `.200` and `.201`.
 - **`SkipAsSource $true` is what makes peer-to-peer work, not just the port check.** Without it,
-  when the host also runs a game client, native RPCS3 can send its P2P reply out the *second*
+  when the host also runs a game client, native RPCS3 can send its P2P reply out a *secondary*
   address, and the joiner — expecting the host at `.100` — never sees a usable reply, so the
-  connection never forms. `SkipAsSource` pins every outbound to `.100` while `.201` still receives
-  STUN. (coturn binds and answers from `.201` explicitly, so it is unaffected by `SkipAsSource`.)
+  connection never forms. `SkipAsSource` pins every outbound to `.100` while `.200`/`.201` still
+  receive traffic addressed to them. (Server sockets bound to a specific address reply from that
+  address regardless — `SkipAsSource` only steers unbound outbound connections, i.e. the client.)
 
-Under WSL mirrored networking the Windows-owned `.201` is mirrored into WSL on `eth0` automatically
-— **no `ip addr add`, no policy route, no second interface.** Those were earlier dead ends:
+Under WSL mirrored networking the Windows-owned secondaries are mirrored into WSL on `eth0`
+automatically — **no `ip addr add`, no policy route, no second interface.** Those were earlier
+dead ends:
 
 - `sudo ip addr add … dev eth0` inside WSL works only for a client on the *same* host — a
   WSL-only address is not ARP-reachable on the LAN, so a real client's Test II times out.
