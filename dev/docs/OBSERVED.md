@@ -1716,3 +1716,26 @@ unchanged (no XP penalty either). Two explanations are indistinguishable from ou
 Incidentally confirms SaveMGO populates the 0x4680 history at (at latest) round end, not at
 join time. Next live round on our server with an early quitter settles which explanation is
 right for this client build.
+
+## Equipped skills vanished after a game: 0x4130 acked but never persisted
+
+2026-07-23, native client. Equipping CQC 3 survived menu navigation but reset to blank after
+joining a game. DEBUG packet trace caught it: the skills menu saves via **`0x4130`** (the
+wardrobe/personal-info update — appearance, skills, levels, comment in one 158-byte frame; the
+equip showed as skill id `0x0a`, level `3` at the documented offsets). The handler stored
+appearance and comment, **echoed** the skills in `0x4131` (which is why the menu kept them
+in-session), and dropped them — while the read path (`0x4122` in the connect burst) serves
+`chara_equipped_skills`, which nothing ever wrote. The entire persistence apparatus existed;
+only the `update` call was missing. Fixed same day (`CharacterService.updateEquippedSkills`),
+regression IT added.
+
+Motive for the whole chase: whether the CQC skill transforms R1 grab behaviour (VM keyboard
+and DualSense both lack the DS3's pressure-sensitive R1, so skill level is the remaining
+lever for CQC holds/chokes). Retest pending the fix.
+
+### New: `0x4b46` observed, unhandled, non-blocking
+
+Same trace: the client sent `0x4b46` (2 bytes, `0000`) shortly after the lobby connect burst
+and proceeded normally with no reply — the first observed command that does NOT stall unanswered.
+Family `0x4bxx` is otherwise unknown. Parked: harmless as-is, payload now hex-logged if it
+recurs.

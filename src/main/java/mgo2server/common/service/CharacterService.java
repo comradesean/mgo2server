@@ -212,6 +212,28 @@ public class CharacterService {
 	}
 
 	/**
+	 * Persists the four equipped skill slots and their levels, as sent by the wardrobe update
+	 * ({@code 0x4130}). Until 2026-07-23 these were echoed but never stored, so an equipped
+	 * skill survived the session and vanished on the next connect burst.
+	 */
+	public void updateEquippedSkills(long charaId, byte[] skills, byte[] levels) {
+		getOrCreateEquippedSkills(charaId);
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					update chara_equipped_skills set
+						skill1=:s1, skill2=:s2, skill3=:s3, skill4=:s4,
+						level1=:l1, level2=:l2, level3=:l3, level4=:l4
+					where chara_id=:id
+					""")
+				.bind("id", charaId)
+				.bind("s1", skills[0]).bind("s2", skills[1])
+				.bind("s3", skills[2]).bind("s4", skills[3])
+				.bind("l1", levels[0]).bind("l2", levels[1])
+				.bind("l3", levels[2]).bind("l4", levels[3])
+				.execute());
+	}
+
+	/**
 	 * The character's three skill loadouts, created empty on first use. The client always expects
 	 * three, so absent rows are materialised rather than returned as gaps.
 	 */
