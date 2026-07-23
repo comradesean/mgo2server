@@ -1876,3 +1876,14 @@ special A slot); B12 stayed 0 despite a CQC kill, further narrowing its DM-round
   prior round). Seven earlier correlations plus one transfer still unexplained by any single
   model. B24 similarly open (1 on a 2-0 stage win).
 - Quitter reporting reproduced exactly on the second run (immediate report, kill·3, 0x1f=0).
+
+### The token never leaves the client: attribution model binary-proven; 0x43a2 decoded
+
+2026-07-23, closing ELF trace. The 0x43c9 start-round token is written to
+session+0x57d8+0x32f8 and read at exactly one site in the binary — a UI record populator
+using memory-copy helpers, not packet writers; the 0x43c8/0x43a2/0x4390 builders never
+reference the slot. So no packet can carry a game identifier: connection identity is the
+whole attribution mechanism, by construction. 0x43c8's {u32,u8} = two config bytes from a
+settings buffer (round/rule pair, not the token). 0x43a2 fully decoded as a count-prefixed
+per-slot tally list (see PROTOCOL.md) — our three captured payloads decode exactly; what the
+127-slot table indexes is the new open question.
