@@ -41,7 +41,10 @@ types:
           reproduced byte-for-byte from the original server. Meaning [UNKNOWN].
       - id: experience
         type: u4
-        doc: "[CONFIRMED] — account main/alt experience for this character."
+        doc: |
+          [INFERRED] from the 0x4101 offset mirror — the raw number never renders on this
+          screen. The header showed "Level 22" while this carried 1234; the level is
+          presumably client-derived from experience, but that mapping is unverified.
       - id: login_previous
         type: u4
         doc: "Unix seconds. [INFERRED] from the 0x4101 mirror; never seen rendered on this screen."

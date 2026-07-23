@@ -34,6 +34,11 @@ seq:
       5 Base, 6 HIDDEN (no page of its own but summed into every Total and the header
       time — plausibly reserved for an unshipped mode; identity parked. SERVE ZEROS),
       7 unused (excluded from all sums; serve zeros).
+
+      NOTE: the extra per-mode lines on the stats screen (Consecutive Survivals on TDM,
+      Bases Conquered / SOP Destabilizer Uses on Base, the GA-KO trio on Rescue, the
+      Snake trio on Sneaking) are NOT grid columns — they are 0x4107 personal-score
+      slots the UI overlays onto the mode pages. See mgo2_cmd_4107.ksy.
 enums:
   period:
     0: cumulative
@@ -42,27 +47,27 @@ types:
   mode_stats:
     doc: "18 u32 columns. 16 of 18 mapped [CONFIRMED v5/v6/v8]; 13 and 15 open."
     seq:
-      - id: all_kills
+      - id: kills_total
         type: u4
         doc: |
           col 0. Category total incl. "other". Display: only used to derive OTHER KILLS
           (this − hs − lockon, clamped ≥0); the ALL row is client-summed. Send as
           other + hs + lockon. [CONFIRMED v6+v8]
-      - id: all_deaths
+      - id: deaths_total
         type: u4
-        doc: "col 1. As all_kills, for deaths. [CONFIRMED]"
+        doc: "col 1. As kills_total, for deaths. [CONFIRMED]"
       - id: lockon_kills
         type: u4
         doc: "col 2. [CONFIRMED]"
       - id: score
         type: s4
         doc: "col 3. Signed — round score can be negative. [CONFIRMED position; sign by analogy to 0x4390]"
-      - id: all_stuns
+      - id: stuns_total
         type: u4
-        doc: "col 4. As all_kills, for stuns. [CONFIRMED]"
-      - id: all_stuns_received
+        doc: "col 4. As kills_total, for stuns. [CONFIRMED]"
+      - id: stuns_received_total
         type: u4
-        doc: "col 5. As all_kills, for stuns received. [CONFIRMED]"
+        doc: "col 5. As kills_total, for stuns received. [CONFIRMED]"
       - id: hs_kills
         type: u4
         doc: "col 6. Headshot kills. [CONFIRMED]"
