@@ -1254,29 +1254,50 @@ structure, not meaning.
 | `0x00` | 4 | u32 | target character id | live-pinned |
 | `0x04` | 1 | u8 | flag byte (aborted / result) | high |
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
-| `0x07` | 2 | s16 | **deaths** | live-confirmed |
-| `0x09` | 2 | s16 | (zero this match) | — |
-| `0x0b` | 2 | s16 | **score** (signed — a round can go negative) | live-confirmed |
-| `0x0d` | 2 | s16 | **stun / knockout count** | live-confirmed |
-| `0x0f` | 2 | s16 | unknown (one player had 1) | low |
-| `0x11` | 2 | s16 | **headshots dealt** | live-confirmed |
+| `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
+| `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |
+| `0x0b` | 2 | s16 | **score** — **clamped at 0**, observed twice where categories implied negative; the earlier "can go negative" note was never actually observed (that capture landed on exactly 0) | live-confirmed |
+| `0x0d` | 2 | s16 | **stun / knockout count** — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
+| `0x0f` | 2 | s16 | unknown (a loser-side 1 twice; a player had 1 in the original capture) | low |
+| `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs to the head do not count, 2026-07-23) | live-confirmed |
 | `0x13` | 2 | s16 | **headshot deaths** — across three rounds (two TDM, one Rescue) it exactly equalled the enemy's headshot count (5/5/1); strong, but a 3+ player match would make it airtight | medium-high |
-| `0x15`–`0x1b` | — | s16 | zero this match | — |
-| `0x1d` | 2 | s16 | rounds played (1 per report) | medium |
+| `0x15`–`0x19` | — | s16 | zero in every observed round | — |
+| `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
+| `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
+| `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
+| `0x21` | 2 | s16 | **round won** — winner-only across seven rounds, then transferred to the other player on the reporter's first loss | live-confirmed |
 | `0x23` | 4 | u32 | **seconds in game** (client splits it hi/lo u16) | live-pinned |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
-| `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — a separate itemised breakdown (probably per-weapon/per-category), **not** the scoreboard categories, which live in struct A above. Unmapped. (`B36` was numerically near "Other" — 12 vs 13 — but that is a weak coincidence, off by one, not a confirmed link) | positions high, labels unknown |
+| `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — an itemised event breakdown, **not** the scoreboard categories, which live in struct A above. Partially mapped by the 2026-07-23 single-variable rounds (OBSERVED.md, "The OTHER-field experiment"); slot table below | positions high, labels per slot |
 | `0xa3` | 4 | u32 | trailing value | low |
+
+Struct B slots (0-based; everything not listed has never been observed nonzero). Per the
+no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, not identity:
+
+| slot | evidence | reading |
+| --- | --- | --- |
+| B0 / B1 | matched kills / deaths 7/7 rounds (B1 includes suicides, B0 does not) | kill/death event counters; relation to A-slots undetermined |
+| B3 | 3 in a 3-grenade-suicide round, 0 elsewhere | **suicides** |
+| B8 | 1 in the plain-rifle round only (same gun as the lock-on round, which had 0) | one-off, open |
+| B10 ↔ B11 | dealt/received **pair** (exact both sides, twice); moved by CQC grabs (4), barrels (3), grab practice (11 received); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs?) |
+| B12 | 3 in each explosive-kill round, exactly 1 in knife/rifle/CQC rounds, 0 in the lock-on round and practice | explosions caused? one-off component unexplained |
+| B21 | 1 alongside the one slam-faint | stun-adjacent |
+| B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
+| B36 | matched kills 7/7 incl. plain-bullet rounds; NOT special-kills; stayed 0 for suicides | kill-correlated; the old "≈ Other" coincidence is dead |
+| B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
-"The 0x4390 scoreboard". The score formula the client shows is
-`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist·3 + stun·2 + wake·2 + other·1`, and the
-captured rawr row (`4·3 − 10·2 + 2·2 + 1·2 + 2·1 = 0`) reproduced it exactly. Each report is one
-round for one player; a kill-less round sends the frame with these slots zero. When stat struct B
-is absent the builder emits a **short ~51-byte** form (`u32=0` at `0x2b`, then the trailing word).
-Counters are u32 values truncated to u16 on the wire, so any above 65535 wrap.
+"The 0x4390 scoreboard". The score formula, **revised 2026-07-23** after five DM rounds
+decomposed exactly:
+`kills·3 − deaths·2 + headshots·2 + stun·3 + kill1st·5 + combo·1 (+ unprobed categories), clamped at 0`
+— the capture-era `stun·2` read came from an ambiguous `1·2` term that was likely the wake
+counter, and `hacking·5` may equally have been the kill-1st-place ·5 (both unprobed since).
+No round-win bonus exists. Each report is one round for one player; a kill-less round sends
+the frame with these slots zero. When stat struct B is absent the builder emits a **short
+~51-byte** form (`u32=0` at `0x2b`, then the trailing word). Counters are u32 values truncated
+to u16 on the wire, so any above 65535 wrap.
 
 **What we consume (since 2026-07-23):** experience is applied to the account pool (main/alt
 split) with the aborted-dock policy, and the **whole decoded frame is stored as one

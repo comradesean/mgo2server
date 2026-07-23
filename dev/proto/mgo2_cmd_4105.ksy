@@ -12,6 +12,11 @@ doc: |
   column − headshot − lockon, clamped at 0 [CONFIRMED v6]; the ALL row = sum of the displayed rows [CONFIRMED
   v8]; the whole Total page and header play time = per-column sums over mode rows 0..6
   [CONFIRMED v5/v6]; title and medal unlocks derive from these values plus 0x4107.
+
+  Since 2026-07-23 every operand of the OTHER derivation has a known accumulation source in
+  the 0x4390 round reports (round_report table): headshots at report 0x11, lock-on kills at
+  0x09 (single-variable-round confirmed), so a served minuend composes as
+  other + headshots + lockon per mode/period. See PROTOCOL.md "0x4390 — update stats".
 doc-ref: dev/docs/PROTOCOL.md "0x4102 — get personal stats"
 seq:
   - id: status
