@@ -797,13 +797,14 @@ OBSERVED.md): modes in wire order are Deathmatch, Team Deathmatch, Rescue, Captu
 Base, a hidden seventh included in the client's computed totals (no page of its own — plausibly
 a slot reserved for a mode that never shipped; identity parked, not pursued — **serve zeros** so
 the visible pages account for every Total), and an unused eighth; columns:
-0 All Kills, 1 All Deaths, 2 Lockon Kills, 3 Score, 4 All Stuns, 5 All Stuns Received, 6–9 HS
+0/1/4/5 the OTHER-derivation minuends (below), 2 Lockon Kills, 3 Score, 6–9 HS
 Kills/Deaths/Stuns/Stuns-Received, 10 Lockon Stuns, 11 Lockon Deaths, 12 Lockon Stuns-Received,
 14 Rounds, 16 Wins, 17 Play-time-seconds; 13 and 15 are unmapped (markers surfaced nowhere).
-Columns 0/1/4/5 are category totals whose only display role is recovering the OTHER row
-(OTHER = wire value − HS − lockon, clamped at 0); the ALL row is then client-summed from the
-displayed rows and never shows the wire value directly (proven by probe, v8) — so send them as
-other + HS + lockon. The Total page, the header time and title/award unlocks are likewise
+Columns 0/1/4/5 have exactly one proven role: the client renders each category's OTHER row as
+that column − HS − lockon, clamped at 0, and never renders the column itself (v6+v8 probes). A
+server wanting OTHER to show x must therefore send x + HS + lockon; whether the original server
+semantically treated the column as a "total" is unknown, and the specs deliberately name these
+`*_minuend` rather than assert a meaning. The Total page, the header time and title/award unlocks are likewise
 computed client-side. Page 0 is cumulative and page 1 is weekly — the stats screen's
 cumulative/weekly toggle switches page, paired with `0x4107` record 1 (cumulative) / record 2
 (weekly), which share one slot layout (capture-proven). Send both pages and both records.
