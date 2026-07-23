@@ -118,7 +118,9 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		login.writeInt((int) charaId);
 		login.writeBytes(SessionField.of(TOKEN));
 
-		var replies = new ArrayList<GamePacket>();
+		// Appended from the netty read thread; synchronized so the returned snapshot cannot race
+		// a late read after the run times out (seen once as a ConcurrentModificationException).
+		var replies = java.util.Collections.synchronizedList(new ArrayList<GamePacket>());
 		var sent = new int[] { 0 };
 
 		client.run(10, new ChannelInboundHandlerAdapter() {
@@ -145,7 +147,9 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			}
 		});
 
-		return replies;
+		synchronized (replies) {
+			return new ArrayList<>(replies);
+		}
 	}
 
 	/** A synthetic 0x4310 blob: name, two rotation entries, and marker bytes in the tail. */
