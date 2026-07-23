@@ -353,10 +353,12 @@ accumulator tables, no encounter table: period views are time-window sums over `
 per-mode views join `game` for the mode, encounters are the phase-2 self-join. This
 supersedes the `chara_mode_stats` / `chara_personal_scores` schema sketched in OBSERVED.md
 ("The cumulative/weekly toggle") — those were never built and now should not be.
-`chara_stats` (lifetime sums, already shipped) stays: it is the only record of rounds played
-before `round_report` exists, and ripping out a working accumulator buys nothing — but no new
-derived state gets added. Revisit materialization only if the table ever becomes too large,
-which at this population it will not. On fidelity: the original backend's schema is
+`chara_stats` (lifetime sums, shipped 2026-07-22) is **dropped by the phase-1 migration**:
+inspection 2026-07-23 found it write-only — nothing selects from it — and holding exactly one
+test round from the capture session that labelled the slots (already recorded in OBSERVED.md),
+so there is no history to preserve. `GameService.accumulateStats` becomes the `round_report`
+insert; lifetime totals are a `sum(...) group by chara_id`. Revisit materialization only if
+the table ever becomes too large, which at this population it will not. On fidelity: the original backend's schema is
 unobservable — no capture can reveal it — so "recreate the original" can only ever mean
 matching its *wire behaviour* (tiers 1–2). What the history and weekly screens prove is that
 Konami's backend kept per-round, per-player data; a raw round-report table is the minimal
