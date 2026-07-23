@@ -1851,3 +1851,28 @@ quitter carried 0x1f=0 while the round-completing winner carried 0x1f=1 — firs
 discrimination for the "completed the round" reading; B10↔B11 grab pair confirmed a third
 time (slit = grab + finisher); the slit is otherwise an ordinary kill (score 3, no 0x15, no
 special A slot); B12 stayed 0 despite a CQC kill, further narrowing its DM-round one-off.
+
+### Three-player TDM: 0x23 decoded (team id + seconds), B12 = the OTHER category
+
+2026-07-23 late, game 111 (sean+poop blue vs rawr red; sean hosted). Key results:
+
+- **Wire 0x23 is two u16 fields**: hi = team slot index (constant per player per game; 0 in
+  every DM round; grouped poop with sean; NOT the color — sean's blue was 1 in game 107,
+  rawr's red was 1 in game 111), lo = seconds (identical for co-present players). The
+  "garbage seconds" anomaly was hi=1 read as part of a u32.
+- **Σ B12 = the stage screen's OTHER count**: rawr's stage results (full category set:
+  Kill/Death/Headshot/Hacking/Assist/Stun/Wake/Other) showed Other=2 = his per-round B12
+  (1+1); adding B12·1 to the score formula closes his previously-undecomposable 9 and 11
+  exactly. What earns the per-round other-point is unidentified; the DM env/grenade "combo
+  3×1" line was plausibly the Other line (B12=3 both), but the knife round's reported
+  Combo=3 with B12=1 keeps round-screen Combo distinct pending a re-read.
+- **Host reports kills against itself faithfully** (rawr 2+2 headshot kills of the host,
+  mirrored in the host's own deaths/headshot_deaths).
+- **Stage-final rows: losers fully zeroed struct B (2/2 observed), winners keep a residual
+  set** (sean kept b24 in 107; rawr kept b12/b24/b36 in 111) — the zeroing prediction held,
+  the residual rule is not yet systematic.
+- **0x21 demoted to OPEN**: with teams known, "won this round" fails (rawr won round A with
+  0x21=0) and "won previous round" fails the DM suicide round (sean 0 after winning the
+  prior round). Seven earlier correlations plus one transfer still unexplained by any single
+  model. B24 similarly open (1 on a 2-0 stage win).
+- Quitter reporting reproduced exactly on the second run (immediate report, kill·3, 0x1f=0).
