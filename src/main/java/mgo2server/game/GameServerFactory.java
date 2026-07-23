@@ -54,7 +54,8 @@ public class GameServerFactory {
 				controllers.add(new MessageGameController());
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
-				controllers.add(new SocialGameController(services.getCharacterService()));
+				controllers.add(new SocialGameController(services.getCharacterService(),
+					services.getGameService()));
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
 					services.getAccountService()));
 				controllers.add(new HostGameController(services.getGameService(),

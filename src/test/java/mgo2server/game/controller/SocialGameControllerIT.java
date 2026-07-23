@@ -202,13 +202,21 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 	// ---------- match history ----------
 
 	/**
-	 * While the record fields are being mapped, history serves the TEMPORARY fingerprint rows.
-	 * The wire-shape assertions (25-byte records, result-code-0 start/end) are the durable
-	 * part; the row contents change when real match records land.
+	 * History rows derive from {@code round_report}: other characters with a report in a game
+	 * the viewer has a report in. Record fields all live-confirmed 2026-07-23: last-met epoch
+	 * seconds, character id, name, u8 0.
 	 */
 	@Test
-	public void matchHistoryServesFingerprintRows() {
+	public void matchHistoryListsPlayersFromSharedGames() {
 		givenSelectedCharacter("Snake");
+		var raiden = insertCharacter("Raiden");
+		TestDatabase.get().jdbi().useHandle(handle -> {
+			handle.createUpdate("""
+					insert into round_report (game_id, host_chara_id, chara_id)
+					values (777, :host, :host), (777, :host, :met)
+					""")
+				.bind("host", charaId).bind("met", raiden).execute();
+		});
 
 		var request = Unpooled.buffer();
 		request.writeInt((int) charaId);
@@ -221,10 +229,28 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
 		var entries = replies.get(1);
 		assertThat(entries.getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_ENTRIES);
-		assertThat(entries.getPayload().readableBytes()).isEqualTo(5 * 25);
-		assertThat(entries.getPayload().getInt(25 + 4)).isEqualTo(9102); // row 2 entry id
+		assertThat(entries.getPayload().readableBytes()).isEqualTo(25);
+		assertThat(entries.getPayload().getInt(0)).isGreaterThan(0); // last-met, epoch seconds
+		assertThat(entries.getPayload().getInt(4)).isEqualTo((int) raiden);
+		assertThat(nameAt(entries.getPayload(), 8)).isEqualTo("Raiden");
+		assertThat(entries.getPayload().getByte(24)).isEqualTo((byte) 0);
 		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_HISTORY_END);
 		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
+	}
+
+	/** No shared games: the empty success triple (start then end, result 0, no item packet). */
+	@Test
+	public void matchHistoryEmptyWithoutSharedGames() {
+		givenSelectedCharacter("Snake");
+
+		var request = Unpooled.buffer();
+		request.writeInt((int) charaId);
+		var replies = loginThen(new GamePacket(SocialGameController.GET_MATCH_HISTORY, request),
+			SocialGameController.MATCH_HISTORY_END);
+
+		assertThat(replies).hasSize(2);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
+		assertThat(replies.get(1).getPayload().getInt(0)).isEqualTo(0);
 	}
 
 	/** The 201-byte reply shape is ELF-traced (parser 0xD3D874): u32 result 0, then 197 bytes. */

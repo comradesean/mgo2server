@@ -239,40 +239,97 @@ public class GameService {
 				.one());
 	}
 
-	/** The confirmed scoreboard fields of one {@code 0x4390} round report. */
-	public record RoundStats(int kills, int deaths, int score, int headshots,
-			int headshotDeaths, int stuns) {
+	/**
+	 * One decoded {@code 0x4390} report. {@code structA} is the 15 s16 counters at wire
+	 * {@code 0x05}–{@code 0x22} in wire order (confirmed labels live at fixed indices — kills 0,
+	 * deaths 1, score 3, stuns 4, headshots 6, headshot-deaths 7, rounds-played 12);
+	 * {@code detail} is the 58 s16 struct-B block, empty in the short report form.
+	 */
+	public record RoundReport(long gameId, long hostCharaId, long charaId, int flag,
+			short[] structA, long seconds, long experienceTotal, long detailPresent,
+			short[] detail, long trailingWord, boolean aborted) {
 	}
 
 	/**
-	 * Accumulates one round's scoreboard into a character's lifetime {@code chara_stats}, creating
-	 * the row on first use. Called once per {@code 0x4390} report, so totals sum across rounds and
-	 * matches. Only the slots confirmed by the 2026-07-22 capture are stored; the report's
-	 * unlabelled counters are dropped rather than guessed.
+	 * Stores one {@code 0x4390} report verbatim — the single write of the stats/history store
+	 * (BACKLOG, "Match/encounter history"): lifetime, period and per-mode stats and the
+	 * met-players history are all derived from these rows at query time.
 	 */
-	public void accumulateStats(long charaId, RoundStats stats) {
-		jdbi.useHandle(handle ->
-			handle.createUpdate("""
-					insert into chara_stats
-						(chara_id, kills, deaths, score, headshots, headshot_deaths, stuns, rounds)
-					values (:id, :kills, :deaths, :score, :headshots, :headshotDeaths, :stuns, 1)
-					on conflict (chara_id) do update set
-						kills = chara_stats.kills + excluded.kills,
-						deaths = chara_stats.deaths + excluded.deaths,
-						score = chara_stats.score + excluded.score,
-						headshots = chara_stats.headshots + excluded.headshots,
-						headshot_deaths = chara_stats.headshot_deaths + excluded.headshot_deaths,
-						stuns = chara_stats.stuns + excluded.stuns,
-						rounds = chara_stats.rounds + 1
+	public void insertRoundReport(RoundReport report) {
+		jdbi.useHandle(handle -> {
+			// Core Jdbi has no argument factory for java.sql.Array, so the struct-B block is
+			// bound as a Postgres array literal and cast in the statement.
+			var detail = new StringBuilder("{");
+			for (var i = 0; i < report.detail().length; i++) {
+				detail.append(i == 0 ? "" : ",").append(report.detail()[i]);
+			}
+			detail.append('}');
+
+			var update = handle.createUpdate("""
+					insert into round_report
+						(game_id, host_chara_id, chara_id, flag_0x04,
+						 kills, deaths, counter_0x09, score, stuns, counter_0x0f,
+						 headshots, headshot_deaths, counter_0x15, counter_0x17,
+						 counter_0x19, counter_0x1b, rounds_played, counter_0x1f, counter_0x21,
+						 seconds_in_game, experience_total, detail_present, detail_counters,
+						 trailing_word, aborted)
+					values (:game, :host, :chara, :flag,
+						 :a0, :a1, :a2, :a3, :a4, :a5, :a6, :a7, :a8, :a9,
+						 :a10, :a11, :a12, :a13, :a14,
+						 :seconds, :exp, :detailPresent, cast(:detail as smallint[]),
+						 :trailing, :aborted)
 					""")
-				.bind("id", charaId)
-				.bind("kills", stats.kills())
-				.bind("deaths", stats.deaths())
-				.bind("score", stats.score())
-				.bind("headshots", stats.headshots())
-				.bind("headshotDeaths", stats.headshotDeaths())
-				.bind("stuns", stats.stuns())
-				.execute());
+				.bind("game", report.gameId())
+				.bind("host", report.hostCharaId())
+				.bind("chara", report.charaId())
+				.bind("flag", report.flag())
+				.bind("seconds", report.seconds())
+				.bind("exp", report.experienceTotal())
+				.bind("detailPresent", report.detailPresent())
+				.bind("detail", detail.toString())
+				.bind("trailing", report.trailingWord())
+				.bind("aborted", report.aborted());
+			for (var i = 0; i < 15; i++) {
+				update.bind("a" + i, report.structA()[i]);
+			}
+			update.execute();
+		});
+	}
+
+	/** One row of the met-players history: a player encountered, and when last. */
+	public record MetPlayer(long charaId, String name, long lastMetEpochSeconds) {
+	}
+
+	/**
+	 * The met-players history for {@code 0x4680}, derived from {@code round_report}: every other
+	 * character with a report in a game the viewer has a report in, newest encounter first.
+	 * Pairing is per game, not per round — the frame carries no round counter, and sharing a game
+	 * is what the screen's "players you ran into" means. Soft-deleted characters appear under
+	 * their placeholder name rather than vanishing.
+	 */
+	public List<MetPlayer> metPlayers(long charaId, int limit) {
+		// The join uses != rather than the SQL-standard form: Jdbi renders through
+		// StringTemplate, which reads angle brackets as an expression and fails to compile the
+		// statement (same trap TestDatabase.reset() documents) — and that goes for SQL comments
+		// too, so this note lives out here.
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select o.chara_id, c.name,
+						extract(epoch from max(o.reported_at))::bigint as last_met
+					from round_report mine
+					join round_report o
+						on o.game_id = mine.game_id and o.chara_id != mine.chara_id
+					join chara c on c.id = o.chara_id
+					where mine.chara_id = :chara
+					group by o.chara_id, c.name
+					order by last_met desc
+					limit :limit
+					""")
+				.bind("chara", charaId)
+				.bind("limit", limit)
+				.map((rs, ctx) -> new MetPlayer(rs.getLong("chara_id"), rs.getString("name"),
+					rs.getLong("last_met")))
+				.list());
 	}
 
 	/**

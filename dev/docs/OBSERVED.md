@@ -1700,3 +1700,19 @@ rendered the card and settled, in one pass:
   (1036:00000001)": our own status code echoed. Not a bug — resolves itself once history rows
   carry real character ids. Bonus mappings: screen `0x1036` = character information, and the
   ELF-traced context-menu arm that sends `0x4102` (idx `0x16`) is this button.
+
+## Quit-before-round-end on a SaveMGO server: no history row, no stat change (tier 4-ish)
+
+2026-07-23, user experiment against a live SaveMGO (Nomad-lineage) server: kill, die, then
+leave before the round ended → no met-players/history record appeared and personal stats were
+unchanged (no XP penalty either). Two explanations are indistinguishable from outside:
+
+1. The host client sends no `0x4390` report for a player who already left — a client-behaviour
+   claim we can test authoritatively on our own server (every report's target id is logged).
+2. The host does report quitters at round end and SaveMGO drops the report — the exact
+   current-membership bug our round-snapshot path exists to fix (see BACKLOG, "The round
+   snapshot never populates", resolved).
+
+Incidentally confirms SaveMGO populates the 0x4680 history at (at latest) round end, not at
+join time. Next live round on our server with an early quitter settles which explanation is
+right for this client build.

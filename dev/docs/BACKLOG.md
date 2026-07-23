@@ -338,7 +338,7 @@ are they empty/default? If empty, the feature is inert regardless of what we sen
 `0x4140`/`0x4142` sends can be dropped from the burst; if populated, they arrive by a path we have
 not found. Do not change the working burst before that check.
 
-## Match/encounter history — plan (not yet started)
+## Match/encounter history — phases 1+2 shipped 2026-07-23; 3 open, 4 deferred
 
 *Pinned 2026-07-23, after the 0x4680/0x4220 fingerprint rounds settled the client contracts.*
 Everything below serves screens whose byte layouts are now traced and (mostly) label-confirmed;

@@ -390,11 +390,12 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * The scoreboard slots confirmed by the live capture, accumulated into chara_stats. Two
-	 * reports for the same character sum, as per-round reports do across a match.
+	 * Each report is stored verbatim as one round_report row — the single source every stats
+	 * and history screen derives from. Lifetime totals are sums over these rows, so two reports
+	 * for the same character make two rows, not one accumulated row.
 	 */
 	@Test
-	public void statReportAccumulatesTheScoreboard() {
+	public void statReportStoresOneRoundReportRowPerReport() {
 		givenSelectedCharacter("Snake");
 		var gameId = givenHostedGame();
 		var joiner = givenJoinedPlayer(gameId, "Raiden");
@@ -407,16 +408,26 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r1)),
 			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r2)));
 
-		var row = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createQuery("select * from chara_stats where chara_id=:c")
-				.bind("c", joiner).mapToMap().one());
-		assertThat(((Number) row.get("kills")).intValue()).isEqualTo(8);
-		assertThat(((Number) row.get("deaths")).intValue()).isEqualTo(6);
-		assertThat(((Number) row.get("score")).intValue()).isEqualTo(23);
-		assertThat(((Number) row.get("headshots")).intValue()).isEqualTo(7);
-		assertThat(((Number) row.get("headshot_deaths")).intValue()).isEqualTo(2);
-		assertThat(((Number) row.get("stuns")).intValue()).isEqualTo(1);
-		assertThat(((Number) row.get("rounds")).intValue()).isEqualTo(2);
+		var rows = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from round_report where chara_id=:c order by id")
+				.bind("c", joiner).mapToMap().list());
+		assertThat(rows).hasSize(2);
+		assertThat(((Number) rows.get(0).get("game_id")).longValue()).isEqualTo(gameId);
+		assertThat(((Number) rows.get(0).get("host_chara_id")).longValue()).isEqualTo(charaId);
+		assertThat(((Number) rows.get(0).get("kills")).intValue()).isEqualTo(5);
+		assertThat(((Number) rows.get(0).get("deaths")).intValue()).isEqualTo(2);
+		assertThat(((Number) rows.get(0).get("score")).intValue()).isEqualTo(26);
+		assertThat(((Number) rows.get(0).get("headshots")).intValue()).isEqualTo(5);
+		assertThat(((Number) rows.get(0).get("headshot_deaths")).intValue()).isEqualTo(2);
+		assertThat(((Number) rows.get(0).get("stuns")).intValue()).isEqualTo(1);
+		assertThat(((Number) rows.get(1).get("kills")).intValue()).isEqualTo(3);
+		assertThat(((Number) rows.get(1).get("score")).intValue()).isEqualTo(-3);
+
+		// The 167-byte long form carries the 58-slot struct-B block (zeros in this frame).
+		var lifetimeKills = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select sum(kills) from round_report where chara_id=:c")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(lifetimeKills).isEqualTo(8);
 	}
 
 	/** A 167-byte report with the confirmed scoreboard slots set (signed s16 at 0x05 + 2*i). */

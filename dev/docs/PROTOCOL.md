@@ -1278,10 +1278,14 @@ round for one player; a kill-less round sends the frame with these slots zero. W
 is absent the builder emits a **short ~51-byte** form (`u32=0` at `0x2b`, then the trailing word).
 Counters are u32 values truncated to u16 on the wire, so any above 65535 wrap.
 
-**What we consume:** character id; experience (applied to the account pool, main/alt split); the
-aborted flag for the −60 dock (Nomad policy); and the six confirmed scoreboard slots, accumulated
-into `chara_stats` (lifetime totals, summed across rounds). The unlabelled counters — hacking,
-assist, wake, "other", `0x0f`, and the `0x2f` detail block — were all zero in the capture, so they
+**What we consume (since 2026-07-23):** experience is applied to the account pool (main/alt
+split) with the aborted-dock policy, and the **whole decoded frame is stored as one
+`round_report` row** — struct A by slot (confirmed labels named, the rest by wire offset),
+struct B as a 58-element array, seconds, totals, flags. Every stats and history surface
+derives from these rows at query time (the met-players history is a self-join on `game_id`);
+the earlier `chara_stats` lifetime accumulator was write-only and is dropped. The unlabelled
+counters — hacking, assist, wake, "other", `0x0f`, and the `0x2f` detail block — were all zero
+in the capture, so they
 are dropped rather than guessed; a match exercising them would let them be labelled. Experience
 and stats apply when the target is in the game or the round-membership set (`game_round`). Reply
 `0x4391`, result 0 always; validation failures are logged, not surfaced.
@@ -1424,9 +1428,12 @@ timestamp (sent 2001-01-02 01:01:01 UTC, rendered "01-02-2001 04:01:01" — date
 resource). The 16-byte string is **confirmed** the row's player-name label. The second u32 is
 a candidate character id: selecting a row opens a player context menu (Player Details /
 Create Mail / Add to Friend List / Add to Block List), all player-scoped. "Player Details"
-sends **`0x4220`** (player-card family, unhandled at the time — see that family's section
-once traced), NOT `0x4684`; what triggers `0x4684` is unknown again. Encounters are not
-recorded server-side yet; TEMPORARY fingerprint rows are still served.
+sends **`0x4220`** (player-card family — see its section), NOT `0x4684`; what triggers
+`0x4684` is unknown again. Since 2026-07-23 the list is served for real: rows derive from
+`round_report` (see `0x4390`) — every other character with a report in a game the viewer has
+a report in, newest encounter first, capped at the client's 64. Pairing is per game, not per
+round (the report frame carries no round counter). Soft-deleted characters appear under their
+placeholder name. The u8 is sent 0 (cosmetically inert in the fingerprint).
 
 ### `0x4684` — match detail (sender `0xD3B778`, replies `0x4685`/`0x4686`/`0x4687`)
 

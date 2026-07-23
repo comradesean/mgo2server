@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import mgo2server.common.BufferUtil;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
@@ -84,10 +85,20 @@ public class SocialGameController implements IGameController {
 	/** Payloads cap at 1023 bytes, so 17 records (1003 bytes) per item packet. */
 	private static final int SEARCH_ENTRIES_PER_PACKET = 17;
 
+	/** The client's history table caps at 64 rows (parser {@code 0xD3B5FC}); more is dropped. */
+	private static final int HISTORY_LIMIT = 64;
+
+	/** 25-byte history records; 40 per item packet keeps the payload under the 1023-byte cap. */
+	private static final int HISTORY_ENTRIES_PER_PACKET = 40;
+
 	private final CharacterService characterService;
 
-	public SocialGameController(CharacterService characterService) {
+	private final GameService gameService;
+
+	public SocialGameController(CharacterService characterService,
+			GameService gameService) {
 		this.characterService = characterService;
+		this.gameService = gameService;
 	}
 
 	@Override
@@ -151,40 +162,40 @@ public class SocialGameController implements IGameController {
 		ctx.write(resultPacket(ctx, PLAYER_SEARCH_END));
 	}
 
-	/** TEMPORARY fingerprint rows served while the record fields are being mapped. */
-	private static final int HISTORY_FINGERPRINT_ROWS = 5;
-
-	/** 2001-01-01 00:00:00 UTC; each fingerprint row steps by one day, hour, minute, second. */
-	private static final int HISTORY_FINGERPRINT_EPOCH = 978307200;
-
 	private static final int DETAIL_FINGERPRINT_ROWS = 3;
 
 	/**
-	 * Match history ({@code 0x4680}, u32 character id). The 25-byte record layout (u32, u32,
-	 * 16-byte string, u8) is ELF-traced but unlabelled; candidate labels {timestamp, entry id,
-	 * name, ?} come from a tier-4 Nomad test payload (PROTOCOL.md).
-	 * <p>
-	 * TEMPORARY fingerprint payload, 2026-07-23: each field carries a recognizable marker —
-	 * ascending 2001 dates if the first u32 renders as the history date, ids 91xx (echoed back
-	 * in {@code 0x4684} if the second u32 is the entry id — watch the log), names FP-ROW-n,
-	 * u8 4n. Replace with real match records once the mapping and storage design land.
+	 * Met-players history ({@code 0x4680}, u32 character id). 25-byte records, all fields
+	 * live-confirmed 2026-07-23 (OBSERVED.md): u32 Unix timestamp of the last encounter, u32
+	 * character id (echoed by the row's player-scoped menu actions), 16-byte player name, and a
+	 * u8 that rendered nothing in the fingerprint (sent 0). Rows derive from {@code round_report}
+	 * at query time — players who shared a game with the viewer, newest first.
 	 */
 	private void getMatchHistory(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
-		if (payload.readableBytes() >= Integer.BYTES) {
-			logger.debug("Match history requested for character {}.", payload.readInt());
+		if (payload.readableBytes() < Integer.BYTES) {
+			writeEmptyList(ctx, MATCH_HISTORY_START, MATCH_HISTORY_END);
+			return;
 		}
+		var charaId = payload.readInt();
+		var met = gameService.metPlayers(charaId, HISTORY_LIMIT);
+		logger.debug("Match history for character {}: {} rows.", charaId, met.size());
 
 		ctx.write(resultPacket(ctx, MATCH_HISTORY_START));
-		var buffer = ctx.buffer(HISTORY_FINGERPRINT_ROWS * 25);
-		for (var i = 1; i <= HISTORY_FINGERPRINT_ROWS; i++) {
-			buffer.writeInt(HISTORY_FINGERPRINT_EPOCH + i * 90061); // +1d 1h 1m 1s per row
-			buffer.writeInt(9100 + i);
-			BufferUtil.writeString(buffer, "FP-ROW-" + i, StandardCharsets.ISO_8859_1,
-				NAME_LENGTH);
-			buffer.writeByte(40 + i);
+		for (var start = 0; start < met.size(); start += HISTORY_ENTRIES_PER_PACKET) {
+			var end = Math.min(start + HISTORY_ENTRIES_PER_PACKET, met.size());
+			var batch = met.subList(start, end);
+
+			var buffer = ctx.buffer(batch.size() * 25);
+			for (var player : batch) {
+				buffer.writeInt((int) player.lastMetEpochSeconds());
+				buffer.writeInt((int) player.charaId());
+				BufferUtil.writeString(buffer, player.name(), StandardCharsets.ISO_8859_1,
+					NAME_LENGTH);
+				buffer.writeByte(0); // cosmetically inert in the fingerprint; meaning unknown
+			}
+			ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
 		}
-		ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
 		ctx.write(resultPacket(ctx, MATCH_HISTORY_END));
 	}
 
