@@ -1370,3 +1370,214 @@ cannot be told apart yet:
 
 Rule/map numbers confirmed this session: rule 1 = Team Deathmatch, rule 2 = Rescue Mission;
 map 2 and map 12 (Midtown Maelstrom) observed.
+
+## The personal-stats screen fingerprinted: 0x4107 record 1 mapped slot by slot
+
+2026-07-23, live. After the `0x4102` family was traced and handled (see PROTOCOL.md), the reply
+was re-sent as a **fingerprint payload** — every unmapped u32 carrying its own wire position
+(`0x4105` matrix cells 1–144; `0x4107` record 1 = 1001–1073, record 2 = 2001–2073) — and the
+values read back off the screen. Results:
+
+**`0x4107` record 1 is the personal-scores record.** The on-screen value names the slot
+(u32 index, 1-based, at wire offset `4 + (i−1)·4`); time fields display seconds as `hh:mm:ss`
+and confirmed the mapping arithmetically (e.g. "00:16:55" = 1015):
+
+| slot | stat | | slot | stat |
+| --- | --- | --- | --- | --- |
+| 1 | Consecutive Kills | | 22 | Cardboard Box Uses |
+| 2 | Consecutive Deaths | | 23 | Melee Hits |
+| 4 | Suicides | | 25 | Consecutive Survivals (TDM page) |
+| 5 | Times Stunned | | 26 | Bases Conquered (Base page) |
+| 6 | Friendly Kills | | 27 | SOP Destabilizer Uses (Base page) |
+| 7 | Friendly Stuns | | 28 | GA-KO Saved (Rescue page) |
+| 8 | Salutes | | 29 | GA-KO Defended (Rescue page) |
+| 9 | Preset Radio Message Uses | | 31 | Fully Defended Matches (Rescue page) |
+| 10 | Text Chat Uses | | 36 | Number of Soldiers Trained |
+| 11 | CQC Attacks Given | | 46 | Training Mode Time (s) |
+| 12 | CQC Attacks Taken | | 47 | Combat Training Time, Instructor (s) |
+| 13 | Rolls | | 48 | Combat Training Time, Student (s) |
+| 14 | Total Time Using ENVG (s) | | 63 | Victories as Snake |
+| 15 | Time as Dedicated Host (s) | | 64 | Knife Kills |
+| 16 | Catapult Uses | | 67 | Snake Kills |
+| 17 | Number of Boosts Given | | 72 | Total Time as Snake (s) |
+| 18 | Falling Deaths | | 19 | Times Caught in Trap |
+| 20 | Scans Performed | | 21 | Time in Cardboard Box (s) |
+
+Slots 3, 24, 30, 32–35, 37–45, 49–62, 65–66, 68–71, 73 did not surface on this screen —
+unmapped, possibly feeding the (empty) title/awards histories.
+
+Negative results, equally valuable:
+
+- **`0x4107` record 2 (2001–2073) appeared nowhere** on the stats screens. Hypothesis: a
+  second period/variant (weekly?) shown elsewhere. Open.
+- **The per-mode stat grids (Rounds/Wins/Score/Headshot–Lockon–Other kills/deaths/stuns) and
+  the per-mode "Total Time Playing" fields all showed 0** even though the `0x4105` matrix
+  carried 1–144. So either those grids read the `0x4103` regions that were still zeroed, or
+  the `0x4105` count field (sent as probe value 7) gated the matrix out. Fingerprint v2
+  (matrix 3001–3144, count 8, `0x4103` tail fingerprinted with 4xxx/5xxx/6xxx + ASCII string
+  markers) is the discriminating experiment.
+- The stats screen has a **"Headshot Deaths" label per mode** — the client does track that
+  category, consistent with (not proof of) the `0x4390` `A7` = headshot-deaths reading above.
+- Screen header showed **level 22** with experience sent as 1234, and an empty clan field and
+  comment — sources not yet located in the payload.
+
+### Fingerprint v2–v4: the mode grids read none of the 0x4102 reply
+
+Same session, three follow-up rounds, each varying one region of `0x4103` (everything else held):
+
+- **v2** (aligned u32 ranges + ASCII markers in the guessed string fields): grids zero. The
+  ASCII leaked into unrelated UI ("Instructor: 1312902468th generation" = the bytes `NAME`;
+  Instructor Score denominator `0x43000000` = the `C` of `FP-NAME-C`) — so the trace's guessed
+  u32/16-byte-string layout for the tail is misaligned. Four titles (Foxhound, Fox, Doberman,
+  Hound) and five awards appeared: title/award unlocks decode from somewhere in the tail.
+- **v3** (211-byte middle region as dense u16s 7001–7105): grids zero. The player **comment
+  field** showed `{|}~`+block — bytes `0x7B–0x7F`, the low bytes of u16s 7035–7039, placing a
+  byte-string comment field from middle-region offset ≈69 (wire ≈414); v2's NULs there had
+  shown an empty comment, consistent.
+- **v4** (the only never-fingerprinted bytes: "login times" 9001/9002, flag=1, and the 256
+  bytes labelled friend/blocked ids as 8001–8032/8501–8532): grids zero, nothing else changed.
+
+Elimination: the confirming observation would have been grid cells showing a fingerprint range,
+and no round produced it while collectively covering every byte of `0x4103`, the `0x4105`
+matrix and both `0x4107` records. So the per-mode stat grids (and per-mode play times) are
+**not fed by the `0x4102` reply burst** — client-local accumulation or another command. Caveat:
+a display gate that needs a specific field *combination* (e.g. a plausible rounds count) could
+in principle mask a real source; the parser trace under way should settle which.
+
+### The grid mystery solved: v1–v4 tripped 0x4105's page gate
+
+The second ELF trace (2026-07-23) dissolved the elimination above: `0x4105`'s second u32 is not
+a count but a **page selector that must be 0 or 1** — the parser bails on anything greater and
+never writes the matrix. Every fingerprint round had sent 7 or 8 there, so the matrix (which IS
+the per-mode grid: 8 modes × 18 u32, mode-major; reader at `0x9193BC`+) was silently discarded
+each time. The "grids read none of the reply" conclusion was an invalid elimination — the varied
+thing could not have mattered while the gate value was wrong. Lesson re-learned: v1's `7` was a
+probe value dropped into a field whose parse-side constraint had not been read.
+
+Also settled by the same trace: friend/blocked in `0x4103` are genuinely flat id arrays (v4's
+null result was predicted); the comment field is at wire 413 (`T+0x1E24`, confirmed by the v3
+`{|}~` leak); the v2 titles/awards were pre-loaded by a different flow, not our fingerprint; and
+the tail is a flat packed field list — the first trace's "intermediate table / 5-record table"
+reading was wrong. Fingerprint v5 (page=0, matrix 3001–3144, byte-aligned tail values, real
+comment in the comment slot) is deployed.
+
+### Fingerprint v5: the full per-mode grid mapped; titles and awards are client-derived
+
+With `0x4105` page=0 the grid populated and the whole matrix fell out (values 3001–3144,
+mode-major, cell = 3001 + mode·18 + column):
+
+- **Mode rows (wire order):** 0 Deathmatch · 1 Team Deathmatch · 2 Rescue · 3 Capture ·
+  4 Sneaking · 5 Base · 6 **hidden seventh mode** (no page of its own, but included in every
+  Total-row sum and in the header play-time total — Combat Training?) · 7 unused (excluded from
+  all sums).
+- **Stat columns (0-based):** 2 Lockon Kills · 3 Score · 6 HS Kills · 7 HS Deaths · 8 HS Stuns ·
+  9 HS Stuns Received · 10 Lockon Stuns · 11 Lockon Deaths · 12 Lockon Stuns Received ·
+  14 Rounds · 16 Wins · 17 Play time (seconds; the "Total Time Playing X" lines and the header
+  Time = Σ column 17 over modes 0–6, e.g. 05:58:24 = 21504 = Σ3018..3126). Columns
+  **0, 1, 4, 5, 13, 15 unmapped** (v6 probes them with large per-column markers in mode 0).
+- **Computed client-side, not wire fields:** the whole Total page (Σ modes 0–6 per column), the
+  ALL rows (HS + Lockon + Other), and OTHER itself (showed 0 with every wire cell nonzero —
+  plausibly some-total-minus-components clamped at 0; v6 will tell).
+- `0x4103` tail confirmations: instructor name = the 16-byte string at `T+0x32FC` (showed
+  FP-STR-B); Host Rating denominator = `T+0x32DC`; Instructor Score denominator = `T+0x32F4`;
+  comment end-to-end correct (empty in DB, blank on screen). `FP-STR-A`/`FP-STR-C` and the clan
+  header field did not surface — clan is not any of this packet's strings.
+- **Titles and awards are computed by the client from the stat values themselves** — the award
+  list regenerated to exactly the thresholds our fingerprint numbers crossed ("10/25 consecutive
+  kills" ↔ slot 1 = 1001; "2/4 consecutive TDM survivals" ↔ 1025; "100 SOP destabilizer uses" ↔
+  1027; "500/10000 total kills/deaths" ↔ the 42k computed totals), and the title set changed
+  with the stats (v2's Foxhound/Fox/Doberman/Hound → v5's HOUND/CROCODILE/EAGLE/…). No separate
+  command feeds them; the earlier "different command flow fills the tables" reading conflated
+  storage with source. Award/title threshold enumeration is presentation-mapping, not protocol.
+
+### Fingerprint v6: the ALL columns are stored; OTHER is derived
+
+Large markers in Deathmatch's six unknown columns (51000/51100/51400/51500 in columns 0/1/4/5;
+52300/52500 in 13/15) settled the arithmetic both ways:
+
+- **Column 0 = All Kills, 1 = All Deaths, 4 = All Stuns, 5 = All Stuns Received** — stored
+  totals *including* the "other" category. Display path (pinned by v5+v6 jointly, not either
+  alone): OTHER = max(0, col − HS − Lockon), and the ALL row shows HS + Lockon + OTHER — not
+  the wire value verbatim (v5: col0 was 3001, ALL showed 6010 = HS+Lockon+0; v6: OTHER 44990 =
+  51000 − 3003 − 3007 in all four categories, so the column provably feeds the subtraction).
+  With self-consistent data (col ≥ HS + Lockon) ALL renders equal to the stored total; with
+  inconsistent data the clamp silently repairs ALL upward to HS + Lockon and shows OTHER 0.
+  Server-side invariant unchanged: keep all_* ≥ hs + lockon.
+- **Columns 13 and 15 surfaced nowhere** — not on any stats page. Left unmapped and unstored;
+  candidates for post-game or ranking views. Matrix probing stops here: 16/18 columns named.
+
+### The Total page's OTHER derives from summed columns, not summed OTHERs
+
+v6's Total page (reported live): ALL KILLS 69384 = Σ column 0 over modes 0–6
+(51000 + 3019 + 3037 + 3055 + 3073 + 3091 + 3109), and OTHER KILLS 26558 = 69384 − 21427
+(Σ HS kills) − 21399 (Σ lockon kills) — NOT the sum of the per-mode OTHER cells (which was
+44990, the six unmarked modes clamping to 0). So the client sums each wire column across modes
+0–6 first, then applies OTHER = ALL − HS − Lockon per page after summation. All four ALL/OTHER
+pairs check out the same way. Confirms columns 0/1/4/5 as stored ALL totals.
+
+### The hidden mode row, demonstrated and parked
+
+Manually summing the six visible pages' HS kills (18312) against Total (21427) isolated wire
+mode row 6's contribution (3115) exactly — the row is real, summed into every Total and the
+header time, and has no page. Working hypothesis: a slot reserved for modes that never shipped
+(the earlier Combat Training guess is unsupported — training stats live in 0x4107 slots 46-48).
+Identity is deliberately parked as not-current-work; the only operational rule is that the
+server must send zeros in rows 6 and 7 so the player's visible pages account for every Total.
+
+### v8 settles the ALL row: client-summed, like Total — the totals model was wrong
+
+Direct probe (Deathmatch: HS kills 10, lockon kills 5, wire column 0 = 3 — deliberately too
+small to be a sum): the screen showed **ALL KILLS = 15**, i.e. the client sums the displayed
+rows; the wire value never renders. The earlier "ALL renders the stored total" reading is
+retracted. Column 0/1/4/5's only display role is recovering OTHER (= wire value − HS − lockon,
+clamped ≥ 0 — v6's 44990 = 51000 − 3003 − 3007 stands). Consequence for the server: nothing
+"ALL" is stored; the schema stores other_* and the 0x4105 sender computes each of wire columns
+0/1/4/5 as other + hs + lockon.
+
+## Titles and medals: the client-side catalogue, extracted from the ELF
+
+Static extraction 2026-07-23 (medal tier table VA 0xe139c0, title resource keys VA 0xe14eb0,
+sprites VA 0xe152d0). "Awards" are "MEDALS" in the client's own tab naming (TAB_TITLE /
+TAB_MEDAL). Both are derived client-side from the raw stats; no command carries them. The two
+record tables earlier suspected as their source (T+0x26d14, T+0x3330) are actually match-history
+list storage (0x4682 / 0x4212 records) — that note is corrected.
+
+**Titles (22, table order):** Foxhound, Fox, Doberman, Hound, Crocodile, Eagle, Shark?, Water
+Bear, Sloth, Flying Squirrel, Pigeon, Night Owl (indices 0–11, the playstyle/rank animals;
+names 0–5 and 7–11 observed live or read, Shark inferred from key "SHA"), then ten
+special/unlock titles known only by key codes: TSU, S.E, KER (Kerotan), GAR, CHA, CHI, BER,
+TOR, MAN, RAT (indices 12–21, inferred names). Per-title selection predicates are in
+menu-driven code, not a static table; observed behaviour says the set shifts with the stat
+profile (low stats → indices 0–3; varied high stats → 3–11).
+
+**Medal thresholds (READ from the binary; 13 types × 3 tiers, id tens-digit = type):**
+
+| tiers | medal | stat source |
+| --- | --- | --- |
+| 5 / 10 / 25 | Consecutive kills | 0x4107 slot 1 (confirmed live) |
+| 3 / 10 / 30 | Consecutive headshots | confirmed live; slot TBD |
+| 5 / 10 / 25 | unknown streak medal | unobserved |
+| 500 / 2000 / 10000 | Total kills | Σ 0x4105 col 0 (confirmed live) |
+| 500 / 2000 / 10000 | Total deaths | Σ 0x4105 col 1 (confirmed live) |
+| 2 / 4 / 6 | Consecutive TDM survivals | 0x4107 slot 25 (confirmed live) |
+| 50 / 100 / 500 ×3 (grouped trio) | three related medals — plausibly the GA-KO family (slots 28/29/31), inferred | |
+| 50 / 100 / 200 | SOP destabilizer uses | 0x4107 slot 27 (inferred from live "100") |
+| 50 / 100 / 500 ×2 | two more of the observed family (matches-without-a-scratch, targets captured, spotted-Snake-first, Mk.II destructions distribute over these five 50/100/500 slots) | |
+| 10 / 100 / 300 | People finished training | 0x4107 slot 36 (confirmed live) |
+
+Medal names are external localized resources referenced by 24-bit hash — not ASCII in the ELF —
+so the five 50/100/500 medals cannot be told apart statically; a live pass setting one source
+stat at a time would finish the mapping if ever needed. Presentation-mapping only; nothing here
+changes what the server sends.
+
+### The cumulative/weekly toggle: page 1 and record 2 are the weekly stats — confirmed
+
+v9 sent a second 0x4105 with page selector 1 (cells 6001-6144). The stats screen's
+cumulative/weekly toggle (spotted live) showed the weekly grid with exactly those values —
+including the weekly play times (01:40:18 = 6018 s = page-1 DM column 17) — and the weekly
+Personal Scores showed 0x4107 record 2 (2001-2073) in the same slot layout as record 1,
+time slots included (00:33:35 = 2015 s = slot 15). Host Rating / Instructor Score kept their
+0x4103 values on both panes: per-character, not per-period. So: 0x4105 page = period
+(0 cumulative / 1 weekly), 0x4107 record 1/2 = cumulative/weekly personal scores. Schema
+follows: chara_mode_stats keys (chara, page, mode); chara_personal_scores keys (chara, period).
+Weekly reset cadence is operator policy.
