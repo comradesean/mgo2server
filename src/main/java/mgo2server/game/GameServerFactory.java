@@ -13,6 +13,8 @@ import mgo2server.game.controller.LobbyGameController;
 import mgo2server.game.controller.MessageGameController;
 import mgo2server.game.controller.NewsGameController;
 import mgo2server.game.controller.PersonalInfoController;
+import mgo2server.game.controller.PersonalStatsController;
+import mgo2server.game.controller.SocialGameController;
 
 import java.util.ArrayList;
 
@@ -52,6 +54,9 @@ public class GameServerFactory {
 				controllers.add(new MessageGameController());
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
+				controllers.add(new SocialGameController(services.getCharacterService()));
+				controllers.add(new PersonalStatsController(services.getCharacterService(),
+					services.getAccountService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), lobbyId, lobbySubtype));
 			}

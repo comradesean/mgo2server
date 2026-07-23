@@ -33,6 +33,18 @@ public class PersonalInfoController implements IGameController {
 
 	public static final int UPDATE_PERSONAL_INFO_RESULT = 0x4131;
 
+	public static final int COMMIT_OUTFIT = 0x4132;
+
+	public static final int COMMIT_OUTFIT_RESULT = 0x4133;
+
+	/**
+	 * The fixed tail of the {@code 0x4133} reply: fifteen {@code {u8 slot, u8 bit}} pairs the
+	 * parser at {@code 0xd3c77c} always reads, setting equipped bits in the loadout table it has
+	 * just zeroed. All-zero pairs redundantly touch bit 0 of slot 0 — no distinct no-op encoding
+	 * is known, and what the original filled these with awaits a capture.
+	 */
+	private static final int COMMIT_TRAILER_PAIRS = 15;
+
 	private static final int COMMENT_LENGTH = 128;
 
 	/** Nineteen clothing bytes, four skills, a pad, four levels, two pads, then the comment. */
@@ -59,6 +71,22 @@ public class PersonalInfoController implements IGameController {
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(UPDATE_PERSONAL_INFO, this::updatePersonalInfo);
+		handlers.put(COMMIT_OUTFIT, this::commitOutfit);
+	}
+
+	/**
+	 * Outfit commit ({@code 0x4132}, empty payload): fired after the {@code 0x4130} updates when
+	 * the outfit screen closes, and blocked on. The reply is not a result code — the parser at
+	 * {@code 0xd3c77c} reads a u32 <em>entry count</em>, {@code count × {u8 slot, u32 value}}
+	 * loadout entries, then the fixed fifteen-pair trailer; a nonzero first u32 would be read as
+	 * a count, not an error. Zero entries is the honest reply until the entry semantics are
+	 * captured: the client zeroes its loadout table first either way.
+	 */
+	private void commitOutfit(GameControllerContext ctx) {
+		var buffer = ctx.buffer(Integer.BYTES + COMMIT_TRAILER_PAIRS * 2);
+		buffer.writeInt(0);
+		buffer.writeZero(COMMIT_TRAILER_PAIRS * 2);
+		ctx.write(new GamePacket(COMMIT_OUTFIT_RESULT, buffer));
 	}
 
 	private void updatePersonalInfo(GameControllerContext ctx) {

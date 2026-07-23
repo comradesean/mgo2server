@@ -255,6 +255,25 @@ public class CharacterService {
 				.findOne());
 	}
 
+	/**
+	 * Player search ({@code 0x4600}). The client sends only the raw name and the two toggles; the
+	 * binary does no matching of its own, so the semantics of "partial" are operator policy —
+	 * implemented here as a substring match. Full match with wildcards escaped degenerates to
+	 * equality, which keeps the four combinations in one query.
+	 */
+	public List<Chara> search(String name, boolean fullMatch, boolean caseSensitive, int limit) {
+		var escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+		var pattern = fullMatch ? escaped : "%" + escaped + "%";
+		var operator = caseSensitive ? "like" : "ilike";
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara where active=true and name " + operator
+					+ " :pattern escape '\\' order by name, id limit :limit")
+				.bind("pattern", pattern)
+				.bind("limit", limit)
+				.mapTo(Chara.class)
+				.list());
+	}
+
 	public boolean isNameTaken(String name) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("select count(*) from chara where name=:name")
