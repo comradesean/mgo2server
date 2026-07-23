@@ -1836,3 +1836,18 @@ restarted). Findings:
 2026-07-22 "never observed on any path" verdict was DM-era; whether DM round ends also send
 it is now unknown (pre-restart DEBUG logs were lost). Payload hex recorded in PROTOCOL.md;
 meaning unparsed everywhere.
+
+### Voluntary quitters ARE reported — at quit time, with real stats; SaveMGO question closed
+
+2026-07-23 late, three-player game 109: character 3 ("poop", tester03) CQC-grabbed and
+throat-slit rawr, then menu-quit mid-round. The host filed poop's 0x4390 **84 ms after the
+0x4380 leave command** — 1 kill, score 3 (kill·3), real values — before the 0x4342 disconnect
+notice; our server accepted it via the round snapshot ("left mid-round; accepted from the
+round snapshot"), the exact case the snapshot fix exists for. So the earlier open question
+resolves: the host reports departed players immediately on voluntary quit (and the crashed
+case has its 2026-07-22 observation) — **SaveMGO's missing quitter stats were their server
+dropping the report**, not the host staying silent. Bonus labels from the same rows: the
+quitter carried 0x1f=0 while the round-completing winner carried 0x1f=1 — first per-player
+discrimination for the "completed the round" reading; B10↔B11 grab pair confirmed a third
+time (slit = grab + finisher); the slit is otherwise an ordinary kill (score 3, no 0x15, no
+special A slot); B12 stayed 0 despite a CQC kill, further narrowing its DM-round one-off.
