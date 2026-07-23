@@ -14,6 +14,11 @@ Conventions:
   whether it surfaced on screen is recorded).
 - `T+0x...` in docs is the client-side struct destination, from the ELF parser traces.
 - Unknown regions are named `unknown_*` — an explicit state, not an omission.
+- **No `valid:` constraints** (decided 2026-07-23): a constraint freezes an expectation, and
+  while fields remain unmapped that converts discovery into parse errors — the first capture
+  where an unknown slot finally moves must read as a finding, not corruption. Deviation
+  watching belongs in the server as WARNs (store anyway, flag loudly — see PROTOCOL.md's
+  0x4390 tripwires), not in the specs as gates. Revisit per field only when it is closed.
 
 To view a capture against a spec, load both into the Kaitai WebIDE
 (https://ide.kaitai.io). To compile (generates parsers, validates structure):
