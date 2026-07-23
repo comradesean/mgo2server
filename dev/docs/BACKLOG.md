@@ -337,3 +337,48 @@ glance**: on a character, do the three skill-set and three gear-set slots show s
 are they empty/default? If empty, the feature is inert regardless of what we send and the
 `0x4140`/`0x4142` sends can be dropped from the burst; if populated, they arrive by a path we have
 not found. Do not change the working burst before that check.
+
+## Match/encounter history — plan (not yet started)
+
+*Pinned 2026-07-23, after the 0x4680/0x4220 fingerprint rounds settled the client contracts.*
+Everything below serves screens whose byte layouts are now traced and (mostly) label-confirmed;
+the missing half is storage. The ingestion source already exists: the host's per-player
+per-round `0x4390` report (kills/deaths/score/stuns/headshots/seconds/exp all live-confirmed)
+plus the `game_round` roster snapshot. Today we fold reports into lifetime totals and discard
+the round-level detail; history is what falls out of keeping it.
+
+**Phase 1 — keep the round reports.** A `round_report` table, one row per `0x4390` report:
+game id, round, reporter (host) id, target chara id, the parsed fields as typed columns
+(kills, deaths, score, stuns, headshots dealt/taken, seconds, exp-total, aborted flag), and
+the still-unlabelled counters as named-by-offset columns (`counter_0x0f`, struct-B slots) —
+decoded columns, not blobs, per the no-blobs rule. Cheap, and it future-proofs everything
+below plus weekly-stat rebuilds and the secondary-counter labelling work (see "Scoreboard
+stats" entry). Accumulate play seconds per character here if `0x4390`'s seconds field is not
+already applied — the `0x4221` card's PLAY TIME (confirmed, seconds) needs it.
+
+**Phase 2 — encounters, serving `0x4680`.** A `chara_encounter` table: viewer chara id, met
+chara id, met name (denormalized: survives deletes and renames honestly — "the name you saw"),
+last-met timestamp. Upsert per (viewer, met) pair at round teardown, walking the round roster
+pairwise in the same transaction that applies stats. Serve the newest 64 (client table cap;
+retention beyond that is operator policy), record layout per `mgo2_cmd_4682.ksy` — all four
+fields labelled, u8 sent 0 (cosmetically inert in the fingerprint). Join-time writing was
+considered and rejected: teardown has ground truth of who actually played, and shares the
+existing transaction.
+
+**Phase 3 — `0x4221` player details from real data.** Name and comment from the chara row,
+play time from phase 1, id echo as implemented. LEVEL is client-derived from an exp-like u32
+(candidates: wire 0x18 vs 0x1E — the next fingerprint round varies one at a time to split
+them, then we send experience in the winning slot). CLAN stays honestly empty until clans are
+modelled (the card already renders "---"; whether the 16B string or a gating id drives it is
+the same fingerprint round's second question).
+
+**Phase 4 — deferred: `0x4684` match details.** Layout traced (93-byte records,
+`mgo2_cmd_4686.ksy`) but no UI path has ever been observed to send it. If it surfaces, the
+natural serving is per-player round lines straight out of `round_report`. Do not build ahead
+of an observed trigger.
+
+**Explicitly not in scope here:** streak counters for medals/titles. Those are stat *slots*
+(`0x4107` slot 1 consecutive kills, slot 25 consecutive TDM survivals), not history queries —
+but round-ordered processing of `round_report` is where they would be maintained, and which
+`0x4390` counter feeds which slot is exactly the unfinished labelling in the "Scoreboard
+stats" entry. Phase 1 is a prerequisite for doing that work honestly.
