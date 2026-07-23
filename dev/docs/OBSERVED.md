@@ -1822,3 +1822,11 @@ restarted). Findings:
   sleep-stab kill (0x15 scoring ×1 fits both rounds); dart headshots do not tick headshots.
 - Host-side `seconds_in_game` garbage recurred (66157 then 65831 — non-monotonic, host row
   only; joiner rows stay sane). Open.
+
+### 0x43a2 exists after all: sent at natural TDM round ends
+
+2026-07-23: each TDM round end delivered host→server `0x4390` (player A) → `0x43a2` (15 or
+22 bytes, content-dependent) → `0x4390` (player B), each acked (`0x4391`/`0x43a3`). The
+2026-07-22 "never observed on any path" verdict was DM-era; whether DM round ends also send
+it is now unknown (pre-restart DEBUG logs were lost). Payload hex recorded in PROTOCOL.md;
+meaning unparsed everywhere.
