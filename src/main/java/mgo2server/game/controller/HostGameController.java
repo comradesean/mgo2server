@@ -751,16 +751,14 @@ public class HostGameController implements IGameController {
 	/**
 	 * End-of-round stat submission from the host ({@link #UPDATE_STATS}), one player per packet.
 	 * <p>
-	 * <b>Reference layout (tier 4), and the references disagree</b>: Nomad reads
-	 * {@code u32 target chara id} at 0, {@code u32 experience} (absolute total) at {@code 0x27}
-	 * and an aborted byte at {@code 0xB7}, skipping everything else; mgo2-server reads a
-	 * completely different single-byte stat struct with no target id at all. Nomad served retail
-	 * clients, so its read is implemented — but only the experience is applied, and only when the
-	 * target verifiably played: a current roster member, or a member of the round snapshot taken
-	 * at {@code 0x43ca} — the snapshot is what keeps a report for a player who <em>quit
-	 * mid-round</em> applicable, which is the case the reference's own list exists for. Per-stat
-	 * fields (kills, deaths…) are deliberately not parsed: no trusted layout exists. Verify live
-	 * by comparing a host's results-screen total to the stored value after one round.
+	 * The 167-byte frame layout is capture-confirmed and documented in PROTOCOL.md
+	 * (`0x4390 — update stats`). The report is applied only when the target verifiably played: a
+	 * current roster member, or a member of the round snapshot taken at round start — the
+	 * snapshot is what keeps a report for a player who <em>quit mid-round</em> applicable.
+	 * Experience (absolute total at {@code 0x27}) goes to the account pool; the whole decoded
+	 * frame is stored as a {@code round_report} row, from which stats and history screens derive.
+	 * The aborted byte at {@code 0xB7} is Nomad's longer build layout, read only when the report
+	 * reaches it (this client's 167-byte frame does not).
 	 */
 	private void updateStats(GameControllerContext ctx) {
 		var game = hostedGame(ctx);
@@ -783,20 +781,35 @@ public class HostGameController implements IGameController {
 			var played = inGame || gameService.playedLastRound(game.getId(), targetId);
 			if (played) {
 				gameService.applyRoundExperience(targetId, experience, aborted);
-				// Scoreboard: the stat-struct-A slots confirmed by the 2026-07-22 capture (signed
-				// u16 at 0x05 + 2*i). kills A0, deaths A1, score A3, stun A4, headshots A6.
-				// A7 (0x13) = headshot-deaths. Across three captured rounds (two TDM, one Rescue)
-				// it exactly equalled the enemy's headshot count every time (5/5/1) — i.e. deaths
-				// by headshot. Strong, but still a 1v1, so a 3+ player match would make it airtight;
-				// a wrong label here only mislabels this one column, not the others.
-				var stats = new GameService.RoundStats(
-					payload.getShort(base + 0x05), payload.getShort(base + 0x07),
-					payload.getShort(base + 0x0b), payload.getShort(base + 0x11),
-					payload.getShort(base + 0x13), payload.getShort(base + 0x0d));
-				gameService.accumulateStats(targetId, stats);
+				// The whole frame is stored, one round_report row per report — every stats and
+				// history screen derives from these rows. Struct A is the 15 s16 counters at
+				// 0x05 + 2*i; the capture-confirmed labels (kills A0, deaths A1, score A3, stun
+				// A4, headshots A6, headshot-deaths A7) live at fixed indices, the rest are kept
+				// by offset rather than guessed. Struct B (58 s16 at 0x2f) and the trailing word
+				// only exist in the long form; the short ~51-byte form ends after 0x2b's zero.
+				var structA = new short[15];
+				for (var i = 0; i < structA.length; i++) {
+					structA[i] = payload.getShort(base + 0x05 + 2 * i);
+				}
+				var detailPresent = readable >= 0x2F ? payload.getInt(base + 0x2B) : 0;
+				var detail = new short[readable >= 0xA3 ? 58 : 0];
+				for (var i = 0; i < detail.length; i++) {
+					detail[i] = payload.getShort(base + 0x2F + 2 * i);
+				}
+				long trailing = 0;
+				if (readable >= 0xA7) {
+					trailing = payload.getInt(base + 0xA3) & 0xFFFFFFFFL;
+				} else if (detail.length == 0 && readable >= 0x33) {
+					trailing = payload.getInt(base + 0x2F) & 0xFFFFFFFFL;
+				}
+				gameService.insertRoundReport(new GameService.RoundReport(
+					game.getId(), game.getHostCharaId(), targetId,
+					payload.getByte(base + 0x04) & 0xFF, structA,
+					payload.getInt(base + 0x23) & 0xFFFFFFFFL, experience & 0xFFFFFFFFL,
+					detailPresent & 0xFFFFFFFFL, detail, trailing, aborted));
 				logger.info("Game {}: stats for character {} — {} kills, {} deaths, score {}, "
 						+ "experience {}{}{}.",
-					game.getId(), targetId, stats.kills(), stats.deaths(), stats.score(),
+					game.getId(), targetId, structA[0], structA[1], structA[3],
 					experience, aborted ? " (aborted round)" : "",
 					inGame ? "" : " (left mid-round; accepted from the round snapshot)");
 			} else {
