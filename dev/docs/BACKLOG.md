@@ -415,3 +415,10 @@ at a clean point. **Operator policy, not protocol** — no capture shows how the
 handled concurrent logins; the current lazy invalidation is equally defensible and simpler.
 Cheap observation to bank first: which error dialog(s) the stale client renders per screen on
 invalid-session — unrecorded so far.
+
+## round_report.seconds_in_game holds two wire fields — split at next deploy
+
+*Pinned 2026-07-23 (late).* Wire 0x23 decoded as {u16 team slot, u16 seconds}; the column
+stores the raw composite (team*65536+seconds). Next natural deploy: V18 migration splitting
+into team_slot + seconds columns (existing rows: hi/lo of the stored value), matching parse
+in updateStats. Deferred only to avoid a mid-session lobby restart.
