@@ -400,3 +400,18 @@ of an observed trigger.
 but round-ordered processing of `round_report` is where they would be maintained, and which
 `0x4390` counter feeds which slot is exactly the unfinished labelling in the "Scoreboard
 stats" entry. Phase 1 is a prerequisite for doing that work honestly.
+
+## Dual-login: stale sessions die lazily; active disconnect is the possible smoothing
+
+*Pinned 2026-07-23 (evening), from deliberately triggering concurrent logins on one account.*
+One session token per account, so a second login overwrites the first; the first client
+discovers it only on its next session-bearing command ("Check session: no account holds the
+presented session", five across gamelobby/account that session) and errors on whatever screen
+it happens to be on. No unhandled packets are involved — the whole exchange is known commands.
+
+If smoother flow is ever wanted: on a login that overwrites an existing session, actively
+disconnect TCP connections still authenticated as that account, so the old client fails fast
+at a clean point. **Operator policy, not protocol** — no capture shows how the original
+handled concurrent logins; the current lazy invalidation is equally defensible and simpler.
+Cheap observation to bank first: which error dialog(s) the stale client renders per screen on
+invalid-session — unrecorded so far.
