@@ -1739,3 +1739,48 @@ Same trace: the client sent `0x4b46` (2 bytes, `0000`) shortly after the lobby c
 and proceeded normally with no reply — the first observed command that does NOT stall unanswered.
 Family `0x4bxx` is otherwise unknown. Parked: harmless as-is, payload now hex-logged if it
 recurs.
+
+### Skill ids read off the 0x4130 trace (persistence verified live)
+
+Post-fix retest 2026-07-23: equips survived logout/login in every arrangement. The DEBUG
+trace of each equip maps the ids: **0x01 = Handgun**, **0x0A = CQC**, **0x11 (17) =
+Instructor** (level byte 1 — likely single-level). Slot-aligned skills[4] + pad + levels[4],
+level follows the slot when skills are rearranged. Note: the 0x4125 catalogue special-cases
+skills 17/20/22 (0x2000, not 0x6000) — 17 is now known to be Instructor, the first anchor in
+that trio.
+
+## The OTHER-field experiment: single-variable rounds label the 0x4390 counters
+
+2026-07-23, seven deliberately single-variable DM rounds (sean = chara 1 vs rawr = chara 2,
+one kill type per round, both players' results screens read after each), plus grab-practice
+reports — the first systematic use of `round_report` rows as the capture medium. Full detail
+in PROTOCOL.md's revised 0x4390 tables; the headline results:
+
+- **A `0x09` = lock-on kills; A `0x1b` = deaths to lock-on** (dealt/received pair, like
+  headshots/headshot-deaths). One 3-lock-on-kill round moved exactly these two slots to 3;
+  five kill rounds without lock-on held both at zero. **This was the experiment's goal**: the
+  personal-stats grid's OTHER category is the remainder `minuend − headshots − lockon`, and
+  every operand now has a known source in the round reports.
+- **A `0x21` = round won** — winner-only for seven rounds, then transferred on the reporter's
+  first lost round. A `0x1f` = 1 for both players of completed rounds, 0 in teardown reports.
+  A `0x1d` ("rounds played" per the old capture) never moved — label doubtful.
+- **Score decomposes as `kills·3 − deaths·2 + stun·3 + kill1st·5 + combo·1`, clamped at 0**,
+  exact across five rounds (15/17/17/17/0-with-implied-−6). Revisions vs the capture era:
+  stun·3 not ·2, no round-win bonus, and "score can go negative" was never actually observed.
+- **Struct B is an event ledger with dealt/received pairs**: B10↔B11 (CQC-contact-flavoured)
+  and B22↔B23 (slam/knockdown-flavoured) matched exactly on both sides in every round; slams
+  tick B23 without a faint while the scoreboard stun (A `0x0d`) requires the knockout. B3 =
+  suicides. B39 = kill-1st-place (matches the KILL 1ST PC screen line 4/4). B0/B1 and B36
+  have *matched* kills/deaths in 7/7 rounds — recorded as correlations, not duplicates, per
+  the no-mirror rule; no divergence test has split B0 from B36 yet.
+- **Results-screen behaviour**: the category line set varies by context, zero-valued lines do
+  render, environmental kills present as COMBO (no ENVIRONMENTAL category), knife stabs to
+  the head are not headshots, and "KILL 1ST PC" means killing the current first-place player.
+- **Open**: B8 (one-off 1 in the rifle round), B12 (3 per explosive-kill round, a stray 1 in
+  knife/rifle/CQC rounds, 0 in lock-on/practice — the user's one-off action those rounds is
+  unidentified), B21 (stun-adjacent, one observation), the B0/B36 split, and victim-side
+  `0x0f` (loser-side 1, twice).
+
+Migration V17 renames the two confirmed columns (`lockon_kills`, `lockon_deaths`). The CQC
+detour also fixed skill persistence (see "Equipped skills vanished") — CQC turned out to be
+skill-gated, not pressure-gated: with CQC 3 equipped the grab works from any input device.

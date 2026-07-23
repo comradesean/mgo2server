@@ -268,9 +268,9 @@ public class GameService {
 			var update = handle.createUpdate("""
 					insert into round_report
 						(game_id, host_chara_id, chara_id, flag_0x04,
-						 kills, deaths, counter_0x09, score, stuns, counter_0x0f,
+						 kills, deaths, lockon_kills, score, stuns, counter_0x0f,
 						 headshots, headshot_deaths, counter_0x15, counter_0x17,
-						 counter_0x19, counter_0x1b, rounds_played, counter_0x1f, counter_0x21,
+						 counter_0x19, lockon_deaths, rounds_played, counter_0x1f, counter_0x21,
 						 seconds_in_game, experience_total, detail_present, detail_counters,
 						 trailing_word, aborted)
 					values (:game, :host, :chara, :flag,
