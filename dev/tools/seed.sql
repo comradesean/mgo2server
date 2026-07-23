@@ -7,7 +7,7 @@
 -- the console (or RPCS3) can actually reach — the host's LAN address, not 127.0.0.1, unless the
 -- emulator runs on the same machine. Edit the addresses below before running.
 
-\set host_ip '192.168.1.100'
+\set host_ip '192.168.1.200'
 
 -- One lobby of each type. The gate is what the client reaches first; it hands back this list, and
 -- the client then connects to the account lobby and finally a game lobby.
