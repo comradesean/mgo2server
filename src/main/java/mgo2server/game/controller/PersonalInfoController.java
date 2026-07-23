@@ -138,6 +138,10 @@ public class PersonalInfoController implements IGameController {
 
 		characterService.updateAppearance(charaId, a);
 		characterService.updateComment(charaId, comment);
+		// Live 2026-07-23: without this, an equipped skill survives the session (the echo below
+		// keeps the menu populated) but vanishes on the next connect burst, whose 0x4122 reads
+		// chara_equipped_skills.
+		characterService.updateEquippedSkills(charaId, skills, levels);
 
 		ctx.write(new GamePacket(UPDATE_PERSONAL_INFO_RESULT, reply(ctx, a, skills, levels, comment)));
 	}
