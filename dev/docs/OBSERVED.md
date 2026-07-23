@@ -1784,3 +1784,41 @@ in PROTOCOL.md's revised 0x4390 tables; the headline results:
 Migration V17 renames the two confirmed columns (`lockon_kills`, `lockon_deaths`). The CQC
 detour also fixed skill persistence (see "Equipped skills vanished") — CQC turned out to be
 skill-gated, not pressure-gated: with CQC 3 equipped the grab works from any input device.
+
+### 0x4390 is host-only, per-connection-verified; the host reports crashed players
+
+2026-07-23 TDM (game 107), DEBUG per-connection trace: every inbound 0x4390 arrived on the
+host's connection — the joiner, alive and playing through round 1, sent none for himself. The
+host speaks for all players (one 167-byte packet each), so the server-side stats pipeline
+trusts the host entirely; a joiner has no channel of his own. After the joiner *crashed*
+mid-round-2, the host still filed a batch including him (all-zero, accepted via
+roster/snapshot) — evidence for "SaveMGO dropped quitter reports" over "the host never sends
+them", pending a deliberate quit test. Same round also upgraded A `0x0f` to **stuns received**
+(matched opposing stuns-dealt in every round to date), added new one-observation slots A
+`0x15` (dealt) / A `0x17` (received) and B24 — candidate events: stun-sniper headshot,
+knife-kill on a sleeping body (the dart headshot did NOT tick the headshot counter, matching
+the knife-head-stab finding) — and produced the first garbage `seconds_in_game` (66157 on the
+host's own row vs a sane 100 for the joiner). The two-reports-per-stage question from the
+2026-07-22 TDM capture remains open: the crash prevented a completed multi-round stage.
+
+### The two-round TDM stage: per-round reporting holds; struct B has per-stage state
+
+2026-07-23 evening, game 107 (TDM, two-round stage, completed naturally then manually
+restarted). Findings:
+
+- **One 0x4390 batch per round, none at stage end** — the stage boundary added nothing. The
+  "two score reports" remembered from the 2026-07-22 capture were that capture's own two
+  per-round batches (it was also a two-round TDM).
+- **B24 = own team's stage score at report time** (strong candidate): 1 / 1-after-the-crash-
+  reset-the-score / 2, and 0 in every teamless DM round. First confirmed cross-round state
+  inside struct B — it is NOT a uniform per-round ledger; slots have individual scopes.
+- **First A/B divergence, no-mirror rule vindicated**: the stage's FINAL round reported
+  A-kills=1, A-headshots=1, score 5 — with B0=0 and B2=0. Round 1 of the same stage had
+  B0=1, B2=1. Candidate: the client zeroes per-round B slots at stage end before building
+  the last report. Prediction to test: every multi-round stage's last batch shows zeroed
+  per-round B slots.
+- **B2 = headshots dealt** (candidate, first appearance with the first bullet headshot).
+- A `0x15`(dealt)/`0x17`(received) pair and the round-1 score's +1 residue track the
+  sleep-stab kill (0x15 scoring ×1 fits both rounds); dart headshots do not tick headshots.
+- Host-side `seconds_in_game` garbage recurred (66157 then 65831 — non-monotonic, host row
+  only; joiner rows stay sane). Open.
