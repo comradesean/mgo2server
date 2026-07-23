@@ -1190,9 +1190,15 @@ the payloads are parsed and the match state tracked, **with layouts transcribed 
 GHzGangster/Nomad (tier 4)** at the user's request — fetched for these specific named questions
 after the docs and the audit both confirmed the gap. Live standing after two captured sessions
 (2026-07-22, including an admin-action sweep): **`0x4398`, `0x43a0`, `0x4392` and `0x4390` are
-all confirmed against the client, payload and effect**; `0x43ca` and `0x43a2` have **never been
-observed on any path** — not staging, not admin restarts (round/stage/next), not a natural
-round end with a declared winner — and are presumed absent from this build's normal vocabulary.
+all confirmed against the client, payload and effect**; `0x43ca` has **never been observed on
+any path** and is presumed absent from this build's normal vocabulary. `0x43a2` was presumed
+absent too until 2026-07-23, when a natural **TDM** round end sent it — once per round end,
+between the per-player `0x4390` reports (the 2026-07-22 sweep that missed it was DM-era).
+Payloads (hex, undecoded — no reference parses this command): 15 B
+`000000010000000119000100010000` twice for identical headshot rounds, and 22 B
+`0000000100000002010001000000002b000000010001` for the round with a stun + sleeping-body
+kill, so the length varies with round content. We ack `0x43a3`, result 0, and drop the data
+knowingly; decoding it is parked until a reason appears.
 
 What the host admin menu actually sends, mapped action by action against a live client:
 
