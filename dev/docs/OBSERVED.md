@@ -1618,3 +1618,20 @@ The `%Y/%m/%d %H:%M:%S` date-format resource found in the ELF menu blob during t
 title/medal extraction (previously unrecorded) is now noted in PROTOCOL.md's `0x4680`
 section: the history UI renders a timestamp, so the record's leading-u32-as-timestamp
 candidate is structurally plausible. Fingerprinting the live screen is the confirmation path.
+
+### No public original-era capture exists (searched 2026-07-23)
+
+A genuine 2008-2012 capture of Konami's MGO2 servers DID exist — Derrik Touve (GHzGangster,
+SaveMGO lead) captured live traffic before the June 2012 shutdown (his account at derrik.dev;
+corroborated on ResetEra) — but it was **partial and never published**, surviving only as
+seed/placeholder data inside the SaveMGO servers. That partialness is exactly why so much had
+to be reversed from the ELF. No shareable pcap/dump is on GitHub, archive.org, or the PS3
+Capture Project (which post-dates the shutdown and structurally cannot hold original MGO2
+server bytes).
+
+Chased the one lead — the `.bak` blob variants in GHzGangster/Nomad: `personal-stats-2/3.bin.bak`
+(144 B) and `match-history.bin.bak` decode as the SAME 2017 ASCII-marker fingerprint sea and
+"president trump" test record as the non-.bak files — older dev fakes, not capture fragments.
+Conclusion: no original-server bytes are publicly recoverable. Live fingerprinting of the retail
+client (this project's method) is the authoritative path; a direct ask to the SaveMGO team is
+the only route to the surviving partial capture, if ever wanted.
