@@ -1245,6 +1245,23 @@ populates". Reply `0x43cb`, result 0, if it ever arrives.
 
 ## `0x4390` — update stats
 
+**The reporting model — two established truths (2026-07-23, per-connection verified across 14
+live reports; the server actively flags deviations):**
+
+1. **One packet = one player.** A report is 167 bytes about a single target character; a
+   round's results are N packets back to back, never a roster in one frame. Only the host
+   sends them — joiners have no reporting channel (verified: an active joiner sent zero).
+   Timing: present players at round end; a mid-round quitter immediately at quit (real
+   values, 84 ms after the leave command, twice reproduced) and **not again** at round end.
+2. **No in-frame game identifier; attribution is connection-implicit.** Nothing in the frame
+   names the game or lobby — the server resolves the game as "the one this connection's
+   character hosts", and a character hosts at most one. The start-round reply's token is
+   retained by the client but has never been echoed in a report (trailing word 0 in all 14).
+   `round_report.game_id`/`host_chara_id` are stamped from connection context, not parsed.
+
+Deviation tripwires in `updateStats`: a `0x4390` on a non-host connection and a nonzero
+trailing word each log a WARN with payload hex — if either fires, these truths need revisiting.
+
 **Client → server**, `HostGameController.updateStats`, one player per packet, sent by the host at
 round end and on kick teardown. **Confirmed against a live client 2026-07-22** — this build sends
 **167-byte** reports, and two rounds of captures pinned the fields against known ground truth:

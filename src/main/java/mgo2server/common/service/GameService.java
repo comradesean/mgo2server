@@ -246,8 +246,8 @@ public class GameService {
 	 * {@code detail} is the 58 s16 struct-B block, empty in the short report form.
 	 */
 	public record RoundReport(long gameId, long hostCharaId, long charaId, int flag,
-			short[] structA, long seconds, long experienceTotal, long detailPresent,
-			short[] detail, long trailingWord, boolean aborted) {
+			short[] structA, int teamSlot, int seconds, long experienceTotal,
+			long detailPresent, short[] detail, long trailingWord, boolean aborted) {
 	}
 
 	/**
@@ -271,18 +271,19 @@ public class GameService {
 						 kills, deaths, lockon_kills, score, stuns, counter_0x0f,
 						 headshots, headshot_deaths, counter_0x15, counter_0x17,
 						 counter_0x19, lockon_deaths, rounds_played, counter_0x1f, counter_0x21,
-						 seconds_in_game, experience_total, detail_present, detail_counters,
-						 trailing_word, aborted)
+						 team_slot, seconds_in_game, experience_total, detail_present,
+						 detail_counters, trailing_word, aborted)
 					values (:game, :host, :chara, :flag,
 						 :a0, :a1, :a2, :a3, :a4, :a5, :a6, :a7, :a8, :a9,
 						 :a10, :a11, :a12, :a13, :a14,
-						 :seconds, :exp, :detailPresent, cast(:detail as smallint[]),
+						 :team, :seconds, :exp, :detailPresent, cast(:detail as smallint[]),
 						 :trailing, :aborted)
 					""")
 				.bind("game", report.gameId())
 				.bind("host", report.hostCharaId())
 				.bind("chara", report.charaId())
 				.bind("flag", report.flag())
+				.bind("team", report.teamSlot())
 				.bind("seconds", report.seconds())
 				.bind("exp", report.experienceTotal())
 				.bind("detailPresent", report.detailPresent())
