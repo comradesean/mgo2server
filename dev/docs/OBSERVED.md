@@ -2054,10 +2054,65 @@ rounds for dark slots, one timer-ended round for 0x21) is cheaper and falsificat
 faints — dealt stuns live in the weapon list, not struct A), rawr killed by poop 3× headshot.
 Findings: rawr's report shows 0x0f=2 AND 0x17=2 (stuns received), while melee-slam rounds
 moved 0x0f but NOT 0x17 — candidate split: **0x0f = all knockouts received, 0x17 = ranged/
-tranq knockouts received** (sleep-stab round's 0x17=1 fits). 0x15 (dealt side) stayed 0 on
-the dealer, consistent with dealt-events-live-in-0x43a2. **Assist absent a SECOND time**: two
+tranq knockouts received** (sleep-stab round's 0x17=1 fits). ~~0x15 (dealt side) stayed 0 on
+the dealer~~ **[WRONG — falsified hours later by the wire itself: the dealer's packet has
+`0002` at 0x15, and game 107 R1 already had 0x15=1. 0x15 = ranged/tranq knockouts dealt;
+see the next entry.]** ~~**Assist absent a SECOND time**: two
 health-setups (round 1) and two tranq-stuns (round 2) before a teammate's kill produced zero
 credit for the setup player (score 0, no slot) — assist·3 in the score formula looks inert or
-requires an unknown trigger (tier-4-inherited-and-untested candidate). b36=3 with poop's 3
+requires an unknown trigger~~ **[WRONG — the credit was there the whole time, in B37 (=2)
+and in the score (14 = stun·4 + dart-headshot·4 + assist·6); we just hadn't decomposed it.
+Screen-confirmed the next round. Only the health-setup half survives: damage-only setups
+earned nothing.]** b36=3 with poop's 3
 headshot kills and score 18=9+6+3 reconfirms b36 as the ×1 COMBO/OTHER category (b12 stayed
 1, contributes nothing to score — b12's Other label was a b36 confound, now retracted).
+
+### The B-block's running-max family; mode-specific stun; the score clamp; assists were never inert
+
+2026-07-24 (late). Re-reading all 66+ stored `round_report` rows against the server's own
+"advanced to rotation" log lines cracked the B-block's semantics, and a live round read off
+the result screen (categories × multipliers × totals) settled the score formula. Everything
+below is in PROTOCOL.md's revised tables; the discoveries and their falsifications:
+
+- **B0/B1/B2 are per-stage best-round records, not counts** — store-if-greater, zeroed on
+  stage rotation, wired as deltas like every counter. Sean's constant-2-kills game wired B0 =
+  2,0,2,0 across two 2-round stages, exactly tracking "new stage best or nothing"; rotation
+  timestamps in the lobby log match every reset (DM rotates each round, so DM rounds always
+  wire full counts — which is why the old single-round captures read "matched kills N/N").
+  This live-confirms the ELF pass's B0 running-max candidate and extends it to B1 (deaths)
+  and B2 (headshots, bullets only — a 3-terminal-headshot round wired B2=1 because the stage
+  best was 2, killing the "B2 = terminal blows" reading against 0x43a2's independent count).
+  B12 showed the same 1-then-0 signature across identical rounds: max-family, base unknown.
+- **B24 = TDM rounds survived/won this stage** — absent in every DM round, 1,2-then-reset in
+  TDM, 0 the moment the player died or lost, quit-teardown snapshots the pre-round value.
+  "Survived" vs "won" needs a win-but-die round; absolute-vs-triangular-delta also open.
+- **B36 = kills·(kills−1)/2 exactly, all rows** — including a 4-kill/5-death round (B36=6),
+  so deaths don't reset it: a pure function of round kills, not a streak mechanic. It is the
+  screen's OTHER row (×1), confirmed 6-for-6 on a 4-kill player.
+- **B37 = assists (screen ASSIST row, ×3)** — wire B37=3 with screen "Assist=3x3", total
+  exact. The two "assist inert" verdicts are dead: the tranq-setup round paid 6 points of
+  assist credit we hadn't decomposed. Damage-only setups (health experiment) still earned 0.
+- **0x15 = ranged/tranq knockouts dealt** (2/2 mirror of the victim's 0x17; 0 in melee
+  rounds) — the same-day "stayed 0 on the dealer" note was a misread of the victim's packet.
+- **Stun multiplier is mode-specific: ×2 TDM (screen-confirmed), ×3 DM** — resolving the
+  stun·2-vs-stun·3 whiplash in this file: both were right, for their mode.
+- **The wire score is the delta of a clamped store.** Two 5-death/0-kill rounds wired 0 (no
+  banked score) and −10 (16 banked the round before); the quit teardown wired −4 off a
+  26-point bank. So "suicides deduct nothing" (2026-07-23) is confounded — that round had
+  nothing banked and the clamp alone explains its 0. Suicide deduction reopened.
+- **The screen's HEADSHOTS row counts tranq-dart headshots** (6 on screen vs 0x11=1 on the
+  wire); 0x11/B2 are bullets-only. Every dart stun so far was a headshot, so headshot·2
+  counting darts vs a separate 0x15·2 term are numerically indistinguishable — a body-shot
+  tranq round discriminates.
+
+Transcription caveat, banked deliberately: of the three screen rows read that round, only the
+reader's own row reconciled field-by-field; the other two players' Headshots/Stuns/Other rows
+as read did not match their wire values, but all three TOTALS matched the wire exactly (the
+loser's 0 being the clamp swallowing −10). Read your own row off the result screen; treat
+others' rows as suspect until someone reads their own screen in the same round.
+
+Open discriminators, in rough order of value: a **body-shot tranq stun** round (splits
+headshot·2-with-darts from 0x15·2); a **win-but-die TDM round** (splits B24 survived/won); a
+**suicide with banked score** (re-tests suicide deduction under the clamp model); a
+**timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds (untouched
+categories); B8/B21/B10-11/B22-23 single-variable rounds as before.

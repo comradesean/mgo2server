@@ -304,25 +304,20 @@ emits that the client has **no parser for** — it is waiting on a different id.
 None is repointed here — each needs a live capture or parser trace first, per the project's
 standing rule against guessing layouts/ids.
 
-## Scoreboard stats — core slots done; secondary counters still unlabelled
+## Scoreboard stats — struct A fully labelled 2026-07-24; a handful of B slots left
 
-*Pinned 2026-07-22 (evening); core resolved same day by live capture.* The `0x4390` scoreboard was
-labelled by a two-round TDM match whose totals matched the slots exactly (OBSERVED.md, "The 0x4390
-scoreboard"): kills/deaths/score/stun/headshots/headshot-deaths now accumulate into `chara_stats`
-(lifetime totals) in `updateStats`. **Resolved for the stats that matter.**
+*Pinned 2026-07-22; substantially closed 2026-07-24* (OBSERVED.md, "The B-block's running-max
+family"). Struct A is now labelled end to end — the knockout dealt/received pairs (`0x0d`/`0x0f`,
+`0x15`/`0x17`), assists (B37, screen-confirmed ×3), the OTHER category (B36 = kills·(kills−1)/2),
+mode-specific stun multipliers (×2 TDM / ×3 DM), and the clamped-store score model are all in
+PROTOCOL.md. The B-block's running-max family (B0/B1/B2/B12) is understood as per-stage
+best-round records wired as store-if-greater deltas.
 
-Still unlabelled — all were zero in that match, so nothing to correlate:
-
-- `0x0f` (one player had a lone `1`), and the hacking / assist / wake / "Other" score categories.
-- The 58-slot **struct-B detail block at `0x2f`** — a separate itemised breakdown, likely
-  per-weapon or per-category, distinct from the eight scoreboard categories in struct A. Positions
-  known, meanings not. (`B36` was numerically near the "Other" count — 12 vs 13 — but off by one,
-  a coincidence rather than a link.)
-
-To finish: play a match that actually exercises those (use hacking/assist/support weapons, several
-weapon types) and correlate the reported per-category totals to the slots, same method. Or trace
-where the client increments the struct fields during gameplay. Low priority — the primary
-scoreboard is captured.
+Still open, with the discriminating experiment for each (list also at the end of the OBSERVED
+entry): body-shot tranq round (headshot·2-with-darts vs `0x15`·2); win-but-die TDM round (B24
+survived vs won); suicide with banked score (deduction under the clamp); timer-ended round
+(`0x21`); hacking and wake (never exercised); B8 / B21 / B10-B11 / B22-B23 single-variable
+rounds; B12's base value; flag `0x04`; `0x19`, `0x1d`, and the trailing word (never nonzero).
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 
