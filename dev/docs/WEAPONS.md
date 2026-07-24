@@ -12,9 +12,10 @@ Anchored live via the `0x43a2` round-end tally list (slot = weapon id): 1 = ST K
 kill), 43 = MOSIN N (tranq darts; non-lethal flag agrees). Ids 0–126 are the tally-eligible
 damage sources; 127–140 are boss/environment sources.
 
-Tally-triple candidate reading (fits all observed entries, unconfirmed): per-weapon
-{kills, headshots, faints} — with the Mosin dart-to-head counting as a weapon-level headshot
-even though the scoreboard headshot counter (lethal bullets only) refused it.
+Tally triple **confirmed** 2026-07-24: per-weapon {kills, headshots, faints} — a deliberate
+one-headshot-one-bodyshot AK102 round produced {2,1,0}, splitting the fields. The Mosin
+dart-to-head counts as a weapon-level headshot even though the scoreboard headshot counter
+(lethal bullets only) refuses it. Anchors exact: ST KNIFE 1, AK102 25, MOSIN N 43.
 
 | id | name | id | name | id | name |
 |---|---|---|---|---|---|
