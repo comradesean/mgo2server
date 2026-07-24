@@ -2509,3 +2509,19 @@ wire 21 with rolls=2/B41=1 also present — gap unresolved; the no-delivery roun
 OTHER=7 − death·2 = 5 exactly). And **0x21 is mode-scoped**: all six Rescue observations
 equal "died zero times" (losing-team survivors flag too), while TDM/DM provably require
 not-losing as well. B24 did not tick on the Rescue team win — TDM-only reconfirmed.
+
+### Named-categories SNE round: B50/B51 labelled, B49 sealed, OTHER knockout component wire-proven
+
+2026-07-24 (game 142, rawr as Snake, lost; both score screens read with SNE's own category
+names). Wire vs screens: **B51 = SNAKE KILL** (2=2, kills of the Snake, worth 6 points each
+— Sean's 22 decomposes exactly only with snake-kills at 6); **B50 = HOLDUP COUNT ×2**
+(1 holdup vs 3 stuns this round breaks the earlier stun confound; 138's B50=4 was 4
+holdups); **B49 = wins-as-Snake sealed** (absent in both losses, present in the sole win);
+B54 = Snake's deaths 3/3; B56 = rounds-as-Snake 3/3; B47=B48 again (2,2 — dogtag-related
+pair; DOGTAG SCORE=16 has no direct slot, so tag values vary). Screen HEADSHOT = 0x11+0x15
+holds in SNE (4 = 1 lethal + 3 darts). **The OTHER knockouts-received component is
+wire-proven**: Sean's screen OTHER=3 = his c0f=3 with B36=0, and his wire 22 includes it
+with no clamp — the last screen-only claim in the file is now tier-2 wire fact; the two old
+clamp-hidden sightings validate retroactively. New opens: rawr's OTHER=6 (stuns-dealt ·2
+candidate), MK.II KILL ×4 category carrier, the B47/B48 pair, and the b51/b53/b55 trio needs
+a multi-player SNE round to split its degenerate copies.
