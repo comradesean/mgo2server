@@ -2494,3 +2494,18 @@ defender scored exactly **5 with zero activity** — first Rescue score category
 draws flag every zero-death player — same as the historical 0-0 TDM round — so 0x21 is
 refined from "won + no deaths" to **"did not lose + no deaths"**. B41/B42 stayed 0 (attack-
 run stats, consistent). Row 169 was the usual 4-second exit teardown.
+
+### The goal round: B27 = goals confirmed; the Rescue score table mapped; 0x21 is mode-scoped
+
+2026-07-24 (game 141: Sean picked up and DELIVERED the GA-KO — 1 goal, team win, score 26).
+**B27=1 on the delivery** — GA-KO saved = the screen's GOAL×3 row, closing the Rescue slot
+trio (B27 saved/goal ✓, B28 defended = TARGET DEFENCE×3 ✓, B30 fully-defended ✓, B29
+pickups 2/2). The user's screen gave Rescue's full category table (KILL×7, HEADSHOT×3,
+STUN×7, TEAM WIN×5, ASSIST×5, GOAL×3, TARGET DEFENCE×3, OTHER×1) and it validated
+immediately: rawr's round-1 18 = 7+3+3+5 EXACT. Rescue HAS a team-win bonus (TDM provably
+none) — the idle round's mystery 5 was this, not B30 scoring. B42 (carry magnitude) went
+7→21 across the two carry rounds; the Rescue OTHER row tracks it imperfectly (screen 18 vs
+wire 21 with rolls=2/B41=1 also present — gap unresolved; the no-delivery round decomposed
+OTHER=7 − death·2 = 5 exactly). And **0x21 is mode-scoped**: all six Rescue observations
+equal "died zero times" (losing-team survivors flag too), while TDM/DM provably require
+not-losing as well. B24 did not tick on the Rescue team win — TDM-only reconfirmed.
