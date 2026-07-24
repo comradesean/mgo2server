@@ -2439,3 +2439,13 @@ its own categories, consistent with the ELF's SP_SCORE_SNE01/02 tokens. Models i
 0x21 flawless-win (rawr won but died → 0), CQC pair (6↔6), 0x1f, per-player reporting.
 The Snake career stats (0x4107 slots 63/67/72) had no B carrier — nothing above B56 fired;
 their delivery path is still unidentified.
+
+**SNE constraint (user domain knowledge, same night):** the Sneaking stats surface shows the
+same standard tracking as other modes plus exactly THREE snake-specific stats — Time as
+Snake, Kills as Snake, Wins as Snake (0x4107 slots 72/67/63, all beyond struct B's 58). So
+the nine SNE-lit B slots are NOT nine hidden career stats: most are presumably SNE score
+categories (rawr's 94 carries ~29 points the TDM-style terms cannot explain) or round
+bookkeeping, like B36/B37 in TDM. The snake trio must be server-derived from A-block kills/
+seconds + mode + role — and ROLE attribution is the open question: nothing obvious in the
+frame says who was Snake (both players wired team_slot 0); B56=1 on the winning Snake is the
+strongest marker candidate (win-as-snake or the role itself).
