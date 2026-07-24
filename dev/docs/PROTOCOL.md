@@ -1319,7 +1319,9 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B0 | max-family; **streak-vs-total split 2026-07-24**: a 2-kills-with-deaths-between round wired 1, not 2 — it tracks the best unbroken run, which equalled round kills in all earlier rounds only because testing killed in unbroken streaks | **best consecutive kills this stage** (streak record, running-max delta) — feeds Personal Stats "Consecutive Kills" |
 | B1 | max-family, deaths side (includes suicides); a 2-deaths-never-consecutive round wired 1 | **best consecutive deaths this stage** (streak record) — Personal Stats "Consecutive Deaths" |
 | B2 | max-family; 2 separated headshot kills wired 1; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best consecutive headshots this stage** (streak record) |
-| B3 | 3 in a 3-grenade-suicide round, 0 elsewhere (single observation — count vs max-family undetermined) | **suicides** |
+| B3 | 3 in a 3-grenade-suicide round, 5 in a 5-suicide round; **3 in the 3-falling-death round — environmental self-deaths count** | **suicides** (incl. falls) |
+| B17 | **= falling deaths** — 3 in the 3-fall gesture round (2026-07-24) | **falling deaths** (Personal Stats slot 18) |
+| B18 | **= times caught in trap** — 6 triggers with only 2 fatal wired 6 (catches, not deaths); the trap owner's kills credit as ordinary kills | **trap catches** (Personal Stats slot 19) |
 | B7 | **= salutes** — 3 in the 3-salute gesture round (2026-07-24); the hack round's 1 was a pre-scan salute | **salutes** (Personal Stats) |
 | B8 | **= preset radio message uses** — 2 in the 2-radio gesture round; the plain-rifle round's stray 1 was a radio call | **preset radio uses** (Personal Stats) |
 | B10 ↔ B11 | dealt/received **pair** (exact both sides, three times); moved by CQC grabs (4), barrels (3), grab practice (11 received), and the hold-up-heavy hack round (11); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs/hold-ups) |

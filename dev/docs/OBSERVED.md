@@ -2327,3 +2327,15 @@ one server-relayed candidate, silent mode (commonB bit 2), was already decoded c
 delivers the buffer; keystrokes echo via passthrough but SEND stays disabled. Emulator-side;
 nothing we serve affects it. B9 (predicted Text Chat Uses) stays unconfirmable until the OSK
 behaves.
+
+### Gesture round three: B17 = falling deaths, B18 = trap catches; falls are suicides
+
+2026-07-24 (game 132: Sean 3 falling deaths + 6 trap triggers of which 2 fatal; poop owned
+the traps). Wire: **B17=3, B18=6** — both exactly as the slot−1 rule predicted (slots 18/19),
+and B18 counts triggers, not deaths. **B3=3: falling deaths tick the suicides slot** —
+"Suicides" includes environmental self-deaths. Poop's own B18=1 (stepped in his own trap);
+his 2 trap kills credited as ordinary kills (score 7 = 6 + B36·1 exact, B0 streak 2).
+Sean's B1=5 (all five deaths consecutive), B12=8 rolls, B7=1 (another salute). Suicide-
+deduction question still masked: Sean's 0 sits on a fresh-game bank either way. Remaining
+unconfirmed gesture slots: B15 catapult, B16 boosts, B5/B6 friendly kills/stuns, B9 text
+chat (blocked on the RPCS3 OSK).
