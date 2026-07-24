@@ -1953,3 +1953,13 @@ network-parsed and identity-compared (not constant), never recomputed from score
 winner). Prediction: a game hosted by chara 2/3 sends header 2/3. Every field of 0x43a2 is
 now decoded. Nuance recorded on the reporting-model truths: 0x43a2 does carry one in-frame
 identity (its sender's), unlike 0x4390; the no-game-identifier truth stands.
+
+### Correction: the 0x43a2 header is NOT the reporter's id — falsified within the hour
+
+2026-07-24: a poop-hosted (chara 3) round still sent header 1, killing the reporter-chara-id
+verdict the ELF trace had just delivered. The trace's mechanics stand (the value comes from
+the cached char-record buffer at session+0x57d8, snapshotted per round) — the error was
+assuming that buffer always holds the OWN character's record; it evidently can hold
+another's. Every surviving capture (10/10; game 111's rawr-won packets were lost to the
+23:16 container restart) is a round chara 1 won → winner's-chara-id is the leading
+candidate. Discriminator: any round won by chara 2 or 3 with DEBUG on.

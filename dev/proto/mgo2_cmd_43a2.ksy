@@ -21,15 +21,15 @@ doc: |
   tallies").
 doc-ref: dev/docs/PROTOCOL.md "0x43a2 — round-end slot-tally list"
 seq:
-  - id: reporter_chara_id
+  - id: header_chara_id
     type: u4
     doc: |
-      [CONFIRMED-ELF] The reporting client's character id — read from the head of the
-      cached 0x4101 character record (session+0x57d8), snapshotted into each round record
-      (+0x14c) at state transitions, forwarded verbatim (trace 2026-07-24). Read "always 1"
-      live because the test host's character id is 1; predicted to follow the host's id.
-      Redundant with connection identity — the one in-frame identity in the round-end
-      conversation (the 0x4390 report itself carries none).
+      [PARTIAL] A character id, mechanically: the ELF trace shows it read from a cached
+      character-record buffer (session+0x57d8, 0x4101-shaped: u32 id + 16B name),
+      snapshotted per round (+0x14c) and sent verbatim. WHOSE id is open: "the reporter's
+      own" was live-falsified 2026-07-24 (a chara-3-hosted round still sent 1); every
+      surviving capture (10/10) is a round chara 1 WON, making winner's-id the leading
+      candidate — the discriminating observation is a round won by someone else.
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."

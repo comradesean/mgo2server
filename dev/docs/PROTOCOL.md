@@ -1362,10 +1362,11 @@ natural **TDM** round ends send it, once per round, between the per-player `0x43
 ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
 
 ```
-u32 reporter chara id — ELF-confirmed 2026-07-24: the head of the cached 0x4101 character
-                        record, snapshotted per round and sent verbatim ("always 1" live =
-                        the test host's char id). The one in-frame identity in the
-                        round-end conversation; redundant with connection identity.
+u32 chara id          — whose is OPEN: mechanically the head of a cached 0x4101-shaped
+                        character record snapshotted per round (ELF); "the reporter's own"
+                        was live-falsified (a chara-3-hosted round sent 1). All surviving
+                        captures are chara-1-won rounds; winner's id is the leading
+                        candidate, untested.
 u32 count             — number of entries (builder caps 0x7f; caller caps 50)
 count × { u8 weapon id, u16 kills, u16 headshots (terminal blows), u16 faints caused }
 ```
