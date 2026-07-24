@@ -1283,7 +1283,7 @@ structure, not meaning.
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
 | `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
 | `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |
-| `0x0b` | 2 | s16 | **score** — **clamped at 0**, observed twice where categories implied negative; the earlier "can go negative" note was never actually observed (that capture landed on exactly 0) | live-confirmed |
+| `0x0b` | 2 | s16 | **score** — signed, goes negative on the wire (−4 and −10 observed 2026-07-24 = deaths·−2 exactly). The earlier "clamped at 0" note was a misread of the suicide round: **suicide deaths deduct nothing** (3 suicides → 0, not −6); deaths to enemies deduct 2 | live-confirmed |
 | `0x0d` | 2 | s16 | **stun / knockout count** — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
 | `0x0f` | 2 | s16 | unknown (a loser-side 1 twice; a player had 1 in the original capture) | low |
 | `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs to the head do not count, 2026-07-23) | live-confirmed |
