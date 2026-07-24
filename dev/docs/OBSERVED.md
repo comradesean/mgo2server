@@ -1992,3 +1992,13 @@ and DM sends the packet (pre-tracing "never sent" verdict dead).
 incl. the round-ender; winning poop 3): header 2 = rawr — the OVERALL top performer,
 independent of team outcome. Bytes: 00000002 00000001 17 0004 0004 0000 (rawr's Vz.83
 tally alone, again). Kills-vs-score ranking still confounded (MVP led both).
+
+### Score clamp was wrong: negatives are real; suicides just don't deduct
+
+2026-07-24: wire scores −4 (2 deaths) and −10 (5 deaths) — deaths·−2 exactly, no clamp.
+The suicide round's 0 (which founded the clamp theory) was actually "suicide deaths deduct
+nothing." Also first round ever recorded with NO winner flags (all 0x21=0, the 04:13
+three-player round) — round-end-by-timer suspected, ground truth pending. The 0x43a2 header
+model is OPEN again: top-scorer fits all rounds except one where the finishing-blow player
+took it over a higher scorer; no single-factor rule survives. Data table in the session
+log; no replacement theory documented until discriminating ground truth arrives.
