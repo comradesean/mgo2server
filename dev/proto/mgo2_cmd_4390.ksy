@@ -210,7 +210,7 @@ types:
         doc: "slot 26. [CONFIRMED] bases conquered: 4 and 2 in the first Base round, matching both screens' CONTROL row exactly (scores *5 in Base)."
       - id: sop_destabilizer_uses
         type: s2
-        doc: "slot 27. [PREDICTED] SOP destabilizer uses — 0 alongside a screen SOP DESTAB=0x10 row in the first Base round (consistent, still awaiting a positive use of the item; the category pays *10)."
+        doc: "slot 27. [CONFIRMED] SOP destabilizer uses: 1 on the single engineered use, score exact with the *10 category (42 = bases 3*5 + this*10 + teamwin 5 + b40 12)."
       - id: gako_saved
         type: s2
         doc: "slot 28. [CONFIRMED] GA-KO saved = goals: 1 on the delivering attacker, screen GOAL=1x3; absent for pickup-without-delivery. Scores *3 in Rescue."
@@ -258,7 +258,7 @@ types:
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
       - id: unknown_b40
         type: s2
-        doc: "slot 41. [BASE] first light: 16 and 8 = exactly captures*4 for both players, and exactly the screen OTHER row — a capture-linked point counter (4 per capture?) feeding OTHER *1. Single round; single-variable follow-up pending."
+        doc: "slot 41. [BASE] capture points feeding OTHER *1: exactly captures*4 in all three sightings (16/8/12 for 4/2/3 captures, two players, two rounds)."
       - id: unknown_b41
         type: s2
         doc: "slot 42. [RES] 1 on the GA-KO-carrying attacker in both carry rounds — per-carry-run marker candidate. Unlabelled."

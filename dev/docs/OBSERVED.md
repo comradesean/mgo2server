@@ -2537,3 +2537,9 @@ multiplier table: KILL×3, SOP DESTAB×10, TEAMWIN×5, CONTROL×5, STUN×3, WAKE
 ×2!), ASSIST×3, OTHER×1; both totals decomposed exactly on the wire (41 = 20+5+16,
 18 = 10+8). **0x21: Base behaves like Rescue** — the zero-death loser flagged 1 (8/8 across
 the two modes), confirming the mode-scoped condition. flag_0x04 = 0 — still Snake-only.
+
+**SOP Destabilizer addendum (same night):** one engineered use (bought from the Drebin shop)
+wired **B26=1**, and the round's 42 decomposed exactly as bases·5 (15) + destab·10 +
+teamwin·5 + B40·1 (12) — the ×10 confirmed on the wire, B40's captures×4 rule at 3/3
+(16/8/12 for 4/2/3), and the Base slot region closed. (The earlier "client froze" scare
+during the shop purchase showed no unhandled commands on any service — client-side hitch.)
