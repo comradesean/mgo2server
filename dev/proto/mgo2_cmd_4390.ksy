@@ -39,7 +39,7 @@ seq:
     doc: "[CONFIRMED] target character id."
   - id: flag_0x04
     type: u1
-    doc: "[UNKNOWN] flag byte. 0 in every observed report incl. suicide, quit-teardown and FF rounds."
+    doc: "[FIRST-LIGHT] flag byte: 1 on the Snake's report in the first Sneaking round (2026-07-24), 0 in every other report ever (suicides, teardowns, FF included). Snake-role marker vs SNE-win marker — the observed Snake also won; a losing-Snake round discriminates. If role: time/kills/wins-as-Snake all derive from this + A seconds/kills."
   - id: kills
     type: s2
     doc: "[CONFIRMED] kills. Suicides and friendly kills do NOT count."

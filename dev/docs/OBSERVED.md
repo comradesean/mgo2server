@@ -2449,3 +2449,10 @@ bookkeeping, like B36/B37 in TDM. The snake trio must be server-derived from A-b
 seconds + mode + role — and ROLE attribution is the open question: nothing obvious in the
 frame says who was Snake (both players wired team_slot 0); B56=1 on the winning Snake is the
 strongest marker candidate (win-as-snake or the role itself).
+
+**flag_0x04 first light (same round, caught by a full-column re-check):** the 0x04 flag byte
+— zero in every report ever captured — is **1 on the Snake's report**. Candidates: Snake-role
+marker or SNE-win marker (confounded: the observed Snake also won). One losing-Snake round
+splits it, and B56's role-vs-win question, simultaneously. If it is the role marker, all
+three snake career stats derive from it + the A-block (seconds=644 and kills=9 on the same
+report — no dedicated slots exist for them, verified across every field of both reports).
