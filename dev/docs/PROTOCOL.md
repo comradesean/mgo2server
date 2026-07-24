@@ -1326,6 +1326,7 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B21 | 1 alongside the one slam-faint | stun-adjacent |
 | B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
 | B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset, on players who won without dying; 0 the moment a player died or lost; quit-teardown snapshots the pre-round value | **TDM rounds survived/won this stage** — absolute-within-stage and triangular-delta both fit; needs a win-but-die round to split survived vs won |
+| B35 | **= wakes (waking a stunned teammate), screen-confirmed ×2** (2026-07-24): a 3-wake round wired B35=3 and score 2 = wake·2·3 − deaths·2·2 exactly — wake pays into the wire score | **wakes** |
 | B36 | **= kills·(kills−1)/2 exactly** in every nonzero row (k=2→1, 3→3, 4→6); plain per-round value (repeats, unlike max-family); 4-kill/5-death row still 6, so deaths don't reset it — a pure function of round kills, not a streak. **Screen-confirmed 2026-07-24**: the result screen's OTHER row showed exactly this value (6, ×1) for a 4-kill player — but OTHER is a superset; a much-stunned player showed OTHER=5 with B36=0 (see the formula notes) | **feeds the OTHER score category** — accelerating kill bonus, ·1 |
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
@@ -1334,11 +1335,11 @@ The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture w
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
 "The 0x4390 scoreboard". The score formula was **settled 2026-07-24** when a result screen was
 read alongside its own wire reports; the screen's category rows are
-`KILL×3, DEATHS×−2, HEADSHOTS×2, HACKING×5, ASSIST×3, STUNS×2 (TDM), WAKE×2, OTHER×1` (so the
-capture-era "wake·2" guess is a real category, never yet nonzero) and the reader's
-own row summed to the wire score exactly (1·3 + 6·2 + 3·3 + 5·2 = 34):
+`KILL×3, DEATHS×−2, HEADSHOTS×2, HACKING×5, ASSIST×3, STUNS×2 (TDM), WAKE×2, OTHER×1` (the
+capture-era "wake·2" guess is real: a later 3-wake round confirmed WAKE = B35, paying ×2 on
+the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2 + 3·3 + 5·2 = 34):
 
-`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist(B37)·3 + stun·M + other(B36)·1`
+`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist(B37)·3 + stun·M + wake(B35)·2 + other(B36)·1`
 
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
