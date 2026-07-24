@@ -1900,3 +1900,14 @@ when the HOST's side wins (112: exact) but lag when the JOINER's side wins** (11
 round-A win showed 0x21=0/b24=0, correct only from round B) — a host-perspective bookkeeping
 artifact candidate. b36 reshaped: equals kills in DM (3), 1 in TDM rounds with a 2-kill
 streak, 0 in TDM single-kill rounds — combo-flavoured, no closed model.
+
+### Punch-combo ground truth: B22/B23 = melee hits; melee faints never reach 0x43a2
+
+2026-07-24: the three knockouts in the AK102-equipped round were rifle-melee punch combos
+(punch-punch-kick, ~3 hits each) — so that round's B22/B23=9 = 3×3 melee hits, and the pair
+re-fits every prior observation (slams 3, practice 8, slit 1, dart round 3) as **melee hits
+dealt/received** — the strongest label yet for the pair. PUNCH has weapon ids (108/109) yet
+tallied nothing in 0x43a2, second independent confirmation (after CQC id 112) that
+melee-caused faints are excluded from the per-weapon list: they exist only in the scoreboard
+stun pair (0x0d dealt / 0x0f received). B10/B11's "grabs" reading takes a counterexample
+(1 with zero grabs, punches only) — demoted to contact-flavoured, open.
