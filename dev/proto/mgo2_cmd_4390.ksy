@@ -90,9 +90,9 @@ seq:
     doc: |
       [CONFIRMED, mode-scoped] zero-death round flag whose exact condition varies by mode:
       TDM/DM = did not lose AND died zero times (won-but-died-twice wired 0; survive-but-
-      lose wired 0; draws flag both). RESCUE = simply died zero times (6/6 observations,
-      including losing-team survivors). No score contribution. Counted per stage by b24
-      (TDM).
+      lose wired 0; draws flag both). RESCUE and BASE = simply died zero times (8/8
+      observations, including losing-team survivors). No score contribution. Counted per
+      stage by b24 (TDM).
   - id: team_slot
     type: u2
     doc: "[CONFIRMED] team slot index: constant per player per game, 0 for everyone in DM. NOT the team color (index-to-color varies per game)."
@@ -207,10 +207,10 @@ types:
           as max(career, this).
       - id: bases_conquered
         type: s2
-        doc: "slot 26. [PREDICTED] bases conquered (Base mode; untested)."
+        doc: "slot 26. [CONFIRMED] bases conquered: 4 and 2 in the first Base round, matching both screens' CONTROL row exactly (scores *5 in Base)."
       - id: sop_destabilizer_uses
         type: s2
-        doc: "slot 27. [PREDICTED] SOP destabilizer uses (Base mode; untested)."
+        doc: "slot 27. [PREDICTED] SOP destabilizer uses — 0 alongside a screen SOP DESTAB=0x10 row in the first Base round (consistent, still awaiting a positive use of the item; the category pays *10)."
       - id: gako_saved
         type: s2
         doc: "slot 28. [CONFIRMED] GA-KO saved = goals: 1 on the delivering attacker, screen GOAL=1x3; absent for pickup-without-delivery. Scores *3 in Rescue."
@@ -258,7 +258,7 @@ types:
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
       - id: unknown_b40
         type: s2
-        doc: "slot 41. [UNKNOWN] never observed nonzero."
+        doc: "slot 41. [BASE] first light: 16 and 8 = exactly captures*4 for both players, and exactly the screen OTHER row — a capture-linked point counter (4 per capture?) feeding OTHER *1. Single round; single-variable follow-up pending."
       - id: unknown_b41
         type: s2
         doc: "slot 42. [RES] 1 on the GA-KO-carrying attacker in both carry rounds — per-carry-run marker candidate. Unlabelled."

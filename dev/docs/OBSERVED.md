@@ -2525,3 +2525,15 @@ with no clamp — the last screen-only claim in the file is now tier-2 wire fact
 clamp-hidden sightings validate retroactively. New opens: rawr's OTHER=6 (stuns-dealt ·2
 candidate), MK.II KILL ×4 category carrier, the B47/B48 pair, and the b51/b53/b55 trio needs
 a multi-player SNE round to split its degenerate copies.
+
+### First Base round: B25 = bases conquered (slot-rule hit); B40 first light; 0x21 pattern extends
+
+2026-07-24 (game 143: Sean captured 4 bases and won, rawr captured 2 and lost; both screens
+read). **B25 = 4/2 = the CONTROL row (×5)** — slot 26 "Bases Conquered", another slot-rule
+hit. **B40 first light: 16/8 = exactly captures×4 for both players = the OTHER row** — a
+hidden capture-points counter (4 per capture; single round, follow-up pending). B26 (SOP
+destabilizer, ×10 category on screen) correctly 0 — awaiting a positive use. Base's
+multiplier table: KILL×3, SOP DESTAB×10, TEAMWIN×5, CONTROL×5, STUN×3, WAKE×3 (vs TDM's
+×2!), ASSIST×3, OTHER×1; both totals decomposed exactly on the wire (41 = 20+5+16,
+18 = 10+8). **0x21: Base behaves like Rescue** — the zero-death loser flagged 1 (8/8 across
+the two modes), confirming the mode-scoped condition. flag_0x04 = 0 — still Snake-only.
