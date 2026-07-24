@@ -1921,3 +1921,11 @@ a headshot registers only as the qualifier of a terminal event (kill or faint). 
 themselves require terminal events — damage alone never creates an entry. New anchor: slot
 23 = the in-game Vz.83 (table string SKORPION — first likely real name divergence, pending a
 UI read). The recurring kill-round other-point (b12=1, score +1) appeared again.
+
+### Replicated within one weapon: GSR round of killing-blow + wounding headshot
+
+2026-07-24, user-designed follow-up: one close-range GSR headshot kill and one GSR headshot
+wound (victim finished with body shots) in the same round → 0x43a2 {GSR: 2 kills, 1
+headshot, 0 faints}; scoreboard kills 2, headshots 1. The killing-blow-only rule confirmed
+with both cases inside a single weapon entry. Slot 7 = GSR anchors (table SIG GSR, name
+matches UI). Score 9 = 6 + 2 + 1(other-point) — b12's kill-round +1 again.
