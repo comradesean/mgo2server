@@ -278,34 +278,34 @@ types:
         doc: "slot 47. [PREDICTED] combat training time as instructor, seconds (untested)."
       - id: combat_training_student_s
         type: s2
-        doc: "slot 48. [PREDICTED] combat training time as student, seconds (untested)."
+        doc: "slot 48. [PREDICTED-DOUBTED] slot rule says combat training time (student), but the first Sneaking round wired 3 on the Snake player with no training involved — the prediction is doubtful; SNE-specific meaning suspected. Unlabelled."
       - id: unknown_b48
         type: s2
-        doc: "slot 49. [UNKNOWN] never observed nonzero."
+        doc: "slot 49. [SNE-LIT] 3 on the Snake player in the first Sneaking round. Unlabelled."
       - id: unknown_b49
         type: s2
-        doc: "slot 50. [UNKNOWN] never observed nonzero."
+        doc: "slot 50. [SNE-LIT] 1 on the Snake player in the first Sneaking round. Unlabelled."
       - id: unknown_b50
         type: s2
-        doc: "slot 51. [UNKNOWN] never observed nonzero."
+        doc: "slot 51. [SNE-LIT] 4 on the Snake player (= his stuns dealt); suspected dealt half of a pair with b51. Unlabelled."
       - id: unknown_b51
         type: s2
-        doc: "slot 52. [UNKNOWN] never observed nonzero."
+        doc: "slot 52. [SNE-LIT] 4 on the non-Snake player (= his knockouts received); suspected received half of a pair with b50. Unlabelled."
       - id: unknown_b52
         type: s2
         doc: "slot 53. [UNKNOWN] never observed nonzero."
       - id: unknown_b53
         type: s2
-        doc: "slot 54. [UNKNOWN] never observed nonzero."
+        doc: "slot 54. [SNE-LIT] 4 on the non-Snake player in the first Sneaking round. Unlabelled."
       - id: unknown_b54
         type: s2
-        doc: "slot 55. [UNKNOWN] never observed nonzero."
+        doc: "slot 55. [SNE-LIT] 4 on the Snake player; suspected pair with b55. Unlabelled."
       - id: unknown_b55
         type: s2
-        doc: "slot 56. [UNKNOWN] never observed nonzero."
+        doc: "slot 56. [SNE-LIT] 4 on the non-Snake player; suspected pair with b54. Unlabelled."
       - id: unknown_b56
         type: s2
-        doc: "slot 57. [UNKNOWN] never observed nonzero."
+        doc: "slot 57. [SNE-LIT] 1 on the Snake player, who won the round — 'wins as Snake' candidate, single sighting. Unlabelled."
       - id: unknown_b57
         type: s2
         doc: "slot 58. [UNKNOWN] never observed nonzero. 0x4107 slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67, Snake Time 72) exceed this block — weapon lines feed from 0x43a2 tallies, snake stats from elsewhere."
