@@ -2235,3 +2235,27 @@ a counted number of exactly one action per round (rolls, salutes, radio, chat, c
 boost, falling death, trap, knife kill, box time/uses); Friendly Kills/Stuns need a
 friendly-fire-enabled host (commonA bit 3). Time in Cardboard Box implies a seconds-valued
 slot somewhere in the block.
+
+### The kill-die-kill round: B0/B1/B2 are streaks, B36 is streak-combo, and 0x21 is the flawless win
+
+2026-07-24, the engineered discriminator (game 131 R2: Sean kill,kill,die,kill,kill,die,kill
+= 5 kills in streaks 2,2,1, deaths never consecutive; poop 2 separated headshot kills, 5
+deaths in runs 2,2,1). Four resolutions in one round:
+
+- **B0 = best consecutive kills** (poop: 2 kills wired 1); **B1 = best consecutive deaths**
+  (Sean: 2 deaths wired 1); **B2 = best consecutive headshots** (poop: 2 wired 1) — all
+  per-stage streak records under the same store-if-greater delta machinery. The user called
+  it: all earlier testing killed in unbroken runs, making streak ≡ round total everywhere.
+  Sean's own B0/B2 wired 0 (streak 2 vs the same-stage record 5 from R1), doubly confirming
+  the records persisted across the round boundary — no rotation between R1 and R2.
+- **B36 = streak combo, not a function of round kills**: streaks 2,2,1 → 1+1+0 = 2 on the
+  wire, score 23 = 15 − 4 + 10 + 2 exact (round-total triangular would have said 10). The
+  "deaths don't reset it" claim from the 4-kill/5-death row is retracted — that row was a
+  genuine unbroken 4-run.
+- **0x21 = won the round WITHOUT dying** (flawless win): Sean won this round and wired 0.
+  Every historical anomaly refits — the 04:13 all-zero round (nobody survived-won; the
+  timer-end hypothesis is retired), game 111's "rawr won round A with 0x21=0" (d=1 that
+  round), all survive-but-lose zeros, the seven "winner-only" rounds (all flawless), and the
+  "transfer on first loss". The oldest open A-slot is closed.
+- **B24 counts exactly the 0x21 events per stage** (absolute): the win-but-die round ticked
+  neither. Flawless TDM wins this stage — the natural feed for "Consecutive TDM survivals".

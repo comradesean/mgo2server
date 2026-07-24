@@ -1292,7 +1292,7 @@ structure, not meaning.
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
-| `0x21` | 2 | s16 | **round won** — winner-only across seven rounds, then transferred to the other player on the reporter's first loss | live-confirmed |
+| `0x21` | 2 | s16 | **flawless round win — won the round AND died zero times** (settled 2026-07-24 by a won-but-died-twice round wiring 0; refits every prior anomaly: the all-zero three-player round had no surviving winner, game 111's "winner with 0" died once, survive-but-lose rounds wire 0). The old "round won" label and the timer-end suspicion are both retired | live-confirmed |
 | `0x23` | 4 | 2 × u16 | **two fields, not one u32** (decoded 2026-07-23 late): hi u16 = **team slot index** (0/1; constant per player per game, 0 for everyone in DM, grouped killers correctly in a 3-player TDM — the "garbage seconds" were this bit); lo u16 = **seconds in game/round** (equal for both players of a fully-played round) | live-confirmed |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
@@ -1316,9 +1316,9 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 
 | slot | evidence | reading |
 | --- | --- | --- |
-| B0 | max-family: 2,0,2,0 / 3,0 sequences tracking best-round kills exactly, 66 rows no exception | **best-round kills this stage** (running-max delta) |
-| B1 | max-family, deaths side (includes suicides): victim's 1,0,1,0 across 2-round stages; 5 then 0 for repeated 5-death rounds | **best-round deaths this stage** (running-max delta) |
-| B2 | max-family: equals headshots on first/best round of stage, 0 on equal repeats, 1 when 3-hs followed 2-hs; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best-round headshots this stage** (running-max delta) |
+| B0 | max-family; **streak-vs-total split 2026-07-24**: a 2-kills-with-deaths-between round wired 1, not 2 — it tracks the best unbroken run, which equalled round kills in all earlier rounds only because testing killed in unbroken streaks | **best consecutive kills this stage** (streak record, running-max delta) — feeds Personal Stats "Consecutive Kills" |
+| B1 | max-family, deaths side (includes suicides); a 2-deaths-never-consecutive round wired 1 | **best consecutive deaths this stage** (streak record) — Personal Stats "Consecutive Deaths" |
+| B2 | max-family; 2 separated headshot kills wired 1; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best consecutive headshots this stage** (streak record) |
 | B3 | 3 in a 3-grenade-suicide round, 0 elsewhere (single observation — count vs max-family undetermined) | **suicides** |
 | B7 | 1 in the 3-hack round (2026-07-24), single sighting | one-off, open |
 | B8 | 1 in the plain-rifle round only (same gun as the lock-on round, which had 0) | one-off, open |
@@ -1327,9 +1327,9 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B19 | **= hacking count, screen-confirmed ·5** (2026-07-24): first nonzero ever — 3 with 3 successful SOP scans, screen HACKING=3x5, total exact. Each hack also credited an assist (B37 ticked 3 in the same 1v1 round) | **hacks (SOP scans)** |
 | B21 | 1 alongside the one slam-faint | stun-adjacent |
 | B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
-| B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset; quit-teardown snapshots the pre-round value; **a survive-but-lose round did NOT tick it** (game 127 R2, 2026-07-24 — so it counts wins, not survivals) | **TDM round WINS this stage** — win-but-die still untested (does dying void the win?); absolute-within-stage and triangular-delta both fit the 1,2 sequences |
+| B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset; quit-teardown snapshots the pre-round value; survive-but-lose did NOT tick it (game 127 R2); **win-but-die did NOT tick it either** (game 131 R2) — it counts exactly the `0x21` events | **flawless TDM wins this stage** (won + zero deaths, the `0x21` event, counted absolutely per stage) — plausibly feeds Personal Stats "Consecutive TDM survivals" |
 | B35 | **= wakes (waking a stunned teammate), screen-confirmed ×2** (2026-07-24): a 3-wake round wired B35=3 and score 2 = wake·2·3 − deaths·2·2 exactly — wake pays into the wire score | **wakes** |
-| B36 | **= kills·(kills−1)/2 exactly** in every nonzero row (k=2→1, 3→3, 4→6); plain per-round value (repeats, unlike max-family); 4-kill/5-death row still 6, so deaths don't reset it — a pure function of round kills, not a streak. **Screen-confirmed 2026-07-24**: the result screen's OTHER row showed exactly this value (6, ×1) for a 4-kill player — but OTHER is a superset; a much-stunned player showed OTHER=5 with B36=0 (see the formula notes) | **feeds the OTHER score category** — accelerating kill bonus, ·1 |
+| B36 | **combo points: Σ streak·(streak−1)/2 over each unbroken kill run** — settled 2026-07-24 when streaks 2,2,1 wired 2 (not the round-total triangular 10) with the score exact. Deaths DO reset it; the earlier "pure function of round kills" read survived only because every test round was one unbroken streak (the 4-kill/5-death row was a genuine 4-run). Plain per-round value (repeats, unlike max-family). Screen-confirmed as the OTHER row's kill component — but OTHER is a superset; a much-stunned player showed OTHER=5 with B36=0 (see the formula notes) | **feeds the OTHER score category** — kill-combo bonus, ·1 |
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
@@ -1353,12 +1353,12 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
   wire `0x11` and B2 are bullets-only.
 - **Assists pay ·3 and land in B37** — the earlier "assist inert" reads were wrong (see
   OBSERVED.md); stun-setups before a teammate kill earn them, pure health-damage setups did not.
-- **`other` is B36 = kills·(kills−1)/2 plus a second component seen once**: a player knocked
-  out 5 times showed OTHER=5 with wire B36=0 (his combo was 0). The same player's earlier
-  5-death round with **zero** knockouts wired −10 exactly — no room for any OTHER credit — so
-  the component tracks knockouts received (or stun-recoveries) ·1, not deaths. Both
-  observations of it landed under the score clamp, so **whether it feeds the wire score is
-  unproven** (his −10 + 5 = −5 and −10 both clamp to the observed 0).
+- **`other` is B36 (kill-combo points: Σ streak·(streak−1)/2 per unbroken run — deaths reset
+  it) plus a second component seen on stunned players**: a player knocked out 5 times showed
+  OTHER=5 with wire B36=0. The same player's earlier 5-death round with **zero** knockouts
+  wired −10 exactly — no room for any OTHER credit — so the component tracks knockouts
+  received (or stun-recoveries) ·1, not deaths. Both observations of it landed under the
+  score clamp, so **whether it feeds the wire score is unproven**.
 - **`hacking·5` = B19, live-confirmed** (3 hacks → 15 points, total exact). It is distinct from
   B39's kill-1st-place ·5, which has only ever appeared in DM rounds — both ·5 categories are
   real, resolving the capture-era ambiguity. **A successful hack also credits an assist** (B37
