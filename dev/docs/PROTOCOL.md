@@ -1277,7 +1277,7 @@ structure, not meaning.
 | offset | size | type | meaning | confidence |
 | --- | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | target character id | live-pinned |
-| `0x04` | 1 | u8 | flag byte — **first nonzero ever 2026-07-24: 1 on the Snake's report in the first Sneaking round** (0 in every other report incl. suicides, teardowns, FF). Candidates: Snake-role marker vs SNE-win marker (the observed Snake also won — one losing-Snake round splits it, same round that splits B56). If it is the role marker, the three snake career stats (time/kills/wins as Snake, 0x4107 slots 72/67/63) are fully servable from A-block seconds/kills + this flag | first light |
+| `0x04` | 1 | u8 | **Snake-role marker** — 1 on the Snake's report in both observed Sneaking rounds **including a loss** (the discriminator, 2026-07-24), 0 in every non-SNE report ever. Makes time-as-Snake and kills-as-Snake servable directly (Σ seconds / Σ kills over flag=1 reports). Whether other modes ever set it (or other bit values appear) is open | live-confirmed (SNE) |
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
 | `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
 | `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |

@@ -2456,3 +2456,16 @@ marker or SNE-win marker (confounded: the observed Snake also won). One losing-S
 splits it, and B56's role-vs-win question, simultaneously. If it is the role marker, all
 three snake career stats derive from it + the A-block (seconds=644 and kills=9 on the same
 report — no dedicated slots exist for them, verified across every field of both reports).
+
+### Losing-Snake round: flag_0x04 IS the role marker; B56 demoted; B49 the wins candidate
+
+2026-07-24 (game 139: rawr as Snake again, 0 kills, ~2.5 min wire, LOST; Sean 5 kills,
+flawless). The discriminator landed: **flag_0x04=1 on the losing Snake → Snake-role marker
+confirmed**, win-marker reading falsified. Time-as-Snake and kills-as-Snake are now fully
+servable (Σ A seconds / Σ A kills over flag=1 reports). **B56=1 also fired on the loss** —
+demoted from wins-as-Snake to rounds-as-Snake candidate. **B47/B48/B49 (3/3/1) appeared only
+in the WON Snake round** — B49 is the new wins-as-Snake candidate; B47/B48
+objective-flavoured. Sean's B51/B53/B55 trio = his kills both rounds (4 then 5) — degenerate
+in 1v1 with snake-deaths readings; open. Model checks: 0x21 flawless-win behaves in SNE
+(Sean 1 here; nobody in the died-while-winning round); **B36=7 from 5 kills — second
+unreachable value under the TDM combo rule**, confirming SNE feeds combo differently.
