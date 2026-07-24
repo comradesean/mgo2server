@@ -1281,7 +1281,7 @@ structure, not meaning.
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
 | `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
 | `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |
-| `0x0b` | 2 | s16 | **score** — signed; like every counter it is the **delta of a store that clamps at 0**, and the store's banked scope is **the current game or stage, not the career** (a player with ~+22 career sum but a fresh game wired 0 on a −6 round; every observed negative — −4, −10, = deaths·−2 exactly — had score banked earlier in the *same stage*, so game-vs-stage scope is undetermined). The 2026-07-23 "suicides deduct nothing" read is **confounded by the clamp** — the suicide round was DM, whose per-round stage rotation may have zeroed the bank; a same-stage-banked suicide round settles it regardless of scope | live-confirmed |
+| `0x0b` | 2 | s16 | **score** — signed; like every counter it is the **delta of a store that clamps at 0**, and the store's banked scope is **the current game or stage, not the career** (a player with ~+22 career sum but a fresh game wired 0 on a −6 round; game-vs-stage scope still undetermined). Demonstrated mid-flight 2026-07-24: raw round points −10 on a +7 bank wired **−7** (store 7→0, clamped). **Suicides DO deduct −2 like any death** — settled by a 5-kill round whose only death was the player's own catapult fall: 29 = 15 − 2 + 10 + 6 exact; the 2026-07-23 "suicides deduct nothing" was pure clamp artifact | live-confirmed |
 | `0x0d` | 2 | s16 | **knockouts dealt** (all types — melee slams that faint, tranq, sleep) — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
 | `0x0f` | 2 | s16 | **knockouts received** (all types) — mirror of `0x0d`: victim's 3 in the 3-slam round, 2 in the 2-tranq round, exactly opposite the dealer's `0x0d` each time (2026-07-24) | live-confirmed |
 | `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs and tranq darts to the head do not count, 2026-07-23/24) | live-confirmed |
@@ -1320,6 +1320,8 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B1 | max-family, deaths side (includes suicides); a 2-deaths-never-consecutive round wired 1 | **best consecutive deaths this stage** (streak record) — Personal Stats "Consecutive Deaths" |
 | B2 | max-family; 2 separated headshot kills wired 1; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best consecutive headshots this stage** (streak record) |
 | B3 | 3 in a 3-grenade-suicide round, 5 in a 5-suicide round; **3 in the 3-falling-death round — environmental self-deaths count** | **suicides** (incl. falls) |
+| B15 | **= catapult uses** — 3 in the 3-catapult round (2026-07-24) | **catapult uses** (Personal Stats slot 16) |
+| B16 | **= boosts given** — 4 in the 4-boost round | **boosts given** (Personal Stats slot 17) |
 | B17 | **= falling deaths** — 3 in the 3-fall gesture round (2026-07-24) | **falling deaths** (Personal Stats slot 18) |
 | B18 | **= times caught in trap** — 6 triggers with only 2 fatal wired 6 (catches, not deaths); the trap owner's kills credit as ordinary kills | **trap catches** (Personal Stats slot 19) |
 | B7 | **= salutes** — 3 in the 3-salute gesture round (2026-07-24); the hack round's 1 was a pre-scan salute | **salutes** (Personal Stats) |
@@ -1369,8 +1371,8 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 
 **The wire score is the delta of a clamped store whose bank resets per game or per stage** (see
 the `0x0b` row): a losing round wires 0 with nothing banked in the current scope, a true negative
-with a same-stage bank. Consequently the 2026-07-23 "suicides deduct nothing" observation is
-confounded and suicide deduction is open again. No round-win bonus exists. Each report is one round for one player; a kill-less round sends
+with a same-scope bank (a −10 round on a +7 bank wires −7). **Suicide-class deaths deduct −2 like
+any death** (settled 2026-07-24, catapult-fall decomposition). No round-win bonus exists. Each report is one round for one player; a kill-less round sends
 the frame with these slots zero. When stat struct B is absent the builder emits a **short
 ~51-byte** form (`u32=0` at `0x2b`, then the trailing word). Counters are u32 values truncated
 to u16 on the wire, so any above 65535 wrap.

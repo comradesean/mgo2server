@@ -2339,3 +2339,17 @@ Sean's B1=5 (all five deaths consecutive), B12=8 rolls, B7=1 (another salute). S
 deduction question still masked: Sean's 0 sits on a fresh-game bank either way. Remaining
 unconfirmed gesture slots: B15 catapult, B16 boosts, B5/B6 friendly kills/stuns, B9 text
 chat (blocked on the RPCS3 OSK).
+
+### Gesture round four: B15 = catapult, B16 = boosts; suicides DO deduct; the clamp shown mid-flight
+
+2026-07-24 (game 132 R2: Sean boosted rawr 4×, rawr catapulted 3×). Wire: **B16=4 (boosts
+given, slot 17), B15=3 (catapult uses, slot 16)** — the slot−1 rule is 17/17. Two score-model
+closures rode along: (1) **suicides deduct −2 after all** — rawr's only death was his own
+catapult fall (B3=1, B17=1, d=1, no enemy credited a kill on him) and his positive score
+decomposes only with the deduction: 29 = 15 − 2 + 10 + 6 exact. The 2026-07-23 "suicides
+deduct nothing" is fully retired as clamp artifact; the kills+suicides discriminator round is
+no longer needed. (2) **The clamp shown mid-flight**: poop wired −7 for a 5-death (−10)
+round on a +7 same-stage bank — store 7→0 clamped, wire = the delta, exactly as modelled.
+Remaining unlabelled among ever-observed slots: B5/B6 (friendly kills/stuns — needs the FF
+host toggle), B9 (text chat — blocked on the RPCS3 OSK). Bank scope (game vs stage) and the
+OTHER knockout component's wire effect stay open.
