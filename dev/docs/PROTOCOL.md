@@ -1281,12 +1281,14 @@ structure, not meaning.
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
 | `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
 | `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |
-| `0x0b` | 2 | s16 | **score** — signed, goes negative on the wire (−4 and −10 observed 2026-07-24 = deaths·−2 exactly). The earlier "clamped at 0" note was a misread of the suicide round: **suicide deaths deduct nothing** (3 suicides → 0, not −6); deaths to enemies deduct 2 | live-confirmed |
-| `0x0d` | 2 | s16 | **stun / knockout count** — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
-| `0x0f` | 2 | s16 | unknown (a loser-side 1 twice; a player had 1 in the original capture) | low |
-| `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs to the head do not count, 2026-07-23) | live-confirmed |
+| `0x0b` | 2 | s16 | **score** — signed; like every counter it is the **delta of a profile store**, and that store **clamps at 0**. So a losing round wires 0 when the player had nothing banked and a true negative (−4, −10 observed = deaths·−2 exactly) when they did — proven 2026-07-24 by two 5-death/0-kill rounds, one wiring 0 (no banked score) and one −10 (16 banked the round before). The 2026-07-23 "suicides deduct nothing" read is **confounded by the clamp** (that round had nothing banked); suicide deduction is open again | live-confirmed |
+| `0x0d` | 2 | s16 | **knockouts dealt** (all types — melee slams that faint, tranq, sleep) — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
+| `0x0f` | 2 | s16 | **knockouts received** (all types) — mirror of `0x0d`: victim's 3 in the 3-slam round, 2 in the 2-tranq round, exactly opposite the dealer's `0x0d` each time (2026-07-24) | live-confirmed |
+| `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs and tranq darts to the head do not count, 2026-07-23/24) | live-confirmed |
 | `0x13` | 2 | s16 | **headshot deaths** — across three rounds (two TDM, one Rescue) it exactly equalled the enemy's headshot count (5/5/1); strong, but a 3+ player match would make it airtight | medium-high |
-| `0x15`–`0x19` | — | s16 | zero in every observed round | — |
+| `0x15` | 2 | s16 | **ranged/tranq knockouts dealt** — subset of `0x0d`: 5 in the 5-tranq round, 2 in the 2-tranq round (dealer side), 1 in game 107 R1, 0 in all melee-slam stun rounds. (An OBSERVED.md note briefly claimed this stayed 0 on the dealer; the wire falsifies it — `0002` at `0x15` in the dealer's own packet.) Appears to add ·2 to score, but every observed tranq stun was a dart *headshot*, so this is indistinguishable from the screen's headshot·2 counting darts — see the formula notes | live-confirmed |
+| `0x17` | 2 | s16 | **ranged/tranq knockouts received** — subset of `0x0f`, mirror of `0x15`: 2 on the tranq victim, 1 in the sleep-stab round, 0 in melee-slam rounds | live-confirmed |
+| `0x19` | 2 | s16 | zero in every observed round | — |
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
@@ -1297,29 +1299,63 @@ structure, not meaning.
 | `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — an itemised event breakdown, **not** the scoreboard categories, which live in struct A above. Partially mapped by the 2026-07-23 single-variable rounds (OBSERVED.md, "The OTHER-field experiment"); slot table below | positions high, labels per slot |
 | `0xa3` | 4 | u32 | trailing value | low |
 
+**The running-max family (cracked 2026-07-24 against 66 stored reports + the server's own stage
+rotation log).** Several B slots are not per-round counts. The client keeps a **per-stage
+best-round record** (store-if-greater, zeroed on stage rotation — DM rotates every round, the
+observed TDM rotation every 2) and the wire carries the **delta of that record**, like every other
+counter. So a slot reads as the round's count only the first time that count is a new stage best;
+an equal round later in the same stage sends 0, a better one sends the difference (observed: B0 =
+2,0,2,0 across a 4-round/2-stage TDM with constant 2 kills; B2 = 1 when a 3-headshot round followed
+a 2-headshot round). Accumulating the deltas by addition reconstructs the client's record —
+presumably how career best-round records (the `0x4107` personal-scores slots) are meant to be fed.
+This retroactively explains every old "matched kills N/N" read: those captures were one round per
+stage, where max ≡ count.
+
 Struct B slots (0-based; everything not listed has never been observed nonzero). Per the
 no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, not identity:
 
 | slot | evidence | reading |
 | --- | --- | --- |
-| B0 / B1 | matched kills / deaths 7/7 rounds (B1 includes suicides, B0 does not) | kill/death event counters; relation to A-slots undetermined |
-| B3 | 3 in a 3-grenade-suicide round, 0 elsewhere | **suicides** |
+| B0 | max-family: 2,0,2,0 / 3,0 sequences tracking best-round kills exactly, 66 rows no exception | **best-round kills this stage** (running-max delta) |
+| B1 | max-family, deaths side (includes suicides): victim's 1,0,1,0 across 2-round stages; 5 then 0 for repeated 5-death rounds | **best-round deaths this stage** (running-max delta) |
+| B2 | max-family: equals headshots on first/best round of stage, 0 on equal repeats, 1 when 3-hs followed 2-hs; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best-round headshots this stage** (running-max delta) |
+| B3 | 3 in a 3-grenade-suicide round, 0 elsewhere (single observation — count vs max-family undetermined) | **suicides** |
 | B8 | 1 in the plain-rifle round only (same gun as the lock-on round, which had 0) | one-off, open |
 | B10 ↔ B11 | dealt/received **pair** (exact both sides, twice); moved by CQC grabs (4), barrels (3), grab practice (11 received); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs?) |
-| B12 | 3 in each explosive-kill round, exactly 1 in knife/rifle/CQC rounds, 0 in the lock-on round and practice | explosions caused? one-off component unexplained |
+| B12 | max-family (1 then 0 across two identical 3-kill rounds); underlying per-round value: 3 in explosive rounds, 1 in knife/rifle/CQC/tranq rounds, 0 in lock-on round and practice | max-family, base value unidentified |
 | B21 | 1 alongside the one slam-faint | stun-adjacent |
 | B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
-| B36 | matched kills 7/7 incl. plain-bullet rounds; NOT special-kills; stayed 0 for suicides | kill-correlated; the old "≈ Other" coincidence is dead |
+| B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset, on players who won without dying; 0 the moment a player died or lost; quit-teardown snapshots the pre-round value | **TDM rounds survived/won this stage** — absolute-within-stage and triangular-delta both fit; needs a win-but-die round to split survived vs won |
+| B36 | **= kills·(kills−1)/2 exactly** in every nonzero row (k=2→1, 3→3, 4→6); plain per-round value (repeats, unlike max-family); 4-kill/5-death row still 6, so deaths don't reset it — a pure function of round kills, not a streak. **Screen-confirmed 2026-07-24**: the result screen's OTHER row showed exactly this value (6, ×1) for a 4-kill player | **the OTHER score category** — accelerating kill bonus, ·1 |
+| B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
-"The 0x4390 scoreboard". The score formula, **revised 2026-07-23** after five DM rounds
-decomposed exactly:
-`kills·3 − deaths·2 + headshots·2 + stun·3 + kill1st·5 + combo·1 (+ unprobed categories), clamped at 0`
-— the capture-era `stun·2` read came from an ambiguous `1·2` term that was likely the wake
-counter, and `hacking·5` may equally have been the kill-1st-place ·5 (both unprobed since).
-No round-win bonus exists. Each report is one round for one player; a kill-less round sends
+"The 0x4390 scoreboard". The score formula was **settled 2026-07-24** when a result screen was
+read alongside its own wire reports; the screen's category rows are
+`KILL×3, DEATHS×−2, HEADSHOTS×2, HACKING×5, ASSIST×3, STUNS×2 (TDM), OTHER×1` and the reader's
+own row summed to the wire score exactly (1·3 + 6·2 + 3·3 + 5·2 = 34):
+
+`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist(B37)·3 + stun·M + other(B36)·1`
+
+- **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
+  8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
+  capture-era `stun·2` was TDM — both right for their mode.
+- **The screen's HEADSHOTS count includes tranq-dart headshots** (screen 6 vs wire `0x11` = 1
+  bullet + `0x15` = 5 dart-stuns); wire `0x11` and B2 are bullets-only. Every observed round had
+  dart-stuns = dart-headshots, so "screen-headshots·2" vs "`0x11`·2 + `0x15`·2" are numerically
+  indistinguishable so far — a **body-shot tranq round** discriminates.
+- **Assists pay ·3 and land in B37** — the earlier "assist inert" reads were wrong (see
+  OBSERVED.md); stun-setups before a teammate kill earn them, pure health-damage setups did not.
+- **`other` is B36 = kills·(kills−1)/2** — not an independent category.
+- **`hacking·5` is a real screen row** (0 in all our rounds); whether B39's kill-1st-place count
+  also pays 5 is unprobed.
+
+**The wire score is the delta of a clamped store** (see the `0x0b` row): a losing round wires 0
+with nothing banked, a true negative with banked score. Consequently the 2026-07-23 "suicides
+deduct nothing" observation is confounded and suicide deduction is open again. No round-win bonus
+exists. Each report is one round for one player; a kill-less round sends
 the frame with these slots zero. When stat struct B is absent the builder emits a **short
 ~51-byte** form (`u32=0` at `0x2b`, then the trailing word). Counters are u32 values truncated
 to u16 on the wire, so any above 65535 wrap.
