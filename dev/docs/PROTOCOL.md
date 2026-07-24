@@ -1292,7 +1292,7 @@ structure, not meaning.
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
-| `0x21` | 2 | s16 | **flawless round win — won the round AND died zero times** (settled 2026-07-24 by a won-but-died-twice round wiring 0; refits every prior anomaly: the all-zero three-player round had no surviving winner, game 111's "winner with 0" died once, survive-but-lose rounds wire 0). The old "round won" label and the timer-end suspicion are both retired | live-confirmed |
+| `0x21` | 2 | s16 | **flawless non-loss — did not lose the round (win or draw) AND died zero times** (won-but-died-twice wired 0; survive-but-lose wired 0; a timer-end draw and a 0-0 round flagged BOTH zero-death players, refining the earlier "won" wording). Refits every prior anomaly incl. the all-zero three-player round (no zero-death non-loser existed) | live-confirmed |
 | `0x23` | 4 | 2 × u16 | **two fields, not one u32** (decoded 2026-07-23 late): hi u16 = **team slot index** (0/1; constant per player per game, 0 for everyone in DM, grouped killers correctly in a 3-player TDM — the "garbage seconds" were this bit); lo u16 = **seconds in game/round** (equal for both players of a fully-played round) | live-confirmed |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |

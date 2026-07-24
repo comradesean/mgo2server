@@ -2482,3 +2482,15 @@ B30 "Fully Defended Matches" did not fire — either the pickup spoiled it (user
 or it ticks per MATCH, not per round. flag_0x04=0 for all — still SNE-only. Rescue scoring
 (18 for the defender's 1 kill, 5 for the attacker with a death) is unmapped like SNE's.
 Next round of the same game is an engineered idle-out: the long-awaited timer-end null probe.
+
+### The idle timer round: B30 = fully defended (user-predicted); 0x21 refined to non-loss
+
+2026-07-24 (game 140 R2, engineered: both players idle, 327 s timer expiry). The user
+called the outcome in advance — "fully defended without a defended": **B30=1 on the
+defender with B28 absent** — B30 = round where the GA-KO was never taken (fires per ROUND
+despite the "Fully Defended Matches" name), B28 requires an actual defense event. The
+defender scored exactly **5 with zero activity** — first Rescue score category sighted
+(B30·5 candidate). And **both players wired 0x21=1**: the timer expiry reads as a draw, and
+draws flag every zero-death player — same as the historical 0-0 TDM round — so 0x21 is
+refined from "won + no deaths" to **"did not lose + no deaths"**. B41/B42 stayed 0 (attack-
+run stats, consistent). Row 169 was the usual 4-second exit teardown.
