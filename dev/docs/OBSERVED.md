@@ -2273,3 +2273,18 @@ rounds in the same stage each wired 1, so the earlier max classification (from p
 1-then-0 pair) was an over-read; that pair was just one roll then none. Round cross-checks:
 new stage (R3) so B0=B2=5 fresh streak records; B36=10 for the unbroken 5-run; score
 35 = 15 + 10 + 10 exact; flawless win ticked 0x21 and B24.
+
+### Gesture round two: B20 = box seconds, B21 = box uses; knife kills live in 0x43a2, not B
+
+2026-07-24 (game 131 R4: 4 knife kills + 1 rifle kill, box equipped once and occupied ~60s).
+Wire: **B20=66 (time in box, seconds), B21=1 (box uses)** — B21's earlier "stun-adjacent"
+reading (a lone 1 beside the slam-faint) is retracted as a coincidence, almost certainly an
+unremembered box use in that round. **No slot carried the 4 knife kills**: score 27 = 15 +
+1·2 + 10(B36) exact with no knife term, and the round's 0x43a2 tally read {weapon 0x01: 4
+kills} + {0x17: 1 kill, 1 hs} — weapon id 1 = knife, so the Personal Stats "Knife Kills"
+(and every weapon-specific stat) derives from the per-weapon tallies, not struct B. This
+gives round_weapon_tally storage (BACKLOG) a consumer, ending its "no known screen" deferral
+rationale. Cross-checks: B24=2 (second flawless win of the stage — absolute count
+reconfirmed), B0/B2 masked by the same-stage records from R3 as predicted. Also observed:
+**in-game text chat SEND is greyed out** on this client — cause unknown (candidate: RPCS3
+keyboard input rather than anything we serve); text-chat-uses slot still unlabelled.
