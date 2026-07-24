@@ -2119,8 +2119,8 @@ unproven — a stunned-often player with banked score would show it in a wire ne
 Open discriminators, in rough order of value: a **body-shot tranq stun** round (splits
 headshot·2-with-darts from 0x15·2); a **get-stunned-with-banked-score** round (does the OTHER
 knockout component feed the wire score?); a **win-but-die TDM round** (splits B24
-survived/won); a **suicide with banked score** (re-tests suicide deduction under the clamp
-model); a **timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds
+survived/won); a **same-stage-banked suicide round** (settles suicide deduction regardless of
+bank scope — see the bank-scope entry below); a **timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds
 (untouched categories); B8/B21/B10-11/B22-23 single-variable rounds as before.
 
 ### Wake round: B35 = wakes ×2, exact on the wire; the dart-headshot ambiguity survives again
