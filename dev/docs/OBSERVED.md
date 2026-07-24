@@ -2422,3 +2422,20 @@ slot 25 = max(career, B24) — the same store-if-greater convention as the other
 slots; runs cannot span rotations on the wire since B24 resets per stage. Game 135
 (F,F,F,death → 1,2,3,3) agrees. Same rounds: score 11 = 6+4+1 and 8 = 6−2+4 per round,
 B36=1 per 2-kill round, all exact under the settled formula.
+
+### First Sneaking round: nine new B slots; the combo and score formulas are TDM/DM-scoped
+
+2026-07-24 (game 138, ~11 min: rawr as Snake, 9 wire kills / 4 deaths / 4 stuns dealt /
+score 94, won; Sean 4 kills / 9 deaths / score 27. User remembered "10 kills" — wire says 9;
+unresolved, noted). First data from the B47–B56 region, all previously dark: rawr B47=3,
+B48=3, B49=1, B50=4, B54=4, B56=1; Sean B51=4, B53=4, B55=4. Apparent dealt/received pair
+structure (rawr B50/B54=4 ↔ Sean B51/B55=4, tracking his 4 stuns = Sean's 0x0f=4); B56=1
+matches "one win as Snake" — all candidates only, no labels; SNE needs its own
+single-variable rounds. Two TDM-proven models FAIL here and are now scoped accordingly:
+**B36=5 with 4 kills is unreachable under the kill-streak combo formula** (possible: 0/1/2/
+3/6) — SNE feeds combo from more than kills; and **neither score decomposes under the
+TDM/DM formula** (rawr ~65 predicted vs 94; Sean's deaths·−2 would sink his 27) — SNE has
+its own categories, consistent with the ELF's SP_SCORE_SNE01/02 tokens. Models intact:
+0x21 flawless-win (rawr won but died → 0), CQC pair (6↔6), 0x1f, per-player reporting.
+The Snake career stats (0x4107 slots 63/67/72) had no B carrier — nothing above B56 fired;
+their delivery path is still unidentified.

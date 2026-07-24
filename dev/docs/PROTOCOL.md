@@ -1346,6 +1346,11 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
+**Formula scope (2026-07-24, first Sneaking round):** everything in this section is confirmed
+for **TDM and DM only**. In Sneaking mode both the score formula and B36's kill-combo rule
+produce values the models cannot reach (B36=5 from 4 kills; scores 94 and 27 undecomposable)
+— SNE scores by its own categories (the ELF's `SP_SCORE_SNE*` tokens) and is unmapped.
+
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
 "The 0x4390 scoreboard". The score formula was **settled 2026-07-24** when a result screen was
