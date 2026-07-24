@@ -2138,3 +2138,19 @@ still invisible on the wire because he had nothing banked (−6+3 clamps to the 
 Also noted: rawr's reports in two adjacent rounds carried `0x1f`=0 with everyone else at 1 —
 in one his seconds ran ~40 short of the others (left before round end, consistent with the
 quit-report pattern); in the other they matched, unexplained but benign.
+
+### The score bank is per-game-or-stage, not career; the suicide verdict is still open
+
+2026-07-24, prompted by "do we have suicides?". One suicide round exists (game 105 R3,
+2026-07-23: 3 grenade suicides, wire 0). Reconstructing banks by telescoping wire scores
+falsified the "profile store" phrasing of the clamp model written hours earlier: rawr summed
+to ~+22 career points before game 120's losing round yet wired 0, so the bank resets **per
+game or per stage** — and every observed negative wire (−4, −10) had its bank earned in the
+same stage, leaving game-vs-stage undetermined. Game 105 was DM (no B24 in any row; B0
+re-fired 3,3 across two consecutive 3-kill rounds — which under the max model doubles as
+independent 07-23 corroboration of DM's per-round stage rotation), so the suicide round
+opened a fresh stage and its wire 0 is clamp-confounded under the per-stage reading. Also
+reconfirmed from the same rows: **B39 pays ·5** (DM round: 17 = kills·9 + B36·3 + B39·5
+exact). Settling experiments: **same-stage suicide** — TDM, bank points in R1, suicide 3× in
+R2 of the same stage; wire −6 ⇒ suicides deduct, 0 ⇒ they don't, regardless of scope. Then a
+**stage-2 deaths-only round after stage-1 banking** splits per-game from per-stage.

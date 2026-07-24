@@ -1281,7 +1281,7 @@ structure, not meaning.
 | `0x05` | 2 | s16 | **kills** | live-confirmed |
 | `0x07` | 2 | s16 | **deaths** (suicides included) | live-confirmed |
 | `0x09` | 2 | s16 | **lock-on kills** — single-variable round 2026-07-23: exactly 3 in a 3-lock-on-kill round, zero across five kill rounds without | live-confirmed |
-| `0x0b` | 2 | s16 | **score** — signed; like every counter it is the **delta of a profile store**, and that store **clamps at 0**. So a losing round wires 0 when the player had nothing banked and a true negative (−4, −10 observed = deaths·−2 exactly) when they did — proven 2026-07-24 by two 5-death/0-kill rounds, one wiring 0 (no banked score) and one −10 (16 banked the round before). The 2026-07-23 "suicides deduct nothing" read is **confounded by the clamp** (that round had nothing banked); suicide deduction is open again | live-confirmed |
+| `0x0b` | 2 | s16 | **score** — signed; like every counter it is the **delta of a store that clamps at 0**, and the store's banked scope is **the current game or stage, not the career** (a player with ~+22 career sum but a fresh game wired 0 on a −6 round; every observed negative — −4, −10, = deaths·−2 exactly — had score banked earlier in the *same stage*, so game-vs-stage scope is undetermined). The 2026-07-23 "suicides deduct nothing" read is **confounded by the clamp** — the suicide round was DM, whose per-round stage rotation may have zeroed the bank; a same-stage-banked suicide round settles it regardless of scope | live-confirmed |
 | `0x0d` | 2 | s16 | **knockouts dealt** (all types — melee slams that faint, tranq, sleep) — requires an actual faint; slams that don't knock out tick struct-B pairs instead | live-confirmed |
 | `0x0f` | 2 | s16 | **knockouts received** (all types) — mirror of `0x0d`: victim's 3 in the 3-slam round, 2 in the 2-tranq round, exactly opposite the dealer's `0x0d` each time (2026-07-24) | live-confirmed |
 | `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs and tranq darts to the head do not count, 2026-07-23/24) | live-confirmed |
@@ -1359,10 +1359,10 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 - **`hacking·5` is a real screen row** (0 in all our rounds); whether B39's kill-1st-place count
   also pays 5 is unprobed.
 
-**The wire score is the delta of a clamped store** (see the `0x0b` row): a losing round wires 0
-with nothing banked, a true negative with banked score. Consequently the 2026-07-23 "suicides
-deduct nothing" observation is confounded and suicide deduction is open again. No round-win bonus
-exists. Each report is one round for one player; a kill-less round sends
+**The wire score is the delta of a clamped store whose bank resets per game or per stage** (see
+the `0x0b` row): a losing round wires 0 with nothing banked in the current scope, a true negative
+with a same-stage bank. Consequently the 2026-07-23 "suicides deduct nothing" observation is
+confounded and suicide deduction is open again. No round-win bonus exists. Each report is one round for one player; a kill-less round sends
 the frame with these slots zero. When stat struct B is absent the builder emits a **short
 ~51-byte** form (`u32=0` at `0x2b`, then the trailing word). Counters are u32 values truncated
 to u16 on the wire, so any above 65535 wrap.
