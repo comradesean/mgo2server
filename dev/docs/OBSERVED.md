@@ -1930,11 +1930,14 @@ headshot, 0 faints}; scoreboard kills 2, headshots 1. The killing-blow-only rule
 with both cases inside a single weapon entry. Slot 7 = GSR anchors (table SIG GSR, name
 matches UI). Score 9 = 6 + 2 + 1(other-point) — b12's kill-round +1 again.
 
-### Team slot ↔ color: red = 1, blue = 0 (two deliberate observations)
+### Team slot ≠ color (mapping theory killed same night); teammates share the win flag
 
-2026-07-24: the user deliberately picked team red and landed team_slot=1; game 111's known
-assignment (rawr red = 1, sean+poop blue = 0) agrees. Game 107's "sean was blue" recollection
-(slot 1) conflicts but predates team awareness — memory outweighed by the deliberate picks.
-Candidate, one blue-win from settled: winning a round as blue tests both this mapping and
-whether the 0x43a2 header u32 (always 1 so far, every observed winner red/slot-1) is the
-winning team slot or a constant.
+2026-07-24: a deliberate red pick landed slot 1 — and a deliberate BLUE pick the next game
+ALSO landed slot 1 (game 111's blue was slot 0). So team_slot is a per-game internal team
+index; the color-to-index assignment varies per game (join/creation order suspected).
+Same session, first teammate observation: sean and poop on one team (same slot), both
+carrying 0x21=1 for a round sean won — supporting 0x21 = TEAM round-win flag — while their
+b24 differed (2 vs 1), killing plain "team stage score" for b24 and suggesting "team round
+wins while this player was present." The 0x43a2 header u32 remains 1 in every capture, and
+every observed winner has been the slot-1 side — the discriminating observation is a round
+won by the slot-0 side, still unplayed.
