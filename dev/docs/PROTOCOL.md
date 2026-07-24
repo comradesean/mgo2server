@@ -1292,7 +1292,7 @@ structure, not meaning.
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
-| `0x21` | 2 | s16 | **flawless non-loss — did not lose the round (win or draw) AND died zero times** (won-but-died-twice wired 0; survive-but-lose wired 0; a timer-end draw and a 0-0 round flagged BOTH zero-death players, refining the earlier "won" wording). Refits every prior anomaly incl. the all-zero three-player round (no zero-death non-loser existed) | live-confirmed |
+| `0x21` | 2 | s16 | **zero-death round flag, mode-scoped condition**: TDM/DM = did not lose AND died zero times (won-but-died-twice 0; survive-but-lose 0; draws flag both zero-death players); **Rescue = simply died zero times** (6/6 incl. losing-team survivors). Refits every prior anomaly | live-confirmed |
 | `0x23` | 4 | 2 × u16 | **two fields, not one u32** (decoded 2026-07-23 late): hi u16 = **team slot index** (0/1; constant per player per game, 0 for everyone in DM, grouped killers correctly in a 3-player TDM — the "garbage seconds" were this bit); lo u16 = **seconds in game/round** (equal for both players of a fully-played round) | live-confirmed |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
@@ -1346,10 +1346,14 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
-**Formula scope (2026-07-24, first Sneaking round):** everything in this section is confirmed
-for **TDM and DM only**. In Sneaking mode both the score formula and B36's kill-combo rule
-produce values the models cannot reach (B36=5 from 4 kills; scores 94 and 27 undecomposable)
-— SNE scores by its own categories (the ELF's `SP_SCORE_SNE*` tokens) and is unmapped.
+**Formula scope (2026-07-24):** the formula below is confirmed for **TDM and DM only**.
+Sneaking scores by its own unmapped categories (B36=5 from 4 kills is unreachable; scores 94
+and 27 undecomposable — the ELF's `SP_SCORE_SNE*` tokens). **Rescue's table is mapped from a
+live screen + one exact decomposition** (18 = kill·7 + headshot·3 + target-defence(B28)·3 +
+team-win·5): `KILL×7, HEADSHOT×3, STUN×7, TEAM WIN×5, ASSIST×5, GOAL(B27)×3,
+TARGET DEFENCE(B28)×3, OTHER×1` — note Rescue HAS a team-win bonus where TDM has none, and
+its OTHER row tracks the B42 carry stat imperfectly (18 vs 21, gap open); deaths deduct
+silently (5 = 7 − 2 in the no-delivery round) though the screen shows no deaths row.
 
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
