@@ -1324,6 +1324,8 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B16 | **= boosts given** — 4 in the 4-boost round | **boosts given** (Personal Stats slot 17) |
 | B17 | **= falling deaths** — 3 in the 3-fall gesture round (2026-07-24) | **falling deaths** (Personal Stats slot 18) |
 | B18 | **= times caught in trap** — 6 triggers with only 2 fatal wired 6 (catches, not deaths); the trap owner's kills credit as ordinary kills | **trap catches** (Personal Stats slot 19) |
+| B5 | **= friendly kills** — 3 in the FF round (2026-07-24); they do NOT count in `0x05` kills, and are score-neutral (no penalty, no credit) | **friendly kills** (Personal Stats slot 6) |
+| B6 | **= friendly stuns** — 2 in the FF round; not counted in `0x0d`; the victim's received-side counters (`0x07`, `0x0f`) tick normally, friend or foe | **friendly stuns** (Personal Stats slot 7) |
 | B7 | **= salutes** — 3 in the 3-salute gesture round (2026-07-24); the hack round's 1 was a pre-scan salute | **salutes** (Personal Stats) |
 | B8 | **= preset radio message uses** — 2 in the 2-radio gesture round; the plain-rifle round's stray 1 was a radio call | **preset radio uses** (Personal Stats) |
 | B10 ↔ B11 | dealt/received **pair** (exact both sides, three times); moved by CQC grabs (4), barrels (3), grab practice (11 received), and the hold-up-heavy hack round (11); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs/hold-ups) |

@@ -2353,3 +2353,16 @@ round on a +7 same-stage bank — store 7→0 clamped, wire = the delta, exactly
 Remaining unlabelled among ever-observed slots: B5/B6 (friendly kills/stuns — needs the FF
 host toggle), B9 (text chat — blocked on the RPCS3 OSK). Bank scope (game vs stage) and the
 OTHER knockout component's wire effect stay open.
+
+### Friendly-fire round: B5/B6 labelled; the observable B-block is complete
+
+2026-07-24 (game 133, FF enabled: Sean team-killed poop 3× and team-stunned him 2×, then woke
+him twice). Wire: **B5=3 (friendly kills), B6=2 (friendly stuns)** — the B-index =
+0x4107-slot−1 rule closes at 19/19. Facts: friendly kills/stuns do NOT tick the dealer's
+`0x05`/`0x0d`; the victim's received counters (`0x07` deaths, `0x0f` knockouts) count them
+indistinguishably; team kills are score-neutral in this build (Sean's score 2 = wake·2·2 −
+death·2 exact — no TK penalty, no credit; operator policy elsewhere, not protocol here).
+B35=wakes reconfirmed (2, from waking the team-stunned victim). With this, every struct-B
+slot ever observed nonzero is labelled except B9 (text chat, blocked on the RPCS3 OSK).
+Remaining 0x4390 opens: bank scope (game vs stage), the OTHER knockout component's wire
+effect, flag 0x04, and the never-nonzero `0x19`/`0x1d`/trailing word.
