@@ -39,7 +39,7 @@ seq:
     doc: "[CONFIRMED] target character id."
   - id: flag_0x04
     type: u1
-    doc: "[FIRST-LIGHT] flag byte: 1 on the Snake's report in the first Sneaking round (2026-07-24), 0 in every other report ever (suicides, teardowns, FF included). Snake-role marker vs SNE-win marker — the observed Snake also won; a losing-Snake round discriminates. If role: time/kills/wins-as-Snake all derive from this + A seconds/kills."
+    doc: "[CONFIRMED] Snake-role marker: 1 on the Snake's report in both observed SNE rounds including a LOSS (win-marker reading falsified), 0 in every non-SNE report ever. Time/kills-as-Snake derive from this + A seconds/kills. Other modes/bit values unobserved."
   - id: kills
     type: s2
     doc: "[CONFIRMED] kills. Suicides and friendly kills do NOT count."
@@ -281,10 +281,10 @@ types:
         doc: "slot 48. [PREDICTED-DOUBTED] slot rule says combat training time (student), but the first Sneaking round wired 3 on the Snake player with no training involved — the prediction is doubtful; SNE-specific meaning suspected. Unlabelled."
       - id: unknown_b48
         type: s2
-        doc: "slot 49. [SNE-LIT] 3 on the Snake player in the first Sneaking round. Unlabelled."
+        doc: "slot 49. [SNE] 3 on the winning Snake, absent on the losing Snake. Objective-flavoured (dogtags?) candidate. Unlabelled."
       - id: unknown_b49
         type: s2
-        doc: "slot 50. [SNE-LIT] 1 on the Snake player in the first Sneaking round. Unlabelled."
+        doc: "slot 50. [SNE] 1 on the winning Snake, ABSENT on the losing Snake — wins-as-Snake candidate (B56 lost that label by firing on the loss). Unlabelled."
       - id: unknown_b50
         type: s2
         doc: "slot 51. [SNE-LIT] 4 on the Snake player (= his stuns dealt); suspected dealt half of a pair with b51. Unlabelled."
@@ -305,7 +305,7 @@ types:
         doc: "slot 56. [SNE-LIT] 4 on the non-Snake player; suspected pair with b54. Unlabelled."
       - id: unknown_b56
         type: s2
-        doc: "slot 57. [SNE-LIT] 1 on the Snake player, who won the round — 'wins as Snake' candidate, single sighting. Unlabelled."
+        doc: "slot 57. [SNE] 1 on the Snake in both rounds including the loss — rounds-as-Snake candidate, role-correlated like flag_0x04. NOT wins-as-Snake."
       - id: unknown_b57
         type: s2
         doc: "slot 58. [UNKNOWN] never observed nonzero. 0x4107 slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67, Snake Time 72) exceed this block — weapon lines feed from 0x43a2 tallies, snake stats from elsewhere."
