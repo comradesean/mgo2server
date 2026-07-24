@@ -193,7 +193,7 @@ types:
         doc: "slot 24? [PAIR-RECEIVED with b22] exact mirror in every observed round (8 in knockdown practice). Slot 24 never surfaces on the stats screen."
       - id: flawless_tdm_wins
         type: s2
-        doc: "slot 25. [CONFIRMED-EVENT] flawless TDM wins within the stage (the A flawless_win event; TDM only; absolute snapshot, resets on rotation). Survive-but-lose and win-but-die both tick nothing. Count vs best-consecutive-run UNTESTED — all observed stages were 2 rounds, where they coincide; the slot-25 label 'Consecutive Survivals' favours the run reading."
+        doc: "slot 25. [CONFIRMED] best consecutive flawless-win run this stage (the A flawless_win event; TDM only; absolute snapshot, resets on rotation). Settled by a 6-round stage: F,F,F,death,F,F wired 1,2,3,3,3,3 (a count would end 4,5). Survive-but-lose and win-but-die both tick nothing. Career slot 25 ('Consecutive Survivals') accumulates as max(career, this)."
       - id: bases_conquered
         type: s2
         doc: "slot 26. [PREDICTED] bases conquered (Base mode; untested)."

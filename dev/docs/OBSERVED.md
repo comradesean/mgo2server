@@ -2408,3 +2408,17 @@ best-consecutive-run are indistinguishable. Tested facts only: the event is win+
 (survive-but-lose and win-but-die both proven inert), TDM-only, per-stage with rotation
 reset, absolute snapshot. Count-vs-run needs a ≥3-round stage with a flawless/non-flawless/
 flawless pattern (count 2 vs run 1); the slot-25 name "Consecutive Survivals" favours run.
+
+### The 6-round stage settles B24: best consecutive flawless-win run, not a count
+
+2026-07-24 (games 135/136, user-engineered after challenging the count reading). Game 136,
+six rounds in one stage (rotation logged only after R6): Sean went flawless ×3, died in R4,
+then flawless ×2 — B24 wired **1,2,3,3,3,3**. A count of flawless wins would have ended
+4,5; the best-consecutive-run record holds at 3 because the post-death run only reached 2.
+**B24 = best consecutive flawless-win run this stage** — the slot-25 name "Consecutive
+Survivals" was the correct hint, and the earlier count reading was an artifact of every
+prior stage being 2 rounds (the user's diagnosis, verbatim). Serving consequence: career
+slot 25 = max(career, B24) — the same store-if-greater convention as the other record
+slots; runs cannot span rotations on the wire since B24 resets per stage. Game 135
+(F,F,F,death → 1,2,3,3) agrees. Same rounds: score 11 = 6+4+1 and 8 = 6−2+4 per round,
+B36=1 per 2-kill round, all exact under the settled formula.
