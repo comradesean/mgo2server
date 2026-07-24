@@ -15,7 +15,11 @@ damage sources; 127–140 are boss/environment sources.
 Tally triple **confirmed** 2026-07-24: per-weapon {kills, headshots, faints} — a deliberate
 one-headshot-one-bodyshot AK102 round produced {2,1,0}, splitting the fields. The Mosin
 dart-to-head counts as a weapon-level headshot even though the scoreboard headshot counter
-(lethal bullets only) refuses it. Anchors exact: ST KNIFE 1, AK102 25, MOSIN N 43.
+(lethal bullets only) refuses it. Anchors exact: ST KNIFE 1, **RUGER 2 = the Mk.2 tranq
+pistol** (one dart-faint on an awake target → {2: 0,0,1}; 30 darts into an already-fainted
+body → no entry, so the field counts faints CAUSED), AK102 25, MOSIN N 43. CQC knockouts
+never appear in this list at all (id 112 stays silent) — melee stuns live only in the
+scoreboard stun pair.
 
 | id | name | id | name | id | name |
 |---|---|---|---|---|---|
