@@ -2366,3 +2366,13 @@ B35=wakes reconfirmed (2, from waking the team-stunned victim). With this, every
 slot ever observed nonzero is labelled except B9 (text chat, blocked on the RPCS3 OSK).
 Remaining 0x4390 opens: bank scope (game vs stage), the OTHER knockout component's wire
 effect, flag 0x04, and the never-nonzero `0x19`/`0x1d`/trailing word.
+
+**Verification addendum (same night):** the suicide-deduction decomposition above originally
+*inferred* the headshot count from the score rather than reading it — circular as written
+(hs=4 would have decomposed the same 29 with no deduction). Pulled from the wire: hs=5, so
+29 = 15 − 2 + 10 + 6 uniquely and the conclusion stands, now properly grounded. Also placed
+on record after an evidence audit: every score multiplier is confirmed by wire-only
+decompositions; the gesture-slot labels depend on the user's action counts (distinct counts
+per round make transcription error implausible); the ONE claim resting solely on transcribed
+screen values from other players' rows is the OTHER knockout-received component, which
+remains marked unproven.
