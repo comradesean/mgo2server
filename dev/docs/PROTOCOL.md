@@ -1292,7 +1292,7 @@ structure, not meaning.
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
-| `0x21` | 2 | s16 | **zero-death round flag, mode-scoped condition**: TDM/DM = did not lose AND died zero times (won-but-died-twice 0; survive-but-lose 0; draws flag both zero-death players); **Rescue = simply died zero times** (6/6 incl. losing-team survivors). Refits every prior anomaly | live-confirmed |
+| `0x21` | 2 | s16 | **zero-death round flag, mode-scoped condition**: TDM/DM = did not lose AND died zero times (won-but-died-twice 0; survive-but-lose 0; draws flag both zero-death players); **Rescue and Base = simply died zero times** (8/8 incl. losing-team survivors). Refits every prior anomaly | live-confirmed |
 | `0x23` | 4 | 2 × u16 | **two fields, not one u32** (decoded 2026-07-23 late): hi u16 = **team slot index** (0/1; constant per player per game, 0 for everyone in DM, grouped killers correctly in a 3-player TDM — the "garbage seconds" were this bit); lo u16 = **seconds in game/round** (equal for both players of a fully-played round) | live-confirmed |
 | `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
@@ -1354,6 +1354,9 @@ team-win·5): `KILL×7, HEADSHOT×3, STUN×7, TEAM WIN×5, ASSIST×5, GOAL(B27)�
 TARGET DEFENCE(B28)×3, OTHER×1` — note Rescue HAS a team-win bonus where TDM has none, and
 its OTHER row tracks the B42 carry stat imperfectly (18 vs 21, gap open); deaths deduct
 silently (5 = 7 − 2 in the no-delivery round) though the screen shows no deaths row.
+**Base's table (first round, both screens exact)**: `KILL×3, SOP DESTAB(B26)×10, TEAM WIN×5,
+CONTROL(B25 bases conquered)×5, STUN×3, WAKE×3, ASSIST×3, OTHER×1` — wake pays ×3 here vs
+TDM's ×2, and OTHER carried B40 (a hidden capture-points counter, exactly captures×4).
 
 The scoreboard labels were **confirmed 2026-07-22** by a two-round TDM capture whose per-player
 totals (kills/deaths/score/headshots/stuns) matched the summed slots exactly — see OBSERVED.md,
