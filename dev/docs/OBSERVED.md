@@ -2259,3 +2259,17 @@ deaths in runs 2,2,1). Four resolutions in one round:
   "transfer on first loss". The oldest open A-slot is closed.
 - **B24 counts exactly the 0x21 events per stage** (absolute): the win-but-die round ticked
   neither. Flawless TDM wins this stage — the natural feed for "Consecutive TDM survivals".
+
+### Gesture round one: B7 = salutes, B8 = preset radio, B12 = rolls
+
+2026-07-24, three counted gestures in one round (4 rolls, 3 salutes, 2 preset radio; game
+131 R3, plus 5 unbroken kills). Wire: **B12=4, B7=3, B8=2** — three labels in one pull, the
+distinct counts making each unambiguous. All prior stray sightings refit: B12's entire value
+history is rolls (the "all-zero" game-128 report = one roll; 7 = dodge-rolling the body-dart
+round; 3 per grenade round; 0 in the stationary lock-on round — the "darts that connected"
+candidate is dead); B7's hack-round 1 was a pre-scan salute; B8's plain-rifle-round 1 was a
+radio call. B12 is additionally a **plain per-round count, not max-family** — two 1-roll
+rounds in the same stage each wired 1, so the earlier max classification (from poop's
+1-then-0 pair) was an over-read; that pair was just one roll then none. Round cross-checks:
+new stage (R3) so B0=B2=5 fresh streak records; B36=10 for the unbroken 5-run; score
+35 = 15 + 10 + 10 exact; flawless win ticked 0x21 and B24.
