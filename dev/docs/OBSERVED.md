@@ -2310,3 +2310,20 @@ somewhere in the 30s. The rule also means the server-side accumulation of B delt
 IS the 0x4107 record-1 backing store — the serving path for Personal Stats is now fully
 sketched: sum round_report detail_counters per slot, plus 0x0f for Times Stunned and 0x43a2
 tallies for the weapon lines.
+
+### Greyed-out chat SEND: client-side (RPCS3 OSK), no server lever exists
+
+2026-07-24, ELF trace closing the observation above. The game's only free-text input path is
+the PS3 on-screen-keyboard utility (`cellOskExtUtility` in the PRX import table; no `cellKb`
+raw-keyboard symbols exist — physical keyboards route through the OSK ext utility). No
+command in the protocol carries a text-chat permission: the settings blob, session/profile
+families and chat-macro commands have no mute/allow bit (voice chat's `0x0d`/`0x0e` are
+recognition/volume only), and the only GUI SEND button in the ELF resources belongs to the
+mail composer. The chat bar's `/all`–`/team` labels are hash-resolved text-table entries
+(`STRING_ST_CHAT*`, scene `8CHAT_SCBAR`) with no pointer xrefs, so the literal enable branch
+was not reachable — the classification rests on the input-path and protocol-field facts. The
+one server-relayed candidate, silent mode (commonB bit 2), was already decoded clear
+(0x143 = 0x00) in this session's blob audit. Conclusion: RPCS3's OSK commit path never
+delivers the buffer; keystrokes echo via passthrough but SEND stays disabled. Emulator-side;
+nothing we serve affects it. B9 (predicted Text Chat Uses) stays unconfirmable until the OSK
+behaves.
