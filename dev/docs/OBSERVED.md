@@ -2014,3 +2014,20 @@ artifact of reading only the LAST packet per round (tail -1) — single-scorer r
 it, multi-scorer rounds manufactured patterns from whichever packet happened to be last.
 The user cracked it by asking "aren't there three of these, one per player?" Lesson banked:
 count the packets in an exchange before interpreting any of them.
+
+### 0x4390 internals traced: per-round deltas, rebaseline, B0 running-max candidate
+
+2026-07-24, deep ELF pass on the stat pipeline (builder 0xD42178). Tier-1 mechanics: every
+counter is sent as a per-round DELTA (live-snapshot minus baseline, both in the profile
+blob; baseline is rewritten after each report — which is why reports are per-round — and
+round aborts restore live from baseline, a rollback that also explains stats lost to
+crashes). Post-build code maintains B0's storage as a RUNNING MAX (store-if-greater) —
+candidate: a best-round record, not a kill tally (fits its kills-matching in single rounds
+AND its stage-final zeroing; unconfirmed). B8's source = live gameplay struct G+0x3a4
+(G = *(player+0x6c)) — the tractable next trace target; the blob has mixed field widths
+under the u16 wire reads (B12 may straddle two u8 fields). The per-weapon 0x43a2 table has
+its own four increment fan-outs, independent of A/B. NOT achieved: the gameplay increment
+sites for B12 / 0x21 / 0x15-0x17 / B36 (dynamic-base writes; needs symbolic tracking via
+the G struct). The agent's "17 A + 71 B" recount is not adopted (self-inconsistent with
+its own offsets; 58 B u16s stand). Flag 0x04's "self-row marker" candidate conflicts with
+live data (always 0 incl. hosts' own rows) — open.
