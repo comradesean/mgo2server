@@ -1376,11 +1376,11 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 - **Assists pay ·3 and land in B37** — the earlier "assist inert" reads were wrong (see
   OBSERVED.md); stun-setups before a teammate kill earn them, pure health-damage setups did not.
 - **`other` is B36 (kill-combo points: Σ streak·(streak−1)/2 per unbroken run — deaths reset
-  it) plus a second component seen on stunned players**: a player knocked out 5 times showed
-  OTHER=5 with wire B36=0. The same player's earlier 5-death round with **zero** knockouts
-  wired −10 exactly — no room for any OTHER credit — so the component tracks knockouts
-  received (or stun-recoveries) ·1, not deaths. Both observations of it landed under the
-  score clamp, so **whether it feeds the wire score is unproven**.
+  it) plus a knockouts-received component ·1 — WIRE-PROVEN 2026-07-24**: a Sneaking round's
+  screen OTHER=3 equalled the player's 3 knockouts received (B36=0) and his wire score 22
+  included it with no clamp anywhere; the two earlier clamp-hidden sightings validate
+  retroactively. (A Snake-side OTHER=6 alongside 3 stuns dealt suggests stuns·2 may also
+  route through OTHER in SNE — single sighting, open.)
 - **`hacking·5` = B19, live-confirmed** (3 hacks → 15 points, total exact). It is distinct from
   B39's kill-1st-place ·5, which has only ever appeared in DM rounds — both ·5 categories are
   real, resolving the capture-era ambiguity. **A successful hack also credits an assist** (B37
