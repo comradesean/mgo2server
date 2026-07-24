@@ -12,6 +12,13 @@ Anchored live via the `0x43a2` round-end tally list (slot = weapon id): 1 = ST K
 kill), 43 = MOSIN N (tranq darts; non-lethal flag agrees). Ids 0–126 are the tally-eligible
 damage sources; 127–140 are boss/environment sources.
 
+**Name-column caveat (2026-07-24):** these are the ELF table's strings — plausibly internal
+development names, NOT verified as what the client UI renders. The user plays the id-2 tranq
+pistol as "the Mk.2" while the table says RUGER; the UI's own names may live in localized
+resources (as the medal names do). Ids and behaviours are the confirmed layer; treat every
+name below as [INFERRED] until read off the live UI. UI-correspondence verified so far:
+AK102 (id 25, read off the screen). Diverging or unverified: everything else.
+
 Tally triple **confirmed** 2026-07-24: per-weapon {kills, headshots, faints} — a deliberate
 one-headshot-one-bodyshot AK102 round produced {2,1,0}, splitting the fields. The Mosin
 dart-to-head counts as a weapon-level headshot even though the scoreboard headshot counter
