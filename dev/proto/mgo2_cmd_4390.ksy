@@ -193,7 +193,17 @@ types:
         doc: "slot 24? [PAIR-RECEIVED with b22] exact mirror in every observed round (8 in knockdown practice). Slot 24 never surfaces on the stats screen."
       - id: tdm_consecutive_survivals
         type: s2
-        doc: "slot 25. [CONFIRMED] TDM Consecutive Survivals (the screen's own name): best consecutive flawless-win run this stage — a 'survival' is the A flawless_win event, won + zero deaths (survive-but-lose and win-but-die both tick nothing). TDM only; absolute snapshot, resets on rotation. Settled by a 6-round stage (F,F,F,death,F,F wired 1,2,3,3,3,3) and predictively confirmed by a second (F,F,death,F,F,F wired 1,2,2,2,2,3, called in advance). Career slot 25 accumulates as max(career, this)."
+        doc: |
+          slot 25. [CONFIRMED] TDM Consecutive Survivals (the screen's own name): the
+          LONGEST RUN of back-to-back survival rounds this stage — the maximum number of
+          survivals in a row, NOT a count of survival rounds (proven: F,F,death,F,F,F has
+          five survival rounds but wires 3, the longest run). A 'survival' is one round
+          both won AND completed with zero deaths (the A flawless_win event; surviving a
+          lost round and winning while dying both tick nothing). TDM only; absolute
+          snapshot each report; resets on stage rotation, so runs cannot span stages.
+          Settled by one 6-round stage (F,F,F,death,F,F wired 1,2,3,3,3,3) and predictively
+          confirmed by a second (1,2,2,2,2,3 called in advance). Career slot 25 accumulates
+          as max(career, this).
       - id: bases_conquered
         type: s2
         doc: "slot 26. [PREDICTED] bases conquered (Base mode; untested)."
