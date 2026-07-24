@@ -1306,8 +1306,13 @@ observed TDM rotation every 2) and the wire carries the **delta of that record**
 counter. So a slot reads as the round's count only the first time that count is a new stage best;
 an equal round later in the same stage sends 0, a better one sends the difference (observed: B0 =
 2,0,2,0 across a 4-round/2-stage TDM with constant 2 kills; B2 = 1 when a 3-headshot round followed
-a 2-headshot round). Accumulating the deltas by addition reconstructs the client's record —
-presumably how career best-round records (the `0x4107` personal-scores slots) are meant to be fed.
+a 2-headshot round). **Accumulation caveat (corrected 2026-07-24 late):** summing these deltas
+reconstructs the record only *within one stage* — across stages the sum inflates without bound
+(two separate 5-streak stages sum to 10; the career best is 5). A career record slot must be
+served as a max over per-stage records, or derived directly from the ordered per-round rows —
+never as a plain sum. The same warning applies to B24, which is an absolute per-stage snapshot,
+not a delta at all. How the original backend accumulated these is unobservable; only the screen
+semantics ("consecutive", a record) constrain the choice.
 This retroactively explains every old "matched kills N/N" read: those captures were one round per
 stage, where max ≡ count.
 
