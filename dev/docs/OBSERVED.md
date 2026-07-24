@@ -2376,3 +2376,22 @@ decompositions; the gesture-slot labels depend on the user's action counts (dist
 per round make transcription error implausible); the ONE claim resting solely on transcribed
 screen values from other players' rows is the OTHER knockout-received component, which
 remains marked unproven.
+
+### The full Personal Stats screen, and the 58-slot bound
+
+2026-07-24. The complete screen, in display order (user-read, total list): Instructor,
+Consecutive Kills, Consecutive Deaths, Suicides, Friendly Kills, Friendly Stuns, Times
+Stunned, Preset Radio Message Uses, Text Chat Uses, CQC Attacks Given, CQC Attacks Taken,
+Rolls, Time as Dedicated Host, Salutes, Catapult Uses, Number of Boosts Given, Falling
+Deaths, Times Caught in Trap, Melee Hits, Scans Performed, Knife Kills, Time in Cardboard
+Box, Cardboard Box Uses, Total Time Using ENVG, Total Time Playing
+DEATHMATCH/TEAM DEATHMATCH/BASE/CAPTURE/RESCUE/SNEAKING, Training Mode Time, Combat Training
+Time (Instructor/Student), Number of Soldiers Trained, Host Rating, Instructor Score.
+Display order differs from 0x4107 slot numbers — the fingerprint table remains the slot
+authority. Sources: most rows are 0x4390 struct-B slots (see the rewritten
+dev/proto/mgo2_cmd_4390.ksy); Times Stunned feeds from A `0x0f`; per-mode play times derive
+from seconds+mode per report; Knife Kills is 0x4107 slot 64 — and **struct B has exactly 58
+slots, so every stat in slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67,
+Snake Time 72) cannot be B-fed** — an independent corroboration of knife kills arriving via
+the 0x43a2 weapon tallies. Host Rating and Instructor Score have no identified wire source
+yet. Total Time Using ENVG (B13 predicted) is testable: the ENVG is a map pickup.

@@ -4,17 +4,34 @@ meta:
   endian: be
 doc: |
   The host's per-player round report, one packet per player, sent at round end and on kick
-  teardown. The first client->server frame specced here: this is what the server STORES
-  (round_report table, one row per report) and every stats/history surface derives from it.
+  teardown (and immediately for a mid-round quitter). The server STORES the decoded frame
+  (round_report table, one row per report); every stats/history surface derives from it.
   Long form 167 B; a short ~51 B form omits struct B (detail_present 0) and moves the
   trailing word up. Nomad-era builds had a longer form with an aborted byte at 0xB7 — this
   client's 167 B frame never reaches it.
 
-  Labels: capture 2026-07-22 (kills/deaths/score/headshots/stuns vs rendered scoreboard) plus
-  the single-variable round experiments 2026-07-23 (OBSERVED.md, "The OTHER-field
-  experiment"). [MATCHED n/n] = exact correlation in every observed round, deliberately NOT
-  called a duplicate — divergence tests pending. Score formula (client-side, revised
-  2026-07-23): kills*3 - deaths*2 + headshots*2 + stun*3 + kill1st*5 + combo*1, clamped at 0.
+  DELTA SEMANTICS (ELF-traced, live-confirmed): every counter is the per-round DELTA of a
+  profile-blob store (live snapshot minus baseline; baseline rewritten after each report;
+  round aborts roll live back to baseline). For plain counters delta == the round's count.
+  Three slots are STREAK RECORDS (store-if-greater, zeroed on stage rotation — DM rotates
+  every round, observed TDM every 2): b00/b01/b02 wire the record's increase, so an equal-
+  or-worse round wires 0. The score is the delta of a store that CLAMPS AT 0 (a −10 round
+  on a +7 bank wires −7); whether that store resets per game or per stage is deliberately
+  unresolved — no consumer for the answer.
+
+  SCORE FORMULA (client-side, settled 2026-07-24 by wire-exact decompositions):
+    kills*3 − deaths*2 + (headshots_lethal + headshots_stun)*2 + hacks(b19)*5
+    + assists(b37)*3 + knockouts_dealt*M + wakes(b35)*2 + combo(b36)*1
+  where M = 2 in TDM, 3 in DM (mode-specific). Suicide-class deaths deduct like any death.
+  Friendly kills/stuns are score-neutral. kill_1st_place (b39) pays *5 in DM. The screen's
+  OTHER row = b36 + a knockout-received component whose wire effect is unproven (only ever
+  seen under the clamp).
+
+  STRUCT B <-> 0x4107: B-index = personal-stats slot − 1, exact for all 19 tested pairs.
+  0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed elsewhere
+  (weapon lines from the 0x43a2 tallies). [PREDICTED] labels below are this rule's untested
+  predictions, tier-inference only; the rule provably bends at b35 (wakes) vs slot 36
+  (Soldiers Trained), so treat each prediction as a hypothesis for its gesture round.
 doc-ref: dev/docs/PROTOCOL.md "0x4390 — update stats"
 seq:
   - id: chara_id
@@ -22,62 +39,65 @@ seq:
     doc: "[CONFIRMED] target character id."
   - id: flag_0x04
     type: u1
-    doc: "[INFERRED] flag byte (aborted/result?). 0 in every 2026-07-23 report incl. a suicide round."
+    doc: "[UNKNOWN] flag byte. 0 in every observed report incl. suicide, quit-teardown and FF rounds."
   - id: kills
     type: s2
-    doc: "[CONFIRMED] kills. Suicides do NOT count."
+    doc: "[CONFIRMED] kills. Suicides and friendly kills do NOT count."
   - id: deaths
     type: s2
-    doc: "[CONFIRMED] deaths, suicides included."
+    doc: "[CONFIRMED] deaths — all causes: enemy, friendly, suicide, falls."
   - id: lockon_kills
     type: s2
-    doc: "[CONFIRMED] lock-on kills — single-variable round: 3 in a 3-lock-on round, 0 in five kill rounds without. The personal-stats grid's OTHER operand."
+    doc: "[CONFIRMED] lock-on kills — single-variable round: 3 in a 3-lock-on round, 0 in five kill rounds without."
   - id: score
     type: s2
-    doc: "[CONFIRMED] round score, clamped at 0 (negative never observed despite categories implying it twice)."
-  - id: stuns
+    doc: |
+      [CONFIRMED] round score as the DELTA of a clamp-at-0 store — NOT raw round points.
+      Wires 0 for a losing round with nothing banked, a true negative when banked score
+      absorbs the loss (−7 observed = bank 7 → 0 on raw −10). See formula in the header.
+  - id: knockouts_dealt
     type: s2
-    doc: "[CONFIRMED] stun/knockout count — requires an actual faint; non-fainting slams tick B22/B23 instead. Scores *3 (revised from *2)."
-  - id: unknown_0x0f
+    doc: "[CONFIRMED] knockouts dealt, all types (slam/tranq/sleep) — requires an actual faint; non-fainting melee ticks b22/b23 instead. Friendly stuns do NOT count. Scores *2 TDM / *3 DM."
+  - id: knockouts_received
     type: s2
-    doc: "[UNKNOWN] loser-side 1 observed twice; 1 once in the 2026-07-22 capture."
-  - id: headshots
+    doc: "[CONFIRMED] knockouts received, all types incl. friendly — mirror of knockouts_dealt. Feeds Personal Stats 'Times Stunned' (slot 5; b04 never ticks)."
+  - id: headshots_lethal
     type: s2
-    doc: "[CONFIRMED] headshots dealt, bullets only (knife head-stabs do not count)."
+    doc: "[CONFIRMED] lethal headshots dealt, bullets only (knife head-stabs and tranq darts do not count). Scores *2. The screen HEADSHOTS row shows this + headshots_stun."
   - id: headshot_deaths
     type: s2
-    doc: "[CONFIRMED-1v1] deaths to headshots (received mirror of headshots)."
-  - id: unknown_0x15
+    doc: "[CONFIRMED] deaths to headshots (received mirror of headshots_lethal)."
+  - id: headshots_stun
     type: s2
-    doc: "[UNKNOWN] zero in every observed round."
-  - id: unknown_0x17
+    doc: "[CONFIRMED] stun headshots dealt (non-lethal headshots — tranq darts to the head). Hit-location, not weapon-class: 3 body-dart stuns wired 0 here. Scores *2 alongside headshots_lethal."
+  - id: headshots_stun_received
     type: s2
-    doc: "[UNKNOWN] zero in every observed round."
+    doc: "[CONFIRMED] stun headshots received — mirror of headshots_stun. The sleep-stab round's 1 suggests the neck syringe counts (unverified)."
   - id: unknown_0x19
     type: s2
     doc: "[UNKNOWN] zero in every observed round."
   - id: lockon_deaths
     type: s2
-    doc: "[CONFIRMED] deaths to lock-on — received mirror of lockon_kills, as headshot_deaths mirrors headshots."
-  - id: rounds_played
+    doc: "[CONFIRMED] deaths to lock-on — received mirror of lockon_kills."
+  - id: unknown_0x1d
     type: s2
-    doc: "[DOUBTED] capture-era label; never nonzero across 9 live reports 2026-07-23."
+    doc: "[DOUBTED] capture-era 'rounds played' label; never nonzero across all live reports."
   - id: round_completed
     type: s2
-    doc: "[INFERRED] 1 for every player of a normally-completed round, 0 in mid-game teardown reports."
-  - id: round_won
+    doc: "[CONFIRMED] 1 for a player present at normal round end, 0 in quit/teardown reports (twice also 0 with full seconds, unexplained but benign)."
+  - id: flawless_win
     type: s2
-    doc: "[CONFIRMED] winner-only across seven rounds, then transferred on the reporter's first loss. No score contribution."
+    doc: |
+      [CONFIRMED] 1 iff the player WON the round AND died zero times (settled 2026-07-24:
+      a won-but-died-twice round wired 0; refits every prior anomaly incl. the all-zero
+      round where no winner survived). NOT 'round won'. No score contribution. Counted per
+      stage by b24.
   - id: team_slot
     type: u2
-    doc: |
-      [CONFIRMED] team slot index (decoded 2026-07-23 late): constant per player per game,
-      0 for everyone in DM, grouped the killers correctly in a 3-player TDM. NOT the team
-      color — the index-to-color mapping varies per game. Was misread as the high half of a
-      u32 seconds field ("garbage seconds").
+    doc: "[CONFIRMED] team slot index: constant per player per game, 0 for everyone in DM. NOT the team color (index-to-color varies per game)."
   - id: seconds_in_game
     type: u2
-    doc: "[CONFIRMED] seconds in game/round — equal for co-present players of a full round."
+    doc: "[CONFIRMED] seconds in game/round — equal for co-present players of a full round; short for mid-round quitters."
   - id: experience_total
     type: u4
     doc: "[CONFIRMED] experience, absolute total (not a delta)."
@@ -87,192 +107,195 @@ seq:
   - id: detail
     type: struct_b
     if: detail_present != 0
-    doc: "58-slot event ledger; see struct_b."
+    doc: "58-slot Personal Stats delta ledger; see struct_b."
   - id: trailing_word
     type: u4
-    doc: "[UNKNOWN] trailing value, 0 in every observed report."
+    doc: "[UNKNOWN] trailing value, 0 in every observed report. The server WARNs if nonzero."
 types:
   struct_b:
     doc: |
-      58 s16 event counters — an itemised ledger, not the scoreboard categories. Contains
-      dealt/received PAIRS (b10<->b11, b22<->b23) matching exactly on both sides of every
-      observed round. unknown_NN = never observed nonzero or unresolved.
+      58 s16 counters — the per-round delta feed for the 0x4107 Personal Stats record
+      (B-index = slot − 1). Plain counts unless marked otherwise; b00/b01/b02 are per-stage
+      streak records (see top doc). Dealt/received PAIRS: b10<->b11, b22<->b23, and the A
+      pairs mirror likewise. [PREDICTED] = untested slot-rule inference.
     seq:
-      - id: unknown_b00
+      - id: consecutive_kills
         type: s2
-        doc: "slot 0. [MATCHED 7/7] kills, incl. every kill type tested; 0 for suicides. Not called a kills duplicate — no divergence test has split it from A-kills yet."
-      - id: unknown_b01
+        doc: "slot 1. [CONFIRMED] best consecutive-kills streak this stage (record delta): 2 separated kills wired 1. Slot rule: Personal Stats 'Consecutive Kills'."
+      - id: consecutive_deaths
         type: s2
-        doc: "slot 1. [MATCHED 7/7] deaths, suicides included."
-      - id: unknown_b02
+        doc: "slot 2. [CONFIRMED] best consecutive-deaths streak this stage: 2 separated deaths wired 1."
+      - id: consecutive_headshots
         type: s2
-        doc: "slot 2. [UNKNOWN] never observed nonzero."
+        doc: "slot 3. [CONFIRMED] best consecutive lethal-headshots streak this stage (bullets only; 2 separated wired 1). Slot 3 never surfaces on the stats screen."
       - id: suicides
         type: s2
-        doc: "slot 3. [CONFIRMED] 3 in a 3-grenade-suicide round, 0 elsewhere."
+        doc: "slot 4. [CONFIRMED] suicides — grenades (3/3), menu-suicides (5/5), and falling deaths (3/3) all count. Deduct −2 from score like any death."
       - id: unknown_b04
         type: s2
-        doc: "slot 4. [UNKNOWN] never observed nonzero."
-      - id: unknown_b05
+        doc: "slot 5 would be 'Times Stunned' but this NEVER ticks (players stunned 5 and 3 times wired 0) — that stat feeds from A knockouts_received instead. Purpose unknown."
+      - id: friendly_kills
         type: s2
-        doc: "slot 5. [UNKNOWN] never observed nonzero."
-      - id: unknown_b06
+        doc: "slot 6. [CONFIRMED] friendly kills (FF round: 3/3). Not counted in A kills; score-neutral."
+      - id: friendly_stuns
         type: s2
-        doc: "slot 6. [UNKNOWN] never observed nonzero."
-      - id: unknown_b07
+        doc: "slot 7. [CONFIRMED] friendly stuns (FF round: 2/2). Not counted in A knockouts_dealt; score-neutral."
+      - id: salutes
         type: s2
-        doc: "slot 7. [UNKNOWN] never observed nonzero."
-      - id: unknown_b08
+        doc: "slot 8. [CONFIRMED] salutes (3/3 in the gesture round; strays refit)."
+      - id: preset_radio_uses
         type: s2
-        doc: "slot 8. [OPEN] one-off 1 in the plain-rifle round; NOT lock-on and NOT the rifle itself (both retested 0)."
-      - id: unknown_b09
+        doc: "slot 9. [CONFIRMED] preset radio message uses (2/2; strays refit)."
+      - id: text_chat_uses
         type: s2
-        doc: "slot 9. [UNKNOWN] never observed nonzero."
-      - id: unknown_b10
+        doc: "slot 10. [PREDICTED] text chat uses — untestable so far: RPCS3's OSK never commits the buffer (client-side; no server chat-permission field exists)."
+      - id: cqc_given
         type: s2
-        doc: "slot 10. [PAIR-DEALT with b11] CQC-contact-flavoured: CQC round 4, barrels 3; 0 for grenades/knife/rifle kills."
-      - id: unknown_b11
+        doc: "slot 11. [CONFIRMED] CQC attacks given — grabs/hold-ups (4 CQC round, 11 hold-up-heavy hack round)."
+      - id: cqc_taken
         type: s2
-        doc: "slot 11. [PAIR-RECEIVED with b10] 11 during grab practice with zero deaths/stuns."
-      - id: other_count
+        doc: "slot 12. [CONFIRMED] CQC attacks taken — exact mirror of cqc_given in every observed round."
+      - id: rolls
         type: s2
-        doc: |
-          slot 12. [CONFIRMED-ACCOUNTING] the OTHER scoreboard category: the stage screen's
-          Other=2 matched this slot's per-round sum, and +1 per count closes otherwise
-          undecomposable scores exactly (scores x1). WHAT earns an other-point remains
-          unidentified: 3 per explosive-kill round, 1/round in several others, 0 in some.
-      - id: unknown_b13
+        doc: "slot 13. [CONFIRMED] rolls (4/4 gesture round; entire stray history refits, incl. a 1 in an otherwise all-zero report). Plain count, NOT a streak record."
+      - id: envg_time_s
         type: s2
-        doc: "slot 13. [UNKNOWN] never observed nonzero."
-      - id: unknown_b14
+        doc: "slot 14. [PREDICTED] total time using ENVG, seconds (ENVG is a map pickup; untested)."
+      - id: dedicated_host_time_s
         type: s2
-        doc: "slot 14. [UNKNOWN] never observed nonzero."
-      - id: unknown_b15
+        doc: "slot 15. [PREDICTED] time as dedicated host, seconds (untested)."
+      - id: catapult_uses
         type: s2
-        doc: "slot 15. [UNKNOWN] never observed nonzero."
-      - id: unknown_b16
+        doc: "slot 16. [CONFIRMED] catapult uses (3/3)."
+      - id: boosts_given
         type: s2
-        doc: "slot 16. [UNKNOWN] never observed nonzero."
-      - id: unknown_b17
+        doc: "slot 17. [CONFIRMED] boosts given (4/4)."
+      - id: falling_deaths
         type: s2
-        doc: "slot 17. [UNKNOWN] never observed nonzero."
-      - id: unknown_b18
+        doc: "slot 18. [CONFIRMED] falling deaths (3/3) — also tick suicides (b03)."
+      - id: trap_catches
         type: s2
-        doc: "slot 18. [UNKNOWN] never observed nonzero."
-      - id: unknown_b19
+        doc: "slot 19. [CONFIRMED] times caught in trap — triggers, not deaths (6 triggers / 2 fatal wired 6). Trap kills credit the owner as ordinary kills."
+      - id: scans
         type: s2
-        doc: "slot 19. [UNKNOWN] never observed nonzero."
-      - id: unknown_b20
+        doc: "slot 20. [CONFIRMED] successful SOP scans (hacks). Scores *5 AND credits an assist (b37) each. Requires the Scanning skill (grants the S. PLUG item, ELF 0xddee30)."
+      - id: box_time_s
         type: s2
-        doc: "slot 20. [UNKNOWN] never observed nonzero."
-      - id: unknown_b21
+        doc: "slot 21. [CONFIRMED] time in cardboard box, seconds (66 for ~a minute)."
+      - id: box_uses
         type: s2
-        doc: "slot 21. [OPEN] 1 alongside the one slam-faint; stun-adjacent."
-      - id: unknown_b22
+        doc: "slot 22. [CONFIRMED] cardboard box uses (1/1; an earlier stray 1 beside a slam-faint was this, not a stun counter)."
+      - id: melee_hits_dealt
         type: s2
-        doc: "slot 22. [PAIR-DEALT with b23] slam/knockdown-flavoured; ticks without a faint (unlike A stuns)."
-      - id: unknown_b23
+        doc: "slot 23. [CONFIRMED] melee hits dealt — slams/knockdowns incl. non-fainting ones (unlike A knockouts_dealt)."
+      - id: melee_hits_taken
         type: s2
-        doc: "slot 23. [PAIR-RECEIVED with b22] 8 during grab practice."
-      - id: unknown_b24
+        doc: "slot 24? [PAIR-RECEIVED with b22] exact mirror in every observed round (8 in knockdown practice). Slot 24 never surfaces on the stats screen."
+      - id: flawless_tdm_wins
         type: s2
-        doc: "slot 24. [UNKNOWN] never observed nonzero."
-      - id: unknown_b25
+        doc: "slot 25. [CONFIRMED] flawless TDM wins this stage (the A flawless_win event, counted absolutely per stage; TDM only — 0 in every DM round). Survive-but-lose and win-but-die both tick nothing. Slot rule: 'Consecutive Survivals'."
+      - id: bases_conquered
         type: s2
-        doc: "slot 25. [UNKNOWN] never observed nonzero."
-      - id: unknown_b26
+        doc: "slot 26. [PREDICTED] bases conquered (Base mode; untested)."
+      - id: sop_destabilizer_uses
         type: s2
-        doc: "slot 26. [UNKNOWN] never observed nonzero."
-      - id: unknown_b27
+        doc: "slot 27. [PREDICTED] SOP destabilizer uses (Base mode; untested)."
+      - id: gako_saved
         type: s2
-        doc: "slot 27. [UNKNOWN] never observed nonzero."
-      - id: unknown_b28
+        doc: "slot 28. [PREDICTED] GA-KO saved (Rescue; untested)."
+      - id: gako_defended
         type: s2
-        doc: "slot 28. [UNKNOWN] never observed nonzero."
+        doc: "slot 29. [PREDICTED] GA-KO defended (Rescue; untested)."
       - id: unknown_b29
         type: s2
-        doc: "slot 29. [UNKNOWN] never observed nonzero."
-      - id: unknown_b30
+        doc: "slot 30 unmapped on the stats screen. [UNKNOWN] never observed nonzero."
+      - id: fully_defended_matches
         type: s2
-        doc: "slot 30. [UNKNOWN] never observed nonzero."
+        doc: "slot 31. [PREDICTED] fully defended matches (Rescue; untested)."
       - id: unknown_b31
         type: s2
-        doc: "slot 31. [UNKNOWN] never observed nonzero."
+        doc: "slot 32 unmapped. [UNKNOWN] never observed nonzero."
       - id: unknown_b32
         type: s2
-        doc: "slot 32. [UNKNOWN] never observed nonzero."
+        doc: "slot 33 unmapped. [UNKNOWN] never observed nonzero."
       - id: unknown_b33
         type: s2
-        doc: "slot 33. [UNKNOWN] never observed nonzero."
+        doc: "slot 34 unmapped. [UNKNOWN] never observed nonzero."
       - id: unknown_b34
         type: s2
-        doc: "slot 34. [UNKNOWN] never observed nonzero."
-      - id: unknown_b35
+        doc: "slot 35 unmapped. [UNKNOWN] never observed nonzero."
+      - id: wakes
         type: s2
-        doc: "slot 35. [UNKNOWN] never observed nonzero."
-      - id: unknown_b36
+        doc: |
+          slot 36?? [CONFIRMED as WAKES] waking a stunned teammate; scores *2 (screen WAKE
+          row + two exact wire decompositions). CONFLICT with the slot rule: slot 36
+          fingerprinted as 'Number of Soldiers Trained' — the n−1 rule provably bends here.
+      - id: combo
         type: s2
-        doc: "slot 36. [MATCHED 7/7] kills incl. plain-bullet rounds; 0 for suicides. NOT special-kills; the capture-era '~Other' coincidence is dead."
-      - id: unknown_b37
+        doc: |
+          slot 37 (unmapped on screen). [CONFIRMED] kill-combo points: sum over each
+          unbroken kill run of n*(n−1)/2 — streaks 2,2,1 wired 2; deaths reset the run.
+          Feeds the screen OTHER row at *1.
+      - id: assists
         type: s2
-        doc: "slot 37. [UNKNOWN] never observed nonzero."
+        doc: "slot 38 (unmapped on screen). [CONFIRMED] assists; scores *3. Earned by stun-setups before a teammate's kill AND by each successful scan (3 in a 1v1 hack round). Damage-only setups earn nothing."
       - id: unknown_b38
         type: s2
-        doc: "slot 38. [UNKNOWN] never observed nonzero."
+        doc: "slot 39. [UNKNOWN] never observed nonzero."
       - id: kill_1st_place
         type: s2
-        doc: "slot 39. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4 (incl. a 0). Scores *5."
+        doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
       - id: unknown_b40
         type: s2
-        doc: "slot 40. [UNKNOWN] never observed nonzero."
+        doc: "slot 41. [UNKNOWN] never observed nonzero."
       - id: unknown_b41
         type: s2
-        doc: "slot 41. [UNKNOWN] never observed nonzero."
+        doc: "slot 42. [UNKNOWN] never observed nonzero."
       - id: unknown_b42
         type: s2
-        doc: "slot 42. [UNKNOWN] never observed nonzero."
+        doc: "slot 43. [UNKNOWN] never observed nonzero."
       - id: unknown_b43
         type: s2
-        doc: "slot 43. [UNKNOWN] never observed nonzero."
+        doc: "slot 44. [UNKNOWN] never observed nonzero."
       - id: unknown_b44
         type: s2
-        doc: "slot 44. [UNKNOWN] never observed nonzero."
-      - id: unknown_b45
-        type: s2
         doc: "slot 45. [UNKNOWN] never observed nonzero."
-      - id: unknown_b46
+      - id: training_mode_time_s
         type: s2
-        doc: "slot 46. [UNKNOWN] never observed nonzero."
-      - id: unknown_b47
+        doc: "slot 46. [PREDICTED] training mode time, seconds (untested)."
+      - id: combat_training_instructor_s
         type: s2
-        doc: "slot 47. [UNKNOWN] never observed nonzero."
+        doc: "slot 47. [PREDICTED] combat training time as instructor, seconds (untested)."
+      - id: combat_training_student_s
+        type: s2
+        doc: "slot 48. [PREDICTED] combat training time as student, seconds (untested)."
       - id: unknown_b48
         type: s2
-        doc: "slot 48. [UNKNOWN] never observed nonzero."
+        doc: "slot 49. [UNKNOWN] never observed nonzero."
       - id: unknown_b49
         type: s2
-        doc: "slot 49. [UNKNOWN] never observed nonzero."
+        doc: "slot 50. [UNKNOWN] never observed nonzero."
       - id: unknown_b50
         type: s2
-        doc: "slot 50. [UNKNOWN] never observed nonzero."
+        doc: "slot 51. [UNKNOWN] never observed nonzero."
       - id: unknown_b51
         type: s2
-        doc: "slot 51. [UNKNOWN] never observed nonzero."
+        doc: "slot 52. [UNKNOWN] never observed nonzero."
       - id: unknown_b52
         type: s2
-        doc: "slot 52. [UNKNOWN] never observed nonzero."
+        doc: "slot 53. [UNKNOWN] never observed nonzero."
       - id: unknown_b53
         type: s2
-        doc: "slot 53. [UNKNOWN] never observed nonzero."
+        doc: "slot 54. [UNKNOWN] never observed nonzero."
       - id: unknown_b54
         type: s2
-        doc: "slot 54. [UNKNOWN] never observed nonzero."
+        doc: "slot 55. [UNKNOWN] never observed nonzero."
       - id: unknown_b55
         type: s2
-        doc: "slot 55. [UNKNOWN] never observed nonzero."
+        doc: "slot 56. [UNKNOWN] never observed nonzero."
       - id: unknown_b56
         type: s2
-        doc: "slot 56. [UNKNOWN] never observed nonzero."
+        doc: "slot 57. [UNKNOWN] never observed nonzero."
       - id: unknown_b57
         type: s2
-        doc: "slot 57. [UNKNOWN] never observed nonzero."
+        doc: "slot 58. [UNKNOWN] never observed nonzero. 0x4107 slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67, Snake Time 72) exceed this block — weapon lines feed from 0x43a2 tallies, snake stats from elsewhere."
