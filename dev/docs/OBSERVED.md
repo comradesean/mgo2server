@@ -2122,3 +2122,19 @@ knockout component feed the wire score?); a **win-but-die TDM round** (splits B2
 survived/won); a **suicide with banked score** (re-tests suicide deduction under the clamp
 model); a **timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds
 (untouched categories); B8/B21/B10-11/B22-23 single-variable rounds as before.
+
+### Wake round: B35 = wakes ×2, exact on the wire; the dart-headshot ambiguity survives again
+
+2026-07-24, engineered wake round (Sean+rawr vs poop; poop dart-stunned rawr 3×, Sean woke
+him 3×, poop killed 5 across both). Sean's report: **B35=3 — first nonzero ever — and wire
+score 2 = wake·2·3 − deaths·2·2 exactly**, matching the screen's WAKE=3x2 row. B35 = wakes,
+×2, paying into the wire score. Cross-checks in the same round: poop's 3 dart stuns wired
+`0x15`=3 against rawr's `0x17`=3 (dealt/received mirror again); poop's screen HEADSHOTS=8 =
+wire `0x11`=5 bullets + 3 dart headshots, B2=5 (bullets only, new stage best); poop's
+OTHER=10 = B36 = 5·4/2; poop's 47 decomposed exactly — but his darts all hit heads AGAIN, so
+screen-headshot·2-counting-darts vs a separate `0x15`·2 term remain numerically identical.
+rawr's OTHER=3 = his 3 knockouts received (second sighting of the OTHER knockout component),
+still invisible on the wire because he had nothing banked (−6+3 clamps to the observed 0).
+Also noted: rawr's reports in two adjacent rounds carried `0x1f`=0 with everyone else at 1 —
+in one his seconds ran ~40 short of the others (left before round end, consistent with the
+quit-report pattern); in the other they matched, unexplained but benign.
