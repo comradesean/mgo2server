@@ -2469,3 +2469,16 @@ objective-flavoured. Sean's B51/B53/B55 trio = his kills both rounds (4 then 5) 
 in 1v1 with snake-deaths readings; open. Model checks: 0x21 flawless-win behaves in SNE
 (Sean 1 here; nobody in the died-while-winning round); **B36=7 from 5 kills — second
 unreachable value under the TDM combo rule**, confirming SNE feeds combo differently.
+
+### First Rescue round: B28 = GA-KO defended (slot-rule hit); B29/B41/B42 first light
+
+2026-07-24 (game 140 R1: rawr defended the GA-KO and won flawlessly; Sean attacked, picked
+it up but never delivered, died once). **B28=1 on the defender** — slot 29 "GA-KO Defended",
+the slot rule's prediction, first Rescue data point. **B27 (GA-KO Saved) correctly absent**
+— pickup without delivery saves nothing. **B29=1 on the attacker who picked it up** (slot
+30, hidden on the stats screen) — GA-KO-pickups candidate. **B41=1, B42=7 first light**
+(slots 42/43, hidden) on the attacker, unlabelled (B42=7 ≈ carry-seconds is a guess only).
+B30 "Fully Defended Matches" did not fire — either the pickup spoiled it (user's suspicion)
+or it ticks per MATCH, not per round. flag_0x04=0 for all — still SNE-only. Rescue scoring
+(18 for the defender's 1 kill, 5 for the attacker with a death) is unmapped like SNE's.
+Next round of the same game is an engineered idle-out: the long-awaited timer-end null probe.
