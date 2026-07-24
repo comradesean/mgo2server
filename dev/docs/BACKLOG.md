@@ -314,10 +314,12 @@ PROTOCOL.md. The B-block's running-max family (B0/B1/B2/B12) is understood as pe
 best-round records wired as store-if-greater deltas.
 
 Still open, with the discriminating experiment for each (list also at the end of the OBSERVED
-entry): body-shot tranq round (headshot·2-with-darts vs `0x15`·2); win-but-die TDM round (B24
-survived vs won); suicide with banked score (deduction under the clamp); timer-ended round
-(`0x21`); hacking and wake (never exercised); B8 / B21 / B10-B11 / B22-B23 single-variable
-rounds; B12's base value; flag `0x04`; `0x19`, `0x1d`, and the trailing word (never nonzero).
+entry): body-shot tranq round (headshot·2-with-darts vs `0x15`·2); get-stunned-with-banked-score
+round (does the OTHER knockout-received component feed the wire score?); win-but-die TDM round
+(B24 survived vs won); suicide with banked score (deduction under the clamp); timer-ended round
+(`0x21`); hacking and wake (WAKE×2 row exists on screen, never nonzero); B8 / B21 / B10-B11 /
+B22-B23 single-variable rounds; B12's base value; flag `0x04`; `0x19`, `0x1d`, and the trailing
+word (never nonzero).
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 

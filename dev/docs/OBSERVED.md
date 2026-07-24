@@ -2105,14 +2105,20 @@ below is in PROTOCOL.md's revised tables; the discoveries and their falsificatio
   counting darts vs a separate 0x15·2 term are numerically indistinguishable — a body-shot
   tranq round discriminates.
 
-Transcription caveat, banked deliberately: of the three screen rows read that round, only the
-reader's own row reconciled field-by-field; the other two players' Headshots/Stuns/Other rows
-as read did not match their wire values, but all three TOTALS matched the wire exactly (the
-loser's 0 being the clamp swallowing −10). Read your own row off the result screen; treat
-others' rows as suspect until someone reads their own screen in the same round.
+A corrected re-read of the screen (first transcription had slipped rows) reconciled all three
+players field-by-field and added two things. (1) There is a **WAKE×2 row** — the capture-era
+"wake·2" guess is a real category, still never nonzero. (2) One real anomaly: **the loser's
+OTHER row read 5 while his wire B36=0** (0 kills, so combo=0). His only nonzero B slot was
+B1=5; what distinguished this round from his earlier 5-death round — which wired −10 exactly,
+leaving no room for OTHER credit — is that here he was **knocked out 5 times** (0x0f=5). So
+the screen's OTHER is B36-combo **plus** a component tracking knockouts received (or the
+recoveries from them) ·1. Both sightings of that component sat under the score clamp
+(−10+5=−5 in this round, −6+2=−4 in the earlier 2-knockout round, all displaying/wiring 0), so whether it feeds the wire score at all is
+unproven — a stunned-often player with banked score would show it in a wire negative.
 
 Open discriminators, in rough order of value: a **body-shot tranq stun** round (splits
-headshot·2-with-darts from 0x15·2); a **win-but-die TDM round** (splits B24 survived/won); a
-**suicide with banked score** (re-tests suicide deduction under the clamp model); a
-**timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds (untouched
-categories); B8/B21/B10-11/B22-23 single-variable rounds as before.
+headshot·2-with-darts from 0x15·2); a **get-stunned-with-banked-score** round (does the OTHER
+knockout component feed the wire score?); a **win-but-die TDM round** (splits B24
+survived/won); a **suicide with banked score** (re-tests suicide deduction under the clamp
+model); a **timer-ended round** (0x21 ground truth, still pending); hacking/wake rounds
+(untouched categories); B8/B21/B10-11/B22-23 single-variable rounds as before.
