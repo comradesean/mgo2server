@@ -2401,3 +2401,10 @@ yet. Total Time Using ENVG (B13 predicted) is testable: the ENVG is a map pickup
 testable. (The same report logged 18 rolls searching for the pickup.) Remaining
 [PREDICTED]-only slots are the mode-specific ones (Base/Rescue objectives, training times,
 dedicated-host time) plus text chat (emulator-blocked).
+
+**B24 precision addendum (user challenge, same night):** the "count of flawless wins this
+stage" reading is over-specific — every observed stage was 2 rounds, where a count and a
+best-consecutive-run are indistinguishable. Tested facts only: the event is win+no-death
+(survive-but-lose and win-but-die both proven inert), TDM-only, per-stage with rotation
+reset, absolute snapshot. Count-vs-run needs a ≥3-round stage with a flawless/non-flawless/
+flawless pattern (count 2 vs run 1); the slot-25 name "Consecutive Survivals" favours run.
