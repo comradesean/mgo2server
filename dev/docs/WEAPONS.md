@@ -19,10 +19,13 @@ are the confirmed layer, names one tier below. UI-correspondence verified so far
 unverified names should still be read as [INFERRED] until seen on the live UI — oddities
 like the duplicate SBS (36/74) and TANE (29) suggest at least some rows are internal-only.
 
-Tally triple **confirmed** 2026-07-24: per-weapon {kills, headshots, faints} — a deliberate
-one-headshot-one-bodyshot AK102 round produced {2,1,0}, splitting the fields. The Mosin
-dart-to-head counts as a weapon-level headshot even though the scoreboard headshot counter
-(lethal bullets only) refuses it. Anchors exact: ST KNIFE 1, **RUGER 2 = the Mk.2 tranq
+Tally triple **confirmed and refined** 2026-07-24: per-weapon {kills, headshots, faints},
+where the headshot field is a **terminal-event qualifier**, not a hit counter — a helmeted
+target headshot-wounded twice with the GSR produced NO GSR entry at all (and no scoreboard
+headshot): headshots register only attached to the kill or faint they cause. Entries appear
+only for weapons with terminal events; pure damage never creates a row. The Mosin
+dart-to-head counts (it caused the faint) even though the scoreboard headshot counter
+(lethal bullets only) refuses darts. Anchors exact: ST KNIFE 1, **RUGER 2 = the Mk.2 tranq
 pistol** (one dart-faint on an awake target → {2: 0,0,1}; 30 darts into an already-fainted
 body → no entry, so the field counts faints CAUSED), AK102 25, MOSIN N 43. CQC knockouts
 never appear in this list at all (id 112 stays silent) — melee stuns live only in the
