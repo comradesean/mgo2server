@@ -313,13 +313,21 @@ mode-specific stun multipliers (×2 TDM / ×3 DM), and the clamped-store score m
 PROTOCOL.md. The B-block's running-max family (B0/B1/B2/B12) is understood as per-stage
 best-round records wired as store-if-greater deltas.
 
-Still open, with the discriminating experiment for each (list also at the end of the OBSERVED
-entry): body-shot tranq round (headshot·2-with-darts vs `0x15`·2); get-stunned-with-banked-score
-round (does the OTHER knockout-received component feed the wire score?); win-but-die TDM round
-(B24 survived vs won); same-stage-banked suicide round (settles deduction regardless of bank scope), then a stage-2 deaths-only round after stage-1 banking (splits per-game vs per-stage bank); timer-ended round
-(`0x21`); hacking and wake (WAKE×2 row exists on screen, never nonzero); B8 / B21 / B10-B11 /
-B22-B23 single-variable rounds; B12's base value; flag `0x04`; `0x19`, `0x1d`, and the trailing
-word (never nonzero).
+Closed later the same day (see OBSERVED): the headshot category (= `0x11`+`0x15`·2, body-dart
+round), hacking (=B19·5, and hacks credit an assist each), wake (=B35·2), `0x21` (= flawless
+win: won + zero deaths — the timer-end hypothesis is retired), B24 (= flawless TDM wins per
+stage; survive-but-lose and win-but-die both tick nothing), B0/B1/B2 (= consecutive
+kills/deaths/headshots streak records), B36 (= streak combo).
+
+Still open, with the discriminating experiment for each: kills+suicides in one round (suicide
+deduction, clamp-free — e.g. 3 kills + 3 suicides scores 6 if they deduct, 12 if free);
+stage-2 deaths-only round after stage-1 banking (score bank scope: game vs stage);
+get-stunned-with-banked-score round (does the OTHER knockout-received component feed the wire
+score?); gesture rounds — counted rolls / salutes / preset radio / text chat / catapult /
+boost / falling death / trap / knife kill / box time+uses — for the dark B slots per the
+Personal Stats Rosetta (B12's history fits Rolls or Radio; B7=1 once in the hack round; B8=1
+once in the rifle round); friendly-fire-enabled round (`commonA` bit 3) for the Friendly
+Kills/Stuns slots; flag `0x04`; `0x19`, `0x1d`, and the trailing word (never nonzero).
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 
