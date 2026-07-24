@@ -2162,3 +2162,19 @@ suicide count exactly, alongside B1=5 as the fresh-stage deaths best; and the op
 0x21=1 with zero kills — suicides alone lose the round.) The clean experiment needs no bank at
 all: **kills and suicides in the same round** (e.g. 3 kills + 3 suicides → 6 if suicides
 deduct, 12 if free — both positive, clamp never engages).
+
+### Hacking prerequisites, from the ELF: S. PLUG exists; a SCANNING skill gates it
+
+2026-07-24. Prompted by the Scanning Plug being absent from loadout items. ELF strings pass
+(tier 1): the item-name table (ASCII, ~0xdde520–0xddf000, calibrated against CLAYMORE/
+MAGAZINE/CHAFF G etc.) contains **`S. PLUG` at 0xddee30** (with companion `S.PLUG_SPR` at
+0xddee40) — the Scanning Plug exists in this retail build, under an abbreviated internal
+name a "SCANNING PLUG" search would have missed. A skill token **`Skill_Eng_SCANNING` at
+0xe0b720** exists alongside the other skill identifiers — consistent with the plug being
+granted by equipping the Scanning skill rather than appearing as a free item (matches the
+restriction sweep, whose 19 base items do not include the plug). Untested in-game yet.
+Also: **no literal `HACK`/`HACKING` string anywhere in the ELF** — the result screen's
+HACKING row text presumably comes from localized string tables outside the binary. The ELF's
+own score-label cluster (0xdfcaf8–0xdfcbf8) reads `KILLS, HEADSHOTS, DEATHS,
+(KILL + STUN) COUNT, WAKE COUNT, (DEATH + STUN DAMAGE) COUNT, TOTAL SCORE` — composite
+labels worth remembering when mapping the stats screens.
