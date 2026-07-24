@@ -2178,3 +2178,19 @@ HACKING row text presumably comes from localized string tables outside the binar
 own score-label cluster (0xdfcaf8–0xdfcbf8) reads `KILLS, HEADSHOTS, DEATHS,
 (KILL + STUN) COUNT, WAKE COUNT, (DEATH + STUN DAMAGE) COUNT, TOTAL SCORE` — composite
 labels worth remembering when mapping the stats screens.
+
+### The body-dart round settles the headshot category and relabels 0x15/0x17
+
+2026-07-24, engineered discriminator (game 129: Sean 3 body-shot dart stuns + 5 headshot
+kills on rawr). Wire score **41 = kills·15 + 0x11·2 (10) + stun·2 (6) + B36 (10) exactly** —
+the competing model (a separate `0x15`·2 term) predicted 47 and is dead. Better: **`0x15`
+wired 0 despite three ranged dart knockouts, and the victim's `0x17`=0** while his `0x0f`
+counted all 3 — so the pair is **stun headshots dealt/received** (hit location, not weapon
+class), and the screen's HEADSHOTS row = `0x11` + `0x15`, both ·2. Every earlier "ranged/
+tranq knockouts" reading was a coincidence of darts always hitting heads. The sleep-stab
+round's `0x17`=1 now reads as the neck syringe counting as a stun headshot (unverified).
+Same pull, two more: **B24 = wins, not survivals** — poop survived-but-lost game 127 R2 and
+his B24 stayed at 1 (win-but-die remains the last split); **B12** logged a 7 (not
+kills+stuns=8) in the dart round and — strangest — a **1 in game 128 whose report was
+otherwise entirely zero**: something that neither scores nor registers anywhere else ticks
+B12. Worth asking what was done in that round (scan attempts? hold-ups?).

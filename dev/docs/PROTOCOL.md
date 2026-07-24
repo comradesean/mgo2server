@@ -1286,8 +1286,8 @@ structure, not meaning.
 | `0x0f` | 2 | s16 | **knockouts received** (all types) — mirror of `0x0d`: victim's 3 in the 3-slam round, 2 in the 2-tranq round, exactly opposite the dealer's `0x0d` each time (2026-07-24) | live-confirmed |
 | `0x11` | 2 | s16 | **headshots dealt** (bullets only — knife stabs and tranq darts to the head do not count, 2026-07-23/24) | live-confirmed |
 | `0x13` | 2 | s16 | **headshot deaths** — across three rounds (two TDM, one Rescue) it exactly equalled the enemy's headshot count (5/5/1); strong, but a 3+ player match would make it airtight | medium-high |
-| `0x15` | 2 | s16 | **ranged/tranq knockouts dealt** — subset of `0x0d`: 5 in the 5-tranq round, 2 in the 2-tranq round (dealer side), 1 in game 107 R1, 0 in all melee-slam stun rounds. (An OBSERVED.md note briefly claimed this stayed 0 on the dealer; the wire falsifies it — `0002` at `0x15` in the dealer's own packet.) Appears to add ·2 to score, but every observed tranq stun was a dart *headshot*, so this is indistinguishable from the screen's headshot·2 counting darts — see the formula notes | live-confirmed |
-| `0x17` | 2 | s16 | **ranged/tranq knockouts received** — subset of `0x0f`, mirror of `0x15`: 2 on the tranq victim, 1 in the sleep-stab round, 0 in melee-slam rounds | live-confirmed |
+| `0x15` | 2 | s16 | **stun headshots dealt** (non-lethal headshots — tranq darts to the head): 5/2/1 in the dart-headshot rounds, **0 in a 3-body-dart-stun round** (2026-07-24, the discriminator — so it is the hit location, not the weapon class; the interim "ranged/tranq knockouts dealt" label was wrong). The screen's HEADSHOTS row = `0x11` + this, both ·2. (An earlier OBSERVED.md note claimed this stayed 0 on the dealer; the wire falsified that too) | live-confirmed |
+| `0x17` | 2 | s16 | **stun headshots received** — mirror of `0x15`: 2 on the dart-headshot victim, 0 on the body-dart victim (whose `0x0f` still counted 3), 0 in melee-slam rounds. The sleep-stab round's 1 suggests the neck syringe counts as one (or that round had an unnoticed dart headshot) | live-confirmed |
 | `0x19` | 2 | s16 | zero in every observed round | — |
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
 | `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
@@ -1322,10 +1322,10 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B3 | 3 in a 3-grenade-suicide round, 0 elsewhere (single observation — count vs max-family undetermined) | **suicides** |
 | B8 | 1 in the plain-rifle round only (same gun as the lock-on round, which had 0) | one-off, open |
 | B10 ↔ B11 | dealt/received **pair** (exact both sides, twice); moved by CQC grabs (4), barrels (3), grab practice (11 received); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs?) |
-| B12 | max-family (1 then 0 across two identical 3-kill rounds); underlying per-round value: 3 in explosive rounds, 1 in knife/rifle/CQC/tranq rounds, 0 in lock-on round and practice | max-family, base value unidentified |
+| B12 | max-family (1 then 0 across two identical 3-kill rounds); underlying per-round value: 3 in explosive rounds, 1 in knife/rifle/CQC/tranq rounds, 0 in lock-on round and practice, **7** in a 5-headshot-kill + 3-body-dart-stun round (not kills+stuns=8), and **1 in a round whose report was otherwise all-zero** (game 128 — something that neither scores nor counts elsewhere ticks it) | max-family, base value unidentified |
 | B21 | 1 alongside the one slam-faint | stun-adjacent |
 | B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
-| B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset, on players who won without dying; 0 the moment a player died or lost; quit-teardown snapshots the pre-round value | **TDM rounds survived/won this stage** — absolute-within-stage and triangular-delta both fit; needs a win-but-die round to split survived vs won |
+| B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset; quit-teardown snapshots the pre-round value; **a survive-but-lose round did NOT tick it** (game 127 R2, 2026-07-24 — so it counts wins, not survivals) | **TDM round WINS this stage** — win-but-die still untested (does dying void the win?); absolute-within-stage and triangular-delta both fit the 1,2 sequences |
 | B35 | **= wakes (waking a stunned teammate), screen-confirmed ×2** (2026-07-24): a 3-wake round wired B35=3 and score 2 = wake·2·3 − deaths·2·2 exactly — wake pays into the wire score | **wakes** |
 | B36 | **= kills·(kills−1)/2 exactly** in every nonzero row (k=2→1, 3→3, 4→6); plain per-round value (repeats, unlike max-family); 4-kill/5-death row still 6, so deaths don't reset it — a pure function of round kills, not a streak. **Screen-confirmed 2026-07-24**: the result screen's OTHER row showed exactly this value (6, ×1) for a 4-kill player — but OTHER is a superset; a much-stunned player showed OTHER=5 with B36=0 (see the formula notes) | **feeds the OTHER score category** — accelerating kill bonus, ·1 |
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
@@ -1339,15 +1339,16 @@ read alongside its own wire reports; the screen's category rows are
 capture-era "wake·2" guess is real: a later 3-wake round confirmed WAKE = B35, paying ×2 on
 the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2 + 3·3 + 5·2 = 34):
 
-`kills·3 − deaths·2 + headshots·2 + hacking·5 + assist(B37)·3 + stun·M + wake(B35)·2 + other(B36)·1`
+`kills·3 − deaths·2 + (headshots 0x11+0x15)·2 + hacking·5 + assist(B37)·3 + stun·M + wake(B35)·2 + other(B36)·1`
 
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
   capture-era `stun·2` was TDM — both right for their mode.
-- **The screen's HEADSHOTS count includes tranq-dart headshots** (screen 6 vs wire `0x11` = 1
-  bullet + `0x15` = 5 dart-stuns); wire `0x11` and B2 are bullets-only. Every observed round had
-  dart-stuns = dart-headshots, so "screen-headshots·2" vs "`0x11`·2 + `0x15`·2" are numerically
-  indistinguishable so far — a **body-shot tranq round** discriminates.
+- **The headshot category = `0x11` (lethal) + `0x15` (stun) headshots, ·2 — settled 2026-07-24
+  by the body-dart round**: 3 body-shot dart stuns + 5 headshot kills scored 41 = 15 + 5·2 +
+  3·2 + 10 exactly (body darts added nothing beyond stun·2, and `0x15` itself wired 0). The
+  screen's HEADSHOTS row shows the sum (6 = 1+5 in the dart-headshot round; 5 = 5+0 here);
+  wire `0x11` and B2 are bullets-only.
 - **Assists pay ·3 and land in B37** — the earlier "assist inert" reads were wrong (see
   OBSERVED.md); stun-setups before a teammate kill earn them, pure health-damage setups did not.
 - **`other` is B36 = kills·(kills−1)/2 plus a second component seen once**: a player knocked
