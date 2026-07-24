@@ -2002,3 +2002,15 @@ three-player round) — round-end-by-timer suspected, ground truth pending. The 
 model is OPEN again: top-scorer fits all rounds except one where the finishing-blow player
 took it over a higher scorer; no single-factor rule survives. Data table in the session
 log; no replacement theory documented until discriminating ground truth arrives.
+
+### 0x43a2 SOLVED, for real: per-player weapon appendix — the theories were a sampling bug
+
+2026-07-24, closing correction: 0x43a2 is sent ONCE PER PLAYER with a non-empty tally
+(right after that player's 0x4390; empty lists skipped via the count==0 early return).
+Header = that player's own chara id. The 04:13 three-scorer round emitted THREE packets
+(headers 1/3/2, tallies exactly each player's own kills); the 04:17 round two (rawr, zero
+kills, skipped). Every winner/MVP/top-scorer/finishing-blow theory of the night was an
+artifact of reading only the LAST packet per round (tail -1) — single-scorer rounds masked
+it, multi-scorer rounds manufactured patterns from whichever packet happened to be last.
+The user cracked it by asking "aren't there three of these, one per player?" Lesson banked:
+count the packets in an exchange before interpreting any of them.

@@ -1362,11 +1362,12 @@ natural **TDM** round ends send it, once per round, between the per-player `0x43
 ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
 
 ```
-u32 MVP chara id      — the round's overall top performer, team outcome irrelevant
-                        (losing-team 4-kill player beat the winning team's 3-kill player
-                        and the round-ending killer, 2026-07-24). The tally entries are
-                        the MVP's alone. Mechanically the cached 0x4101-shaped character
-                        record the client snapshots per round (ELF).
+u32 chara id          — THIS packet's player. 0x43a2 is PER-PLAYER (one per player with a
+                        non-empty list, sent right after their 0x4390; empty lists are
+                        skipped). The night of winner/MVP/finisher theories (2026-07-24)
+                        was a sampling artifact — only the last packet per round was being
+                        read. A three-scorer round emits three, ids+tallies matching each
+                        player's own stats.
 u32 count             — number of entries (builder caps 0x7f; caller caps 50)
 count × { u8 weapon id, u16 kills, u16 headshots (terminal blows), u16 faints caused }
 ```
