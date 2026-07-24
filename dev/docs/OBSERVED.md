@@ -2047,3 +2047,17 @@ gameplay struct (unattached); (3) a catalogue of mode-clustered writer addresses
 work. Decision: pause ELF tracing at this layer — two passes hit the same wall and the
 second began producing confidently-wrong linkages; the empirical lever (objective-mode
 rounds for dark slots, one timer-ended round for 0x21) is cheaper and falsification-proof.
+
+### Tranq-stun round: 0x0f vs 0x17 split; assist credit absent again; b36=COMBO reconfirmed
+
+2026-07-24. Sean tranq-headshot-stunned rawr twice (recorded in 0x43a2 as {RUGER: 0,0,2}
+faints — dealt stuns live in the weapon list, not struct A), rawr killed by poop 3× headshot.
+Findings: rawr's report shows 0x0f=2 AND 0x17=2 (stuns received), while melee-slam rounds
+moved 0x0f but NOT 0x17 — candidate split: **0x0f = all knockouts received, 0x17 = ranged/
+tranq knockouts received** (sleep-stab round's 0x17=1 fits). 0x15 (dealt side) stayed 0 on
+the dealer, consistent with dealt-events-live-in-0x43a2. **Assist absent a SECOND time**: two
+health-setups (round 1) and two tranq-stuns (round 2) before a teammate's kill produced zero
+credit for the setup player (score 0, no slot) — assist·3 in the score formula looks inert or
+requires an unknown trigger (tier-4-inherited-and-untested candidate). b36=3 with poop's 3
+headshot kills and score 18=9+6+3 reconfirms b36 as the ×1 COMBO/OTHER category (b12 stayed
+1, contributes nothing to score — b12's Other label was a b36 confound, now retracted).
