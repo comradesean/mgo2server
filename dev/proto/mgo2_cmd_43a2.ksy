@@ -3,41 +3,33 @@ meta:
   title: "MGO2 0x43a2 — round-end per-weapon tally list (client -> server)"
   endian: be
 doc: |
-  The ROUND-MVP CARD: sent by the host once per round end, between the per-player
-  0x4390 reports; acked 0x43a3 (result 0). Identifies the round's OVERALL TOP PERFORMER —
-  team outcome irrelevant — and carries THAT PLAYER'S per-weapon breakdown, not the whole
-  round's. Proven 2026-07-24 in two steps: a 2v1 where the winning team's second scorer
-  was absent from the list, then a 2v2-style round where the LOSING team's 4-kill player
-  (id 2) took the header over the winning team's 3-kill player and the round-ending
-  killer. Kills-based vs score-based ranking is still confounded (the MVP led both). First observed
-  2026-07-23; ELF-decoded (builder 0xD41AC0, caller 0x27CC78); every field live-confirmed
-  across thirteen designed rounds. Sent in every mode including DM (the "never sent"
-  verdict was a pre-tracing capture gap); skipped only when the winner has no tally
-  entries (count 0 -> early return).
+  PER-PLAYER weapon-breakdown appendix to the 0x4390 stat report: at round end the host
+  sends, for EACH player with at least one tally entry, that player's 0x43a2 immediately
+  after their 0x4390 (players with empty lists are skipped — the count==0 early return in
+  the ELF caller). Header = THAT player's character id; entries = their personal per-weapon
+  terminal-event tallies. Settled 2026-07-24 after a night of false theories (winner / MVP /
+  top-scorer / finishing-blow), every one an artifact of sampling only the LAST packet per
+  round; a three-scorer round emits three packets, one per scorer, ids and tallies matching
+  each player's own stats exactly. Sent in every mode including DM.
 
-  One entry per weapon with which THE WINNER caused a TERMINAL EVENT (kill or faint) —
+  One entry per weapon with which THIS PLAYER caused a TERMINAL EVENT (kill or faint) —
   damage alone never creates an entry (two wounding headshots produced no row), and
-  melee/CQC events never appear even though the weapon table has ids for them (PUNCH/CQC
-  stayed silent through knockout rounds; melee lives in the 0x4390 stun pair).
-  Weapon ids index the ELF's 141-entry master table, dev/docs/WEAPONS.md (0-based; anchors
-  ST KNIFE 1, RUGER 2, GSR 7, SKORPION/Vz.83 23, AK102 25, MOSIN N 43). The builder caps
-  entries at 0x7f; the caller further caps at 50 and walks a 127-slot per-round table,
-  emitting non-zero slots in id order.
+  melee/CQC events never appear even though the weapon table has ids for them (melee lives
+  in the 0x4390 stun pair). Weapon ids index the ELF's 141-entry master table,
+  dev/docs/WEAPONS.md (anchors: ST KNIFE 1, RUGER 2, GSR 7, Vz.83/SKORPION 23, AK102 25,
+  MOSIN N 43). Builder caps entries at 0x7f, caller at 50.
 
   The server acks and currently stores nothing (BACKLOG, "Store 0x43a2 per-weapon round
-  tallies").
+  tallies" — now attributable per player, which that entry wondered about).
 doc-ref: dev/docs/PROTOCOL.md "0x43a2 — round-end slot-tally list"
 seq:
-  - id: winner_chara_id
+  - id: chara_id
     type: u4
     doc: |
-      [CONFIRMED-LIVE] The round's top performer's character id, INDEPENDENT of team
-      outcome (a losing-team 4-kill player took it over the winning team's 3-kill player
-      and the round-ending killer). Confirmed across three distinct ids (1/2/3).
-      Eliminated on the way: reporter/host id, host-transfer artifact, constant, round
-      winner, winning-team-top-scorer. Kills-vs-score ranking unconfounded only when
-      those diverge. Mechanically the cached 0x4101-shaped character record the client
-      snapshots per round (ELF) — the MVP's record.
+      [CONFIRMED-LIVE] THIS packet's player — the character whose weapon tallies follow.
+      Verified across three simultaneous per-player packets whose ids and tallies each
+      matched that player's own 0x4390 stats. (Mechanically: the head of the per-player
+      round record, as the ELF trace said before a night of sampling-artifact theories.)
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."
