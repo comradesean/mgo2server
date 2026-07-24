@@ -1975,3 +1975,13 @@ survived while its semantic leap (whose record lives there) did not — live fal
 outranks trace confidence; and the user's host-transfer confound catch forced the clean
 2x2. Bonus: these rounds were DEATHMATCH and sent 0x43a2 — the "never sent in DM" belief
 (2026-07-22, pre-tracing) is dead; the packet fires in every mode, entries permitting.
+
+### 0x43a2 is the round-winner card: top-scorer id + THEIR weapon breakdown only
+
+2026-07-24, the 2v1 experiment (rawr 4 kills, sean 1 kill, same winning team; poop 5
+deaths): header 2 = the winning team's top scorer (third distinct id), and the tally list
+held ONLY rawr's weapons ({Vz.83: 4,4,0}) — sean's kill was absent. Every prior capture
+re-checked: the tallies always matched the winner's own actions (indistinguishable from
+"whole round" until a second scorer existed). So the packet is a winner/MVP card, not a
+round aggregate. Also confirmed this session: header follows the winner across ids 1/2/3,
+and DM sends the packet (pre-tracing "never sent" verdict dead).

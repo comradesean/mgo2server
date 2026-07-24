@@ -3,15 +3,21 @@ meta:
   title: "MGO2 0x43a2 — round-end per-weapon tally list (client -> server)"
   endian: be
 doc: |
-  Sent by the host once per round end, between the per-player 0x4390 reports; acked 0x43a3
-  (result 0). First observed 2026-07-23 (TDM; the earlier "never sent" verdict was DM-era
-  and wrong), ELF-decoded the same day (builder 0xD41AC0, caller 0x27CC78), and fully
-  live-confirmed over eight designed rounds 2026-07-23/24.
+  The ROUND-WINNER CARD: sent by the host once per round end, between the per-player
+  0x4390 reports; acked 0x43a3 (result 0). Identifies the round's winner (in team modes:
+  the winning team's top scorer) and carries THAT PLAYER'S per-weapon breakdown — not the
+  whole round's. Proven 2026-07-24 by a 2v1 where the winner's teammate also scored: the
+  teammate's kill was absent from the list ({Vz.83: 4,4,0} = the top scorer's tally alone),
+  and the header showed a third distinct id (2) matching the top scorer. First observed
+  2026-07-23; ELF-decoded (builder 0xD41AC0, caller 0x27CC78); every field live-confirmed
+  across thirteen designed rounds. Sent in every mode including DM (the "never sent"
+  verdict was a pre-tracing capture gap); skipped only when the winner has no tally
+  entries (count 0 -> early return).
 
-  One entry per weapon that caused a TERMINAL EVENT (kill or faint) this round — damage
-  alone never creates an entry (a round of two wounding headshots produced no row for that
-  weapon), and melee/CQC events never appear even though the weapon table has ids for them
-  (PUNCH/CQC stayed silent through knockout rounds; melee lives in the 0x4390 stun pair).
+  One entry per weapon with which THE WINNER caused a TERMINAL EVENT (kill or faint) —
+  damage alone never creates an entry (two wounding headshots produced no row), and
+  melee/CQC events never appear even though the weapon table has ids for them (PUNCH/CQC
+  stayed silent through knockout rounds; melee lives in the 0x4390 stun pair).
   Weapon ids index the ELF's 141-entry master table, dev/docs/WEAPONS.md (0-based; anchors
   ST KNIFE 1, RUGER 2, GSR 7, SKORPION/Vz.83 23, AK102 25, MOSIN N 43). The builder caps
   entries at 0x7f; the caller further caps at 50 and walks a 127-slot per-round table,
@@ -24,12 +30,12 @@ seq:
   - id: winner_chara_id
     type: u4
     doc: |
-      [CONFIRMED-LIVE] The round WINNER's character id. Proven 2026-07-24 by a controlled
-      flip: same fresh game, same host (chara 3), only the winner varied — chara 1 wins ->
-      header 1 (eleven captures), chara 3 wins -> header 3. Eliminated on the way: the
-      reporter/host's id (chara-3-hosted rounds sent 1), a host-transfer artifact (fresh
-      game), a constant (it moved). Mechanically it is the cached 0x4101-shaped character
-      record the client snapshots per round (ELF trace) — evidently the winner's record.
+      [CONFIRMED-LIVE] The round winner's character id; in team modes the winning team's
+      top scorer (2v1 test: teammate ids 1+2 won, top scorer 2 -> header 2). Proven by
+      controlled flips across three distinct ids (1/2/3), same-host winner-varied rounds.
+      Eliminated on the way: reporter/host id, host-transfer artifact, constant.
+      Mechanically the cached 0x4101-shaped character record the client snapshots per
+      round (ELF) — the winner's record.
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."
