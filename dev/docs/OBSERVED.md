@@ -1963,3 +1963,15 @@ assuming that buffer always holds the OWN character's record; it evidently can h
 another's. Every surviving capture (10/10; game 111's rawr-won packets were lost to the
 23:16 container restart) is a round chara 1 won → winner's-chara-id is the leading
 candidate. Discriminator: any round won by chara 2 or 3 with DEBUG on.
+
+### 0x43a2 header = the WINNER's character id — closed by controlled flip; DM sends it too
+
+2026-07-24, final: in one fresh poop-hosted (chara 3) game, sean's win sent header 1 and
+poop's slit-kill win sent header 3 — same game, same host, only the winner varied. The
+eleven earlier 1s were chara 1's win streak. Eliminated en route: reporter/host id
+(falsified by a poop-hosted sean-win), host-transfer artifact (fresh game), constant (it
+moved). Two lessons banked: an ELF trace's mechanical finding (where the value comes from)
+survived while its semantic leap (whose record lives there) did not — live falsification
+outranks trace confidence; and the user's host-transfer confound catch forced the clean
+2x2. Bonus: these rounds were DEATHMATCH and sent 0x43a2 — the "never sent in DM" belief
+(2026-07-22, pre-tracing) is dead; the packet fires in every mode, entries permitting.

@@ -21,15 +21,15 @@ doc: |
   tallies").
 doc-ref: dev/docs/PROTOCOL.md "0x43a2 — round-end slot-tally list"
 seq:
-  - id: header_chara_id
+  - id: winner_chara_id
     type: u4
     doc: |
-      [PARTIAL] A character id, mechanically: the ELF trace shows it read from a cached
-      character-record buffer (session+0x57d8, 0x4101-shaped: u32 id + 16B name),
-      snapshotted per round (+0x14c) and sent verbatim. WHOSE id is open: "the reporter's
-      own" was live-falsified 2026-07-24 (a chara-3-hosted round still sent 1); every
-      surviving capture (10/10) is a round chara 1 WON, making winner's-id the leading
-      candidate — the discriminating observation is a round won by someone else.
+      [CONFIRMED-LIVE] The round WINNER's character id. Proven 2026-07-24 by a controlled
+      flip: same fresh game, same host (chara 3), only the winner varied — chara 1 wins ->
+      header 1 (eleven captures), chara 3 wins -> header 3. Eliminated on the way: the
+      reporter/host's id (chara-3-hosted rounds sent 1), a host-transfer artifact (fresh
+      game), a constant (it moved). Mechanically it is the cached 0x4101-shaped character
+      record the client snapshots per round (ELF trace) — evidently the winner's record.
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."
