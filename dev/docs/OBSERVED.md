@@ -1911,3 +1911,13 @@ tallied nothing in 0x43a2, second independent confirmation (after CQC id 112) th
 melee-caused faints are excluded from the per-weapon list: they exist only in the scoreboard
 stun pair (0x0d dealt / 0x0f received). B10/B11's "grabs" reading takes a counterexample
 (1 with zero grabs, punches only) — demoted to contact-flavoured, open.
+
+### Headshots are killing/terminal blows, not hits — proven with a helmet
+
+2026-07-24: two GSR headshot WOUNDS on a helmeted target (then Vz.83 body-shot finishes)
+ticked nothing anywhere — scoreboard headshots 0, struct-B B2 0, and no GSR entry in 0x43a2.
+With the AK102 headshot-kill and Mosin headshot-faint both counting, the rule everywhere is:
+a headshot registers only as the qualifier of a terminal event (kill or faint). 0x43a2 rows
+themselves require terminal events — damage alone never creates an entry. New anchor: slot
+23 = the in-game Vz.83 (table string SKORPION — first likely real name divergence, pending a
+UI read). The recurring kill-round other-point (b12=1, score +1) appeared again.
