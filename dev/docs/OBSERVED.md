@@ -2223,7 +2223,11 @@ struct B: it is the per-round delta feed for these career stats. Already-labelle
 up: Suicides=B3, Scans Performed=B19, CQC Given/Taken=B10/B11, Melee Hits (+taken)=B22/B23,
 Times Stunned=0x0f. Consequences: (1) **B0/B1's "best-round kills/deaths" reading now has a
 rival — best consecutive kills/deaths (streak)** — indistinguishable in every captured round
-(kill order unknown); an engineered kill-die-kill-die-kill round (round kills 3, streak 1)
+because all testing killed one target in unbroken runs (the user's own observation), so
+streak = round total throughout. The per-stage reset and store-if-greater machinery hold
+under either reading; only the tracked quantity is open. One weak lean: game 121 R1 wired
+B0=4 for a 4-kill/5-death player, which under the streak reading requires an uninterrupted
+4-run amid five deaths. An engineered kill-die-kill-die-kill round (round kills 3, streak 1)
 splits it. (2) The dark slots have candidate names — B12's value history (1 in an otherwise
 all-zero round, 7 in the body-dart round, 3 per grenade round, 0 in the stationary lock-on
 round) fits **Rolls** or **Preset Radio Uses**. (3) The closing method is gesture rounds:
