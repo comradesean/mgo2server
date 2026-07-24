@@ -1929,3 +1929,12 @@ wound (victim finished with body shots) in the same round → 0x43a2 {GSR: 2 kil
 headshot, 0 faints}; scoreboard kills 2, headshots 1. The killing-blow-only rule confirmed
 with both cases inside a single weapon entry. Slot 7 = GSR anchors (table SIG GSR, name
 matches UI). Score 9 = 6 + 2 + 1(other-point) — b12's kill-round +1 again.
+
+### Team slot ↔ color: red = 1, blue = 0 (two deliberate observations)
+
+2026-07-24: the user deliberately picked team red and landed team_slot=1; game 111's known
+assignment (rawr red = 1, sean+poop blue = 0) agrees. Game 107's "sean was blue" recollection
+(slot 1) conflicts but predates team awareness — memory outweighed by the deliberate picks.
+Candidate, one blue-win from settled: winning a round as blue tests both this mapping and
+whether the 0x43a2 header u32 (always 1 so far, every observed winner red/slot-1) is the
+winning team slot or a constant.
