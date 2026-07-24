@@ -279,34 +279,34 @@ types:
         doc: "slot 47. [PREDICTED] combat training time as instructor, seconds (untested)."
       - id: combat_training_student_s
         type: s2
-        doc: "slot 48. [PREDICTED-DOUBTED] slot rule says combat training time (student), but the first Sneaking round wired 3 on the Snake player with no training involved — the prediction is doubtful; SNE-specific meaning suspected. Unlabelled."
+        doc: "slot 48. [SNE] on the Snake: 3 (win), 2 (active loss), absent (idle loss) — always equal to b48; dogtag-related pair candidate (the DOGTAG SCORE row has no direct slot: 16 points from ~2 tags, values vary). Training-time slot-rule prediction dead."
       - id: unknown_b48
         type: s2
-        doc: "slot 49. [SNE] 3 on the winning Snake, absent on the losing Snake. Objective-flavoured (dogtags?) candidate. Unlabelled."
+        doc: "slot 49. [SNE] on the Snake: 3 (win), 2 (active loss), absent (idle loss) — always equal to b47; dogtag-related pair candidate. Unlabelled."
       - id: unknown_b49
         type: s2
-        doc: "slot 50. [SNE] 1 on the winning Snake, ABSENT on the losing Snake — wins-as-Snake candidate (B56 lost that label by firing on the loss). Unlabelled."
+        doc: "slot 50. [SNE] wins-as-Snake: 1 on the winning Snake only, absent in BOTH losses (3/3). Feeds 0x4107 slot 63 Victories as Snake."
       - id: unknown_b50
         type: s2
-        doc: "slot 51. [SNE-LIT] 4 on the Snake player (= his stuns dealt); suspected dealt half of a pair with b51. Unlabelled."
+        doc: "slot 51. [CONFIRMED] HOLDUP COUNT (SNE screen row, scores *2): 1 in a 3-stun/1-holdup round (breaking the earlier stun confound), 4 in the 4-holdup round."
       - id: unknown_b51
         type: s2
-        doc: "slot 52. [SNE-LIT] 4 on the non-Snake player (= his knockouts received); suspected received half of a pair with b50. Unlabelled."
+        doc: "slot 52. [CONFIRMED] SNAKE KILL (SNE screen row): kills of the Snake, worth 6 points each (screen 2 = wire 2, score 22 exact only at 6/kill)."
       - id: unknown_b52
         type: s2
         doc: "slot 53. [UNKNOWN] never observed nonzero."
       - id: unknown_b53
         type: s2
-        doc: "slot 54. [SNE-LIT] 4 on the non-Snake player in the first Sneaking round. Unlabelled."
+        doc: "slot 54. [SNE] 4/5/2 on the non-Snake = his kills-of-Snake every round — degenerate with b51 in 1v1; a multi-player SNE round splits the b51/b53/b55 trio. Unlabelled."
       - id: unknown_b54
         type: s2
-        doc: "slot 55. [SNE-LIT] 4 on the Snake player; suspected pair with b55. Unlabelled."
+        doc: "slot 55. [SNE] deaths-as-Snake: equals the Snake's A deaths in all three rounds (4/5/2). Not on the visible stats list — hidden career surface or bookkeeping. Unlabelled."
       - id: unknown_b55
         type: s2
-        doc: "slot 56. [SNE-LIT] 4 on the non-Snake player; suspected pair with b54. Unlabelled."
+        doc: "slot 56. [SNE] 4/5/2 on the non-Snake — third copy of kills-of-Snake in 1v1, see b53. Unlabelled."
       - id: unknown_b56
         type: s2
-        doc: "slot 57. [SNE] 1 on the Snake in both rounds including the loss — rounds-as-Snake candidate, role-correlated like flag_0x04. NOT wins-as-Snake."
+        doc: "slot 57. [SNE] rounds-as-Snake: 1 on the Snake every round (3/3 incl. both losses), role-correlated like flag_0x04. NOT wins-as-Snake (that is b49)."
       - id: unknown_b57
         type: s2
         doc: "slot 58. [UNKNOWN] never observed nonzero. 0x4107 slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67, Snake Time 72) exceed this block — weapon lines feed from 0x43a2 tallies, snake stats from elsewhere."
