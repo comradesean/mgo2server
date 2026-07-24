@@ -1887,3 +1887,16 @@ whole attribution mechanism, by construction. 0x43c8's {u32,u8} = two config byt
 settings buffer (round/rule pair, not the token). 0x43a2 fully decoded as a count-prefixed
 per-slot tally list (see PROTOCOL.md) — our three captured payloads decode exactly; what the
 127-slot table indexes is the new open question.
+
+### Game 112 (two identical AK102 rounds): per-round model pristine; winner-flag asymmetry
+
+2026-07-24. Two TDM rounds, each 2 AK102 kills (1 headshot + 1 body), stage ended naturally.
+Wire: two per-round batches with identical struct A (kills 2, headshots 1) and identical
+0x43a2 lists ({AK102: 2,1,0}) — identical because the rounds were; NO stage-end extra report
+(natural stage end now observed twice adding nothing). Third confirmation of the stage-final
+struct-B signature (last batch: per-round slots zeroed, b24 stepped 1→2 with the team score,
+b36 kept). New hypothesis from contrasting games 111/112: **0x21/b24 update synchronously
+when the HOST's side wins (112: exact) but lag when the JOINER's side wins** (111: rawr's
+round-A win showed 0x21=0/b24=0, correct only from round B) — a host-perspective bookkeeping
+artifact candidate. b36 reshaped: equals kills in DM (3), 1 in TDM rounds with a 2-kill
+streak, 0 in TDM single-kill rounds — combo-flavoured, no closed model.
