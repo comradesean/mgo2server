@@ -319,15 +319,18 @@ win: won + zero deaths — the timer-end hypothesis is retired), B24 (= flawless
 stage; survive-but-lose and win-but-die both tick nothing), B0/B1/B2 (= consecutive
 kills/deaths/headshots streak records), B36 (= streak combo).
 
-Still open, with the discriminating experiment for each: kills+suicides in one round (suicide
-deduction, clamp-free — e.g. 3 kills + 3 suicides scores 6 if they deduct, 12 if free);
-stage-2 deaths-only round after stage-1 banking (score bank scope: game vs stage);
-get-stunned-with-banked-score round (does the OTHER knockout-received component feed the wire
-score?); gesture rounds — counted rolls / salutes / preset radio / text chat / catapult /
-boost / falling death / trap / knife kill / box time+uses — for the dark B slots per the
-Personal Stats Rosetta (B12's history fits Rolls or Radio; B7=1 once in the hack round; B8=1
-once in the rifle round); friendly-fire-enabled round (`commonA` bit 3) for the Friendly
-Kills/Stuns slots; flag `0x04`; `0x19`, `0x1d`, and the trailing word (never nonzero).
+Further closed by the 2026-07-24 gesture rounds (see OBSERVED): B7 salutes, B8 preset radio,
+B12 rolls, B15 catapult, B16 boosts, B17 falling deaths (which also tick B3 — suicides
+include falls), B18 trap catches, B20 box seconds, B21 box uses; suicide deduction (−2 like
+any death — the "deduct nothing" read was clamp artifact); knife kills shown to live in
+0x43a2, ending round_weapon_tally's deferral; and the B-index = 0x4107-slot−1 rule (17/17).
+
+Still open, with the discriminating experiment for each: stage-2 deaths-only round after
+stage-1 banking (score bank scope: game vs stage); get-stunned-with-banked-score round (does
+the OTHER knockout-received component feed the wire score?); friendly-fire-enabled round
+(`commonA` bit 3) for B5/B6 Friendly Kills/Stuns; B9 text chat (blocked on the RPCS3 OSK
+commit path, not the server); flag `0x04`; `0x19`, `0x1d`, and the trailing word (never
+nonzero).
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 
