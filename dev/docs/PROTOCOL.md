@@ -1192,13 +1192,11 @@ after the docs and the audit both confirmed the gap. Live standing after two cap
 (2026-07-22, including an admin-action sweep): **`0x4398`, `0x43a0`, `0x4392` and `0x4390` are
 all confirmed against the client, payload and effect**; `0x43ca` has **never been observed on
 any path** and is presumed absent from this build's normal vocabulary. `0x43a2` was presumed
-absent too until 2026-07-23, when a natural **TDM** round end sent it — once per round end,
-between the per-player `0x4390` reports (the 2026-07-22 sweep that missed it was DM-era).
-Payloads (hex, undecoded — no reference parses this command): 15 B
-`000000010000000119000100010000` twice for identical headshot rounds, and 22 B
-`0000000100000002010001000000002b000000010001` for the round with a stun + sleeping-body
-kill, so the length varies with round content. We ack `0x43a3`, result 0, and drop the data
-knowingly; decoding it is parked until a reason appears.
+absent too until 2026-07-23, when live round ends sent it (the 2026-07-22 sweep that missed
+it predates packet tracing; it fires in every mode). Since fully decoded: **one per scoring
+player**, sent immediately after that player's `0x4390`, carrying that player's per-weapon
+kill/headshot/faint tallies — see its own section and `dev/proto/mgo2_cmd_43a2.ksy`. We ack
+`0x43a3`, result 0; storing the tallies is backlogged.
 
 What the host admin menu actually sends, mapped action by action against a live client:
 
@@ -1355,11 +1353,16 @@ request is logged and dropped. Reply `0x43a1`, result 0. (Naming caveat: mgo2-se
 `0x43a0` "pass round" and has a separate `0x4348` "host pass"; Nomad's `0x43a0` is the pass we
 implement.)
 
-## `0x43a2` — round-end slot-tally list (observed and ELF-decoded 2026-07-23)
+## `0x43a2` — per-player weapon tallies (fully decoded 2026-07-24)
 
-**Client → server**, acked `0x43a3` (result 0). The 2026-07-22 "never sent" verdict was DM-era:
-natural **TDM** round ends send it, once per round, between the per-player `0x4390` reports.
-ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
+**Client → server**, acked `0x43a3` (result 0). **One packet per scoring player**: at round
+end the host sends each player's `0x4390` stat report immediately followed by that player's
+`0x43a2` weapon breakdown; players with an empty list are skipped (the caller's count==0
+early return). A three-scorer round therefore emits three, interleaved with the reports.
+The 2026-07-22 "never sent" verdict predates packet tracing; it fires in every mode
+including DM. ELF: builder `0xD41AC0`, caller `0x27CC78`. Beware the history recorded in
+OBSERVED.md: a night of winner/MVP/top-scorer/finishing-blow "confirmations" for the leading
+u32 were all artifacts of reading only the last packet per round.
 
 ```
 u32 chara id          — THIS packet's player. 0x43a2 is PER-PLAYER (one per player with a
@@ -1372,18 +1375,19 @@ u32 count             — number of entries (builder caps 0x7f; caller caps 50)
 count × { u8 weapon id, u16 kills, u16 headshots (terminal blows), u16 faints caused }
 ```
 
-The caller walks a 127-slot, 3-bytes-per-slot client table and emits one entry per non-zero
-slot. **The slot index is the weapon id and the triple is {kills, headshots, faints} —
-both live-confirmed 2026-07-24**: a deliberate AK102 round of one headshot + one body kill
-produced exactly `{AK102: 2,1,0}`, splitting kills from headshots; earlier anchors
+The caller walks the player's 127-slot, 3-bytes-per-slot round table and emits one entry
+per non-zero slot. **The slot index is the weapon id and the triple is {kills, headshots,
+faints} — live-confirmed 2026-07-24**: a deliberate AK102 round of one headshot + one body
+kill produced exactly `{AK102: 2,1,0}`, splitting kills from headshots; other anchors
 `{ST KNIFE: 1,0,0}` (the sleep-stab) and `{MOSIN N: 0,1,1}` (the tranq dart — dart
-headshots count here though not in the scoreboard's lethal-bullets-only slot). Weapon
-names: the ELF's 141-entry master table, `dev/docs/WEAPONS.md`. So `0x43a2` is a fully
-decoded per-weapon round breakdown — currently acked and dropped; storing it is
-backlogged. It carries **no token, no game/room id, and no round counter**
-(the caller references none of the token storage; see the reporting-model note under
-`0x4390`). We ack and store nothing; decode-and-store is future work once the slot table's
-meaning is pinned.
+headshots count here though not in the scoreboard's lethal-bullets-only slot); and in the
+three-scorer round each player's packet carried exactly their own kills. Semantics proven
+alongside: entries require a terminal event (wounding shots tally nothing) and melee/CQC
+events never appear (they live in the `0x4390` stun pair). Weapon names: the ELF's
+141-entry master table, `dev/docs/WEAPONS.md`. It carries **no token, no game/room id, and
+no round counter** (the caller references none of the token storage; see the
+reporting-model note under `0x4390`). We ack and store nothing; storing per-player
+per-weapon tallies is backlogged.
 
 # ADDLIST — friend / blocked relationships (`0x4500` / `0x4510` / `0x4580`)
 

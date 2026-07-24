@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_43a2
-  title: "MGO2 0x43a2 — round-end per-weapon tally list (client -> server)"
+  title: "MGO2 0x43a2 — per-player round weapon tallies (client -> server, one per scorer)"
   endian: be
 doc: |
   PER-PLAYER weapon-breakdown appendix to the 0x4390 stat report: at round end the host
@@ -21,7 +21,7 @@ doc: |
 
   The server acks and currently stores nothing (BACKLOG, "Store 0x43a2 per-weapon round
   tallies" — now attributable per player, which that entry wondered about).
-doc-ref: dev/docs/PROTOCOL.md "0x43a2 — round-end slot-tally list"
+doc-ref: dev/docs/PROTOCOL.md "0x43a2 — per-player weapon tallies"
 seq:
   - id: chara_id
     type: u4
