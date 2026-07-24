@@ -1320,6 +1320,7 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B1 | max-family, deaths side (includes suicides); a 2-deaths-never-consecutive round wired 1 | **best consecutive deaths this stage** (streak record) — Personal Stats "Consecutive Deaths" |
 | B2 | max-family; 2 separated headshot kills wired 1; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best consecutive headshots this stage** (streak record) |
 | B3 | 3 in a 3-grenade-suicide round, 5 in a 5-suicide round; **3 in the 3-falling-death round — environmental self-deaths count** | **suicides** (incl. falls) |
+| B13 | **= total time using ENVG, seconds** — 28 after ~30 s wearing a map-pickup ENVG (2026-07-24) | **ENVG time (s)** (Personal Stats slot 14) |
 | B15 | **= catapult uses** — 3 in the 3-catapult round (2026-07-24) | **catapult uses** (Personal Stats slot 16) |
 | B16 | **= boosts given** — 4 in the 4-boost round | **boosts given** (Personal Stats slot 17) |
 | B17 | **= falling deaths** — 3 in the 3-fall gesture round (2026-07-24) | **falling deaths** (Personal Stats slot 18) |
