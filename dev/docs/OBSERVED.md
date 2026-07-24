@@ -2395,3 +2395,9 @@ slots, so every stat in slots ≥59 (Victories as Snake 63, Knife Kills 64, Snak
 Snake Time 72) cannot be B-fed** — an independent corroboration of knife kills arriving via
 the 0x43a2 weapon tallies. Host Rating and Instructor Score have no identified wire source
 yet. Total Time Using ENVG (B13 predicted) is testable: the ENVG is a map pickup.
+
+**ENVG addendum (same night):** wearing a picked-up ENVG for "roughly 30 seconds" wired
+**B13=28** — Total Time Using ENVG (s), slot 14, confirmed; the slot rule holds 20/20 where
+testable. (The same report logged 18 rolls searching for the pickup.) Remaining
+[PREDICTED]-only slots are the mode-specific ones (Base/Rescue objectives, training times,
+dedicated-host time) plus text chat (emulator-blocked).

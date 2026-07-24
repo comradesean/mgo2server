@@ -160,7 +160,7 @@ types:
         doc: "slot 13. [CONFIRMED] rolls (4/4 gesture round; entire stray history refits, incl. a 1 in an otherwise all-zero report). Plain count, NOT a streak record."
       - id: envg_time_s
         type: s2
-        doc: "slot 14. [PREDICTED] total time using ENVG, seconds (ENVG is a map pickup; untested)."
+        doc: "slot 14. [CONFIRMED] total time using ENVG, seconds — 28 after wearing a picked-up ENVG ~30 s (2026-07-24)."
       - id: dedicated_host_time_s
         type: s2
         doc: "slot 15. [PREDICTED] time as dedicated host, seconds (untested)."
