@@ -408,9 +408,13 @@ of an observed trigger.
 
 **Explicitly not in scope here:** streak counters for medals/titles. Those are stat *slots*
 (`0x4107` slot 1 consecutive kills, slot 25 consecutive TDM survivals), not history queries —
-but round-ordered processing of `round_report` is where they would be maintained, and which
-`0x4390` counter feeds which slot is exactly the unfinished labelling in the "Scoreboard
-stats" entry. Phase 1 is a prerequisite for doing that work honestly.
+round-ordered processing of `round_report` is where they would be maintained. The labelling
+half is now done (2026-07-24): slot 1 accumulates B0 deltas (per-stage consecutive-kills
+records); slot 25's event is `0x21` = flawless win (won + zero deaths — survive-but-lose and
+win-but-die both proven not to count), so the served value is a streak over TDM rounds'
+ordered `0x21` column (reset on any 0), with current-vs-best-ever streak the one remaining
+semantic choice (best-ever recommended, record-book convention). B24 is the client's own
+per-stage count of the same events, wired as an absolute snapshot — do not sum it.
 
 ## Dual-login: stale sessions die lazily; active disconnect is the possible smoothing
 
