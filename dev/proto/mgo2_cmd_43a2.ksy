@@ -3,12 +3,13 @@ meta:
   title: "MGO2 0x43a2 — round-end per-weapon tally list (client -> server)"
   endian: be
 doc: |
-  The ROUND-WINNER CARD: sent by the host once per round end, between the per-player
-  0x4390 reports; acked 0x43a3 (result 0). Identifies the round's winner (in team modes:
-  the winning team's top scorer) and carries THAT PLAYER'S per-weapon breakdown — not the
-  whole round's. Proven 2026-07-24 by a 2v1 where the winner's teammate also scored: the
-  teammate's kill was absent from the list ({Vz.83: 4,4,0} = the top scorer's tally alone),
-  and the header showed a third distinct id (2) matching the top scorer. First observed
+  The ROUND-MVP CARD: sent by the host once per round end, between the per-player
+  0x4390 reports; acked 0x43a3 (result 0). Identifies the round's OVERALL TOP PERFORMER —
+  team outcome irrelevant — and carries THAT PLAYER'S per-weapon breakdown, not the whole
+  round's. Proven 2026-07-24 in two steps: a 2v1 where the winning team's second scorer
+  was absent from the list, then a 2v2-style round where the LOSING team's 4-kill player
+  (id 2) took the header over the winning team's 3-kill player and the round-ending
+  killer. Kills-based vs score-based ranking is still confounded (the MVP led both). First observed
   2026-07-23; ELF-decoded (builder 0xD41AC0, caller 0x27CC78); every field live-confirmed
   across thirteen designed rounds. Sent in every mode including DM (the "never sent"
   verdict was a pre-tracing capture gap); skipped only when the winner has no tally
@@ -30,12 +31,13 @@ seq:
   - id: winner_chara_id
     type: u4
     doc: |
-      [CONFIRMED-LIVE] The round winner's character id; in team modes the winning team's
-      top scorer (2v1 test: teammate ids 1+2 won, top scorer 2 -> header 2). Proven by
-      controlled flips across three distinct ids (1/2/3), same-host winner-varied rounds.
-      Eliminated on the way: reporter/host id, host-transfer artifact, constant.
-      Mechanically the cached 0x4101-shaped character record the client snapshots per
-      round (ELF) — the winner's record.
+      [CONFIRMED-LIVE] The round's top performer's character id, INDEPENDENT of team
+      outcome (a losing-team 4-kill player took it over the winning team's 3-kill player
+      and the round-ending killer). Confirmed across three distinct ids (1/2/3).
+      Eliminated on the way: reporter/host id, host-transfer artifact, constant, round
+      winner, winning-team-top-scorer. Kills-vs-score ranking unconfounded only when
+      those diverge. Mechanically the cached 0x4101-shaped character record the client
+      snapshots per round (ELF) — the MVP's record.
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."

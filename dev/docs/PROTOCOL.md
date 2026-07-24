@@ -1362,9 +1362,10 @@ natural **TDM** round ends send it, once per round, between the per-player `0x43
 ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
 
 ```
-u32 winner chara id   — the round winner's character id, proven by controlled flip
-                        2026-07-24 (same game/host, winner varied: chara 1 won -> 1,
-                        chara 3 won -> 3). Mechanically the cached 0x4101-shaped character
+u32 MVP chara id      — the round's overall top performer, team outcome irrelevant
+                        (losing-team 4-kill player beat the winning team's 3-kill player
+                        and the round-ending killer, 2026-07-24). The tally entries are
+                        the MVP's alone. Mechanically the cached 0x4101-shaped character
                         record the client snapshots per round (ELF).
 u32 count             — number of entries (builder caps 0x7f; caller caps 50)
 count × { u8 weapon id, u16 kills, u16 headshots (terminal blows), u16 faints caused }
