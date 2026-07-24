@@ -2031,3 +2031,19 @@ sites for B12 / 0x21 / 0x15-0x17 / B36 (dynamic-base writes; needs symbolic trac
 the G struct). The agent's "17 A + 71 B" recount is not adopted (self-inconsistent with
 its own offsets; 58 B u16s stand). Flag 0x04's "self-row marker" candidate conflicts with
 live data (always 0 incl. hosts' own rows) — open.
+
+### Second G-layer trace: central claims REJECTED by live data; the A-block wall is real
+
+2026-07-24. A deep continuation trace claimed B10/B11/B12 are hardwired zeros and
+B8/B21/B24/B36 are duration fields — all falsified by repeatable wire captures (B12 nonzero
+in seven rounds, B10/B11 carried grab counts to 11, B36 matched kills seven rounds running;
+1-4 magnitudes are wrong for tick durations). Per the evidence hierarchy, the trace's
+blob↔wire linkage is misattached — it likely followed a DIFFERENT serialization (an async
+end-of-round career/profile submission task it discovered, real machinery but not proven to
+feed 0x4390). Adopted from the pass: (1) both traces independently confirm the A-block
+event counters (0x1f/0x21/0x15/0x17) are written via a raw pointer no static search
+attributes — that wall is real; (2) a per-category duration+count table exists in the
+gameplay struct (unattached); (3) a catalogue of mode-clustered writer addresses for future
+work. Decision: pause ELF tracing at this layer — two passes hit the same wall and the
+second began producing confidently-wrong linkages; the empirical lever (objective-mode
+rounds for dark slots, one timer-ended round for 0x21) is cheaper and falsification-proof.
