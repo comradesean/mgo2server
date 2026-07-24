@@ -425,10 +425,10 @@ in updateStats. Deferred only to avoid a mid-session lobby restart.
 
 ## Store 0x43a2 per-weapon round tallies
 
-*Pinned 2026-07-24.* The round-end 0x43a2 is fully decoded ({u8 weapon id, u16 kills, u16
-headshots, u16 faints} per active weapon; names in WEAPONS.md) and currently acked-and-
-dropped. One table (round_weapon_tally: game, chara?, weapon, the triple, reported_at) —
-note the packet is per-ROUND not per-player; whether entries can be attributed to a player
-in multi-player rounds needs a look (the host sends one list per round covering the whole
-round's damage sources). Feeds any future per-weapon stats screen; no known screen consumes
-it yet, so deferred per the bare-minimum rule.
+*Pinned 2026-07-24, corrected same day.* 0x43a2 is fully decoded AND per-player: one
+packet per scoring player (leading u32 = that player's chara id), sent right after their
+0x4390, carrying {u8 weapon id, u16 kills, u16 headshot terminal blows, u16 faints caused}
+per weapon (names in WEAPONS.md). Currently acked-and-dropped. Storage is now trivially
+attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at). Feeds any
+future per-weapon stats screen; no known screen consumes it yet, so deferred per the
+bare-minimum rule.
