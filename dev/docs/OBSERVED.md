@@ -2543,3 +2543,15 @@ wired **B26=1**, and the round's 42 decomposed exactly as bases·5 (15) + destab
 teamwin·5 + B40·1 (12) — the ×10 confirmed on the wire, B40's captures×4 rule at 3/3
 (16/8/12 for 4/2/3), and the Base slot region closed. (The earlier "client froze" scare
 during the shop purchase showed no unhandled commands on any service — client-side hitch.)
+
+### First Capture round: B34 = goals, B46 = put count; every mode has now been entered
+
+2026-07-24 (game 146: Sean 1 goal, 30 puts, won; rawr all-zero). **B34 first light = the
+GOAL×5 row** (Capture goals — distinct from Rescue's B27); **B46 = 30 = PUT COUNT×1** —
+killing the second training-time slot-rule prediction in that region (fingerprint said
+Combat Training Instructor for slot 47). Score 45 = put 30 + goal 5 + teamwin 5 + OTHER 5
+exact, but **OTHER's 5 has no carrier slot** (nothing wired 5) — unlike Base's B40-backed
+OTHER; client-computed 5-per-goal candidate, open. Capture's table: KILL×5, HEADSHOT×3,
+PUT×1, STUN×5, TEAMWIN×5, WAKE×5, GOAL×5, OTHER×1. 0x21: both zero-death players flagged —
+objective modes now 10/10 for the result-independent reading. With this, all six rules
+(DM, TDM, SNE, RES, BASE, CAP) have been entered and their primary slots labelled.

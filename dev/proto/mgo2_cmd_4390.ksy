@@ -90,7 +90,7 @@ seq:
     doc: |
       [CONFIRMED, mode-scoped] zero-death round flag whose exact condition varies by mode:
       TDM/DM = did not lose AND died zero times (won-but-died-twice wired 0; survive-but-
-      lose wired 0; draws flag both). RESCUE and BASE = simply died zero times (8/8
+      lose wired 0; draws flag both). RESCUE, BASE and CAPTURE = simply died zero times (10/10
       observations, including losing-team survivors). No score contribution. Counted per
       stage by b24 (TDM).
   - id: team_slot
@@ -234,7 +234,7 @@ types:
         doc: "slot 34 unmapped. [UNKNOWN] never observed nonzero."
       - id: unknown_b34
         type: s2
-        doc: "slot 35 unmapped. [UNKNOWN] never observed nonzero."
+        doc: "slot 35 unmapped. [CONFIRMED] CAPTURE goals: 1 with the round's single goal, screen GOAL=1x5, score exact. Distinct from Rescue goals (b27)."
       - id: wakes
         type: s2
         doc: |
@@ -276,7 +276,7 @@ types:
         doc: "slot 46. [PREDICTED] training mode time, seconds (untested)."
       - id: combat_training_instructor_s
         type: s2
-        doc: "slot 47. [PREDICTED] combat training time as instructor, seconds (untested)."
+        doc: "slot 47. [CONFIRMED] CAPTURE PUT COUNT: 30 = the screen PUT COUNT=30x1 row, score exact. (Second training-name slot-rule casualty in this region — the fingerprint said Combat Training Instructor.)"
       - id: combat_training_student_s
         type: s2
         doc: "slot 48. [SNE] on the Snake: 3 (win), 2 (active loss), absent (idle loss) — always equal to b48; dogtag-related pair candidate (the DOGTAG SCORE row has no direct slot: 16 points from ~2 tags, values vary). Training-time slot-rule prediction dead."
