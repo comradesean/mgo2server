@@ -88,10 +88,10 @@ seq:
   - id: flawless_win
     type: s2
     doc: |
-      [CONFIRMED] 1 iff the player WON the round AND died zero times (settled 2026-07-24:
-      a won-but-died-twice round wired 0; refits every prior anomaly incl. the all-zero
-      round where no winner survived). NOT 'round won'. No score contribution. Counted per
-      stage by b24.
+      [CONFIRMED] 1 iff the player did NOT LOSE the round (win or draw) AND died zero
+      times (settled 2026-07-24: a won-but-died-twice round wired 0; a timer-end draw and a
+      0-0 round flagged BOTH zero-death players). NOT 'round won'. No score contribution.
+      Counted per stage by b24.
   - id: team_slot
     type: u2
     doc: "[CONFIRMED] team slot index: constant per player per game, 0 for everyone in DM. NOT the team color (index-to-color varies per game)."
@@ -212,16 +212,16 @@ types:
         doc: "slot 27. [PREDICTED] SOP destabilizer uses (Base mode; untested)."
       - id: gako_saved
         type: s2
-        doc: "slot 28. [PREDICTED] GA-KO saved (Rescue; untested)."
+        doc: "slot 28. [PREDICTED] GA-KO saved (Rescue) — correctly absent in a pickup-without-delivery round; still awaiting a positive sighting."
       - id: gako_defended
         type: s2
-        doc: "slot 29. [PREDICTED] GA-KO defended (Rescue; untested)."
+        doc: "slot 29. [CONFIRMED-1] GA-KO defended: 1 on the defender in an actively-defended Rescue round; 0 in the untouched-GA-KO round (B30 fires there instead) — an actual defense event is required."
       - id: unknown_b29
         type: s2
-        doc: "slot 30 unmapped on the stats screen. [UNKNOWN] never observed nonzero."
+        doc: "slot 30 unmapped on the stats screen. [RES-LIT] 1 on the attacker who PICKED UP the GA-KO (no delivery) — pickups candidate."
       - id: fully_defended_matches
         type: s2
-        doc: "slot 31. [PREDICTED] fully defended matches (Rescue; untested)."
+        doc: "slot 31. [CONFIRMED-1] fully defended: 1 on the defender of a round where the GA-KO was never taken (engineered idle round); fires per ROUND despite the stat name Fully Defended Matches; absent when the GA-KO was picked up. Defender scored exactly 5 that round with zero activity — B30*5 score-category candidate."
       - id: unknown_b31
         type: s2
         doc: "slot 32 unmapped. [UNKNOWN] never observed nonzero."
@@ -260,10 +260,10 @@ types:
         doc: "slot 41. [UNKNOWN] never observed nonzero."
       - id: unknown_b41
         type: s2
-        doc: "slot 42. [UNKNOWN] never observed nonzero."
+        doc: "slot 42. [RES-LIT] 1 on the GA-KO-carrying attacker. Unlabelled."
       - id: unknown_b42
         type: s2
-        doc: "slot 43. [UNKNOWN] never observed nonzero."
+        doc: "slot 43. [RES-LIT] 7 on the GA-KO-carrying attacker (carry-seconds guess only). Unlabelled."
       - id: unknown_b43
         type: s2
         doc: "slot 44. [UNKNOWN] never observed nonzero."
