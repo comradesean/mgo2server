@@ -434,6 +434,7 @@ in updateStats. Deferred only to avoid a mid-session lobby restart.
 packet per scoring player (leading u32 = that player's chara id), sent right after their
 0x4390, carrying {u8 weapon id, u16 kills, u16 headshot terminal blows, u16 faints caused}
 per weapon (names in WEAPONS.md). Currently acked-and-dropped. Storage is now trivially
-attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at). Feeds any
-future per-weapon stats screen; no known screen consumes it yet, so deferred per the
-bare-minimum rule.
+attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at).
+**Deferral rationale ended 2026-07-24**: the Personal Stats screen's weapon-specific lines
+(Knife Kills at minimum) derive from these tallies, not struct B — the knife round put its 4
+kills in 0x43a2 (weapon id 1) and nowhere else. Build the table at the next natural deploy.
