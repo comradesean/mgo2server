@@ -1368,13 +1368,14 @@ count × { u8 slot_index (1-based), u16, u16, u16 }   — 7 bytes per entry
 ```
 
 The caller walks a 127-slot, 3-bytes-per-slot client table and emits one entry per non-zero
-slot. **The slot index is the weapon id** — the ELF's 141-entry weapon master table
-(`dev/docs/WEAPONS.md`): slot 1 = ST KNIFE, slot 43 = MOSIN N (non-lethal flag agrees with
-the tranq darts), slot 25 = AK102 (pending confirmation of which rifle the TDM rounds used).
-Observed decodes: headshot rounds → `{AK102?: 1,1,0}`; dart+sleep-stab round →
-`{ST KNIFE: 1,0,0}, {MOSIN N: 0,1,1}` — candidate triple {kills, headshots, faints} per
-weapon, the dart-to-head counting here though not in the scoreboard headshot slot. It
-carries **no token, no game/room id, and no round counter**
+slot. **The slot index is the weapon id and the triple is {kills, headshots, faints} —
+both live-confirmed 2026-07-24**: a deliberate AK102 round of one headshot + one body kill
+produced exactly `{AK102: 2,1,0}`, splitting kills from headshots; earlier anchors
+`{ST KNIFE: 1,0,0}` (the sleep-stab) and `{MOSIN N: 0,1,1}` (the tranq dart — dart
+headshots count here though not in the scoreboard's lethal-bullets-only slot). Weapon
+names: the ELF's 141-entry master table, `dev/docs/WEAPONS.md`. So `0x43a2` is a fully
+decoded per-weapon round breakdown — currently acked and dropped; storing it is
+backlogged. It carries **no token, no game/room id, and no round counter**
 (the caller references none of the token storage; see the reporting-model note under
 `0x4390`). We ack and store nothing; decode-and-store is future work once the slot table's
 meaning is pinned.

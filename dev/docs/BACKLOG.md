@@ -422,3 +422,13 @@ invalid-session — unrecorded so far.
 stores the raw composite (team*65536+seconds). Next natural deploy: V18 migration splitting
 into team_slot + seconds columns (existing rows: hi/lo of the stored value), matching parse
 in updateStats. Deferred only to avoid a mid-session lobby restart.
+
+## Store 0x43a2 per-weapon round tallies
+
+*Pinned 2026-07-24.* The round-end 0x43a2 is fully decoded ({u8 weapon id, u16 kills, u16
+headshots, u16 faints} per active weapon; names in WEAPONS.md) and currently acked-and-
+dropped. One table (round_weapon_tally: game, chara?, weapon, the triple, reported_at) —
+note the packet is per-ROUND not per-player; whether entries can be attributed to a player
+in multi-player rounds needs a look (the host sends one list per round covering the whole
+round's damage sources). Feeds any future per-weapon stats screen; no known screen consumes
+it yet, so deferred per the bare-minimum rule.
