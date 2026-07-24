@@ -2154,3 +2154,11 @@ reconfirmed from the same rows: **B39 pays ·5** (DM round: 17 = kills·9 + B36�
 exact). Settling experiments: **same-stage suicide** — TDM, bank points in R1, suicide 3× in
 R2 of the same stage; wire −6 ⇒ suicides deduct, 0 ⇒ they don't, regardless of scope. Then a
 **stage-2 deaths-only round after stage-1 banking** splits per-game from per-stage.
+
+**Addendum, same night:** a 5-suicide round was played as game 127 R1 — but as the first round
+of a fresh game its bank was 0 under both scopes, so the wired 0 is predicted by both
+hypotheses and discriminates nothing. (It did give B3 its second observation: 5, tracking the
+suicide count exactly, alongside B1=5 as the fresh-stage deaths best; and the opponent took
+0x21=1 with zero kills — suicides alone lose the round.) The clean experiment needs no bank at
+all: **kills and suicides in the same round** (e.g. 3 kills + 3 suicides → 6 if suicides
+deduct, 12 if free — both positive, clamp never engages).
