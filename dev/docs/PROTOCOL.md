@@ -1320,9 +1320,11 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B1 | max-family, deaths side (includes suicides): victim's 1,0,1,0 across 2-round stages; 5 then 0 for repeated 5-death rounds | **best-round deaths this stage** (running-max delta) |
 | B2 | max-family: equals headshots on first/best round of stage, 0 on equal repeats, 1 when 3-hs followed 2-hs; tranq headshots don't count (bullets only, like `0x11`); NOT terminal blows (0x43a2 showed 3 terminal vs B2=1) | **best-round headshots this stage** (running-max delta) |
 | B3 | 3 in a 3-grenade-suicide round, 0 elsewhere (single observation — count vs max-family undetermined) | **suicides** |
+| B7 | 1 in the 3-hack round (2026-07-24), single sighting | one-off, open |
 | B8 | 1 in the plain-rifle round only (same gun as the lock-on round, which had 0) | one-off, open |
-| B10 ↔ B11 | dealt/received **pair** (exact both sides, twice); moved by CQC grabs (4), barrels (3), grab practice (11 received); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs?) |
-| B12 | max-family (1 then 0 across two identical 3-kill rounds); underlying per-round value: 3 in explosive rounds, 1 in knife/rifle/CQC/tranq rounds, 0 in lock-on round and practice, **7** in a 5-headshot-kill + 3-body-dart-stun round (not kills+stuns=8), and **1 in a round whose report was otherwise all-zero** (game 128 — something that neither scores nor counts elsewhere ticks it) | max-family, base value unidentified |
+| B10 ↔ B11 | dealt/received **pair** (exact both sides, three times); moved by CQC grabs (4), barrels (3), grab practice (11 received), and the hold-up-heavy hack round (11); NOT by grenades/knife/rifle kills | CQC-contact-flavoured (grabs/hold-ups) |
+| B12 | max-family (1 then 0 across two identical 3-kill rounds); underlying per-round value: 3 in explosive rounds, 1 in knife/rifle/CQC/tranq rounds, 0 in lock-on round and practice, **7** in the 3-body-dart-stun round, **1** in the 3-hack round (one dart headshot), and **1 in an otherwise all-zero report** (game 128). Live candidate: **darts/projectiles that connected** (7 body darts for 3 stuns, 1 dart each elsewhere; grenade rounds 3) — but the 2-dart-headshot round wired 1, not 2, so unproven | max-family, base value unidentified |
+| B19 | **= hacking count, screen-confirmed ·5** (2026-07-24): first nonzero ever — 3 with 3 successful SOP scans, screen HACKING=3x5, total exact. Each hack also credited an assist (B37 ticked 3 in the same 1v1 round) | **hacks (SOP scans)** |
 | B21 | 1 alongside the one slam-faint | stun-adjacent |
 | B22 ↔ B23 | dealt/received **pair** (exact both sides, twice); slams/knockdowns incl. practice (8 received) — ticks without a faint, unlike A `0x0d` | slam/knockdown-flavoured |
 | B24 | TDM only (0 across every DM round incl. wins); 1,2 within a stage then reset; quit-teardown snapshots the pre-round value; **a survive-but-lose round did NOT tick it** (game 127 R2, 2026-07-24 — so it counts wins, not survivals) | **TDM round WINS this stage** — win-but-die still untested (does dying void the win?); absolute-within-stage and triangular-delta both fit the 1,2 sequences |
@@ -1357,8 +1359,10 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
   the component tracks knockouts received (or stun-recoveries) ·1, not deaths. Both
   observations of it landed under the score clamp, so **whether it feeds the wire score is
   unproven** (his −10 + 5 = −5 and −10 both clamp to the observed 0).
-- **`hacking·5` is a real screen row** (0 in all our rounds); whether B39's kill-1st-place count
-  also pays 5 is unprobed.
+- **`hacking·5` = B19, live-confirmed** (3 hacks → 15 points, total exact). It is distinct from
+  B39's kill-1st-place ·5, which has only ever appeared in DM rounds — both ·5 categories are
+  real, resolving the capture-era ambiguity. **A successful hack also credits an assist** (B37
+  ticked 3 alongside B19=3 in a 1v1 round with no teammate to earn them otherwise).
 
 **The wire score is the delta of a clamped store whose bank resets per game or per stage** (see
 the `0x0b` row): a losing round wires 0 with nothing banked in the current scope, a true negative

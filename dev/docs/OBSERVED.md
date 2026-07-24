@@ -2194,3 +2194,20 @@ his B24 stayed at 1 (win-but-die remains the last split); **B12** logged a 7 (no
 kills+stuns=8) in the dart round and — strangest — a **1 in game 128 whose report was
 otherwise entirely zero**: something that neither scores nor registers anywhere else ticks
 B12. Worth asking what was done in that round (scan attempts? hold-ups?).
+
+### The hacking round: B19 = hacks ·5; hacks credit assists; the score formula is complete
+
+2026-07-24, engineered 1v1 (game 131: Sean 3 successful SOP scans on poop, 5 kills, 3 stuns,
+1 dart headshot). Screen total 67 decomposed exactly on the wire: kills·15 + (0x11=5 +
+0x15=1)·2 + stun·2·3 + B36·10 + B37·3·3 + **B19·3·5** — B19's first nonzero ever, equal to
+the hack count, matching the screen's HACKING=3x5. That was the last unexercised score
+category: **every screen row now has a labelled wire source** (kill 0x05, death 0x07,
+headshot 0x11+0x15, hacking B19, assist B37, stun 0x0d, wake B35, other B36+knockout
+component). Two extras: **hacks credit assists** — B37=3 in a 1v1 with no teammate, tracking
+the hacks (game 129, same kills/stuns but no hacks, had B37=0); and B39's kill-1st ·5 is
+DM-only in all sightings, so both ·5 categories coexist (capture-era ambiguity resolved).
+First sighting of **B7=1** (unknown); B10/B11 pair hit 11 in this hold-up-heavy round; B22/23
+= 3 with the slam-stuns. B12 wired 1 here vs 7 in the body-dart round — candidate "darts
+that connected" (7 body darts for 3 stuns vs 1 here), though the old 2-dart-headshot round's
+1 doesn't fit; still open. The Scanning skill route to the plug (previous entry) worked
+in-game: skill equipped → plug available → crouch-scan on the downed enemy.
