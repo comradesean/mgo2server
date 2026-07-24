@@ -1346,9 +1346,13 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
-**Formula scope (2026-07-24):** the formula below is confirmed for **TDM and DM only**.
-Sneaking scores by its own unmapped categories (B36=5 from 4 kills is unreachable; scores 94
-and 27 undecomposable — the ELF's `SP_SCORE_SNE*` tokens). **Rescue's table is mapped from a
+**Formula scope (2026-07-24):** the formula below is confirmed for **TDM and DM only**;
+each mode retunes multipliers over shared categories. **Sneaking's table is named but not
+fully decomposed** (screens + partial wire confirmation): `DOGTAG SCORE×1 (per-tag values
+vary — no direct slot), HOLDUP(B50)×2, KILL×3, DEATH×−2, HEADSHOT(0x11+0x15)×2,
+SNAKE KILL(B51) 6/kill, TEAM WIN×5, HACKING×5, MK.II KILL×4 (never exercised), OTHER×1` —
+the early-round scores 94/27 remain undecomposed pending dogtag values, and B36 feeds
+something beyond the kill-combo there (5 from 4 kills is unreachable). **Rescue's table is mapped from a
 live screen + one exact decomposition** (18 = kill·7 + headshot·3 + target-defence(B28)·3 +
 team-win·5): `KILL×7, HEADSHOT×3, STUN×7, TEAM WIN×5, ASSIST×5, GOAL(B27)×3,
 TARGET DEFENCE(B28)×3, OTHER×1` — note Rescue HAS a team-win bonus where TDM has none, and

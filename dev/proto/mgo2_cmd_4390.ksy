@@ -19,19 +19,25 @@ doc: |
   on a +7 bank wires −7); whether that store resets per game or per stage is deliberately
   unresolved — no consumer for the answer.
 
-  SCORE FORMULA (client-side, settled 2026-07-24 by wire-exact decompositions):
+  SCORE FORMULA (client-side; every mode retunes multipliers over shared categories —
+  full per-mode tables in PROTOCOL.md "0x4390"). TDM/DM, wire-exact:
     kills*3 − deaths*2 + (headshots_lethal + headshots_stun)*2 + hacks(b19)*5
     + assists(b37)*3 + knockouts_dealt*M + wakes(b35)*2 + combo(b36)*1
-  where M = 2 in TDM, 3 in DM (mode-specific). Suicide-class deaths deduct like any death.
-  Friendly kills/stuns are score-neutral. kill_1st_place (b39) pays *5 in DM. The screen's
-  OTHER row = b36 + a knockout-received component whose wire effect is unproven (only ever
-  seen under the clamp).
+  where M = 2 in TDM, 3 in DM. Also mapped exactly: RESCUE (kill*7, teamwin*5, goal(b27)*3,
+  target-defence(b28)*3, carry(b42)*1-ish), BASE (kill*3, sop-destab(b26)*10, control(b25)*5,
+  teamwin*5, wake*3, capture-points(b40)*1), CAPTURE (kill*5, put(b46)*1, goal(b34)*5,
+  teamwin*5). SNE categories named with multipliers (dogtag*1 varying values, holdup(b50)*2,
+  snake-kill(b51) 6/kill, mk2-kill*4, death*-2) but not yet fully decomposed. Suicide-class
+  deaths deduct like any death. Friendly kills/stuns are score-neutral. kill_1st_place (b39)
+  pays *5 in DM. The screen's OTHER row = b36 + knockouts-received*1 (wire-proven) + mode
+  extras (Base b40, Rescue b42-ish, one carrier-less Capture 5-per-goal).
 
-  STRUCT B <-> 0x4107: B-index = personal-stats slot − 1, exact for all 19 tested pairs.
-  0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed elsewhere
-  (weapon lines from the 0x43a2 tallies). [PREDICTED] labels below are this rule's untested
-  predictions, tier-inference only; the rule provably bends at b35 (wakes) vs slot 36
-  (Soldiers Trained), so treat each prediction as a hypothesis for its gesture round.
+  STRUCT B <-> 0x4107: B-index = personal-stats slot − 1, exact for 25+ tested pairs across
+  all six modes. 0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed
+  elsewhere (weapon lines from the 0x43a2 tallies; snake stats from flag_0x04 + A-block +
+  b49). Known exceptions where the rule's fingerprint names proved wrong: b35 (wakes, not
+  Soldiers Trained), b46 (Capture put count, not training time), b47 (SNE dogtag-related,
+  not training time) — remaining [PREDICTED] labels are hypotheses, not facts.
 doc-ref: dev/docs/PROTOCOL.md "0x4390 — update stats"
 seq:
   - id: chara_id
