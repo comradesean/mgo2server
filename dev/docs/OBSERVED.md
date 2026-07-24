@@ -2288,3 +2288,25 @@ rationale. Cross-checks: B24=2 (second flawless win of the stage — absolute co
 reconfirmed), B0/B2 masked by the same-stage records from R3 as predicted. Also observed:
 **in-game text chat SEND is greyed out** on this client — cause unknown (candidate: RPCS3
 keyboard input rather than anything we serve); text-chat-uses slot still unlabelled.
+
+### Struct B ↔ 0x4107: B-index = personal-stats slot − 1, thirteen pairs deep
+
+2026-07-24. Laying tonight's B-block labels beside the 2026-07-23 0x4107 fingerprint table
+("The personal-stats screen fingerprinted") shows a systematic correspondence — **the 0x4390
+struct-B index is the 0x4107 slot number minus one** — exact for all thirteen
+independently-confirmed pairs: B0/B1→slots 1/2 (consecutive kills/deaths), B3→4 (suicides),
+B7→8 (salutes), B8→9 (radio), B10/B11→11/12 (CQC given/taken), B12→13 (rolls), B19→20
+(scans), B20→21 (box time), B21→22 (box uses), B22→23 (melee hits), B24→25 (consecutive
+survivals); B2 = consecutive headshots lands on slot 3, one of the slots the screen never
+displayed — consistent. **Predictions for the untested slots** (tier: inference from this
+rule, to be confirmed by gesture rounds): B5/B6 = friendly kills/stuns, B9 = text chat uses,
+B13 = ENVG time (s), B14 = dedicated-host time (s), B15 = catapult uses, B16 = boosts given,
+B17 = falling deaths, B18 = times caught in trap, B25+ = the mode-page stats (bases, SOP
+destabilizer, GA-KO...). **Two conflicts, kept honest**: slot 5 "Times Stunned" ↔ B4 — but B4
+never ticked across rounds where a player was stunned 5 and 3 times (Times Stunned probably
+accumulates from A-block 0x0f instead); slot 36 "Number of Soldiers Trained" ↔ B35 — but B35
+is empirically wakes (screen row + exact ·2 score decomposition), so the n−1 rule bends
+somewhere in the 30s. The rule also means the server-side accumulation of B deltas per index
+IS the 0x4107 record-1 backing store — the serving path for Personal Stats is now fully
+sketched: sum round_report detail_counters per slot, plus 0x0f for Times Stunned and 0x43a2
+tallies for the weapon lines.
