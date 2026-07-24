@@ -1985,3 +1985,10 @@ re-checked: the tallies always matched the winner's own actions (indistinguishab
 "whole round" until a second scorer existed). So the packet is a winner/MVP card, not a
 round aggregate. Also confirmed this session: header follows the winner across ids 1/2/3,
 and DM sends the packet (pre-tracing "never sent" verdict dead).
+
+### Correction: 0x43a2 is the MVP card, not the winner card — losing-team MVP takes it
+
+2026-07-24, user-designed three-way discriminator (losing rawr 4 kills; winning sean 2
+incl. the round-ender; winning poop 3): header 2 = rawr — the OVERALL top performer,
+independent of team outcome. Bytes: 00000002 00000001 17 0004 0004 0000 (rawr's Vz.83
+tally alone, again). Kills-vs-score ranking still confounded (MVP led both).
