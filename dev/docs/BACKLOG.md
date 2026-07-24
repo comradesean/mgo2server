@@ -325,12 +325,15 @@ include falls), B18 trap catches, B20 box seconds, B21 box uses; suicide deducti
 any death — the "deduct nothing" read was clamp artifact); knife kills shown to live in
 0x43a2, ending round_weapon_tally's deferral; and the B-index = 0x4107-slot−1 rule (17/17).
 
-Still open, with the discriminating experiment for each: stage-2 deaths-only round after
-stage-1 banking (score bank scope: game vs stage); get-stunned-with-banked-score round (does
-the OTHER knockout-received component feed the wire score?); friendly-fire-enabled round
-(`commonA` bit 3) for B5/B6 Friendly Kills/Stuns; B9 text chat (blocked on the RPCS3 OSK
-commit path, not the server); flag `0x04`; `0x19`, `0x1d`, and the trailing word (never
-nonzero).
+B5/B6 friendly kills/stuns also closed 2026-07-24 (FF round; TKs score-neutral, absent from
+the dealer's A counters).
+
+Still open: get-stunned-with-banked-score round (does the OTHER knockout-received component
+feed the wire score?); B9 text chat (blocked on the RPCS3 OSK commit path, not the server);
+flag `0x04`; `0x19`, `0x1d`, and the trailing word (never nonzero). One question deliberately
+left unresolved: whether the client's clamped score store resets per game or per stage —
+client-internal bookkeeping with no observable consequence for anything we store or serve
+(the wire semantics, delta-of-clamped-store, are fully pinned and documented in PROTOCOL.md).
 
 ## 0x4140 / 0x4142 loadout sets go nowhere on this build
 
