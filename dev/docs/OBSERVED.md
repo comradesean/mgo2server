@@ -2211,3 +2211,23 @@ First sighting of **B7=1** (unknown); B10/B11 pair hit 11 in this hold-up-heavy 
 that connected" (7 body darts for 3 stuns vs 1 here), though the old 2-dart-headshot round's
 1 doesn't fit; still open. The Scanning skill route to the plug (previous entry) worked
 in-game: skill equipped → plug available → crouch-scan on the downed enemy.
+
+### The Personal Stats list is the B-block's Rosetta stone
+
+2026-07-24. The Personal Stats screen enumerates career counters: Consecutive Kills,
+Consecutive Deaths, Suicides, Friendly Kills, Friendly Stuns, Times Stunned, Preset Radio
+Message Uses, Text Chat Uses, CQC Attacks Given, CQC Attacks Taken, Rolls, Salutes, Catapult
+Uses, Number of Boosts Given, Falling Deaths, Times Caught in Trap, Melee Hits, Scans
+Performed, Knife Kills, Time in Cardboard Box, Cardboard Box Uses. This recontextualizes
+struct B: it is the per-round delta feed for these career stats. Already-labelled slots line
+up: Suicides=B3, Scans Performed=B19, CQC Given/Taken=B10/B11, Melee Hits (+taken)=B22/B23,
+Times Stunned=0x0f. Consequences: (1) **B0/B1's "best-round kills/deaths" reading now has a
+rival — best consecutive kills/deaths (streak)** — indistinguishable in every captured round
+(kill order unknown); an engineered kill-die-kill-die-kill round (round kills 3, streak 1)
+splits it. (2) The dark slots have candidate names — B12's value history (1 in an otherwise
+all-zero round, 7 in the body-dart round, 3 per grenade round, 0 in the stationary lock-on
+round) fits **Rolls** or **Preset Radio Uses**. (3) The closing method is gesture rounds:
+a counted number of exactly one action per round (rolls, salutes, radio, chat, catapult,
+boost, falling death, trap, knife kill, box time/uses); Friendly Kills/Stuns need a
+friendly-fire-enabled host (commonA bit 3). Time in Cardboard Box implies a seconds-valued
+slot somewhere in the block.
