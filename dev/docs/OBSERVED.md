@@ -1941,3 +1941,15 @@ b24 differed (2 vs 1), killing plain "team stage score" for b24 and suggesting "
 wins while this player was present." The 0x43a2 header u32 remains 1 in every capture, and
 every observed winner has been the slot-1 side — the discriminating observation is a round
 won by the slot-0 side, still unplayed.
+
+### 0x43a2 header solved: the reporter's character id — the packet is fully decoded
+
+2026-07-24, closing ELF trace: the leading u32 is the reporting client's character id, read
+from the cached 0x4101 record (session+0x57d8: u32 char id + 16B name + constant block),
+snapshotted into each round record (+0x14c) and forwarded verbatim. "Always 1" was the test
+host's char id; the winner-slot correlation was coincidence (only hosts send, and char 1
+hosted every game). Candidates killed on mechanism: set pre-round (not completion/count),
+network-parsed and identity-compared (not constant), never recomputed from scores (not
+winner). Prediction: a game hosted by chara 2/3 sends header 2/3. Every field of 0x43a2 is
+now decoded. Nuance recorded on the reporting-model truths: 0x43a2 does carry one in-frame
+identity (its sender's), unlike 0x4390; the no-game-identifier truth stands.

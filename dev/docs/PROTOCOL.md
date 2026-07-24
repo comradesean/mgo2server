@@ -1362,9 +1362,12 @@ natural **TDM** round ends send it, once per round, between the per-player `0x43
 ELF-decoded the same day it was first observed (builder `0xD41AC0`, caller `0x27CC78`):
 
 ```
-u32 header      — observed 1; copied from the round-summary record header, semantic open
-u32 count       — number of entries (client caps the list at 0x7f; caller caps count at 50)
-count × { u8 slot_index (1-based), u16, u16, u16 }   — 7 bytes per entry
+u32 reporter chara id — ELF-confirmed 2026-07-24: the head of the cached 0x4101 character
+                        record, snapshotted per round and sent verbatim ("always 1" live =
+                        the test host's char id). The one in-frame identity in the
+                        round-end conversation; redundant with connection identity.
+u32 count             — number of entries (builder caps 0x7f; caller caps 50)
+count × { u8 weapon id, u16 kills, u16 headshots (terminal blows), u16 faints caused }
 ```
 
 The caller walks a 127-slot, 3-bytes-per-slot client table and emits one entry per non-zero

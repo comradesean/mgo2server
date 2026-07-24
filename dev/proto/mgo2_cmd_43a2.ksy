@@ -21,12 +21,15 @@ doc: |
   tallies").
 doc-ref: dev/docs/PROTOCOL.md "0x43a2 — round-end slot-tally list"
 seq:
-  - id: header
+  - id: reporter_chara_id
     type: u4
     doc: |
-      [UNKNOWN] Observed 1 in every capture. ELF: copied from the round-summary record
-      header (caller reads it at sp+0x70 and persists it at +0x14c of a round object); not
-      derived from any session or reply value. The one undecoded field of this packet.
+      [CONFIRMED-ELF] The reporting client's character id — read from the head of the
+      cached 0x4101 character record (session+0x57d8), snapshotted into each round record
+      (+0x14c) at state transitions, forwarded verbatim (trace 2026-07-24). Read "always 1"
+      live because the test host's character id is 1; predicted to follow the host's id.
+      Redundant with connection identity — the one in-frame identity in the round-end
+      conversation (the 0x4390 report itself carries none).
   - id: count
     type: u4
     doc: "[CONFIRMED] Number of entries that follow (builder caps 0x7f, caller caps 50)."
