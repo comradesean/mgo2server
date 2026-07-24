@@ -1368,9 +1368,13 @@ count × { u8 slot_index (1-based), u16, u16, u16 }   — 7 bytes per entry
 ```
 
 The caller walks a 127-slot, 3-bytes-per-slot client table and emits one entry per non-zero
-slot. Observed decodes: headshot rounds → `{slot 25: 1,1,0}`; the dart+sleep-stab round →
-`{slot 1: 1,0,0}, {slot 43: 0,1,1}`. What the slot table indexes (players? weapons? event
-types?) is open — but **it carries no token, no game/room id, and no round counter**
+slot. **The slot index is the weapon id** — the ELF's 141-entry weapon master table
+(`dev/docs/WEAPONS.md`): slot 1 = ST KNIFE, slot 43 = MOSIN N (non-lethal flag agrees with
+the tranq darts), slot 25 = AK102 (pending confirmation of which rifle the TDM rounds used).
+Observed decodes: headshot rounds → `{AK102?: 1,1,0}`; dart+sleep-stab round →
+`{ST KNIFE: 1,0,0}, {MOSIN N: 0,1,1}` — candidate triple {kills, headshots, faints} per
+weapon, the dart-to-head counting here though not in the scoreboard headshot slot. It
+carries **no token, no game/room id, and no round counter**
 (the caller references none of the token storage; see the reporting-model note under
 `0x4390`). We ack and store nothing; decode-and-store is future work once the slot table's
 meaning is pinned.
