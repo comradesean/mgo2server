@@ -27,11 +27,12 @@ travels is still unknown. What is settled:
   `HostGameController` writes every record with a zero trailing byte. That is why the row renders.
   (Corrected 2026-07-26: first attributed to `0x4125`, which was a mis-identified function start.)
 
-- **Every skill record's `+8` byte is an ownership flag**, read as a gate all over the UI — skill 6
-  at `11524`, skill 15 at `11632` (8 readers), skill 17 at `11656` (1 reader: the graduation gate),
-  skill 34 at `11860` (15 readers). We send 0 for all of them, so the client believes the player
-  owns nothing. This is the lever for the instructor-skill question: set skill 17's trailing byte
-  to 1 in `0x4129` and see what changes.
+- **The `+8` byte is read in exactly one place: skill 17's, at `0x897320`** — "record present and
+  flag == 0" enables the training menu entry drawn from messages 866/867. Corrected 2026-07-26: an
+  earlier note here claimed readers for skills 6, 15 and 34 with 8 and 15 readers apiece. Those
+  were false positives from matching displacements without checking base registers; filtering to
+  functions that reach the profile accessor `0xD3A094` leaves three hits, all skill 17. Setting
+  that byte to 1 would *remove* the menu entry, not unlock anything.
 - **`0x43d1` cannot affect it at all** — settled by exhaustive xref 2026-07-26, not by experiment.
   Only three sites in the binary touch the five-u16 block at `ctx+0x117EC`: the parser that writes
   it (`0xD3A61C`), the reset that zeroes it (`0xD35780`), and **one** reader — `0x8978C8`, which
