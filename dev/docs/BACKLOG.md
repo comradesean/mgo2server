@@ -16,9 +16,16 @@ travels is still unknown. What is settled:
 - Pressing Graduate emits **no traffic at all**, so the check is client-side against state the
   client already holds. It is not a missing reply.
 - The profile gate at `0x8972F4` (`profile[+0x2D80] != 0 && profile[+0x2D88] == 0`) **is already
-  satisfied** by what we send — those bytes are skill 17's record in the `0x4125` catalogue
-  (`0xD3CA3C` scatters each record to `base + 11440 + 4 + index*12`), and `LoadoutWriter` sends
-  skill 17 with a zero trailing byte. That is why the row renders.
+  satisfied** by what we send — those bytes are skill 17's record in the **`0x4129`** post-game
+  results payload (parser `0xD3C9B0` scatters each record to `base + 11440 + 4 + index*12`), and
+  `HostGameController` writes every record with a zero trailing byte. That is why the row renders.
+  (Corrected 2026-07-26: first attributed to `0x4125`, which was a mis-identified function start.)
+
+- **Every skill record's `+8` byte is an ownership flag**, read as a gate all over the UI — skill 6
+  at `11524`, skill 15 at `11632` (8 readers), skill 17 at `11656` (1 reader: the graduation gate),
+  skill 34 at `11860` (15 readers). We send 0 for all of them, so the client believes the player
+  owns nothing. This is the lever for the instructor-skill question: set skill 17's trailing byte
+  to 1 in `0x4129` and see what changes.
 - `0x43d1`'s five u16s are **not** the stored total, or not the whole story: serving 60 in the
   first slot did not unlock the button (tested 2026-07-26). Serving 1 did not lock it out either,
   though that test was confounded with waiting.
