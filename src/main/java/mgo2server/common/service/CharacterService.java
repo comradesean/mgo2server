@@ -60,6 +60,52 @@ public class CharacterService {
 				.findOne());
 	}
 
+	/**
+	 * Accumulated training seconds for one character, split the three ways {@code 0x4107} reports
+	 * them.
+	 * <p>
+	 * The source is {@code round_report.seconds_in_game}, which is the <b>host's</b> measurement of
+	 * how long that player was present — CONFIRMED in {@code mgo2_cmd_4390.ksy} and observed live
+	 * 2026-07-26 as 1987 seconds for a 33-minute lecture. Summing it is therefore the same number
+	 * the original would have accumulated, not an invention.
+	 * <p>
+	 * The split is ours, not the game's: reports stamped with subtype 7 count as training mode,
+	 * subtype 8 as combat training, with the instructor being whoever hosted
+	 * ({@code host_chara_id = chara_id}) and everyone else the student. The slot <em>labels</em>
+	 * are CONFIRMED; this mapping of our lobby subtypes onto them is operator policy and is the
+	 * first thing to revisit if the totals read wrong on screen.
+	 * <p>
+	 * Written with {@code !=} rather than {@code <>} on purpose: Jdbi runs statements through the
+	 * StringTemplate engine, which parses {@code <...>} as a template expression and fails to
+	 * compile the query.
+	 * <p>
+	 * Reads {@code round_report.lobby_subtype} rather than joining through {@code game}: game rows
+	 * are deleted on teardown and carry no foreign key, so a join loses every report the moment
+	 * its host leaves — which is every historical report. Rows written before V19 hold 0 and are
+	 * counted nowhere.
+	 */
+	public TrainingSeconds trainingSeconds(long charaId) {
+		return jdbi.withHandle(handle -> handle.createQuery("""
+					select
+						coalesce(sum(seconds_in_game) filter (where lobby_subtype = 7), 0)
+							as training,
+						coalesce(sum(seconds_in_game) filter (
+							where lobby_subtype = 8 and host_chara_id = chara_id), 0) as instructor,
+						coalesce(sum(seconds_in_game) filter (
+							where lobby_subtype = 8 and host_chara_id != chara_id), 0) as student
+					from round_report
+					where chara_id = :chara
+					""")
+			.bind("chara", charaId)
+			.map((rs, c) -> new TrainingSeconds(
+				rs.getLong("training"), rs.getLong("instructor"), rs.getLong("student")))
+			.one());
+	}
+
+	/** Seconds, as {@code 0x4107} slots 46, 47 and 48 want them. */
+	public record TrainingSeconds(long trainingMode, long instructor, long student) {
+	}
+
 	/** Wire value the ADDLIST uses for a friend; see {@code V14__chara_relations.sql}. */
 	public static final int RELATION_FRIEND = 0;
 

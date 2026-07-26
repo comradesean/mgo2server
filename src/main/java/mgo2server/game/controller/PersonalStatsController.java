@@ -54,6 +54,15 @@ public class PersonalStatsController implements IGameController {
 	/** Each {@code 0x4107} record is 292 bytes = 73 u32s. */
 	private static final int TAIL_RECORD_INTS = 73;
 
+	/** "Training Mode Time", seconds. 1-based wire slot; CONFIRMED in {@code mgo2_cmd_4107.ksy}. */
+	private static final int TRAINING_MODE_SECONDS_SLOT = 46;
+
+	/** "Combat Training Time (Instructor)", seconds. */
+	private static final int INSTRUCTOR_SECONDS_SLOT = 47;
+
+	/** "Combat Training Time (Student)", seconds. */
+	private static final int STUDENT_SECONDS_SLOT = 48;
+
 	private static final int NAME_LENGTH = 16;
 
 	/** The 128-byte comment field at wire offset 413, confirmed live via fingerprint v3. */
@@ -196,11 +205,23 @@ public class PersonalStatsController implements IGameController {
 		}
 		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, weekly));
 
+		// Real values where we have them, fingerprints everywhere else. The three training slots
+		// are CONFIRMED labels (mgo2_cmd_4107.ksy) and we hold the data: round_report stores the
+		// host's own measurement of each player's presence, which is what these totals are.
+		// Record 1 is lifetime and record 2 weekly; we have no period model, so weekly repeats the
+		// lifetime total rather than inventing a reset cadence.
+		var training = characterService.trainingSeconds(charaId);
+
 		var tail = ctx.buffer(TAIL_SIZE);
 		tail.writeInt(0); // status
 		for (var record = 0; record < 2; record++) {
 			for (var i = 1; i <= TAIL_RECORD_INTS; i++) {
-				tail.writeInt((record + 1) * 1000 + i);
+				tail.writeInt(switch (i) {
+					case TRAINING_MODE_SECONDS_SLOT -> (int) training.trainingMode();
+					case INSTRUCTOR_SECONDS_SLOT -> (int) training.instructor();
+					case STUDENT_SECONDS_SLOT -> (int) training.student();
+					default -> (record + 1) * 1000 + i;
+				});
 			}
 		}
 		ctx.write(new GamePacket(PERSONAL_STATS_TAIL, tail));

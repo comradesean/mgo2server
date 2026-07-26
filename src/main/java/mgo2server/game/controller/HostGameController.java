@@ -842,7 +842,10 @@ public class HostGameController implements IGameController {
 					// Wire 0x23 is {u16 team slot, u16 seconds}, not a u32 (OBSERVED.md).
 					payload.getUnsignedShort(base + 0x23), payload.getUnsignedShort(base + 0x25),
 					experience & 0xFFFFFFFFL,
-					detailPresent & 0xFFFFFFFFL, detail, trailing, aborted));
+					detailPresent & 0xFFFFFFFFL, detail, trailing, aborted,
+					// Stamped from this instance's configuration: the game row is deleted on
+					// teardown, so the report cannot be joined back to its lobby afterwards.
+					lobbySubtype));
 				logger.info("Game {}: stats for character {} — {} kills, {} deaths, score {}, "
 						+ "experience {}{}{}.",
 					game.getId(), targetId, structA[0], structA[1], structA[3],
