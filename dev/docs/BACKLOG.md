@@ -32,17 +32,41 @@ travels is still unknown. What is settled:
   skill 34 at `11860` (15 readers). We send 0 for all of them, so the client believes the player
   owns nothing. This is the lever for the instructor-skill question: set skill 17's trailing byte
   to 1 in `0x4129` and see what changes.
-- `0x43d1`'s five u16s are **not** the stored total, or not the whole story: serving 60 in the
-  first slot did not unlock the button (tested 2026-07-26). Serving 1 did not lock it out either,
-  though that test was confounded with waiting.
+- **`0x43d1` cannot affect it at all** — settled by exhaustive xref 2026-07-26, not by experiment.
+  Only three sites in the binary touch the five-u16 block at `ctx+0x117EC`: the parser that writes
+  it (`0xD3A61C`), the reset that zeroes it (`0xD35780`), and **one** reader — `0x8978C8`, which
+  passes the *first* u16 to the message-847 formatter. Fields +2/+4/+6/+8 are written and never
+  read by anything. So the block is display-only, no server-supplied value can shortcut the wait,
+  and the earlier "serve 1 / serve 60" experiments were never capable of showing anything.
 - `0x43a4`, the third command in the same client-settings module as `0x43a6`, has **never been
   sent** by this client, so it is not the download path.
 
-Next places to look, in order: the per-player data the host receives when a joiner arrives
-(`0x4321`, 43 B; `0x4313`, 400 B; the unmodelled player-details card `0x4221`), and the training
-screen's action dispatch (`0x8976F8`, `0x899D50`) to find what action code 50 actually tests.
-Capturing a training `0x4390` would also show whether training time reports like an ordinary round
-— `seconds_in_game` is host-measured, so the host is the timekeeper either way.
+Also eliminated, from a full sweep of the training-screen block `0x895400`–`0x8984C0`:
+
+- **No comparison against 1800 or 1799 exists anywhere** in `0x88xxxx`–`0x8Fxxxx` or `0x94xxxx`;
+  the binary's only two are in engine/graphics code. No `cmpwi …,30` either, bar a loop bound.
+- The block contains exactly **one** tick counter — `screen+104`, incremented by 5 per frame and
+  compared against 6000 at `0x897798`/`0x898214` — and it is a network-request timeout feeding the
+  error path at `0x885A08`, not a training clock.
+- Nothing the host receives about a joiner carries a stored total: `0x4340`/`0x4341` is the peer
+  handshake, `0x4321` is address pairs, `0x4313` is the game's own details (read from a live
+  capture, not inferred).
+
+**Strongest remaining lead: the graduate machinery is in-match code, not lobby UI.** The binary
+contains `InstructorMan::InstructorMan()` (vaddr `0xE0A7B8`, an allocation tag, so a real class) and
+the state-name trio `HOST_STANCE_TRAINING` / `HOST_STANCE_INSTRUCTOR_ENTRY` /
+`HOST_STANCE_INSTRUCTOR_STARTED` (`0xE1BCC0`/`0xE1BCD8`/`0xE1BCF8`) with a three-pointer enum→name
+table at `0xFEB6A8`. An `ENTRY` versus `STARTED` pair is the shape a graduation gate would test.
+These are referenced TOC-relatively, so absolute-pointer greps find nothing — resolving them needs
+the owning module's `r30` base first.
+
+Two tooling facts that cost the last attempt real time:
+
+- **TOC `r2 = 0x10353A8`** (from the entry descriptor at `0xFFECA0`, which holds 4-byte pairs, not
+  8). Module bases are `*(r2 - N)`; the lobby/training module is `r30 = 0xFEE878`, help is
+  `0xFEB2C0`.
+- **`strings -t x` prints file offsets, not virtual addresses** — add `0x10000`. Four real string
+  references looked like dead ends because of this.
 
 **Why nothing is locked.** `LoadoutWriter.writeSkills` advertises skills 1–25 to every character
 on connect, and `HostGameController` writes every `0x4129` skill record with a zero trailing byte
