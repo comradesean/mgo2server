@@ -8,6 +8,7 @@ import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.CharacterService;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameDetails;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.game.GameError;
 import mgo2server.game.HostSettingsReply;
 import mgo2server.game.LobbyType;
@@ -701,13 +702,19 @@ public class MatchStateIT extends BaseGameClientServerIT {
 
 		var payload = replies.get(0).getPayload();
 		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.POST_GAME_INFO_RESULT);
-		assertThat(payload.readableBytes()).isEqualTo(0x8b);
+		// 39 fixed bytes plus one 4-byte record per skill the character owns. 0x8b was this same
+		// arithmetic back when the table was a hard-coded 25 entries; V20 made it the character's
+		// rows, and the client defines 17 skills.
+		assertThat(payload.readableBytes()).isEqualTo(39 + CharaSkill.MAX_ID * 4);
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
 		assertThat(payload.getByte(4)).isEqualTo((byte) 7);        // rank
 		assertThat(payload.getInt(5)).isEqualTo(500);              // main-pool experience
 		assertThat(payload.getShort(0x0E + 1)).isEqualTo((short) 0x6000); // skill 1 exp
-		assertThat(payload.getInt(0x76)).isEqualTo(500);           // grade points mirror exp
-		assertThat(payload.getInt(0x86)).isEqualTo((int) charaId);
+		// The tail sits after the skill records, so its offsets move with the table size; they were
+		// 0x76 and 0x86 when the table was a fixed 25 entries.
+		var tail = 14 + CharaSkill.MAX_ID * 4;
+		assertThat(payload.getInt(tail + 4)).isEqualTo(500);       // grade points mirror exp
+		assertThat(payload.getInt(tail + 20)).isEqualTo((int) charaId);
 	}
 
 	private static void writeInt(byte[] bytes, int offset, int value) {

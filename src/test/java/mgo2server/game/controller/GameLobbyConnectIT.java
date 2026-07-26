@@ -9,6 +9,7 @@ import mgo2server.common.model.ChatMacro;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
 import mgo2server.game.GameplaySettingsWriter;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.game.LoadoutWriter;
 import mgo2server.game.PersonalInfoWriter;
 import mgo2server.game.LobbyType;
@@ -425,7 +426,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 		assertThat(replies.get(6).getPayload().readableBytes())
 			.isEqualTo(LoadoutWriter.gearPayloadSize());
-		assertThat(replies.get(7).getPayload().getInt(0))
-			.isEqualTo(LoadoutWriter.SKILL_COUNT);
+		// V20 seeds every id the client defines, 1..17; the count is the character's row count now,
+		// not a constant in the writer.
+		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.MAX_ID);
 	}
 }

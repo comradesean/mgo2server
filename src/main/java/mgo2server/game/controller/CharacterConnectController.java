@@ -257,7 +257,7 @@ public class CharacterConnectController implements IGameController {
 		writeChatMacros(ctx, charaId);
 		writePersonalInfo(ctx, chara);
 		writeGear(ctx);
-		writeSkills(ctx);
+		writeSkills(ctx, charaId);
 		writeSkillSets(ctx, charaId);
 		writeGearSets(ctx, charaId);
 	}
@@ -268,9 +268,11 @@ public class CharacterConnectController implements IGameController {
 		ctx.write(new GamePacket(GEAR, buffer));
 	}
 
-	private void writeSkills(GameControllerContext ctx) {
-		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize());
-		LoadoutWriter.writeSkills(buffer);
+	private void writeSkills(GameControllerContext ctx, long charaId) {
+		var skills = characterService.getOrCreateSkills(charaId);
+
+		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize(skills.size()));
+		LoadoutWriter.writeSkills(buffer, skills);
 		ctx.write(new GamePacket(SKILLS, buffer));
 	}
 

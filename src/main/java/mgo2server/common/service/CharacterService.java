@@ -3,6 +3,7 @@ package mgo2server.common.service;
 import mgo2server.common.CharacterNames;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.common.model.CharaSettings;
 import mgo2server.common.model.ChatMacro;
 import mgo2server.common.model.EquippedSkills;
@@ -290,6 +291,32 @@ public class CharacterService {
 			handle.createQuery("select * from chara_skill_set where chara_id=:id order by index")
 				.bind("id", charaId)
 				.mapTo(SkillSet.class)
+				.list());
+	}
+
+	/**
+	 * The skills a character owns, seeding the starting set on first use.
+	 * <p>
+	 * The starting set is every id the client defines, 1..{@value CharaSkill#MAX_ID}, at the
+	 * experience `LoadoutWriter` used to hard-code — which keeps existing characters exactly where
+	 * they were when this table was introduced (V20). It is a <em>policy</em> choice, not protocol:
+	 * a server that wanted skills earned rather than given would seed nothing here and insert on
+	 * whatever event grants one.
+	 */
+	public List<CharaSkill> getOrCreateSkills(long charaId) {
+		jdbi.useHandle(handle -> handle.createUpdate("""
+					insert into chara_skill (chara_id, skill_id, experience, flag)
+					select :chara, id, case when id = 17 then 8192 else 24576 end, 0
+					from skill
+					on conflict (chara_id, skill_id) do nothing
+					""")
+			.bind("chara", charaId)
+			.execute());
+
+		return jdbi.withHandle(handle ->
+			handle.createQuery("select * from chara_skill where chara_id=:id order by skill_id")
+				.bind("id", charaId)
+				.mapTo(CharaSkill.class)
 				.list());
 	}
 

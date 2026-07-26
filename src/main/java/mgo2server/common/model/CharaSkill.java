@@ -1,0 +1,61 @@
+package mgo2server.common.model;
+
+/**
+ * One skill a character owns, as {@code 0x4125} advertises it and {@code 0x4129} repeats it.
+ * <p>
+ * A row exists only for a skill the character has: the client memsets its whole 128-entry array
+ * before applying what we send, so an id we omit reads back as level 0 with a clear flag. That is
+ * the mechanism any future locking hangs off — see {@code dev/proto/mgo2_cmd_4125.ksy}.
+ */
+public class CharaSkill {
+	/** Ids the client defines. Beyond this every id-keyed lookup in the client clamps to 17. */
+	public static final int MAX_ID = 17;
+
+	private long charaId;
+
+	private int skillId;
+
+	/**
+	 * Experience, a u16 on the wire. The client shows a level of {@code min(experience >> 13, 3)},
+	 * so only 0, 8192, 16384 and 24576 change what it renders.
+	 */
+	private int experience;
+
+	/**
+	 * The third wire byte. Read in exactly one place in the client — skill 17's, where a present
+	 * record with a zero flag enables the training menu entry — and sent as 0 everywhere so far.
+	 */
+	private int flag;
+
+	public long getCharaId() {
+		return charaId;
+	}
+
+	public void setCharaId(long charaId) {
+		this.charaId = charaId;
+	}
+
+	public int getSkillId() {
+		return skillId;
+	}
+
+	public void setSkillId(int skillId) {
+		this.skillId = skillId;
+	}
+
+	public int getExperience() {
+		return experience;
+	}
+
+	public void setExperience(int experience) {
+		this.experience = experience;
+	}
+
+	public int getFlag() {
+		return flag;
+	}
+
+	public void setFlag(int flag) {
+		this.flag = flag;
+	}
+}

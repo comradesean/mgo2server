@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import io.netty.buffer.ByteBufUtil;
 import mgo2server.common.BufferUtil;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
@@ -14,6 +15,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -210,10 +212,16 @@ public class HostGameController implements IGameController {
 	public static final int UPDATE_SETTINGS_RESULT = 0x4111;
 
 	/** Total bytes of the {@code 0x4129} results payload (result word included); echo's BUFFER_SIZE. */
-	private static final int POST_GAME_INFO_SIZE = 0x8b;
+	/**
+	 * Everything in the reply that is not a skill record: a 14-byte head and a 25-byte tail. The
+	 * whole packet is this plus {@code 4 * skills}, which is where the old fixed {@code 0x8b} came
+	 * from — 39 + 25 records of 4 bytes, back when the table was hard-coded at 25 entries.
+	 */
+	private static final int POST_GAME_INFO_FIXED = 39;
+
+	private static final int SKILL_RECORD_SIZE = 4;
 
 	/** Skill-table entries the results parser reads: a fixed 25, each {id u8, exp u16, pad u8}. */
-	private static final int POST_GAME_SKILLS = 25;
 
 	/**
 	 * The ADDLIST relationship command — <b>meaning not yet pinned</b>. Observed live 2026-07-22
@@ -488,16 +496,21 @@ public class HostGameController implements IGameController {
 			}
 		}
 
-		var buffer = ctx.buffer(POST_GAME_INFO_SIZE);
+		// The same records 0x4125 sent at connect, from the same table: this parser writes into the
+		// identical array and does not clear it first, so disagreeing here would half-update the
+		// client's view of what the player owns.
+		var skills = charaId == 0L ? List.<CharaSkill>of() : characterService.getOrCreateSkills(charaId);
+
+		var buffer = ctx.buffer(POST_GAME_INFO_FIXED + skills.size() * SKILL_RECORD_SIZE);
 		buffer.writeInt(GameError.NONE.result()) // result
 			.writeByte(rank)
 			.writeInt(experience)
 			.writeByte(0)
-			.writeInt(POST_GAME_SKILLS); // skill count
-		for (var i = 0; i < POST_GAME_SKILLS; i++) {
-			buffer.writeByte(i + 1) // skill id
-				.writeShort(LoadoutWriter.advertisedSkillExperience(i + 1))
-				.writeByte(0);
+			.writeInt(skills.size()); // skill count
+		for (var skill : skills) {
+			buffer.writeByte(skill.getSkillId())
+				.writeShort(skill.getExperience())
+				.writeByte(skill.getFlag());
 		}
 		buffer.writeInt(0)
 			.writeInt(experience) // grade points mirror experience in both references
