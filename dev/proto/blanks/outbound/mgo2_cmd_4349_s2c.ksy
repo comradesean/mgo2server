@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4349 — server -> client: reply to 0x4348 (subsystem unidentified)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4349` at `0xD3891C` -> stub `0xD395E8` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4349` at `0xD3891C` -> stub `0xD395E8` ->
   parser **`0xD4E800`**. Request-status slot **59**. Destination base `D = ctx+0x10000`.
 
   Neither PROTOCOL.md nor COMMANDS.md documents this reply; COMMANDS.md only records the
@@ -19,6 +19,13 @@ doc: |
   `0xD32E70(ctx, 59, result)`.
 
   **Total: 171 bytes (`0xAB`).**
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md (0x4348 listed as a sendable gap)
 seq:
   - id: result

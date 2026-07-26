@@ -12,7 +12,7 @@ params:
 doc: |
   UNMAPPED SUBSYSTEM. Nothing in PROTOCOL.md or OBSERVED.md describes 0x4A24.
 
-  Evidence: dispatcher 0xD38804, entry stub 0xD398F0 (which sets `li r4,0x4A24` and tail-calls the
+  Evidence: GAME dispatcher 0xD387C8 (compare tree at 0xD38804), entry stub 0xD398F0 (which sets `li r4,0x4A24` and tail-calls the
   shared parser), parser 0xD4FB80.
 
   0x4A24 AND 0x4A31 SHARE ONE PARSER, 0xD4FB80, and it accepts no other id (`cmpwi 0x4A24` /
@@ -31,6 +31,13 @@ doc: |
   exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
   All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
   packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: result
     type: u4
@@ -107,9 +114,16 @@ types:
         doc: "[UNKNOWN] four u32 per group."
   block_204:
     doc: |
-      [ELF] The 204-byte sub-record read by the shared helper 0xD4364C, which several ids in
-      this family embed. Enumerated read-by-read from 0xD4364C-0xD43BC0. Size is certain; every
-      meaning is [UNKNOWN]. Kept as one type so the ids that embed it stay byte-exact.
+      [ELF] The 204-byte sub-record read by the shared helper 0xD4364C. That helper has NINE
+      call sites, not just this family: 0xD445A4 (0x4313), 0xD48440 (0x4905), 0xD48964 (0x4909),
+      0xD4B244 (0x4987), 0xD4CB08 (0x4950), 0xD5006C (the shared 0x4A24/0x4A31 parser),
+      0xD51014 (0x4A00), 0xD5AF38 (0x4E10), 0xD5B78C (0x43F1).
+      **CANONICAL MODEL: mgo2_cmd_4313_s2c.ksy, type `game_settings`.** That copy is the
+      best-evidenced one - same 204 bytes, same reader, but its field names are backed by live
+      capture (the 0x4310 push and the 0x4305 reply, OBSERVED.md). This type is a byte-accounting
+      mirror; where the two disagree, 0x4313 wins. Enumerated read-by-read from
+      0xD4364C-0xD43BC0. Size is certain; whether the game-settings meanings carry over to a
+      0x4Axx record is [UNKNOWN], the byte boundaries are not.
     seq:
       - id: triples
         type: triple
@@ -127,12 +141,17 @@ types:
       - id: unknown_0x31
         type: u1
         doc: "[UNKNOWN] 0xD43710 -> block+0x31."
-      - id: text_0x32
+      - id: weapon_restrictions
         size: 16
-        type: str
-        encoding: ISO-8859-1
-        pad-right: 0
-        doc: "[INFERRED] 16-byte raw read (0xD43730) -> block+0x32. Width certain; string role from the width and 0xD5D018's NUL behaviour only."
+        doc: |
+          [CONFIRMED] 16-byte raw read (0xD43730) -> block+0x32. **Not a string.** An earlier
+          revision typed this `str text_0x32`, "string role from the width and 0xD5D018's NUL
+          behaviour only" - inferred from width alone, against capture evidence that already
+          existed. It is the weapon-restriction bitfield: one bit per item, 1 = locked, byte 0
+          bit 0 the master enable, confirmed weapon by weapon (nineteen for nineteen) by the
+          2026-07-22 single-variable sweep at 0x4310 wire 0xD5..0xE4 (OBSERVED.md). 0x4310's
+          copy of this block starts at wire 0xA3 and 0xA3 + 0x32 = 0xD5. See
+          mgo2_cmd_4313_s2c.ksy for the full bit map and the corroborating offsets.
       - id: unknown_0x42
         type: u1
         doc: "[UNKNOWN] 0xD43744 -> block+0x42."

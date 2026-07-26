@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43f1 — server -> client: in-match game-settings push (UNSOLICITED, no result field)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43F1` at `0xD38A74` -> stub `0xD39D6C` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43F1` at `0xD38A74` -> stub `0xD39D6C` ->
   parser **`0xD5B664`**.
 
   **Not a reply, and the most interesting of the `0x43Fx` block:** it carries the **same
@@ -28,6 +28,13 @@ doc: |
   **19 bytes of header + 204 = 223 bytes (`0xDF`).** COMMANDS.md files it under
   "`0x43e*`/`0x43f*` — an in-match subsystem". Field meanings in the header are [UNKNOWN]; the
   settings block is as well documented as `0x4313`'s. We never send it.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md; dev/proto/blanks/mgo2_cmd_4313.ksy (the shared 204-byte block)
 seq:
   - id: key
@@ -65,14 +72,25 @@ seq:
 types:
   game_settings:
     doc: |
-      204 bytes, offsets relative to the block start. Read by the shared helper `0xD4364C`;
-      each field's destination offset inside the block equals its wire offset. Documented
-      field by field in `mgo2_cmd_4313.ksy` — the fields are named here only so the compiler
-      accounts for all 204 bytes.
+      204 bytes, offsets relative to the block start. Read by the shared helper `0xD4364C`.
+      **Canonical model: `mgo2_cmd_4313_s2c.ksy`, type `game_settings`** — documented field by
+      field there; the fields are named here only so the compiler accounts for all 204 bytes.
+
+      Destination offsets equal wire offsets from block+0x30 onward, **but not before**: the
+      leading 48 bytes are interleaved, wire triple i landing at block+i / +0x10+i / +0x20+i.
+
+      **TAG NOTE (2026-07-26).** Eleven fields here previously carried "[CONFIRMED via 0x4313]".
+      That is exactly the mirror-label failure CLAUDE.md forbids: confidence inherited from a
+      sibling packet. 0x43F1 has never been captured, and neither has 0x4313. What IS
+      capture-proven is the same 204-byte region as it appears in the `0x4310` push and the
+      `0x4305` reply (OBSERVED.md, 2026-07-22 single-variable sweeps). So for every field below:
+      the **offset and width are [ELF]** — same reader function, so they are identical by
+      construction, not by analogy — while the **name is [INFERRED]** from those two captures.
+      Nothing in this packet is [CONFIRMED].
     seq:
       - id: rotation
         size: 48
-        doc: "block +0. Sixteen {rule, map, flags} triples. [CONFIRMED via 0x4313]"
+        doc: "block +0. Sixteen {rule, map, flags} triples. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_48
         type: u1
         doc: "block +48. [UNKNOWN]"
@@ -81,16 +99,16 @@ types:
         doc: "block +49. [UNKNOWN]"
       - id: weapon_restrictions
         size: 16
-        doc: "block +50. [CONFIRMED via 0x4313]"
+        doc: "block +50. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: max_players
         type: u1
-        doc: "block +66. [CONFIRMED via 0x4313]"
+        doc: "block +66. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: player_count
         type: u1
-        doc: "block +67. [CONFIRMED via 0x4313]"
+        doc: "block +67. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: briefing_time
         type: u4
-        doc: "block +68. [CONFIRMED via 0x4313]"
+        doc: "block +68. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_72
         type: u4
         doc: "block +72. [UNKNOWN]"
@@ -114,24 +132,30 @@ types:
         doc: "block +92. [UNKNOWN]"
       - id: stance
         type: u1
-        doc: "block +94. [CONFIRMED via 0x4313]"
+        doc: "block +94. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: level_limit_tolerance
         type: u1
-        doc: "block +95. [CONFIRMED via 0x4313]"
-      - id: unknown_96
+        doc: "block +95. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
+      - id: level_limit_base
         type: u4
-        doc: "block +96. [UNKNOWN] — echo's verbatim 0x16."
+        doc: |
+          block +96. [ELF offset+width via 0xD4364C]. Name [INFERRED] from the 0x4310 capture:
+          OBSERVED.md pins the level-limit base as a u32 at 0x4310 wire 0xF8, which maps to
+          block +96. See mgo2_cmd_4313_s2c.ksy for the derivation.
       - id: rule_timers
         type: u4
         repeat: expr
         repeat-expr: 17
-        doc: "block +100..+167. [ELF] Per-rule timers/rounds/tickets."
+        doc: "block +100..+167. [ELF] widths and count; the per-rule pairing is [INFERRED], tier 4."
       - id: unique_red
         type: u1
-        doc: "block +168. [ELF]"
+        doc: |
+          block +168. [ELF] position only — it is the first byte of a 2-byte RAW block, so even
+          the split into two u8s is [INFERRED], and the name is [UNKNOWN] (unique characters
+          were untestable in this build, OBSERVED.md).
       - id: unique_blue
         type: u1
-        doc: "block +169. [ELF]"
+        doc: "block +169. [ELF] position only; second byte of that raw pair. Name [UNKNOWN]."
       - id: unknown_170
         type: u2
         doc: "block +170. [UNKNOWN]"
@@ -143,28 +167,28 @@ types:
         doc: "block +176. [UNKNOWN]"
       - id: common_a
         type: u1
-        doc: "block +177. [CONFIRMED via 0x4313]"
+        doc: "block +177. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: common_b
         type: u1
-        doc: "block +178. [CONFIRMED via 0x4313]"
+        doc: "block +178. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_179
         type: u1
         doc: "block +179. [UNKNOWN]"
       - id: idle_kick
         type: u2
-        doc: "block +180. [CONFIRMED via 0x4313]"
+        doc: "block +180. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: team_kill_kick
         type: u2
-        doc: "block +182. [CONFIRMED via 0x4313]"
+        doc: "block +182. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_184
         type: u4
         doc: "block +184. [UNKNOWN] — echo's verbatim 0x2e."
       - id: capture_extra_time
         type: u1
-        doc: "block +188. [ELF]"
+        doc: "block +188. [ELF] position only; the name is a tier-4 label, meaning [UNKNOWN]."
       - id: sneaking_snake_side
         type: u1
-        doc: "block +189. [ELF]"
+        doc: "block +189. [ELF] position only; the name is a tier-4 label, meaning [UNKNOWN]."
       - id: byte_timers_and_tail
         size: 14
         doc: "block +190..+203. [UNKNOWN as a unit] One 14-byte raw read; no field boundaries in the parser."

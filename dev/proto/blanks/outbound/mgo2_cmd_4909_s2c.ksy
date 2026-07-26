@@ -4,7 +4,7 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4909` at `0xd38b90` and branches to the
+  Evidence: GAME reply dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4909` at `0xd38b90` and branches to the
   thunk at `0xd395d8`, which tail-calls the parser at `0xd48674`. Channel A (lobby TCP).
 
   Read primitives used throughout (identified from their own disassembly, not borrowed):
@@ -23,14 +23,34 @@ doc: |
   slot is completed. On success the destination record is memset to **912 bytes** and filled
   in wire order below. Slot 58 is completed with the result at the end.
 
-  One 204-byte sub-block is read by the shared reader `0xD4364C`, which also serves `0x4950`
-  and `0x4987`; its own layout is modelled as `block_204` below. Note its leading loop is
+  One 204-byte sub-block is read by the shared reader `0xD4364C`. That reader has **nine** call
+  sites, not two: `0xD445A4` (0x4313), `0xD48440` (0x4905), `0xD48964` (here), `0xD4B244`
+  (0x4987), `0xD4CB08` (0x4950), `0xD5006C` (the shared 0x4A24/0x4A31 parser), `0xD51014`
+  (0x4A00), `0xD5AF38` (0x4E10) and `0xD5B78C` (0x43F1). An earlier revision of this file said
+  "also read by 0x4950 and 0x4987"; that list was seven short. [ELF, exhaustive `bl 0xd4364c`
+  scan of 0xD30000-0xD60000, 2026-07-26]
+
+  **The canonical model of this block lives in `mgo2_cmd_4313_s2c.ksy`, type `game_settings`.**
+  That copy is the best-evidenced one: 0x4313's block is the same 204 bytes read by the same
+  function, and its field names are backed by live capture of the `0x4310` push and the `0x4305`
+  reply (OBSERVED.md). `block_204` below is retained only as a byte-accounting mirror; where the
+  two disagree, 0x4313 wins. Whether the game-settings *semantics* apply to a 0x4909 record is
+  [UNKNOWN] — the byte boundaries are not.
+
+  Note its leading loop is
   **interleaved**: it reads three bytes per iteration for 16 iterations, scattering them into
   three separate 16-byte arrays in the struct — so on the wire it is 16 triples, not three
   runs of 16.
 
   Total payload: 4 + 4+1+1+1+1 + 2+16 + 4*4 + 204 + 2*4+4 + 64 + 512 + 4*5 + 4+4 + 1
   = **867 bytes**. Nothing here is confirmed live; no capture of this id exists.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md
 seq:
   - id: result
@@ -130,7 +150,9 @@ seq:
 types:
   block_204:
     doc: |
-      [ELF 0xD4364C] Shared 204-byte block, also read by 0x4950 and 0x4987. Offsets below are
+      [ELF 0xD4364C] Shared 204-byte block; nine call sites, listed in the top-level doc.
+      **Canonical model: `mgo2_cmd_4313_s2c.ksy` type `game_settings`** — this is a mirror kept
+      for byte accounting only. Offsets below are
       relative to the block's own destination. The leading section is **interleaved on the
       wire**: 16 iterations of {u8 -> +0x00+i, u8 -> +0x10+i, u8 -> +0x20+i}, so the wire
       order is triple(0), triple(1) ... triple(15) while the struct holds three 16-byte
@@ -147,10 +169,21 @@ types:
       - id: unknown_31
         type: u1
         doc: "[UNKNOWN] +0x31."
-      - id: name
-        type: str
+      - id: weapon_restrictions
         size: 16
-        doc: "[INFERRED] +0x32, 16-byte raw block. Width is [ELF 0xd43730]."
+        doc: |
+          [CONFIRMED] +0x32, 16-byte raw block (0xD5D018 r5=16, [ELF 0xd43730]). **Not a
+          string.** An earlier revision of this file typed it `str name`, "[INFERRED] name-width
+          by analogy" — inferred from the width alone, against capture evidence that already
+          existed. This is the weapon-restriction bitfield: one bit per item, 1 = locked, byte 0
+          bit 0 the master enable. The 2026-07-22 single-variable sweep confirmed it weapon by
+          weapon, nineteen for nineteen, at `0x4310` wire `0xD5`..`0xE4` (OBSERVED.md, "The
+          weapon-restriction table, confirmed weapon by weapon"); `0x4310`'s copy of this block
+          starts at wire `0xA3`, and `0xA3 + 0x32 = 0xD5`. The mapping is corroborated at six
+          other offsets in the same capture — max characters `0xE5` = +66 (direct); then, with
+          `0x4310` omitting the same fields `0x4305` omits, briefing `0xE6` = +68, tolerance
+          `0xF7` = +95, level-limit base `0xF8` = +96, commonA/B `0x142`/`0x143` = +177/+178.
+          16 bytes of ISO-8859-1 text is what a 16-byte bitfield looks like from the width alone.
       - id: unknown_42
         type: u1
         doc: "[UNKNOWN] +0x42."

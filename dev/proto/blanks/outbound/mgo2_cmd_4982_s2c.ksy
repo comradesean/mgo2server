@@ -4,7 +4,7 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4982` at `0xd38ce8` and branches to the
+  Evidence: GAME reply dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4982` at `0xd38ce8` and branches to the
   thunk at `0xd39630`, which tail-calls the parser at `0xd4b790`. Channel A (lobby TCP).
 
   Read primitives used throughout (identified from their own disassembly, not borrowed):
@@ -31,6 +31,13 @@ doc: |
   extra `0xD5D018` 16-byte read only when 0x20 survives [READ 0xd4b918-0xd4b934]. So a record
   is **35 bytes with the bit clear and 51 bytes with it set** — there is no length prefix and
   no way to parse the stream without tracking that bit.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md
 seq:
   - id: entries

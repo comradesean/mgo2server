@@ -4,7 +4,7 @@ meta:
   endian: be
 doc: |
   The only reply the client parses for the unidentified 0x4440 team/spectator request. Parser
-  0xD52980, reached from dispatcher 0xD38804 via the stub at 0xD3941C.
+  0xD52980, reached from the GAME dispatcher 0xD387C8 (compare tree at 0xD38804) via the stub at 0xD3941C.
 
   The parser reads EXACTLY ONE u32 (0xD5CC64 at 0xD529DC) and nothing else, then drives the
   generic transaction pair used by every list triple in this protocol: status setter 0xD32E08
@@ -21,6 +21,13 @@ doc: |
   0xD5D018 fixed-width byte block (r5 = length, NUL-terminated on store), 0xD5CE34
   delimiter-terminated string, 0xD5CEB0 "cursor < payload length" loop test, 0xD5C844 /
   0xD5C858 reader open/close.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: result
     type: u4

@@ -4,7 +4,7 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4911` at `0xd38bdc` and branches to the
+  Evidence: GAME reply dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4911` at `0xd38bdc` and branches to the
   thunk at `0xd395f8`, which tail-calls the parser at `0xd4b720`. Channel A (lobby TCP).
 
   Read primitives used throughout (identified from their own disassembly, not borrowed):
@@ -14,7 +14,7 @@ doc: |
   so a short payload does not fail — it silently reads whatever follows in the buffer.
 
   This id is one of **six** routed into the shared clan-record parser `0xD4AF34`
-  (`0x4911`, `0x4913`, `0x4985`, `0x4987`, `0x49A1`, `0x49B1`; compare chain at
+  (`0x4911`, `0x4913`, `0x4985`, `0x4987`, `0x49A1`, `0x49B1`; compare tree at
   `0xd4af98-0xd4afd8`). All six carry the **same 420-byte payload**, except `0x4987`, which
   inserts a 204-byte sub-block (see that file). The per-id wrapper only differs in the
   request-status slot it completes.
@@ -33,11 +33,21 @@ doc: |
   Wrapper `0xd4b720`: on a `-1` return from the shared parser it does nothing; otherwise it
   completes request-status slot **60** with the result via `0xD32E08`/`0xD32E70`.
 
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md
 seq:
   - id: result
     type: s4
-    doc: "[ELF 0xd4b074] 0 = success; nonzero ends the parse here (4-byte payload)."
+    doc: |
+      [ELF 0xd4b074] 0 = success; nonzero ends the parse here (4-byte payload). s4 is on
+      CALLER evidence — the thunk reloads the out-param with `lwa` before publishing it to
+      0xD32E70 (e.g. 0xD4B5A8) — not on the read primitive, which is byte-identical to
+      0xD5CCD8 and is not a signed accessor.
   - id: clan_id
     type: u4
     doc: |
@@ -116,11 +126,19 @@ seq:
     type: u4
     doc: "[UNKNOWN] clan+0x298."
   - id: unknown_j
-    type: s4
-    doc: "[UNKNOWN] clan+0x2A0, read with the 0xD5CC64 twin."
+    type: u4
+    doc: |
+      [UNKNOWN] clan+0x2A0, read at 0xD4B428 with the 0xD5CC64 twin. **Signedness [UNKNOWN]** —
+      RESOLVED-AS-UNKNOWN 2026-07-26: this file typed it s4 and `mgo2_cmd_49b1_s2c.ksy`, on the
+      same parser and the same read, typed it u4. Neither had evidence: 0xD5CC64 is
+      byte-identical to 0xD5CCD8 and is not a signed accessor, nothing reloads clan+0x2A0 with
+      `lwa`, and no consumer was traced. Unified on u4 as the corpus default for an unproven
+      4-byte read; that is a default, not a claim.
   - id: unknown_k
-    type: s4
-    doc: "[UNKNOWN] clan+0x2A4, last field. The record is 680 bytes."
+    type: u4
+    doc: |
+      [UNKNOWN] clan+0x2A4, read at 0xD4B444; last field, the record is 680 bytes. Signedness
+      [UNKNOWN] for the same reason as unknown_j.
 types:
   member:
     doc: "25 wire bytes, 28-byte struct stride (clan+0x17C + 28*n)."
@@ -135,11 +153,20 @@ types:
         type: str
         size: 16
         doc: "[INFERRED] member+0x04, 16-byte raw block. Width is [ELF 0xd4b290]."
-      - id: unknown_14
+      - id: unknown_15
         type: u1
         doc: |
-          [UNKNOWN] member+0x11. The notifications write literal values here (0x4960 stores 4,
-          0x4932 and others store small constants), so it is a per-member state byte.
-      - id: unknown_15
+          [UNKNOWN] member+**0x15** — DOC CORRECTION 2026-07-26; wire widths unchanged. Earlier
+          revisions said member+0x11, which contradicted this type's own 16-byte name at +0x04
+          (it occupies +0x04..+0x13, with 0xD5D018's NUL at +0x14). The ELF: the slot loop sets
+          `addi r28,r31,384` (0xD4B258) and `addi r27,r31,368` (0xD4B25C), so the slot base is
+          r27+12 = r31+380 and the name buffer r28 = r31+384 = slot+0x04. This read is
+          `addi r4,r28,17` (0xD4B298) = r31+401 = **slot+0x15**. `mgo2_cmd_49b1_s2c.ksy` had it
+          right all along. The notifications write literal values here (0x4960 stores 4, 0x4932
+          and others store small constants), so it is a per-member state byte.
+      - id: unknown_18
         type: u4
-        doc: "[UNKNOWN] member+0x14."
+        doc: |
+          [UNKNOWN] member+**0x18** — same DOC CORRECTION: `addi r4,r28,20` (0xD4B2B4) =
+          r31+404 = slot+0x18, not +0x14. 4 + 16 + 1 + 4 = 25 wire bytes against a 28-byte
+          struct stride; the seq above was and remains correct on the wire.

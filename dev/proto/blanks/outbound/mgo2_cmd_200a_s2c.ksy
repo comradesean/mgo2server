@@ -4,7 +4,7 @@ meta:
   endian: be
 doc: |
   Reply 2/3 to `0x2008`: one news item per packet in practice, but the parser is a loop.
-  Parser arm 0xd365c8, GATE dispatcher 0xd361e8; records `memcpy`d into `ctx+0xDE8 + n*920`.
+  Parser arm 0xd365c8, GATE dispatcher 0xd361a4 (compare tree at 0xd361e8); records `memcpy`d into `ctx+0xDE8 + n*920`.
 
   **Record count is size-driven**, exactly as in `0x2003`: the loop head at 0xd365f4 zeroes a
   920-byte scratch and calls `MORE_DATA?` (0xd5ceb0); when the cursor has reached the payload
@@ -26,6 +26,13 @@ doc: |
   embedded NUL would be truncated there.
 
   Read primitives in order (0xd36630 .. 0xd366b0): u32, u8, u32, fixed[128], cstring.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x200a item — 1023 bytes"
 seq:
   - id: items

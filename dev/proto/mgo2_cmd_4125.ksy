@@ -90,13 +90,25 @@ types:
           [CONFIRMED PRESENT, MEANING UNKNOWN] third byte, landing at record+8. Read (0xD3CD6C)
           into the record, so it is not padding.
 
-          **Exactly one read of this field exists in the binary, and it is skill 17's** — at
-          0x897320, where "record present (0x897314) and flag == 0" enables the training menu entry
-          drawn from messages 866/867. An earlier version of this file listed readers for skills 6,
-          13, 34 and 85; those were false positives from matching displacements without checking
-          base registers (0x414060-0x41482C is one unrolled 16-stride struct initialiser that
-          accounts for most of them). Filtering to functions that actually reach the profile
-          accessor 0xD3A094 leaves three hits, all skill 17.
+          **Exactly one read of this field exists in the binary, and it is skill 17's**, at
+          0x897320. In a training lobby (subtype 7 or 8, checked at 0x8972F4) the client requires
+          skill 17's record to be **present** (0x897314, id byte nonzero) and its flag to be
+          **zero**; that combination selects screen state 1, which is the state that **sends
+          0x43d0** (`li r4,8; bl 0xD3A680` at 0x897758). A nonzero flag falls through to
+          0x88616C(9/8/12) and state 3, a different screen path.
 
-          We send 0 for every skill. Whether the field means owned, unlocked, new or equipped is
-          unestablished — only that skill 17's must be 0 for that menu entry to appear.
+          So the flag does not enable or disable a menu entry — the 866/867 row at 0x896054 tests
+          only that the record exists, not the flag. What it controls is **whether the client asks
+          the server for the training parameters at all**. Zero means "ask".
+
+          Nothing in the binary ever writes this byte: it arrives only from 0x4125/0x4129, i.e.
+          from us, and no code compares it against anything but zero. As far as the client is
+          concerned it is a boolean, and we have only ever sent the "ask" value. What a nonzero
+          value would *mean* is unestablished — only what it would *do*, which is stop the training
+          fetch.
+
+          An earlier version of this file listed readers for skills 6, 13, 34 and 85; those were
+          false positives from matching displacements without checking base registers
+          (0x414060-0x41482C is one unrolled 16-stride struct initialiser that accounts for most of
+          them). Filtering to functions that actually reach the profile accessor 0xD3A094 leaves
+          three hits, all skill 17.

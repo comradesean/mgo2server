@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4321 — server -> client: join-game endpoints (reply to 0x4320)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4321` at `0xD38928` -> stub `0xD39210` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4321` at `0xD38928` -> stub `0xD39210` ->
   parser **`0xD440DC`**. Request-status slot **38**.
 
   Confirms PROTOCOL.md exactly. Read order: `result` (`0xD5CC64`); **if nonzero, nothing
@@ -23,6 +23,13 @@ doc: |
   attempt the peer connection. That is not the same as the peer connection succeeding; see
   `0x4322`/`0x4323` and the P2P notes in the memory of this project (two-machine joins fail in
   the emulator's peer-ID handling, not here).
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "Reply 0x4321"
 seq:
   - id: result

@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43c9 — server -> client: start-round reply (reply to 0x43c8)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43C9` at `0xD38A40` -> stub `0xD39300` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43C9` at `0xD38A40` -> stub `0xD39300` ->
   parser **`0xD3FEAC`**. Request-status slot **49**.
 
   This is the reply of the pair PROTOCOL.md renumbered on 2026-07-23: the client's real
@@ -27,6 +27,13 @@ doc: |
   conditional on both `result == 0` and `token != 0`, so a server that replies `{0, 0}` leaves
   the slot untouched. **8 bytes on success; 4 bytes on failure is well-formed** (the second
   read is skipped when `result != 0`, unlike `0x4317`).
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x43ca — start round (never observed)"; "0x4390 — update stats"
 seq:
   - id: result

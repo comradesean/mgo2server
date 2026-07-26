@@ -4,7 +4,7 @@ meta:
   endian: be
 doc: |
   Reply 2/3 to `0x2005`: the gate's list of lobbies and their addresses. Parser arm 0xd362b0
-  (GATE dispatcher 0xd361e8), records appended to `ctx+0x750`.
+  (GATE dispatcher 0xd361a4 (compare tree at 0xd361e8)), records appended to `ctx+0x750`.
 
   **Record count is size-driven, not led by a count field.** The arm loops on `MORE_DATA?`
   (0xd5ceb0, "cursor < payload length"): each pass reads one 46-byte entry and `memcpy`s it into
@@ -25,6 +25,13 @@ doc: |
 
   Everything here is [CONFIRMED] end to end: OBSERVED.md records this list read back out of the
   client's own memory at `ctx+0x75C` in 0x34-byte strides with every field correct.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x2003 entry — 46 (0x2e) bytes"; dev/docs/LOBBIES.md
 seq:
   - id: entries

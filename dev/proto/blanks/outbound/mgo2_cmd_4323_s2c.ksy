@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4323 — server -> client: join-failed ack (reply to 0x4322)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4323` at `0xD38974` -> stub `0xD39220` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4323` at `0xD38974` -> stub `0xD39220` ->
   parser **`0xD40904`**. Request-status slot **39**.
 
   A bare result ack, and one of the twelve byte-identical 196-byte parsers laid out from
@@ -15,6 +15,13 @@ doc: |
   successful `0x4321` when the peer-to-peer connection to the host never formed (observed live
   2026-07-21). Answering it converts a hang into a clean failure — **it is a symptom handler,
   not a fix**, and the peer link remains the open frontier.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x4322 — join failed"
 seq:
   - id: result

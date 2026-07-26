@@ -8,7 +8,7 @@ doc: |
   Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
   not - almost every field is [UNKNOWN] on purpose.
 
-  Evidence: dispatcher 0xD38804 (the 0x41xx-0x4Exx literal compare chain), entry stub 0xD39990,
+  Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39990,
   parser 0xD50CDC.
   An echo id then a FIXED eight-word array then one more word. The eight is a hard-coded
   loop bound (`cmpdi r31,8` at 0xD50DE8, stride 4 into obj+0x1C40), not a count on the wire -
@@ -24,6 +24,13 @@ doc: |
   exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
   All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
   packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: obj_id
     type: u4

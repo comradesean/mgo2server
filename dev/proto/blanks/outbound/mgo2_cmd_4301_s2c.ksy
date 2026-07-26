@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4301 — server -> client: game-list START (reply 1/3 to 0x4300)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4301` at `0xD38910` and branches to the
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4301` at `0xD38910` and branches to the
   stub `0xD39918`… (stub at `0xD391A0`), which tail-calls the parser at **`0xD40B10`**.
 
   The parser is the **start** half of a list triple (`0x4301` start / `0x4302` entries /
@@ -26,6 +26,13 @@ doc: |
 
   PROTOCOL.md agrees: "`0x4301` | 4 bytes result (`00000000`, or `C0FFEE02` with no session
   and nothing further)".
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x4300 — get game list"; dev/proto/README.md
 seq:
   - id: result

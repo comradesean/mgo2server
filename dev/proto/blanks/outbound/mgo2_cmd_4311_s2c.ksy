@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4311 — server -> client: host-settings push ack (reply to 0x4310)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4311` at `0xD38934` -> stub `0xD391E0` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4311` at `0xD38934` -> stub `0xD391E0` ->
   parser **`0xD43550`**. Request-status slot **35**.
 
   **This settles PROTOCOL.md's open question.** PROTOCOL.md says the reply is empty, that both
@@ -24,6 +24,13 @@ doc: |
   whatever the buffer held. If that were ever nonzero the client would take the error path.
   Sending an explicit 4-byte zero removes the dependence on buffer state; an empty payload is
   live-verified but not sound.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "Reply 0x4311 — empty"
 seq:
   - id: result

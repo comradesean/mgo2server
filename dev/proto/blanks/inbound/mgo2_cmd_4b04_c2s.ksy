@@ -7,7 +7,8 @@ doc: |
   layout: the ELF shows no payload write at all.
 
   Evidence (ELF, retail BLUS30109): sender 0xD575FC. Builder `bl 0xD5CF40` at 0xD57680
-  (`li r4,0x4b04` at 0xD5767C) is followed *immediately* by the seal `bl 0xD5C828` at
+  (`li r4,0x4b04` at 0xD57678 — corrected 2026-07-26 from 0xD5767C, which is the following
+  `mr r3,r31`) is followed *immediately* by the seal `bl 0xD5C828` at
   0xD5768C and the flush `bl 0xD34CC0` at 0xD5769C — no call to any of the serializers
   (0xD5C86C/0xD5C8A0 u8, 0xD5C8D4/0xD5C918 u16, 0xD5C95C/0xD5C9BC/0xD5CA1C u32,
   0xD5CA7C u64, 0xD5CADC string, 0xD5D0AC fixed blob) in between. The builder memsets its
