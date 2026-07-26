@@ -81,7 +81,7 @@ B_NAMES = {
     24: "tdm_consecutive_survivals", 25: "bases_conquered", 26: "sop_destabilizer_uses",
     27: "gako_saved", 28: "gako_defended", 29: "gako_pickups", 30: "fully_defended_matches",
     34: "capture_goals", 35: "wakes", 36: "combo", 37: "assists",
-    40: "base_capture_points", 39: "kill_1st_place", 41: "rescue_carry_marker",
+    40: "base_capture_time_points", 39: "kill_1st_place", 41: "rescue_carry_marker",
     42: "rescue_carry_magnitude", 45: "training_mode_time_s", 46: "capture_put_count",
     47: "sne_bodysearches", 48: "sne_dogtags_collected", 49: "wins_as_snake",
     50: "holdup_count", 51: "snake_kills", 53: "times_spotted_snake",

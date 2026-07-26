@@ -37,8 +37,8 @@ doc: |
 
   Also mapped exactly: RESCUE (kill*7, teamwin*5, goal(b27)*3,
   target-defence(b28)*3, carry(b42)*1-ish), BASE (kill*3, sop-destab(b26)*10, control(b25)*5,
-  teamwin*5, wake*3, capture-points(b40)*1), CAPTURE (kill*5, put(b46)*1, goal(b34)*5,
-  teamwin*5). SNE categories named with multipliers (dogtag*1 varying values, holdup(b50)*2,
+  teamwin*5, wake*3, capture-time points(b40)*1 -- time spent advancing a capture, NOT the
+  number of captures), CAPTURE (kill*5, put(b46)*1, goal(b34)*5, teamwin*5). SNE categories named with multipliers (dogtag*1 varying values, holdup(b50)*2,
   snake-kill(b51) 6/kill, mk2-kill*4, death*-2) but not yet fully decomposed. Suicide-class
   deaths deduct like any death. Friendly kills/stuns are score-neutral. kill_1st_place (b39)
   pays *5 in DM. The screen's OTHER row = b36 + knockouts-received*1 (wire-proven) + mode
@@ -379,9 +379,25 @@ types:
       - id: kill_1st_place
         type: s2
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
-      - id: base_capture_points
+      - id: base_capture_time_points
         type: s2
-        doc: "slot 41. [BASE] capture points feeding OTHER *1: exactly captures*4 in all three sightings (16/8/12 for 4/2/3 captures, two players, two rounds)."
+        doc: |
+          slot 41. [CONFIRMED] BASE. Feeds OTHER *1. **Accrues with time spent actively advancing
+          a capture** — roughly one point per 4-5 s of capture-bar progress, per player. A solo
+          full capture takes ~20 s and pays 4, which is why this read as "captures*4" until
+          2026-07-26; that earlier reading came from three sightings (16/8/12 for 4/2/3 captures)
+          in which every capture completed, the one case where both models give the same number.
+          Falsified and replaced by four controlled observations:
+            - three captures interrupted at 90%+ paid **13** — not a multiple of 4, and no capture
+              completed;
+            - two same-team players capturing together finish in ~10 s and get **2 each**, i.e.
+              each player is paid for their own time, not for the capture;
+            - ~4-5 s on a point pays 1;
+            - contested (one player from each team) and standing on an already-owned point pay
+              **nothing** to anyone — in both cases the bar is not advancing.
+          So the quantity is the player's own sustained progress time, not captures, not presence,
+          and not defending. Progress must be sustained: leaving and returning such that the bar
+          resets does not accumulate, while progress held across an interruption does.
       - id: rescue_carry_marker
         type: s2
         doc: "slot 42. [RES] 1 on the GA-KO-carrying attacker in both carry rounds — per-carry-run marker candidate. Unlabelled."
