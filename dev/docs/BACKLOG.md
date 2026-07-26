@@ -52,6 +52,35 @@ Also eliminated, from a full sweep of the training-screen block `0x895400`–`0x
   handshake, `0x4321` is address pairs, `0x4313` is the game's own details (read from a live
   capture, not inferred).
 
+**Skill level is `exp >> 13`, and we advertise skill 17 at level 1.** Traced 2026-07-26 and
+verified: `0x6FC580` computes `min(exp >> 13, 3)` from a u16 read out of the skill record
+(`0x6FCE70`, base `11440`), and in-match code compares that level against a per-entry requirement
+byte. Only four levels exist — 0, 1, 2, 3 at exp 0, 8192, 16384, 24576. `LoadoutWriter` sends
+`0x6000` (level 3) for most skills but `0x2000` (level 1) for skills 17, 20 and 22, a list
+inherited from a reference server with no evidence behind it. **Skill 17 is the one every
+training/graduation check reads.** If graduation wants a level, this is what fails it — and it is
+entirely ours to change. Test with `MGO2SERVER_SKILL_EXP=17:24576`, which needs only a restart.
+
+**No 30-minute constant exists anywhere in the binary.** Every integer encoding was searched whole
+file: 1800/1799 (seconds; only two hits, both deep in engine code and unreachable from here),
+1800000 (ms), 108000/107892 (frames), 5394600 (raw 2997 Hz units), and `lis/ori` pairs building the
+same. Combined with the absence of any immediate ≥ 100 in the training screen block, the "30
+minutes" is almost certainly **not** a hardcoded client constant. Float comparisons and
+runtime-assembled values cannot be excluded by grep.
+
+**Engine time unit, for anyone reading tick counters here:** the raw unit is 1/2997 s (50 raw units
+per frame), from the conversion constants at `0xFBE4F8`/`0xFBE540`/`0xFBE548` in the module based at
+`0xFC64F0`. The `18000` threshold at `0x6ED5A4`/`0x6EDBBC` is therefore ~6 s, not 30 minutes, and it
+*subtracts* rather than latching — a repeating per-player announcement cadence, with siblings at
+1500/2999/5999/11999/20999 (0.5–7 s).
+
+**Instructor machinery, located but not cracked:** `InstructorMan` constructor at `0x6D9670`
+(sibling `0x6D9728`), vtable `0xFB4F00`, module base `r30 = *(r2 − 29656) = 0xFE5B68`. The
+`HOST_STANCE_*` names are a **debug enum→name table**, read only at `0xA311E4`–`0xA31204` inside a
+status dump; the stance itself is a u8 at `+165` with ten legal values. The ENTRY → STARTED
+transition was not found, and the instructor module contains **no writes to any skill record** — a
+point against anything being granted or accumulated in-match, though absence of evidence only.
+
 **Strongest remaining lead: the graduate machinery is in-match code, not lobby UI.** The binary
 contains `InstructorMan::InstructorMan()` (vaddr `0xE0A7B8`, an allocation tag, so a real class) and
 the state-name trio `HOST_STANCE_TRAINING` / `HOST_STANCE_INSTRUCTOR_ENTRY` /

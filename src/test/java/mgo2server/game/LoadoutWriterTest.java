@@ -126,4 +126,26 @@ public class LoadoutWriterTest {
 		assertThat(decoded).isEqualTo("あ".repeat(21));
 		assertThat(decoded).doesNotContain("�");
 	}
+
+
+	/**
+	 * The level a skill renders at is {@code min(exp >> 13, 3)} client-side ({@code 0x6FC580}), so
+	 * these magnitudes are the whole point of the field: 0x6000 is level 3, 0x2000 is level 1.
+	 */
+	@Test
+	public void advertisedExperienceEncodesTheLevelTheClientDerives() {
+		assertThat(LoadoutWriter.advertisedSkillExperience(1) >> 13).isEqualTo(3);
+		assertThat(LoadoutWriter.advertisedSkillExperience(17) >> 13).isEqualTo(1);
+	}
+
+	/** One bad pair costs that skill, not the whole catalogue. */
+	@Test
+	public void skillExperienceOverridesParsePairwise() {
+		assertThat(LoadoutWriter.parseSkillExperience("17:24576,20:16384"))
+			.containsEntry(17, 24576).containsEntry(20, 16384);
+		assertThat(LoadoutWriter.parseSkillExperience("17:24576,junk,:,21:x"))
+			.containsExactlyEntriesOf(java.util.Map.of(17, 24576));
+		assertThat(LoadoutWriter.parseSkillExperience(null)).isEmpty();
+		assertThat(LoadoutWriter.parseSkillExperience("")).isEmpty();
+	}
 }
