@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import io.netty.buffer.Unpooled;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.common.model.GearSet;
 import mgo2server.common.model.SkillSet;
 import org.junit.jupiter.api.Test;
@@ -43,30 +44,45 @@ public class LoadoutWriterTest {
 		}
 	}
 
+	/**
+	 * The table is whatever the character owns — the writer no longer generates ids. Omitting an id
+	 * is meaningful: the client memsets its array before applying records, so an absent id has no
+	 * record rather than a zeroed one.
+	 */
 	@Test
-	public void skillsPayloadListsEverySkill() {
-		var buffer = Unpooled.buffer(LoadoutWriter.skillsPayloadSize());
-		LoadoutWriter.writeSkills(buffer);
+	public void skillsPayloadCarriesExactlyTheRowsGiven() {
+		var skills = List.of(skill(1, 0x6000, 0), skill(17, 0x2000, 1));
 
-		assertThat(buffer.readableBytes()).isEqualTo(LoadoutWriter.skillsPayloadSize());
-		assertThat(buffer.getInt(0)).isEqualTo(LoadoutWriter.SKILL_COUNT);
+		var buffer = Unpooled.buffer(LoadoutWriter.skillsPayloadSize(skills.size()));
+		LoadoutWriter.writeSkills(buffer, skills);
 
-		// Ids run 1..25, four bytes each.
+		assertThat(buffer.readableBytes()).isEqualTo(LoadoutWriter.skillsPayloadSize(2));
+		assertThat(buffer.getInt(0)).isEqualTo(2);
+
 		assertThat(buffer.getByte(4)).isEqualTo((byte) 1);
-		assertThat(buffer.getByte(4 + 24 * 4)).isEqualTo((byte) 25);
+		assertThat(buffer.getShort(5)).isEqualTo((short) 0x6000);
+		assertThat(buffer.getByte(7)).isEqualTo((byte) 0);
+
+		assertThat(buffer.getByte(8)).isEqualTo((byte) 17);
+		assertThat(buffer.getShort(9)).isEqualTo((short) 0x2000);
+		assertThat(buffer.getByte(11)).as("flag is sent, not forced to zero").isEqualTo((byte) 1);
 	}
 
-	/** Three skills are advertised at a lower experience than the rest. */
 	@Test
-	public void skillsUseTheLowerExperienceForTheExceptions() {
-		var buffer = Unpooled.buffer(LoadoutWriter.skillsPayloadSize());
-		LoadoutWriter.writeSkills(buffer);
+	public void skillsPayloadIsEmptyWhenNothingIsOwned() {
+		var buffer = Unpooled.buffer(LoadoutWriter.skillsPayloadSize(0));
+		LoadoutWriter.writeSkills(buffer, List.of());
 
-		for (var skill = 1; skill <= LoadoutWriter.SKILL_COUNT; skill++) {
-			var offset = 4 + (skill - 1) * 4;
-			var expected = (skill == 17 || skill == 20 || skill == 22) ? 0x2000 : 0x6000;
-			assertThat(buffer.getShort(offset + 1)).as("skill %d", skill).isEqualTo((short) expected);
-		}
+		assertThat(buffer.readableBytes()).isEqualTo(Integer.BYTES);
+		assertThat(buffer.getInt(0)).isEqualTo(0);
+	}
+
+	private static CharaSkill skill(int id, int experience, int flag) {
+		var skill = new CharaSkill();
+		skill.setSkillId(id);
+		skill.setExperience(experience);
+		skill.setFlag(flag);
+		return skill;
 	}
 
 	@Test
@@ -130,22 +146,13 @@ public class LoadoutWriterTest {
 
 	/**
 	 * The level a skill renders at is {@code min(exp >> 13, 3)} client-side ({@code 0x6FC580}), so
-	 * these magnitudes are the whole point of the field: 0x6000 is level 3, 0x2000 is level 1.
+	 * the experience values seeded by V20 are chosen for what they decode to, not as magnitudes.
 	 */
 	@Test
-	public void advertisedExperienceEncodesTheLevelTheClientDerives() {
-		assertThat(LoadoutWriter.advertisedSkillExperience(1) >> 13).isEqualTo(3);
-		assertThat(LoadoutWriter.advertisedSkillExperience(17) >> 13).isEqualTo(1);
+	public void seededExperienceValuesDecodeToTheIntendedLevels() {
+		assertThat(0x6000 >> 13).isEqualTo(3);
+		assertThat(0x2000 >> 13).isEqualTo(1);
+		assertThat(0 >> 13).isEqualTo(0);
 	}
 
-	/** One bad pair costs that skill, not the whole catalogue. */
-	@Test
-	public void skillExperienceOverridesParsePairwise() {
-		assertThat(LoadoutWriter.parseSkillExperience("17:24576,20:16384"))
-			.containsEntry(17, 24576).containsEntry(20, 16384);
-		assertThat(LoadoutWriter.parseSkillExperience("17:24576,junk,:,21:x"))
-			.containsExactlyEntriesOf(java.util.Map.of(17, 24576));
-		assertThat(LoadoutWriter.parseSkillExperience(null)).isEmpty();
-		assertThat(LoadoutWriter.parseSkillExperience("")).isEmpty();
-	}
 }

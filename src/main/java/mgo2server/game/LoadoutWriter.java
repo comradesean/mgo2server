@@ -2,13 +2,12 @@ package mgo2server.game;
 
 import io.netty.buffer.ByteBuf;
 import mgo2server.common.BufferUtil;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.common.model.GearSet;
 import mgo2server.common.model.SkillSet;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * The four loadout responses of the connect burst.
@@ -38,67 +37,10 @@ public final class LoadoutWriter {
 
 	private static final int GEAR_TERMINATOR_LENGTH = 32;
 
-	public static final int SKILL_COUNT = 25;
-
-	/**
-	 * Most skills are advertised at this experience; a few sit lower.
-	 * <p>
-	 * These are not arbitrary magnitudes: the client derives a skill's <b>level</b> from this word
-	 * as {@code min(exp >> 13, 3)} — literally the top three bits — at {@code 0x6FC580}, reading a
-	 * u16 out of the record the {@code 0x4129} parser wrote ({@code 0x6FCE70}). So
-	 * {@code 0x6000} advertises <b>level 3</b> and {@code 0x2000} advertises <b>level 1</b>, and
-	 * the only reachable levels are 0, 1, 2 and 3 at 0 / 8192 / 16384 / 24576. In-match code gates
-	 * on the result: {@code 0x6FCE90}'s caller compares the level against a per-entry requirement
-	 * byte. A finer EXP-to-level ladder exists at {@code 0x6FCBF8} (thresholds 0, 1, 16, 23, 31,
-	 * 35, 38, 45, 47, 51, 63, 70, 73 for levels 1–13) and is used elsewhere.
-	 */
-	private static final int SKILL_EXPERIENCE = 0x6000;
-
-	private static final int SKILL_EXPERIENCE_LOW = 0x2000;
-
-	/**
-	 * Skills advertised at the lower value, i.e. handed out at level 1 rather than level 3.
-	 * <p>
-	 * Inherited from a reference server, which makes it tier 4 — no capture or ELF reading says the
-	 * original did this, and nothing here explains why these three. Worth suspicion: <b>17 is the
-	 * skill the training/graduation checks read</b> ({@code 0x8972F4} tests its record, and the
-	 * in-match instructor code reads a skill level through {@code 0x6FC580}), so if a level
-	 * requirement is what gates graduation, this list is what fails it. Override with
-	 * {@code MGO2SERVER_SKILL_EXP=17:24576} to test that without a rebuild.
-	 */
-	private static final int[] LOW_EXPERIENCE_SKILLS = { 17, 20, 22 };
-
-	/**
-	 * Per-skill experience overrides, {@code skill:exp} pairs separated by commas, e.g.
-	 * {@code MGO2SERVER_SKILL_EXP=17:24576,20:24576}. Malformed entries are ignored individually
-	 * rather than discarding the whole setting, so a typo costs one skill and not the catalogue.
-	 */
-	private static final Map<Integer, Integer> SKILL_EXPERIENCE_OVERRIDES =
-		parseSkillExperience(System.getenv("MGO2SERVER_SKILL_EXP"));
-
-	static Map<Integer, Integer> parseSkillExperience(String configured) {
-		var overrides = new HashMap<Integer, Integer>();
-		if (configured == null || configured.isBlank()) {
-			return overrides;
-		}
-
-		for (var pair : configured.split(",")) {
-			var fields = pair.split(":");
-			if (fields.length != 2) {
-				continue;
-			}
-			try {
-				overrides.put(Integer.parseInt(fields[0].trim()), Integer.parseInt(fields[1].trim()));
-			}
-			catch (NumberFormatException malformed) {
-				// Ignored on purpose; see the field comment.
-			}
-		}
-
-		return overrides;
-	}
-
 	private static final int SET_NAME_LENGTH = 63;
+
+	/** One skill record on the wire: u8 id, u16 experience, u8 flag. */
+	public static final int SKILL_RECORD_SIZE = 4;
 
 	public static final int SKILL_SET_SIZE = 0x4d;
 
@@ -111,9 +53,7 @@ public final class LoadoutWriter {
 		return Integer.BYTES + GEAR_ITEMS.length * 5 + GEAR_TERMINATOR_LENGTH;
 	}
 
-	public static int skillsPayloadSize() {
-		return Integer.BYTES + SKILL_COUNT * 4;
-	}
+
 
 	/** Every gear item, in every colour. */
 	public static void writeGear(ByteBuf buffer) {
@@ -130,35 +70,26 @@ public final class LoadoutWriter {
 	}
 
 	/**
-	 * The experience the catalogue advertises for a skill — also what the post-game results card
-	 * ({@code 0x4129}) repeats, so the two screens agree while skill progression does not exist.
+	 * The skill table, from what the character actually owns.
+	 * <p>
+	 * Ids the list omits are not "level 0" to the client — they are absent: its parser memsets the
+	 * whole 128-entry array before applying these records, so an omitted id has no record at all.
+	 * That is what makes ownership expressible, and it is why this takes rows rather than
+	 * generating a fixed 1..25 the way it did before V20.
 	 */
-	public static int advertisedSkillExperience(int skill) {
-		var override = SKILL_EXPERIENCE_OVERRIDES.get(skill);
-		if (override != null) {
-			return override;
+	public static void writeSkills(ByteBuf buffer, List<CharaSkill> skills) {
+		buffer.writeInt(skills.size());
+
+		for (var skill : skills) {
+			buffer.writeByte(skill.getSkillId())
+				.writeShort(skill.getExperience())
+				.writeByte(skill.getFlag());
 		}
-		return isLowExperience(skill) ? SKILL_EXPERIENCE_LOW : SKILL_EXPERIENCE;
 	}
 
-	private static boolean isLowExperience(int skill) {
-		for (var low : LOW_EXPERIENCE_SKILLS) {
-			if (low == skill) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/** Every skill, at the experience the original advertises. */
-	public static void writeSkills(ByteBuf buffer) {
-		buffer.writeInt(SKILL_COUNT);
-
-		for (var skill = 1; skill <= SKILL_COUNT; skill++) {
-			buffer.writeByte(skill)
-				.writeShort(isLowExperience(skill) ? SKILL_EXPERIENCE_LOW : SKILL_EXPERIENCE)
-				.writeZero(1);
-		}
+	/** Four bytes per record after the count word. */
+	public static int skillsPayloadSize(int skills) {
+		return Integer.BYTES + skills * SKILL_RECORD_SIZE;
 	}
 
 	public static void writeSkillSets(ByteBuf buffer, List<SkillSet> sets) {
