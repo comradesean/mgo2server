@@ -1375,6 +1375,15 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 
 `kills·3 − deaths·2 + (headshots 0x11+0x15)·2 + hacking·5 + assist(B37)·3 + stun·M + wake(B35)·2 + other(B36)·1`
 
+> **Not settled after all — a deduction for BEING stunned is missing (2026-07-26).** The
+> formula is exact for every round in which the scorer was not knocked out, but frame 319
+> (stuns dealt 2, stun headshots 2, `0x0F` received 1, B4 self-stun 1) predicts 8 and wires
+> **4**. `− received·2 − B4·2` fits that frame exactly and contradicts nothing archived, but
+> its partner frame 320 (received 2, dealt 0) wires −2 where the term predicts a raw −4,
+> reconcilable only via the clamp-at-0 store, which was not independently checked. Treat the
+> deduction coefficients as an open hypothesis. Settling round: one player stunned, zero
+> self-stuns, nothing else scored.
+
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
   capture-era `stun·2` was TDM — both right for their mode.

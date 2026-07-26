@@ -2300,7 +2300,8 @@ B7→8 (salutes), B8→9 (radio), B10/B11→11/12 (CQC given/taken), B12→13 (r
 survivals); B2 = consecutive headshots lands on slot 3, one of the slots the screen never
 displayed — consistent. **Predictions for the untested slots** (tier: inference from this
 rule, to be confirmed by gesture rounds): B5/B6 = friendly kills/stuns, B9 = text chat uses,
-B13 = ENVG time (s), B14 = dedicated-host time (s), B15 = catapult uses, B16 = boosts given,
+B13 = ENVG time (s), B14 = **unknown** (the dedicated-host-time reading was falsified — see
+"Dedicated host sends no report for itself"), B15 = catapult uses, B16 = boosts given,
 B17 = falling deaths, B18 = times caught in trap, B25+ = the mode-page stats (bases, SOP
 destabilizer, GA-KO...). **Two conflicts, kept honest**: slot 5 "Times Stunned" ↔ B4 — but B4
 never ticked across rounds where a player was stunned 5 and 3 times (Times Stunned probably
@@ -2399,8 +2400,10 @@ yet. Total Time Using ENVG (B13 predicted) is testable: the ENVG is a map pickup
 **ENVG addendum (same night):** wearing a picked-up ENVG for "roughly 30 seconds" wired
 **B13=28** — Total Time Using ENVG (s), slot 14, confirmed; the slot rule holds 20/20 where
 testable. (The same report logged 18 rolls searching for the pickup.) Remaining
-[PREDICTED]-only slots are the mode-specific ones (Base/Rescue objectives, training times,
-dedicated-host time) plus text chat (emulator-blocked).
+[PREDICTED]-only slots are the mode-specific ones (Base/Rescue objectives, training times)
+plus text chat (emulator-blocked). *(Later: the dedicated-host-time prediction for B14 was
+falsified, and the Base/Rescue/Capture objective slots have since been confirmed — see the
+0x4390 ksy for current status.)*
 
 **B24 precision addendum (user challenge, same night):** the "count of flawless wins this
 stage" reading is over-specific — every observed stage was 2 rounds, where a count and a
@@ -2517,14 +2520,18 @@ names). Wire vs screens: **B51 = SNAKE KILL** (2=2, kills of the Snake, worth 6 
 — Sean's 22 decomposes exactly only with snake-kills at 6); **B50 = HOLDUP COUNT ×2**
 (1 holdup vs 3 stuns this round breaks the earlier stun confound; 138's B50=4 was 4
 holdups); **B49 = wins-as-Snake sealed** (absent in both losses, present in the sole win);
-B54 = Snake's deaths 3/3; B56 = rounds-as-Snake 3/3; B47=B48 again (2,2 — dogtag-related
-pair; DOGTAG SCORE=16 has no direct slot, so tag values vary). Screen HEADSHOT = 0x11+0x15
+B54 = Snake's deaths 3/3 *(**SUPERSEDED** — B54 is times-Snake-was-spotted; it equalled deaths
+only because 1v1 spotting is degenerate with killing. See "SNE spotting trio split" below)*;
+B56 = rounds-as-Snake 3/3; B47=B48 again (2,2 — dogtag-related
+pair; DOGTAG SCORE=16 has no direct slot, so tag values vary) *(**SUPERSEDED** — B47/B48 are
+body-searches-yielding-items / dogtags-collected, and are NOT equal in general: B47 >= B48)*. Screen HEADSHOT = 0x11+0x15
 holds in SNE (4 = 1 lethal + 3 darts). **The OTHER knockouts-received component is
 wire-proven**: Sean's screen OTHER=3 = his c0f=3 with B36=0, and his wire 22 includes it
 with no clamp — the last screen-only claim in the file is now tier-2 wire fact; the two old
 clamp-hidden sightings validate retroactively. New opens: rawr's OTHER=6 (stuns-dealt ·2
 candidate), MK.II KILL ×4 category carrier, the B47/B48 pair, and the b51/b53/b55 trio needs
-a multi-player SNE round to split its degenerate copies.
+a multi-player SNE round to split its degenerate copies. *(**RESOLVED 2026-07-26** — the
+multi-player rounds were run and the trio is fully split; see "SNE spotting trio split".)*
 
 ### First Base round: B25 = bases conquered (slot-rule hit); B40 first light; 0x21 pattern extends
 
@@ -2555,3 +2562,119 @@ OTHER; client-computed 5-per-goal candidate, open. Capture's table: KILL×5, HEA
 PUT×1, STUN×5, TEAMWIN×5, WAKE×5, GOAL×5, OTHER×1. 0x21: both zero-death players flagged —
 objective modes now 10/10 for the result-independent reading. With this, all six rules
 (DM, TDM, SNE, RES, BASE, CAP) have been entered and their primary slots labelled.
+
+### Dedicated host sends no report for itself — slot 15 is NOT dedicated-host time (falsified)
+
+2026-07-24. Three dedicated-host games (`0x4310` with `0xA1 dedicated=0x01`, and the client's
+max-players bump 16→17, at 17:54:09 / 18:05:50 / 18:14:18) were run to test slot 15 "Time as
+Dedicated Host" (struct-B **index 14**). **The host's client emitted no `0x4390` for its own
+character in any of them** — the host connection (the same one that sent `0x4310`) reported only
+the two participants, ch2 and ch3, and the hosting character has no report of any kind after
+17:39:41. **Not a capture miss:** 189 `In - command 4390` frames in the gamelobby log against 189
+archived `.bin` files in `dev/proto/samples/4390` — `watch_4390.py` dropped nothing (its one silent
+drop path, an interleaved log line between the DEBUG header and its hex line, would have shown as a
+count divergence).
+
+The absence of a host report is, on its own, a non-experiment: a report that never exists cannot
+carry the field. The observation that would falsify the label is a report *for the hosting
+character* with slot 15 = 0. Under the established delta semantics `0x4390` is per-participant and
+a dedicated host is not a participant, so the accumulated hosting seconds stay in the client's live
+store — the baseline is rewritten only when a report is emitted for that character — and should
+flush in one lump on that character's next played round.
+
+**RESOLVED 2026-07-26: that test had already been run, and the label is FALSIFIED.** The archive
+contained the answer the whole time; nobody read frame 190. ch1's reports either side of the
+hosting session:
+
+| frame | time | character | struct-B index 14 |
+|---|---|---|---|
+| #177 | 17:39:41 | ch1 | 0 — last report **before** hosting |
+| #179–#189 | 17:59–18:19 | ch2 / ch3 only | ch1 emits nothing across all three hosting games |
+| **#190** | **18:54:46** | **ch1** | **0** — ch1's **next played round after hosting** |
+| #190+ | — | ch1 ×61 | 0 in every one |
+
+Three stints' worth of hosting seconds had a report to flush into and did not appear in it.
+Dedicated-host time is **not** struct-B index 14, and on this evidence is not anywhere in struct B
+— the slot has never been nonzero in any of 360 archived frames. Remaining candidates: another
+command, or no wire source at all (Host Rating and Instructor Score are already in that category).
+
+Index 14 is now `unknown_b14` / `[UNKNOWN]` in the ksy.
+
+**Container negatives (2026-07-26), which also refine b20/b21.** Two container items were tried
+against index 14: sitting in a **trash can** (frame 325) and wearing the **drum can** — a wearable
+cardboard-box facsimile, and therefore the closest possible near-miss to the item b20/b21 actually
+count. Both wired 0 at index 14, *and* 0 at b20 (`box_time_s`) and b21 (`box_uses`). So:
+
+- `box_time_s` / `box_uses` are **cardboard-box-specific**, not generic "in a container" counters —
+  a distinction that had never been tested and was quietly assumed the other way.
+- No generic container counter exists anywhere in struct B: if one did, one of these two rounds
+  would have lit some slot, and both rounds came back with nothing but `rolls` and the survival
+  counter.
+
+Note on method: the slot is `s2`, exactly like all 58 struct-B slots, so the encoding carries no
+hint as to whether it is a duration or a count. Only magnitude on a live trigger distinguishes the
+two families (time slots read as plain seconds — `envg_time_s` wired 28 for ~30 s, `box_time_s` 66
+for ~a minute; counters sit in single digits), and index 14 has never fired. Settling what it *is*
+wants the ELF, not more wire guessing.
+
+### SNE spotting trio split — B51/B53/B55 were one mechanic misread three times
+
+2026-07-26. The `b51/b53/b55` trio, logged above as "needs a multi-player SNE round to split its
+degenerate copies", is resolved. Three-player SNE rounds had in fact already been captured; the
+split was sitting in the archive unread.
+
+**The mechanic: a "spot" is triggered by SHOOTING Snake**, not by passively sighting him — the
+alert symbol is the reveal a hit causes. That single fact explains every wrong label this cluster
+has carried. A one-shot kill fires a kill, a spot and a first-spot in the same Snake life, so any
+round decided by clean kills makes all three numerically identical. `sum(B53) == sum(B51)` in
+**11 of 22** completed rounds — half the corpus was degenerate by construction, which is why
+"kills-of-Snake", "deaths-as-Snake" and "third copy of kills-of-Snake" all fitted at the time.
+They were not three independent mistakes.
+
+Readings, over completed (`round_completed=1`) reports only:
+
+| slot | reading | evidence |
+|---|---|---|
+| B51 | Snake kills | screen SNAKE KILL row, 6 pts/kill exact |
+| B53 | times **this player** spotted (hit) Snake | Snake's B54 == Σ others' B53, **22/22** rounds, 15 with three players |
+| B54 | times Snake was spotted, **total** | same relation, Snake side |
+| B55 | **first** player to spot Snake, once per Snake life | Σ B55 == Snake's death count, **22/22** (== 1 in the four rounds he survived but was spotted) |
+
+B55 counts **lives, not spots** — round `091106` is the clean separation: `sum(B53)=10` spots
+against `sum(B55)=5`, with the Snake dead 5 times. Three-player rounds are what make B53/B54 real
+rather than a 1:1 identity: 1+3→4, 3+7→10, 1+1→2, 1+3→4.
+
+Naming is snake-specific because the mechanic is: **Snake is the only character the alert/spotted
+state applies to**, in any mode. There is no generic "spotted a player" counter for these to be a
+facet of, which is why B53/B54 are 0 in every non-SNE report across all 360 archived frames.
+
+**Method note, applies to every slot, not just these.** All four apparent violations of the
+B53/B54 role split were `round_completed=0` teardown frames from crash disconnects. Teardown
+reports carry unreliable role and marker fields — `flag_0x04` reads 0 even for the Snake (frame
+201, `flag_0x04=0` with `B56=1`) — and mixing them into a population manufactures counterexamples
+that look like unmodelled game mechanics. Excluding them took the role split from "four exceptions,
+possible Snake-role handoff" to **zero exceptions**, and the B54 sum relation from 22/23 to 22/22.
+There is no handoff mechanic; that hypothesis was an artefact of a dirty sample. Filter
+`round_completed=0` out before deriving anything from struct B.
+
+**Test design consequence:** a round intended to separate this cluster must **hit Snake without
+killing him**. Kill-based rounds cannot distinguish B51/B53/B55 no matter how many are run.
+
+### B47/B48 are Snake-side only
+
+2026-07-26, from the same 360-frame archive. The dogtag pair fires **exclusively on the Snake's
+report**: all 13 completed frames carrying either slot have `flag_0x04=1` and `B56=1`, and no
+attacker report has ever carried them. Mechanically consistent — dogtag collection is the Snake's
+objective — but it was not recorded, and the previous wording ("the player…") invited looking for
+these on an attacker's report, where they cannot appear.
+
+`B47 >= B48` in 13/13 completed frames where either is nonzero: equal in 9, **strict in 4** —
+frames 233 (4/3), 238 (1/0), 266 (1/0), 196 (5/3). Those four are what establish these as two
+distinct slots rather than one counter: a body search can yield an item without a dogtag being
+collected, so B48 is structurally bounded by B47. Counts exclude the `round_completed=0` teardown
+frame at 070239, which would otherwise read 14/14 — see the filtering rule under "SNE spotting
+trio split".
+
+Still open: the SNE DOGTAG score row's multiplier, **and which of the pair feeds it**. The single
+decomposed round (~16 points across two tags) had `B47 == B48`, so it cannot separate them. Needs
+a round where the two differ with the DOGTAG row read off the result screen.
