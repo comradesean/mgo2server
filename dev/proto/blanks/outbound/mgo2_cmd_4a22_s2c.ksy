@@ -1,0 +1,44 @@
+meta:
+  id: mgo2_cmd_4a22_s2c
+  title: "MGO2 0x4A22 - unmapped 0x4Axx reply, blob plus trailing word (server -> client)"
+  endian: be
+doc: |
+  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
+  0x4A22; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
+  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
+  not - almost every field is [UNKNOWN] on purpose.
+
+  Evidence: dispatcher 0xD38804 (the 0x41xx-0x4Exx literal compare chain), entry stub 0xD398E0,
+  parser 0xD513D0.
+  Same shape as 0x4A02/0x4A29 with one extra u32 AFTER the blob. The 128-byte blob is read
+  one byte at a time (0xD514F8-0xD51518, bound base+128) into a stack scratch buffer.
+  LEADING IDENTITY HEADER (6 bytes), read by the shared helper 0xD49230 and therefore easy to
+  miss when reading this parser alone: u32 then u16. Both are validated against the client's
+  currently open object for this subsystem (u32 vs obj+0x000 at 0xD4929C, u16 vs obj+0x29C at
+  0xD492D4); a mismatch aborts with -1018 (0xFFFFFC06) before another byte is consumed. For
+  command id 0x4960 only, 0xD49230 skips both comparisons and just consumes the six bytes.
+  Modelled below as `obj_id` + `obj_serial`; the names describe the check, not a proven meaning.
+  Read primitives (naming as in ../mgo2_cmd_4902.ksy): 0xD5CCD8 / 0xD5CC64 u32,
+  0xD5CC14 / 0xD5CBC4 u16, 0xD5CB8C u8, 0xD5D018 raw N (writes a NUL at dest+N but consumes
+  exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
+  All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
+  packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+seq:
+  - id: obj_id
+    type: u4
+    doc: "[ELF] identity header, helper 0xD49230."
+  - id: obj_serial
+    type: u2
+    doc: "[ELF] identity header, helper 0xD49230."
+  - id: echo_id
+    type: u4
+    doc: "[ELF] read at 0xD514B0, compared at 0xD514D0 against a u32 the client holds; mismatch aborts and nothing further is read. [UNKNOWN] which id."
+  - id: unknown_after_echo
+    type: u1
+    doc: "[UNKNOWN] read at 0xD514E4 -> obj+0x004."
+  - id: blob
+    size: 128
+    doc: "[ELF] exactly 128 bytes, byte-at-a-time loop 0xD514F8-0xD51518. Fixed length. [UNKNOWN] contents."
+  - id: unknown_tail
+    type: u4
+    doc: "[UNKNOWN] read at 0xD5152C (-> r1+116), after the blob. Position exact, meaning unestablished."

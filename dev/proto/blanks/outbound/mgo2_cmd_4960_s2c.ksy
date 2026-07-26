@@ -1,0 +1,48 @@
+meta:
+  id: mgo2_cmd_4960_s2c
+  title: "MGO2 0x4960 — server -> client: clan notification carrying one 4-byte word (key check waived)"
+  endian: be
+  encoding: ISO-8859-1
+doc: |
+  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4960` at `0xd38c1c` and branches to the
+  thunk at `0xd39780`, which tail-calls the parser at `0xd4c880`. Channel A (lobby TCP).
+
+  Read primitives used throughout (identified from their own disassembly, not borrowed):
+  `0xD5CB8C` u8, `0xD5CC14` u16, `0xD5CC64` / `0xD5CCD8` 4-byte (byte-identical twins),
+  `0xD5D018` raw block of `r5` bytes, `0xD5C844` rewind-for-read, `0xD5C858` end-of-read.
+  Every reader bound-checks against the **1023-byte receive buffer, not the payload length**,
+  so a short payload does not fail — it silently reads whatever follows in the buffer.
+
+  This is an **unsolicited clan notification**, not a reply: there is no result code and no
+  request-status slot. The parser ends by raising client event **10** via `0xD33CD8(ctx, 10)`.
+
+  The payload opens with the 6-byte key read by the shared helper `0xD49230(ctx, clan, reader)`:
+  a u32 compared against the client's cached clan id (`clan+0x000`) and a u16 compared against
+  `clan+0x29C`. Either mismatch returns `-1018` (`0xFFFFFC06`) and the packet is **discarded
+  silently** — no dialog, no state change. So both words gate delivery; they are not payload.
+  (`0x4960` is the one exception: the helper skips both comparisons for that id.)
+
+  Header, then a single 4-byte read. **`0x4960` is the one id for which the helper `0xD49230`
+  skips both header comparisons** [READ 0xd49288 and 0xd492c4] — the two key words are still
+  read and consumed, but neither has to match, so this notification is delivered even when the
+  client's cached clan record disagrees. Post-processing locates the member slot whose first
+  word matches the payload word and writes the literal **4** at member+0x11
+  [READ 0xd4c944-0xd4c95c]. Payload 10 bytes; event 10.
+
+doc-ref: dev/docs/COMMANDS.md
+seq:
+  - id: clan_id
+    type: u4
+    doc: |
+      [ELF 0xd49274] Must equal the client's cached clan id (`clan+0x000`) or the packet is
+      dropped with `-1018`.
+  - id: clan_serial
+    type: u2
+    doc: |
+      [ELF 0xd492b0] Must equal the u16 at `clan+0x29C` — the serial the clan-record replies
+      set and `0x49a8` updates. Mismatch -> `-1018`, packet dropped.
+  - id: character_id
+    type: u4
+    doc: |
+      [INFERRED] matched against `member.character_id`; the matching slot's state byte
+      (member+0x11) is set to the literal 4 [ELF 0xd4c948]. What state 4 denotes is [UNKNOWN].

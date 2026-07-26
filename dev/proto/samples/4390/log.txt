@@ -2467,3 +2467,1112 @@
   seconds_in_game           = 1987
   experience_total          = 214
   detail_present            = 1
+=== #358  2026-07-26 03:57:41  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 358_035741_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  seconds_in_game           = 1987
+  experience_total          = 214
+  detail_present            = 1
+=== #359  2026-07-26 09:38:35  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 359_093835_ch1.bin
+  chara_id                  = 1
+  score                     = 52
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 355
+  experience_total          = 49450
+  detail_present            = 1
+  B12 rolls                 = 8
+  B25 bases_conquered       = 3
+  B26 sop_destabilizer_uses = 2
+  B40 base_capture_points   = 12
+=== #360  2026-07-26 09:38:35  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 360_093835_ch3.bin
+  chara_id                  = 3
+  score                     = 18
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 338
+  experience_total          = 214
+  detail_present            = 1
+  B25 bases_conquered       = 2
+  B40 base_capture_points   = 8
+=== #361  2026-07-26 09:43:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 361_094315_ch1.bin
+  chara_id                  = 1
+  score                     = 52
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 281
+  experience_total          = 49450
+  detail_present            = 1
+  B12 rolls                 = 5
+  B25 bases_conquered       = 3
+  B26 sop_destabilizer_uses = 2
+  B40 base_capture_points   = 12
+=== #362  2026-07-26 09:43:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 362_094315_ch3.bin
+  chara_id                  = 3
+  score                     = 19
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 281
+  experience_total          = 214
+  detail_present            = 1
+  B25 bases_conquered       = 1
+  B26 sop_destabilizer_uses = 1
+  B40 base_capture_points   = 4
+=== #363  2026-07-26 09:43:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 363_094315_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 241
+  experience_total          = 428
+  detail_present            = 1
+=== #364  2026-07-26 09:50:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 364_095004_ch1.bin
+  chara_id                  = 1
+  score                     = 14
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 373
+  experience_total          = 49400
+  detail_present            = 1
+  B12 rolls                 = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 4
+=== #365  2026-07-26 09:50:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 365_095004_ch3.bin
+  chara_id                  = 3
+  score                     = 21
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 373
+  experience_total          = 264
+  detail_present            = 1
+  B40 base_capture_points   = 21
+=== #366  2026-07-26 09:50:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 366_095004_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 374
+  experience_total          = 428
+  detail_present            = 1
+=== #367  2026-07-26 09:55:31  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 367_095531_ch1.bin
+  chara_id                  = 1
+  score                     = 26
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 327
+  experience_total          = 49400
+  detail_present            = 1
+  B25 bases_conquered       = 2
+  B40 base_capture_points   = 11
+=== #368  2026-07-26 09:55:31  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 368_095531_ch3.bin
+  chara_id                  = 3
+  score                     = 6
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 264
+  detail_present            = 1
+  B40 base_capture_points   = 6
+=== #369  2026-07-26 09:55:31  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 369_095531_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #370  2026-07-26 10:01:53  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 370_100153_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 346
+  experience_total          = 49400
+  detail_present            = 1
+=== #371  2026-07-26 10:01:53  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 371_100153_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 346
+  experience_total          = 264
+  detail_present            = 1
+=== #372  2026-07-26 10:01:53  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 372_100153_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 346
+  experience_total          = 428
+  detail_present            = 1
+=== #373  2026-07-26 10:07:20  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 373_100720_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 49400
+  detail_present            = 1
+  B12 rolls                 = 5
+=== #374  2026-07-26 10:07:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 374_100721_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 264
+  detail_present            = 1
+=== #375  2026-07-26 10:07:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 375_100721_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #376  2026-07-26 10:13:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 376_101325_ch1.bin
+  chara_id                  = 1
+  score                     = 1
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 49400
+  detail_present            = 1
+  B12 rolls                 = 1
+  B40 base_capture_points   = 1
+=== #377  2026-07-26 10:13:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 377_101325_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 264
+  detail_present            = 1
+=== #378  2026-07-26 10:13:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 378_101325_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #379  2026-07-26 10:18:52  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 379_101852_ch1.bin
+  chara_id                  = 1
+  score                     = 12
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 327
+  experience_total          = 49400
+  detail_present            = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 2
+=== #380  2026-07-26 10:18:53  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 380_101853_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 264
+  detail_present            = 1
+=== #381  2026-07-26 10:18:53  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 381_101853_ch2.bin
+  chara_id                  = 2
+  score                     = 12
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 327
+  experience_total          = 436
+  detail_present            = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 2
+=== #382  2026-07-26 10:25:16  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 382_102516_ch1.bin
+  chara_id                  = 1
+  score                     = 32
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 347
+  experience_total          = 49400
+  detail_present            = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 22
+=== #383  2026-07-26 10:25:16  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 383_102516_ch3.bin
+  chara_id                  = 3
+  score                     = 32
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 347
+  experience_total          = 264
+  detail_present            = 1
+  B40 base_capture_points   = 32
+=== #384  2026-07-26 10:25:16  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 384_102516_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 347
+  experience_total          = 436
+  detail_present            = 1
+=== #385  2026-07-26 10:30:43  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 385_103043_ch1.bin
+  chara_id                  = 1
+  score                     = 12
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 327
+  experience_total          = 49400
+  detail_present            = 1
+  B12 rolls                 = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 2
+=== #386  2026-07-26 10:30:43  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 386_103043_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 264
+  detail_present            = 1
+=== #387  2026-07-26 10:30:43  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 387_103043_ch2.bin
+  chara_id                  = 2
+  score                     = 12
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 327
+  experience_total          = 444
+  detail_present            = 1
+  B25 bases_conquered       = 1
+  B40 base_capture_points   = 2
+=== #388  2026-07-26 10:37:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 388_103737_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 378
+  experience_total          = 49350
+  detail_present            = 1
+=== #389  2026-07-26 10:37:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 389_103737_ch3.bin
+  chara_id                  = 3
+  score                     = 55
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 378
+  experience_total          = 314
+  detail_present            = 1
+  B40 base_capture_points   = 55
+=== #390  2026-07-26 10:37:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 390_103737_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 378
+  experience_total          = 444
+  detail_present            = 1
+=== #391  2026-07-26 10:43:05  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 391_104305_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 49300
+  detail_present            = 1
+=== #392  2026-07-26 10:43:05  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 392_104305_ch3.bin
+  chara_id                  = 3
+  score                     = 23
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 364
+  detail_present            = 1
+  B40 base_capture_points   = 23
+=== #393  2026-07-26 10:43:05  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 393_104305_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 444
+  detail_present            = 1
+=== #394  2026-07-26 10:49:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 394_104904_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 324
+  experience_total          = 49250
+  detail_present            = 1
+=== #395  2026-07-26 10:49:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 395_104904_ch3.bin
+  chara_id                  = 3
+  score                     = 13
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 325
+  experience_total          = 414
+  detail_present            = 1
+  B40 base_capture_points   = 13
+=== #396  2026-07-26 10:49:04  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 396_104904_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 325
+  experience_total          = 444
+  detail_present            = 1
+=== #397  2026-07-26 10:59:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 397_105910_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 467
+  experience_total          = 214
+  detail_present            = 1
+=== #398  2026-07-26 10:59:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 398_105910_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #399  2026-07-26 11:04:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 399_110437_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 328
+  experience_total          = 214
+  detail_present            = 1
+=== #400  2026-07-26 11:04:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 400_110437_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 328
+  experience_total          = 428
+  detail_present            = 1
+=== #401  2026-07-26 11:12:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 401_111258_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #402  2026-07-26 11:12:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 402_111258_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #403  2026-07-26 11:18:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 403_111825_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #404  2026-07-26 11:18:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 404_111825_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #405  2026-07-26 11:26:46  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 405_112646_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #406  2026-07-26 11:26:46  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 406_112646_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #407  2026-07-26 11:32:14  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 407_113214_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #408  2026-07-26 11:32:14  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 408_113214_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #409  2026-07-26 11:40:35  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 409_114035_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #410  2026-07-26 11:40:35  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 410_114035_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #411  2026-07-26 11:46:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 411_114603_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #412  2026-07-26 11:46:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 412_114603_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #413  2026-07-26 11:54:24  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 413_115424_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #414  2026-07-26 11:54:24  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 414_115424_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #415  2026-07-26 11:59:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 415_115949_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #416  2026-07-26 11:59:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 416_115949_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #417  2026-07-26 12:08:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 417_120810_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #418  2026-07-26 12:08:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 418_120810_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #419  2026-07-26 12:13:38  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 419_121338_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #420  2026-07-26 12:13:38  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 420_121338_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #421  2026-07-26 12:21:59  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 421_122159_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #422  2026-07-26 12:21:59  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 422_122159_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #423  2026-07-26 12:27:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 423_122726_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #424  2026-07-26 12:27:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 424_122726_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #425  2026-07-26 12:35:47  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 425_123547_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #426  2026-07-26 12:35:47  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 426_123547_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #427  2026-07-26 12:41:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 427_124115_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #428  2026-07-26 12:41:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 428_124115_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #429  2026-07-26 12:49:36  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 429_124936_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #430  2026-07-26 12:49:36  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 430_124936_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #431  2026-07-26 12:55:00  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 431_125500_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #432  2026-07-26 12:55:00  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 432_125500_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #433  2026-07-26 13:03:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 433_130321_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #434  2026-07-26 13:03:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 434_130321_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #435  2026-07-26 13:08:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 435_130849_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #436  2026-07-26 13:08:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 436_130849_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #437  2026-07-26 13:17:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 437_131710_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #438  2026-07-26 13:17:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 438_131710_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #439  2026-07-26 13:22:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 439_132237_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #440  2026-07-26 13:22:38  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 440_132238_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #441  2026-07-26 13:30:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 441_133058_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #442  2026-07-26 13:30:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 442_133058_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #443  2026-07-26 13:36:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 443_133626_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #444  2026-07-26 13:36:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 444_133626_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #445  2026-07-26 13:44:47  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 445_134447_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #446  2026-07-26 13:44:47  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 446_134447_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #447  2026-07-26 13:50:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 447_135015_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #448  2026-07-26 13:50:15  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 448_135015_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #449  2026-07-26 13:58:33  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 449_135833_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #450  2026-07-26 13:58:33  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 450_135833_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #451  2026-07-26 14:04:00  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 451_140400_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #452  2026-07-26 14:04:00  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 452_140400_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #453  2026-07-26 14:12:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 453_141221_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #454  2026-07-26 14:12:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 454_141221_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #455  2026-07-26 14:17:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 455_141749_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #456  2026-07-26 14:17:49  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 456_141749_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #457  2026-07-26 14:26:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 457_142610_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #458  2026-07-26 14:26:10  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 458_142610_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #459  2026-07-26 14:31:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 459_143137_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #460  2026-07-26 14:31:37  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 460_143137_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #461  2026-07-26 14:39:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 461_143958_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #462  2026-07-26 14:39:58  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 462_143958_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #463  2026-07-26 14:45:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 463_144526_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #464  2026-07-26 14:45:26  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 464_144526_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #465  2026-07-26 14:53:44  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 465_145344_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #466  2026-07-26 14:53:44  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 466_145344_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #467  2026-07-26 14:59:13  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 467_145913_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 328
+  experience_total          = 214
+  detail_present            = 1
+=== #468  2026-07-26 14:59:13  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 468_145913_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 328
+  experience_total          = 428
+  detail_present            = 1
+=== #469  2026-07-26 15:07:36  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 469_150736_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 466
+  experience_total          = 214
+  detail_present            = 1
+=== #470  2026-07-26 15:07:36  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 470_150736_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 466
+  experience_total          = 428
+  detail_present            = 1
+=== #471  2026-07-26 15:13:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 471_151303_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #472  2026-07-26 15:13:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 472_151303_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #473  2026-07-26 15:21:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 473_152125_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #474  2026-07-26 15:21:25  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 474_152125_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #475  2026-07-26 15:26:52  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 475_152652_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #476  2026-07-26 15:26:52  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 476_152652_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #477  2026-07-26 15:35:14  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 477_153514_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #478  2026-07-26 15:35:14  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 478_153514_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #479  2026-07-26 15:40:39  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 479_154039_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #480  2026-07-26 15:40:39  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 480_154039_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #481  2026-07-26 15:49:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 481_154903_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 466
+  experience_total          = 214
+  detail_present            = 1
+=== #482  2026-07-26 15:49:03  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 482_154903_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 466
+  experience_total          = 428
+  detail_present            = 1
+=== #483  2026-07-26 15:54:30  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 483_155430_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #484  2026-07-26 15:54:31  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 484_155431_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #485  2026-07-26 16:02:51  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 485_160251_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 214
+  detail_present            = 1
+=== #486  2026-07-26 16:02:51  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 486_160251_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 465
+  experience_total          = 428
+  detail_present            = 1
+=== #487  2026-07-26 16:08:19  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 487_160819_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 214
+  detail_present            = 1
+=== #488  2026-07-26 16:08:19  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 488_160819_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 327
+  experience_total          = 428
+  detail_present            = 1
+=== #489  2026-07-26 16:16:43  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 489_161643_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 468
+  experience_total          = 214
+  detail_present            = 1
+=== #490  2026-07-26 16:16:43  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 490_161643_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 468
+  experience_total          = 428
+  detail_present            = 1
