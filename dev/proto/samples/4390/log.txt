@@ -2461,3 +2461,9 @@
   experience_total          = 214
   detail_present            = 1
   B24 tdm_consecutive_survivals= 2
+=== #357  2026-07-26 03:57:41  0x4390  167 bytes  -> 357_035741_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  seconds_in_game           = 1987
+  experience_total          = 214
+  detail_present            = 1
