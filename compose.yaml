@@ -9,7 +9,7 @@ name: mgo2server
 
 x-server-env: &server-env
   # Set to DEBUG to trace every packet, including hex dumps, when testing a real client.
-  MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-INFO}
+  MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-DEBUG}
   # Third field of the login reply; see AuthWebController. Set to try alternatives.
   MGO2SERVER_LOGIN_PERKS: ${MGO2SERVER_LOGIN_PERKS:-}
   MGO2SERVER_DB_URL: jdbc:postgresql://postgres:5432/mgo2server
@@ -98,6 +98,13 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # One instance per game-lobby row in dev/tools/seed.sql. A row in that table is an address the
+  # client will dial: the gate hands out its ip and port, and picking that lobby — or the port
+  # check picking the first game lobby in the list — opens a socket to it. A row with no server
+  # behind it is not an empty lobby, it is "unable to connect to lobby".
+  #
+  # MGO2SERVER_LOBBY_ID must be the row's id and MGO2SERVER_LOBBY_SUBTYPE its subtype: hosted
+  # games are inserted against that id, and the game list filters on it.
   gamelobby:
     build: .
     image: mgo2server:local
@@ -107,7 +114,8 @@ services:
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "2"
-      MGO2SERVER_LOBBY_ID: "3"
+      MGO2SERVER_LOBBY_ID: "4"
+      MGO2SERVER_LOBBY_SUBTYPE: "1"
       MGO2SERVER_GAME_PORT: "15733"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -115,6 +123,83 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15733"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  automatching:
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "3"
+      MGO2SERVER_LOBBY_SUBTYPE: "2"
+      MGO2SERVER_GAME_PORT: "15740"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15740"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  basictraining:
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      # Five u16s for 0x43d1, comma-separated. The count is protocol; the values are mgo2-server's
+      # and unexplained. Set this to sweep them against a live client without a rebuild — the first
+      # is rendered on the training screen through message 847.
+      MGO2SERVER_TRAINING_PARAMS: ${MGO2SERVER_TRAINING_PARAMS:-}
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "5"
+      MGO2SERVER_LOBBY_SUBTYPE: "7"
+      MGO2SERVER_GAME_PORT: "15737"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15737"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  combattraining:
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_TRAINING_PARAMS: ${MGO2SERVER_TRAINING_PARAMS:-}
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "6"
+      # Subtype 8, not 7. Every row in the training menu is gated by 0x884584(n), which matches the
+      # CURRENT lobby's subtype exactly — 7 renders the basic-training rows, 8 the combat-training
+      # rows. The 7/8 grouping applies only to listing, not to contents.
+      MGO2SERVER_LOBBY_SUBTYPE: "8"
+      MGO2SERVER_GAME_PORT: "15738"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15738"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -147,7 +232,7 @@ services:
   # resolver stub do not collide with these.
   probe-http:
     image: python:3.12-alpine
-    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 80'
+    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 80'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
     volumes:
@@ -162,7 +247,7 @@ services:
 
   probe-https:
     image: python:3.12-alpine
-    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 443 tls'
+    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 443 tls'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
       # cert-expired.pem swaps in a chain whose only defect is its validity window, which the

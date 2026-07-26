@@ -57,6 +57,8 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
+- `dev/docs/LOBBIES.md` — the lobby model: types, subtypes and the categories this build has, the
+  two lists the client keeps, what the port check dials, and the deployment rules that follow.
 - `dev/docs/STUN.md` — the UDP port check.
 - `dev/docs/CRYPTO.md` — every cipher, key and hash, and where each is applied.
 - `dev/docs/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.

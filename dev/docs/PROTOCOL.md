@@ -1687,25 +1687,130 @@ Request payload is not read. Blocks on the reply — **`0A21:FFFFFF60`** without
 | command | payload |
 | --- | --- |
 | `0x4901` | 4 bytes result (`C0FFEE02` and stop, with no session) |
-| `0x4902` | up to 8 entries, 35 bytes each |
+| `0x4902` | up to 8 entries, 99 bytes each |
 | `0x4903` | 4 bytes result |
 
 Only lobbies of type GAME are listed.
 
-### `0x4902` entry — 35 bytes
+### `0x4902` entry — 99 (`0x63`) bytes
+
+Read out of the parser at `0xD47E18`, field by field, 2026-07-25. It reads with the same
+primitives as every other command (`0xD5CCD8` u32, `0xD5CB8C` u8, `0xD5CC14` u16, `0xD5D018` raw)
+into a 120-byte struct, appends it to a 64-entry array at `ctx+0xB790`, and loops until the read
+cursor passes the payload length.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | index |
-| `0x04` | 4 | u32 | attributes: **the lobby subtype in the top byte**, the remaining 24 bits unused/unknown |
+| `0x04` | 1 | u8 | **lobby subtype** — the only field the hub menu dispatches on |
+| `0x05` | 1 | u8 | unknown |
+| `0x06` | 1 | u8 | unknown; read for subtype 5, which wants the value 3 |
+| `0x07` | 1 | u8 | bit flags, expanded one bit per field into the struct |
 | `0x08` | 2 | u16 | lobby id |
 | `0x0a` | 16 | ISO-8859-1 | lobby name |
-| `0x1a` | 4 | u32 | open time — always 0 |
-| `0x1e` | 4 | u32 | close time — always 0 |
-| `0x22` | 1 | u8 | open flag — always 1 |
+| `0x1a` | 64 | ISO-8859-1 | text block, rendered only by the subtype-5 category |
+| `0x5a` | 4 | u32 | open time — always 0 |
+| `0x5e` | 4 | u32 | close time — always 0 |
+| `0x62` | 1 | u8 | open flag — always 1 |
 
-Whether "attributes" really is subtype-in-the-top-byte is reference-derived and unverified; the
-other 24 bits have no known meaning.
+The first eight bytes are what the reference servers write as `index` plus an `attributes` u32
+with the subtype in its top byte; that packing is right, because the top byte of a big-endian u32
+is the u8 at `0x04`. The 64-byte text block is what they omit, and **omitting it is why only the
+first lobby ever appears in Lobby Select**: the readers bound-check against the 1023-byte buffer,
+not against the payload length, so a short entry does not fail — the parser simply resumes 64
+bytes into the next entry and reads rubbish from there on.
+
+### The hub menu is a fixed set of categories, one row per subtype
+
+`0x890410`–`0x8905d8` builds Lobby Select by scanning the parsed array once per subtype — 2, 1,
+7‑or‑8, 5, 3, 4 — and **stopping at the first entry that matches**. Each match writes one menu row
+whose label comes from the client's own string table (`0x8E0C24`; ids 251/260 for subtype 2,
+245/261 for 1, 249/262 for 7 and 8, 246/263 for 3, 248/265 for 4) and whose action code is fixed
+(9, 10, 11, 13, 14). Two consequences, both protocol rather than policy:
+
+- **The lobby name in the entry is never shown on this screen.** Naming a lobby "Basic Training"
+  does not make the row say that; the row says whatever the client's string for that subtype says.
+- **A second lobby with the same subtype adds no second category row** — but it is not lost. The
+  list behind a category is built separately, at `0x89147C`: it walks every parsed entry, accepts
+  any whose subtype matches the current lobby's (with 7 and 8 treated as one group), and separates
+  them **by lobby id**. Two subtype-7 lobbies both appear there. Confirmed on echo, 2026-07-25.
+  **This grouping applies to listing only.** The menu *inside* a training lobby is gated row by row
+  by `0x884584(n)`, which matches the lobby's own subtype exactly — so Basic and Combat Training
+  must still be 7 and 8 or the second renders the first's menu. See `LOBBIES.md`.
+
+### Every category this build has
+
+The six scans in the menu builder, in the order they run, with the string-table ids each row is
+labelled from and the action code it stores. This is the complete set — there is no scan for any
+other subtype, so a lobby with one can never produce a row:
+
+| subtype | scan | row emitted at | string ids | action |
+| --- | --- | --- | --- | --- |
+| 2 | `0x8904CC` | `0x89097C` | 251 / 260 | 9 |
+| 1 | `0x89044C` | `0x890908` | 245 / 261 | 10 |
+| 7 or 8 | `0x890488` | `0x890894` | 249 / 262 | 11 |
+| 5 | `0x8904CC` | inline `0x890504` | 264 + the entry's 64-byte text | 12 |
+| 3 | `0x890578` | `0x890820` | 246 / 263 | 13 |
+| 4 | `0x8905B4` | `0x8907AC` | 248 / 265 | 14 |
+
+**Subtypes 3, 4 and 5 are present in this binary.** Their branches are ordinary — same shape as
+the three we use, no expansion check, no DLC flag, reached purely by a matching entry being in the
+list. What they are *called* cannot be settled from the ELF: `0x8E0C24` resolves an id against an
+external message resource, not a table in the binary, so the labels are on the disc. Subtype 5 is
+the one with a precondition — the entry's byte at `0x06` must be 3 — and the only one that renders
+the 64-byte text. Subtype 6, 9 and 10 (the "registration" id in reference schemas) have **no scan
+at all**.
+
+Selecting a row stores its subtype at `+0x294` of the object behind `0x883F20` (`0x890640`) —
+which is the same byte the game-lobby `0x3003` appends as its trailing flag. **The check-session
+trailing byte is the subtype of the lobby being entered**, not an unknown flag.
+
+### Which lobby the port check dials
+
+Not the one the player picks, and this constrains the `lobby` table. The waiting machine's state 0
+(`0x946F8C`) counts type-2 entries in the **gate** list, reads a 2-byte client setting — group 25,
+id `0xFE`, zero-initialised before the read — and passes it to the connect-by-ordinal wrapper
+(`0xD384A4`), which resolves the ordinal to a list index and opens a socket to that entry's ip and
+port. So the game lobby at that ordinal must have a server behind it or login fails with *unable
+to connect to lobby*, whatever the rest of the table says. Inserting a game-lobby row ahead of the
+others moves the target.
+
+## `0x43d0` — training parameter fetch
+
+**Client → server**, `HubGameController.getTrainingParams`. Traced and implemented 2026-07-25 after
+it was observed unanswered in both training lobbies.
+
+Sent from one state of the lobby-entry state machine (`0x897758`) — the same machine that branches
+on the selected subtype at `+0x294` — with a **single u8 argument, value 8** (builder `0xD3A680`).
+The state blocks on the reply and takes an error exit if it fails, so an unanswered `0x43d0` is
+another `FFFFFF60` waiting to happen on whichever screen sends it.
+
+### Reply `0x43d1` — 10 bytes
+
+Parser `0xD3A560`: a loop of **five u16 reads** (`0xD5CC14`) into a 10-byte block, copied wholesale
+(`lswi`/`stswi` 10) to `ctx+0x117EC` and signalled as request-status id 31. Nothing else about the
+values is known. mgo2-server answers with the fixed bytes `00 0A 00 15 00 3A 00 08 00 61` (u16s
+10, 21, 58, 8, 97), which is tier 4 — the *shape* is confirmed from the binary, the *values* are
+somebody's constant — and we send the same, because **the first halfword is rendered to the
+player**: `0x8978C8` loads it and passes it to the string formatter with message id 847, so a zero
+would put a zero on screen. The reset path at `0xD35780` zeroes all five, which is what an
+unanswered `0x43d0` leaves behind.
+
+Answering it did **not** make the training Graduate action work; that is gated on player state
+elsewhere (see below).
+
+## `0x43e0` — automatch status fetch
+
+**Client → server**, `HubGameController.getAutomatchStatus`. Sent on entry to the automatching
+lobby with a **single u8 argument** (observed 11). Neither reference server implements it.
+
+### Reply `0x43e1` — 6 bytes
+
+Parser `0xD5BFC0`: a u32 result, and **only if that result is zero**, two u8s — stored at
+`+0x14A1`/`+0x14A2` behind a "loaded" flag set at `+0x14A0`. Request-status 50 is signalled either
+way, so a nonzero result is a legitimate "nothing to report" rather than something the client
+chokes on. We send result 0 and two zero bytes; the two bytes are unidentified and there are no
+borrowed values to lean on.
 
 ## `0x4990` — get game entry info
 
@@ -1772,7 +1877,7 @@ grouped by how likely normal play is to hit them, not listed flat.
 
 **Reachable in ordinary flow (highest priority to resolve):** the in-match/host family we have
 only partly covered — `0x4348`, `0x4394` (large struct), `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
-`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4112`,
+`0x43c8`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4112`,
 `0x4210`, `0x4220`. (`0x4102` and `0x4132` were on this list until 2026-07-23, when both surfaced
 as live stalls and were traced and handled — see their sections.) The rest have not surfaced in
 testing yet, so each is conditional on a specific action/menu we have not exercised.
