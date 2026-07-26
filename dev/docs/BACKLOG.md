@@ -4,6 +4,42 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
+## Training graduation — the gate is unfound, and skills are handed out unconditionally
+
+*Pinned 2026-07-26, from a live combat-training session.* Two separate things, both deferred.
+
+**The graduation gate.** Graduating requires roughly 30 minutes of accumulated training time —
+not per session: a student can accrue it across sessions, and the instructor's client is what
+decides eligibility, so the joiner's stored total has to reach the host somehow. Where that number
+travels is still unknown. What is settled:
+
+- Pressing Graduate emits **no traffic at all**, so the check is client-side against state the
+  client already holds. It is not a missing reply.
+- The profile gate at `0x8972F4` (`profile[+0x2D80] != 0 && profile[+0x2D88] == 0`) **is already
+  satisfied** by what we send — those bytes are skill 17's record in the `0x4125` catalogue
+  (`0xD3CA3C` scatters each record to `base + 11440 + 4 + index*12`), and `LoadoutWriter` sends
+  skill 17 with a zero trailing byte. That is why the row renders.
+- `0x43d1`'s five u16s are **not** the stored total, or not the whole story: serving 60 in the
+  first slot did not unlock the button (tested 2026-07-26). Serving 1 did not lock it out either,
+  though that test was confounded with waiting.
+- `0x43a4`, the third command in the same client-settings module as `0x43a6`, has **never been
+  sent** by this client, so it is not the download path.
+
+Next places to look, in order: the per-player data the host receives when a joiner arrives
+(`0x4321`, 43 B; `0x4313`, 400 B; the unmodelled player-details card `0x4221`), and the training
+screen's action dispatch (`0x8976F8`, `0x899D50`) to find what action code 50 actually tests.
+Capturing a training `0x4390` would also show whether training time reports like an ordinary round
+— `seconds_in_game` is host-measured, so the host is the timekeeper either way.
+
+**Skills are unconditional.** `LoadoutWriter.writeSkills` advertises skills 1–25 to every
+character on connect, which is a deliberate shortcut, not the game's behaviour. Graduating from
+combat training should **grant the instructor skill**, and possessing it should be what gates
+hosting a combat-training game (or whatever else marks a graduate). Doing it properly means
+per-character skill ownership — a table, granted on graduation, filtered in `0x4125` — and it
+depends on finding the graduation gate above, since nothing server-side currently learns that a
+graduation happened. Low priority: the blanket catalogue costs nothing until skill ownership
+matters.
+
 ## Lobby Select population — derived counts shipped, presence table still open
 
 *Pinned 2026-07-21; first sketch implemented 2026-07-22.* The lobby-list entry (`0x2003`, offset

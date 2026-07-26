@@ -450,8 +450,9 @@ it, not the ordering itself.
   and was confirmed not to help.
 
   What remains unread is the **action handler**: the row stores action code 50, and pressing it
-  emits no traffic, so something in that path refuses silently. Next step is the training screen's
-  state dispatch (jump tables at `0x8976F8` and `0x899D50`), not more guessing at profile bytes.
+  emits no traffic, so something in that path refuses silently. Serving 60 in the first `0x43d1`
+  slot did not unlock it either (2026-07-26), so that value is not the stored training total.
+  Deferred with the full state of the investigation in `BACKLOG.md`, "Training graduation".
 - The meaning of the `0x43d1` values, and which screens send `0x43d0`.
 - Hub entry fields `0x05`, `0x06` (outside the subtype-5 check) and the eight-bit flags byte at
   `0x07`: parsed into distinct booleans, no consumer identified.
