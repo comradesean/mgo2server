@@ -4,11 +4,17 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
-## Training graduation — the gate is unfound, and skills are handed out unconditionally
+## Training progression — nothing is locked, so nothing needs unlocking (yet)
 
-*Pinned 2026-07-26, from a live combat-training session.* Two separate things, both deferred.
+*Pinned 2026-07-26, from a live combat-training session; reframed the same day.* The instructor
+role and graduation are **already available by default** on this server, because we advertise every
+skill to every character and hold no progression state at all. So there is nothing to unlock — the
+real work is the opposite, and it is one job rather than two: **model what a character has earned,
+which makes these things lockable, and only then implement graduation as the thing that unlocks
+them.** Until that exists, the notes below are the map, not a to-do list.
 
-**The graduation gate.** Graduating requires roughly 30 minutes of accumulated training time —
+**What we learned about the gate anyway.** Graduating requires roughly 30 minutes of accumulated
+training time —
 not per session: a student can accrue it across sessions, and the instructor's client is what
 decides eligibility, so the joiner's stored total has to reach the host somehow. Where that number
 travels is still unknown. What is settled:
@@ -38,14 +44,24 @@ screen's action dispatch (`0x8976F8`, `0x899D50`) to find what action code 50 ac
 Capturing a training `0x4390` would also show whether training time reports like an ordinary round
 — `seconds_in_game` is host-measured, so the host is the timekeeper either way.
 
-**Skills are unconditional.** `LoadoutWriter.writeSkills` advertises skills 1–25 to every
-character on connect, which is a deliberate shortcut, not the game's behaviour. Graduating from
-combat training should **grant the instructor skill**, and possessing it should be what gates
-hosting a combat-training game (or whatever else marks a graduate). Doing it properly means
-per-character skill ownership — a table, granted on graduation, filtered in `0x4125` — and it
-depends on finding the graduation gate above, since nothing server-side currently learns that a
-graduation happened. Low priority: the blanket catalogue costs nothing until skill ownership
-matters.
+**Why nothing is locked.** `LoadoutWriter.writeSkills` advertises skills 1–25 to every character
+on connect, and `HostGameController` writes every `0x4129` skill record with a zero trailing byte
+— the byte the client treats as an ownership flag, read as a gate across the UI. So the client is
+told the player owns nothing and may do everything, which lands on "unlocked" for the cases we can
+reach.
+
+The shape of the real fix, when it matters: per-character skill ownership (a table, filtered into
+`0x4125` and `0x4129`), graduation recorded server-side, and the instructor skill granted by it and
+required to host combat training. It is blocked less by the ELF than by the fact that nothing
+server-side currently learns a graduation happened — the client never tells us.
+
+**Shipped in the meantime** (2026-07-26): training totals are real. `0x4107` slots 46/47/48 are
+derived from `round_report` via `CharacterService.trainingSeconds`, so accumulated time survives
+sessions. Migration V19 stamps `lobby_subtype` on each report because `game_id` has no foreign key
+and games are deleted on teardown — joining a report back to its lobby afterwards finds nothing.
+Rows written before V19 hold 0 and count nowhere. A synthetic row grants credit for testing:
+`insert into round_report (game_id, host_chara_id, chara_id, lobby_subtype, seconds_in_game)
+values (0, 1, <chara>, 8, 3600);`
 
 ## Lobby Select population — derived counts shipped, presence table still open
 

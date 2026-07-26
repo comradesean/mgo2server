@@ -247,7 +247,8 @@ public class GameService {
 	 */
 	public record RoundReport(long gameId, long hostCharaId, long charaId, int flag,
 			short[] structA, int teamSlot, int seconds, long experienceTotal,
-			long detailPresent, short[] detail, long trailingWord, boolean aborted) {
+			long detailPresent, short[] detail, long trailingWord, boolean aborted,
+			int lobbySubtype) {
 	}
 
 	/**
@@ -272,12 +273,12 @@ public class GameService {
 						 headshots, headshot_deaths, counter_0x15, counter_0x17,
 						 counter_0x19, lockon_deaths, rounds_played, counter_0x1f, counter_0x21,
 						 team_slot, seconds_in_game, experience_total, detail_present,
-						 detail_counters, trailing_word, aborted)
+						 detail_counters, trailing_word, aborted, lobby_subtype)
 					values (:game, :host, :chara, :flag,
 						 :a0, :a1, :a2, :a3, :a4, :a5, :a6, :a7, :a8, :a9,
 						 :a10, :a11, :a12, :a13, :a14,
 						 :team, :seconds, :exp, :detailPresent, cast(:detail as smallint[]),
-						 :trailing, :aborted)
+						 :trailing, :aborted, :lobbySubtype)
 					""")
 				.bind("game", report.gameId())
 				.bind("host", report.hostCharaId())
@@ -289,7 +290,8 @@ public class GameService {
 				.bind("detailPresent", report.detailPresent())
 				.bind("detail", detail.toString())
 				.bind("trailing", report.trailingWord())
-				.bind("aborted", report.aborted());
+				.bind("aborted", report.aborted())
+				.bind("lobbySubtype", report.lobbySubtype());
 			for (var i = 0; i < 15; i++) {
 				update.bind("a" + i, report.structA()[i]);
 			}
