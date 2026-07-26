@@ -28,15 +28,25 @@ doc: |
 
   **Level is derived, never sent.** `0x6FC580` computes `min(exp >> 13, 3)` from the u2 at
   record+6 — the low half of the widened u32 — so only four levels exist, at exp 0 / 8192 / 16384
-  / 24576. In-match code compares that level against a per-entry requirement byte. A finer ladder
-  at `0x6FCBF8` (0, 1, 16, 23, 31, 35, 38, 45, 47, 51, 63, 70, 73 -> levels 1..13) is used by other
-  screens; which applies where is not established.
+  / 24576. In-match code compares that level against a per-entry requirement byte.
 
-  **We send 25 skills; the client indexes at least 86.** Reads of this array name skills 0, 6, 7,
-  13, 17, 34, 50, 51, 52, 54, 55, 85 and 86 — flags for 6/13/17/34/85, experience for 50/51/52/54
-  /86 — while `LoadoutWriter` advertises 1..25. Everything above 25 is permanently level 0, flag 0
-  for our clients, and what those gates control has never been checked. Skill 34's flag alone has
-  nine readers (from 0x5934C8).
+  ## Only 17 skills exist
+
+  The array is 128 entries but the game defines **17 skills, ids 1..17**. The list UI checks
+  `(id - 1) <= 16` (0x8DC3A8, and again at 0xB3B530/0xB3B5B0); the equip-cost table at vaddr
+  0xE11344 is exactly 18 rows of 3 bytes — row = id, column = level, value = skill points, `00 00
+  00` terminator at row 18, read straight out of the ELF; and every id-keyed lookup clamps to 17
+  (0x6FC528 plus 28 clamp sites). Total equip budget is 4 points (0x8DC7C4).
+
+  Ids 18..127 are addressable by this parser and defined by nothing — they are stored and listed,
+  then clamp to row 17 for cost and name. They are not reserved slots. **We currently send 1..25,
+  so eight of them are undefined.**
+
+  Names are not in the binary: they are message ids, `name = 100 + 2*id` (resolved via 0x8E0BF0 at
+  0x8DB8CC, 0x8DD73C, 0x8DFFA4, 0x8F9B1C) with level descriptions at `179 + 3*id` (+0/+1/+2). Six
+  ids are pinned anyway, because 0x6FCD48 maps weapon id to the skill that earns its experience:
+  1 Handgun (weapons 2-16), 2 SMG (17-23), 3 Assault Rifle (24-31), 4 Shotgun (36-38),
+  5 Sniper Rifle (39-45), 11 Knife (weapon 1). LMGs (32-35) feed no skill.
 
   ## This arm is the burst's terminal packet
 
@@ -78,7 +88,15 @@ types:
         type: u1
         doc: |
           [CONFIRMED PRESENT, MEANING UNKNOWN] third byte, landing at record+8. Read (0xD3CD6C)
-          into the record, so it is not padding. **This is the field the client's per-skill gates
-          test** — skill 6 at 0xC7F6D8/0xC83D04, 13 at 0x8830E8, 17 at 0x897320, 34 at nine sites
-          from 0x5934C8, 85 at 0xD8E7C0. We send 0 for every skill, so every one of those gates
-          sees "not set". Whether it means owned, unlocked, new or equipped is unestablished.
+          into the record, so it is not padding.
+
+          **Exactly one read of this field exists in the binary, and it is skill 17's** — at
+          0x897320, where "record present (0x897314) and flag == 0" enables the training menu entry
+          drawn from messages 866/867. An earlier version of this file listed readers for skills 6,
+          13, 34 and 85; those were false positives from matching displacements without checking
+          base registers (0x414060-0x41482C is one unrolled 16-stride struct initialiser that
+          accounts for most of them). Filtering to functions that actually reach the profile
+          accessor 0xD3A094 leaves three hits, all skill 17.
+
+          We send 0 for every skill. Whether the field means owned, unlocked, new or equipped is
+          unestablished — only that skill 17's must be 0 for that menu entry to appear.
