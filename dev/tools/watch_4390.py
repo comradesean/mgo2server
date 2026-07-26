@@ -15,7 +15,10 @@ Usage:
     dev/tools/watch_4390.py                    # follow live 0x4390
     dev/tools/watch_4390.py --replay           # process the container's whole existing log, then exit
     dev/tools/watch_4390.py --cmd 43a2         # watch a different command (hex dump if no decoder)
-    dev/tools/watch_4390.py --container NAME   # non-default container
+    dev/tools/watch_4390.py --container NAME   # one container, or a comma-separated list
+
+By default every game-lobby container is followed at once and each hit is labelled with the lobby
+it came from, so a report cannot be missed by watching the wrong one.
 
 Requires the gamelobby at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are hex-dumped.
 Stop with Ctrl-C. Decoders are labels-as-of 2026-07-26; see the ksy for evidence status.
@@ -26,11 +29,21 @@ import argparse
 import os
 import re
 import struct
+import queue
 import subprocess
 import sys
+import threading
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_CONTAINER = "mgo2server-gamelobby-1"
+# Every game lobby, because the stack runs one container per lobby row and a report only appears
+# in the lobby it was played in. Watching a single container silently misses everything else --
+# a 0x4390 from a training session went unnoticed that way on 2026-07-26.
+DEFAULT_CONTAINERS = [
+    "mgo2server-gamelobby-1",
+    "mgo2server-automatching-1",
+    "mgo2server-basictraining-1",
+    "mgo2server-combattraining-1",
+]
 
 # --- 0x4390 field labels (dev/proto/mgo2_cmd_4390.ksy is the authority) -----------------
 
@@ -129,7 +142,8 @@ def next_index(folder: str) -> int:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cmd", default="4390", help="command id hex to capture (default 4390)")
-    ap.add_argument("--container", default=DEFAULT_CONTAINER)
+    ap.add_argument("--container", default=",".join(DEFAULT_CONTAINERS),
+                    help="container name, or comma-separated list (default: every game lobby)")
     ap.add_argument("--replay", action="store_true", help="process the whole existing log and exit")
     ap.add_argument("--dir", default=None, help="output folder (default dev/proto/samples/<cmd>)")
     args = ap.parse_args()
@@ -140,8 +154,11 @@ def main():
     n = next_index(folder)
     logf = open(os.path.join(folder, "log.txt"), "a")
 
-    docker = ["docker", "logs"] + ([] if args.replay else ["-f", "--tail", "0"]) + [args.container]
-    proc = subprocess.Popen(docker, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    containers = [c.strip() for c in args.container.split(",") if c.strip()]
+    follow = [] if args.replay else ["-f", "--tail", "0"]
+    procs = [(c, subprocess.Popen(["docker", "logs"] + follow + [c],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True))
+             for c in containers]
 
     head_re = re.compile(
         r"^(?P<date>\d{4}-\d\d-\d\d) (?P<time>\d\d:\d\d:\d\d),\d+ .*DEBUG: "
@@ -149,15 +166,36 @@ def main():
     hex_re = re.compile(r"DEBUG: (?P<hex>[0-9a-f]{2,})\s*$")
 
     pending = None  # header waiting for its hex line
+    pending_source = ""  # which container that header came from
     seen = 0
     dropped = 0  # headers seen but not archived — never let these go by silently
-    print(f"Watching {'log history' if args.replay else 'LIVE'} on {args.container} "
+    print(f"Watching {'log history' if args.replay else 'LIVE'} on {', '.join(containers)} "
           f"for 0x{cmd}; archiving to {folder} starting at {n:03d}. Ctrl-C to stop.")
+
+    def lines_from_all():
+        """Interleave the containers' streams. One reader thread per container feeds a queue, so a
+        silent lobby never blocks a busy one — which a sequential read would do."""
+        q = queue.Queue()
+        for name, proc in procs:
+            def pump(name=name, proc=proc):
+                for line in proc.stdout:
+                    q.put((name, line))
+                q.put((name, None))
+            threading.Thread(target=pump, daemon=True).start()
+        live = len(procs)
+        while live:
+            name, line = q.get()
+            if line is None:
+                live -= 1
+                continue
+            yield name, line
+
     try:
-        for line in proc.stdout:
+        for source, line in lines_from_all():
             h = head_re.match(line)
             if h:
                 pending = h if h.group("cmd") == cmd and h.group("dir").strip() == "In" else None
+                pending_source = source
                 continue
             if pending is None:
                 continue
@@ -189,7 +227,7 @@ def main():
                 f.write(b)
             body = decode_4390(b) if cmd == "4390" else hex_dump(b)
             block = (f"=== #{n:03d}  {pending.group('date')} {ts}  0x{cmd}  "
-                     f"{len(b)} bytes  -> {fname}\n{body}\n")
+                     f"{len(b)} bytes  [{pending_source}]  -> {fname}\n{body}\n")
             print(block)
             logf.write(block)
             logf.flush()
@@ -199,7 +237,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        proc.terminate()
+        for _, proc in procs:
+            proc.terminate()
         logf.close()
     print(f"{seen} packet(s) captured, {dropped} dropped."
           + ("  <-- DROPPED PACKETS: the capture is incomplete, do not read the set as a"
