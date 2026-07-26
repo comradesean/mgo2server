@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4302 — server -> client: game-list entries (reply 2/3 to 0x4300)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4302` at `0xD3881C` -> stub `0xD391B0` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4302` at `0xD3881C` -> stub `0xD391B0` ->
   parser **`0xD43D48`**. Read primitives: `0xD5CCD8` u32, `0xD5CB8C` u8, `0xD5CC14` u16,
   `0xD5D018` raw block, `0xD5CEB0` remaining-bytes test.
 
@@ -30,6 +30,13 @@ doc: |
 
   Field *meanings* are PROTOCOL.md's, live-derived from the browser; the widths and order
   are the parser's.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x4302 entry — 55 (0x37) bytes"
 seq:
   - id: entries

@@ -4,7 +4,7 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4932` at `0xd38c74` and branches to the
+  Evidence: GAME reply dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4932` at `0xd38c74` and branches to the
   thunk at `0xd39730`, which tail-calls the parser at `0xd4d18c`. Channel A (lobby TCP).
 
   Read primitives used throughout (identified from their own disassembly, not borrowed):
@@ -27,6 +27,12 @@ doc: |
   two-valued field. The u32 is compared against the member slot's own first word before a
   state byte is written at member+0x11 [READ 0xd4d2b8-0xd4d2d8]. Payload 12 bytes; event 4.
 
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md
 seq:
   - id: clan_id

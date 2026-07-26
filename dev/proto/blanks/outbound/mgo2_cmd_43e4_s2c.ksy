@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43e4 — server -> client: automatch state push (UNSOLICITED, no result field)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43E4` at `0xD38A5C` -> stub `0xD39DAC` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43E4` at `0xD38A5C` -> stub `0xD39DAC` ->
   parser **`0xD5BDCC`**. Destination base `A = ctx+0x10000`.
 
   **This is not a reply.** Two things prove it:
@@ -27,6 +27,13 @@ doc: |
   `0x43e*`/`0x43f*` unimplemented block. Nothing is known about the subsystem's semantics; the
   layout is exact and the meanings are entirely [UNKNOWN]. Since we never send it, the risk
   here is zero — this file exists so the id is enumerated and the shape recorded.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md ("0x43e*/0x43f* — an in-match subsystem")
 seq:
   - id: unknown_00

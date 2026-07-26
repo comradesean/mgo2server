@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x3049 — character list (server -> client)"
   endian: be
 doc: |
-  Reply to `0x3048`. Parser arm **0xd3732c** (ACCOUNT dispatcher 0xd37074), wait slot 14 (0xe).
+  Reply to `0x3048`. Parser arm **0xd3732c** (ACCOUNT dispatcher 0xd37024 (compare tree at 0xd37074)), wait slot 14 (0xe).
   Total **0x1d7 = 471 bytes**, and the grid is **fixed regardless of how many characters exist**:
   the entry loop is `li r24,0 ... cmpwi r24,420; addi r24,r24,60; bne` at 0xd37740 — exactly
   **8 iterations**, count-independent, with no `MORE_DATA?` check anywhere.
@@ -23,6 +23,13 @@ doc: |
   After `READ_END` the parser scans the 8 entries for the one whose slot byte equals the
   `selected_slot` header field (0xd37778: `lbz r4,2(r27); cmplwi r4,7; bgt -> skip`), so
   `selected_slot` is an index into the *slot numbers*, bounded at 7.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x3048 — get character list"; dev/docs/OBSERVED.md
 seq:
   - id: result

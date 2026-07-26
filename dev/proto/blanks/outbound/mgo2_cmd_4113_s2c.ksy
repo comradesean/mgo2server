@@ -17,7 +17,10 @@ seq:
   - id: result
     type: u4
     doc: |
-      [CONFIRMED] Wire 0x00. The whole payload as far as the client is concerned. 0 on success;
+      [ELF 0xd3b148-0xd3b17c] Wire 0x00. The whole payload as far as the client is concerned.
+      **Tag downgraded 2026-07-26 from [CONFIRMED]:** 0x4113 appears nowhere in OBSERVED.md or
+      PROTOCOL.md's capture record - we have never sent it and never seen it. The layout is
+      read out of the parser, which is [ELF]; nothing about it is capture-proven. 0 on success;
       our error codes are masked `C0FFEE**` values. See PROTOCOL.md for the per-command code
       lists. Signedness is **not** recoverable from the read primitive (it assembles four bytes
       with no sign handling); PROTOCOL.md calls it s32 because the client compares it against

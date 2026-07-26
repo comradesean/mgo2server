@@ -6,7 +6,7 @@ doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
   every field below comes from the client parser only, so tags are [ELF] at best.
 
-  Routing: dispatcher 0xD38804 (the 0x41xx-0x4Exx literal compare chain) -> thunk -> parser
+  Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD5AD5C**, which re-checks the id (`cmpwi r0,19984`) before reading anything.
 
   Sets pending-request slot **90** to state **1** (not 2) — i.e. this packet OPENS a request
@@ -18,26 +18,53 @@ doc: |
   **0xD4364C**, whose own read sequence was disassembled: a 16-iteration loop of three u1 reads
   (48 bytes, three parallel 16-byte arrays at dest+0/+16/+32), then u1,u1,bytes[16],u1,u1, three
   u4, two u2, two u4, u2, u1,u1, then 18 u4, bytes[2], u2, u4, u1, bytes[2], u1, u2, u2, u4, u1,
-  u1, bytes[14] — 204 bytes total, ending at dest+204. That block is NOT expanded here: it is
-  shared with other commands and belongs in its own spec once one of them is captured.
+  u1, bytes[14] — 204 bytes total, ending at dest+204. That block is NOT expanded here: its
+  canonical model is `mgo2_cmd_4313_s2c.ksy`, type `game_settings`, whose field names are
+  backed by live capture of the `0x4310` push and the `0x4305` reply (OBSERVED.md).
+  `0xD4364C` has nine call sites — `0xD445A4` (0x4313), `0xD48440` (0x4905), `0xD48964`
+  (0x4909), `0xD4B244` (0x4987), `0xD4CB08` (0x4950), `0xD5006C` (0x4A24/0x4A31), `0xD51014`
+  (0x4A00), `0xD5AF38` (here), `0xD5B78C` (0x43F1). Whether the game-settings semantics carry
+  over to a 0x4E10 record is [UNKNOWN]; the byte boundaries are not.
 
   Wire size: 4 + 2 + 1 + 1 + 204 + 4 + 5*4 = **236 bytes**.
 
   Read primitives (from the primitive table at 0xD5C844+): 0xD5CB8C u1, 0xD5CC14 u2,
-  0xD5CC64 s4, 0xD5CCD8 u4, 0xD5D018 fixed byte block of `len` (memcpy + a client-side NUL at
+  0xD5CC64 / 0xD5CCD8 u4 (identical twins — see the CORRECTION below), 0xD5D018 fixed byte
+  block of `len` (memcpy + a client-side NUL at
   dest[len]; the wire consumes exactly `len`), 0xD5CEB0 "cursor < payload_length?" (-1 at end;
-  this is what makes a list size-driven), 0xD5C844/0xD5C858 begin/end read. In each
-  signed/unsigned pair the LOWER address is the signed accessor (write-side proof: 0xD5C95C uses
-  `sraw`, 0xD5C9BC uses `srw`). Request slots: 0xD32E08(session,slot,state) ->
+  this is what makes a list size-driven), 0xD5C844/0xD5C858 begin/end read. An earlier revision
+  added: "In each signed/unsigned pair the LOWER address is the signed accessor (write-side
+  proof: 0xD5C95C uses `sraw`, 0xD5C9BC uses `srw`)." **That claim is SUPERSEDED — see the
+  CORRECTION below.** Request slots: 0xD32E08(session,slot,state) ->
   session+0x160+slot*4+8; 0xD32E70(session,slot,value) -> session+0x330+slot*4+12.
   UI events: 0xD33CD8(session,event,arg).
 
-  CORRECTION (verified 2026-07-26, whole-function compare): that rule holds on the WRITE side
-  only. The READ pair 0xD5CC64 / 0xD5CCD8 is instruction-for-instruction identical — same
-  `cmpwi 1020` bound check, same byte-assembly loop — so neither is a signed accessor. Where a
-  field below is typed s4, the evidence is the CALLER reloading the value with `lwa` (or the
-  field being a known-negative error code), never the primitive's address.
+  CORRECTION (verified 2026-07-26, whole-function compare at every width): that rule is wrong,
+  and it is wrong on the READ side at ALL widths, not just at u32. Each "signed/unsigned pair"
+  is instruction-for-instruction identical — same bound check, same byte-assembly loop, same
+  `extsb` on each byte, same store width:
+    * u8:  0xD5CB54 == 0xD5CB8C  (bound `cmpwi 1023`, `lbzx`/`stb`, cursor += 1)
+    * u16: 0xD5CBC4 == 0xD5CC14  (bound `cmpwi 1022`, two `lbzx`, `sth`,  cursor += 2)
+    * u32: 0xD5CC64 == 0xD5CCD8  (bound `cmpwi 1020`, 4-iteration loop, `stw`, cursor += 4)
+    * u64: 0xD5CD4C == 0xD5CDC0  (bound `cmpwi 1016`, 8-iteration loop, `std`, cursor += 8)
+  So **no read primitive is a signed accessor at any width**, and "0xD5CBC4 s2" / "0xD5CC64 s4"
+  are as unfounded as the u32 claim. Signedness comes from the CALLER — the value being
+  reloaded with `lwa`, or being compared against known-negative error constants — never from
+  the primitive's address.
 
+  The write side does not rescue the rule either. There are **three** u32 write primitives, not
+  a signed/unsigned pair: 0xD5C95C (`sraw`), 0xD5C9BC (`srw`) and 0xD5CA1C (`sraw`). The
+  sraw/srw difference is inert because each iteration masks with `and r0,r4,r0` where r0 =
+  `slw r7,r10` of 255, and then stores only the low byte with `stbx`: for shifts 16/8/0 the
+  masked operand is non-negative in 32 bits so the two shifts agree outright, and for shift 24
+  they differ only in bits above bit 7, which `stbx` discards. Identical bytes on the wire.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: unknown_00
     type: u4
@@ -59,10 +86,10 @@ seq:
   - id: settings_block
     size: 204
     doc: |
-      [ELF] 204 bytes consumed by the shared reader 0xD4364C into ctx+0x08. See the top-level doc
-      for its internal read sequence. Deliberately left opaque: the sub-fields are readable from
-      the ELF but naming them without a capture would be guessing at semantics, and this block is
-      shared with other commands so it wants its own spec. [UNKNOWN]
+      [ELF] 204 bytes consumed by the shared reader 0xD4364C into ctx+0x08. Layout modelled
+      canonically in `mgo2_cmd_4313_s2c.ksy`, type `game_settings`; kept opaque here so the
+      copies cannot drift. The byte boundaries are [ELF]; whether the game-settings *meanings*
+      apply to a 0x4E10 record is [UNKNOWN].
   - id: unknown_d4
     type: u4
     doc: "[ELF] -> ctx+7268. [UNKNOWN]"

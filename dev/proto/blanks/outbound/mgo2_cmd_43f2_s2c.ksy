@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43f2 — unidentified in-match notification (server -> client)"
   endian: be
 doc: |
-  Parser 0xD5B588, reached from dispatcher 0xD38804 via the stub at 0xD39D7C. One of the four
+  Parser 0xD5B588, reached from the GAME dispatcher 0xD387C8 (compare tree at 0xD38804) via the stub at 0xD39D7C. One of the four
   0x43Fx ids belonging to the in-match subsystem the client sends 0x43E0 / 0x43E2 into
   (COMMANDS.md, "0x43e*/0x43f*"). Never sent by us; nothing in PROTOCOL.md or OBSERVED.md.
 
@@ -21,6 +21,13 @@ doc: |
   0xD5D018 fixed-width byte block (r5 = length, NUL-terminated on store), 0xD5CE34
   delimiter-terminated string, 0xD5CEB0 "cursor < payload length" loop test, 0xD5C844 /
   0xD5C858 reader open/close.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: unknown_0x00
     type: u4

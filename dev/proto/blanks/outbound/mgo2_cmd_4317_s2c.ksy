@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4317 — server -> client: create-game result (reply to 0x4316)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4317` at `0xD3895C` -> stub `0xD39200` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4317` at `0xD3895C` -> stub `0xD39200` ->
   parser **`0xD44260`**. Request-status slot **37**.
 
   PROTOCOL.md's layout (`{s32 result, u32 new game id}`, 8 bytes on success, 4 on failure) is
@@ -23,6 +23,13 @@ doc: |
   Also of note: COMMANDS.md files `0x4317` twice — once under "replies we send that the client
   parses" and once under "result singles / parsed but never sent". The first is right; the
   second entry is stale bookkeeping, and it is not a result single in any case.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "Reply 0x4317"
 seq:
   - id: result

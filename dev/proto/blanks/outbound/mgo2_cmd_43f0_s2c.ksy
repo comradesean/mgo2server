@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43f0 — server -> client: in-match subsystem push (UNSOLICITED, no result field)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43F0` at `0xD38A28` -> stub `0xD39D5C` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43F0` at `0xD38A28` -> stub `0xD39D5C` ->
   parser **`0xD5B868`**.
 
   **Not a reply.** Like `0x43E4`, this parser has **no result field** — its first read is a
@@ -25,6 +25,13 @@ doc: |
   send-side scan, consistent with it being a push. Every meaning below is [UNKNOWN]; the two
   8-wide u32 arrays are the only structural hint (eight of something — teams? rounds?
   scoreboard slots?). We never send it, so nothing is at risk; this file records the shape.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md ("0x43e*/0x43f* — an in-match subsystem")
 seq:
   - id: unknown_00

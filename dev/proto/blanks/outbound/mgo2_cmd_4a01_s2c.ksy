@@ -13,7 +13,7 @@ doc: |
   0x4A01; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
   Field ORDER and WIDTH below come out of the client parser and are solid. MEANINGS are not.
 
-  Evidence: dispatcher 0xD38804 (the 0x41xx-0x4Exx literal compare chain), entry stub 0xD39870,
+  Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39870,
   parser 0xD50598.
   THE BLOB LENGTH IS NOT ON THE WIRE. The byte loop at 0xD507DC-0xD50814 runs while
   `i < u16 at obj+0x0DA` AND `i < 128` (0xD507F4 / 0xD50800 / 0xD50808), i.e. the count comes
@@ -29,6 +29,13 @@ doc: |
   exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
   All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
   packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: obj_id
     type: u4

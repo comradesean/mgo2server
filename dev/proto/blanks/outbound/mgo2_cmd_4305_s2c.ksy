@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4305 — server -> client: saved host settings (reply to 0x4304)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x4305` at `0xD38948` -> stub `0xD391D0` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4305` at `0xD38948` -> stub `0xD391D0` ->
   parser **`0xD4548C`**. Request-status slot **34**. The only payload this server Blowfish-
   **encrypts** outbound (PROTOCOL.md: `ENCRYPT_COMMANDS = { 0x4305 }`).
 
@@ -48,6 +48,13 @@ doc: |
   buffer, not the payload length. The destination region is memset to zero before the reads,
   so a *previously unused* buffer yields zeros, which is why the empty path appears to work.
   It is not a guarantee. Serving 348 zero bytes would be.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "Reply 0x4305 — 128 bytes empty, 0x163 populated"
 seq:
   - id: result
@@ -106,24 +113,46 @@ seq:
     doc: "[UNKNOWN] wire 0x0f7, block +92."
   - id: stance
     type: u1
-    doc: "[CONFIRMED] wire 0x0f9, block +94."
+    doc: |
+      [ELF] wire 0x0f9, block +94. **Tag downgraded 2026-07-26 from [CONFIRMED]:** "stance" is
+      a reference-server name and the byte is absent from OBSERVED.md's single-variable sweep.
+      Position exact; name [INFERRED], tier 4. See mgo2_cmd_4313_s2c.ksy.
   - id: level_limit_tolerance
     type: u1
     doc: "[CONFIRMED] wire 0x0fa, block +95."
+  - id: level_limit_base
+    type: u4
+    doc: |
+      [CONFIRMED] wire 0x0fb, block +96. **Identified 2026-07-26; was the first element of the
+      18-wide `rule_timers` array.** OBSERVED.md's 2026-07-22 sweep proved the level-limit base
+      is a u32 at `0x4310` wire `0xF8`, which is this field: `0x4310` carries the same block
+      from wire 0xA3 with the same omissions as here, and 0xA3 + 96 - 11 = 0xF8. echo's
+      verbatim `0x16` is 22 — OBSERVED.md's calibration point ("50,000 experience renders as
+      level 22", the base tracking the hosting character's level). See mgo2_cmd_4313_s2c.ksy.
   - id: rule_timers
     type: u4
     repeat: expr
-    repeat-expr: 18
+    repeat-expr: 17
     doc: |
-      [ELF] wire 0x0fb..0x142, block +96..+164. Eighteen consecutive u32 reads. `0x4313`'s
-      first of these is the slot echo fills with a verbatim `0x16`; the remaining seventeen
-      are the per-rule timers/rounds/tickets. Same run, same order, same widths here.
+      [ELF] wire 0x0ff..0x142, block +100..+167. Seventeen consecutive u32 reads — the
+      per-rule timers/rounds/tickets, same run, same order and same widths as `0x4313`'s.
+      (Corrected 2026-07-26: this used to say 18 reads spanning "block +96..+164". Eighteen
+      u32 starting at +96 span +96..+167, and the first of them is level_limit_base above, so
+      the timer run proper is 17 wide and starts at +100.) The rule-to-slot pairing is
+      [INFERRED], tier 4.
   - id: unique_red
     type: u1
-    doc: "[ELF] wire 0x143, block +168. Read as a 2-byte raw block with unique_blue. +0x80 when random."
+    doc: |
+      [ELF] wire 0x143, block +168, the first byte of a **2-byte raw block** — the parser draws
+      no boundary between +168 and +169, so the split into two u8s is [INFERRED]. The names,
+      the "unique character per team" reading and the "+0x80 when random" encoding are tier 4
+      and **[UNKNOWN] here**: OBSERVED.md records that unique characters could not be tested in
+      this build. What the ELF supports is "2 raw bytes".
   - id: unique_blue
     type: u1
-    doc: "[ELF] wire 0x144, block +169."
+    doc: |
+      [ELF] wire 0x144, block +169, second byte of the same raw block. Position [ELF]; name and
+      meaning [UNKNOWN], untestable in this build.
   - id: common_a
     type: u1
     doc: |
@@ -145,10 +174,16 @@ seq:
     doc: "[CONFIRMED] wire 0x14a, block +182."
   - id: capture_extra_time
     type: u1
-    doc: "[ELF] wire 0x14c, block +188. **Follows team_kill_kick directly** — the u32 at block +184 (echo's verbatim 0x2e) is not on this wire."
+    doc: |
+      [ELF] wire 0x14c, block +188. Position exact; **the name is [UNKNOWN]** — a
+      reference-server label, and nothing in OBSERVED.md moved this byte.
+      **Follows team_kill_kick directly** — the u32 at block +184 (echo's verbatim 0x2e) is not
+      on this wire.
   - id: sneaking_snake_side
     type: u1
-    doc: "[ELF] wire 0x14d, block +189."
+    doc: |
+      [ELF] wire 0x14d, block +189. Position exact; **the name is [UNKNOWN]**, same reason as
+      capture_extra_time.
   - id: byte_timers_and_tail
     size: 14
     doc: |
@@ -158,10 +193,29 @@ seq:
       **This is the last read: the payload ends at 0x15C = 348.**
 types:
   rotation_round:
+    doc: |
+      [CONFIRMED] One rotation entry, 3 wire bytes. Sixteen of them open the 204-byte settings
+      block. `rule == 0 && map == 0` terminates the rotation (PROTOCOL.md 0x4310). Note the
+      **wire is interleaved**: the parser reads triple i as {rule -> +i, map -> +0x10+i,
+      flags -> +0x20+i}, so the three fields of one entry are adjacent on the wire but land in
+      three separate 16-byte arrays in the client.
     seq:
       - id: rule
         type: u1
+        doc: |
+          [CONFIRMED] Game rule (mode) id for this rotation slot -> block+0x00+i. Capture-proven
+          as a rotation entry via the 0x4310 push, whose copy of this block starts at wire 0xA3
+          and whose 16 triples occupy 0xA3..0xD2 (OBSERVED.md / PROTOCOL.md 0x4310). The
+          rule-id-to-mode mapping itself is [INFERRED], tier 4.
       - id: map
         type: u1
+        doc: |
+          [CONFIRMED] Map id for this rotation slot -> block+0x10+i. Position and role as above;
+          the id-to-map-name table is [INFERRED], tier 4.
       - id: flags
         type: u1
+        doc: |
+          [ELF] Third byte of the triple -> block+0x20+i, from the client's third 16-byte array
+          (`src+784` on the 0x4310 write side). Position exact. Named "flags" from the write
+          side's array grouping; **its contents are [UNKNOWN]** and it was not moved by any
+          single-variable sweep in OBSERVED.md.

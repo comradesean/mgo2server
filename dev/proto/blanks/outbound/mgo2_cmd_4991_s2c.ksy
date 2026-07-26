@@ -4,7 +4,7 @@ meta:
   endian: be
   encoding: ISO-8859-1
 doc: |
-  Evidence: reply dispatcher `0xD38804` matches `cmpwi 0x4991` at `0xd38d04` and branches to the
+  Evidence: GAME reply dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x4991` at `0xd38d04` and branches to the
   thunk at `0xd396d0`, which tail-calls the parser at `0xd48d40`. Channel A (lobby TCP).
 
   Read primitives used throughout (identified from their own disassembly, not borrowed):
@@ -21,7 +21,8 @@ doc: |
 
   1. a 4-byte result (`0xD5CC64`); nonzero -> every remaining read is skipped;
   2. a 4-byte word into `rec+0x120`;
-  3. **a fixed loop of four iterations** (`cmpwi r20,3` / `bne` at `0xd4d/0xd48f84`), each
+  3. **a fixed loop of four iterations** (`cmpwi cr7,r20,3` at `0xd48f84`, `bne cr7,0xd48e44` at `0xd48fa0` — the address was mangled
+     as `0xd4d/0xd48f84` in an earlier revision), each
      reading eleven fields (57 bytes) into `rec + 72*n`;
   4. after the loop, `rec+0x120` is compared with 4 and **overwritten with 4 if it differs**
      [READ 0xd48fb0-0xd48fc4], so whatever that word says the client behaves as if it were 4;
@@ -37,6 +38,13 @@ doc: |
   mechanism PROTOCOL.md documents for the truncated `0x4902` entries. **Untested against a
   real server capture** — the 172-byte answer is what we send today and the screen advances,
   which means the four records' contents have never mattered so far, not that they are absent.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x4990 — get game entry info"
 seq:
   - id: result
@@ -90,7 +98,12 @@ types:
         doc: "[INFERRED] rec+0x2c, second 16-byte raw block. Width is [ELF 0xd48f24]."
       - id: unknown_32
         type: u1
-        doc: "[UNKNOWN] rec+0x3d — note the 1-byte gap after the string (0x3c is not written)."
+        doc: |
+          [UNKNOWN] rec+0x3d — note the 1-byte gap after the 16-byte block at rec+0x2c. The
+          gap byte rec+0x3c **is** written: 0xD5D018 memcpys `len` bytes and then stores a NUL
+          at dest+len (`stb r0,0(r9)` at 0xD5D07C). Earlier revisions said "0x3c is not
+          written", which is wrong; the wire conclusion is unchanged, because the cursor
+          advances by exactly `len` (0xD5D084-0xD5D088) and the NUL is client-side only.
       - id: unknown_33
         type: u2
         doc: "[UNKNOWN] rec+0x3e."

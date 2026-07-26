@@ -8,6 +8,13 @@ doc: |
   `0xD3A704`, seal `0xD5C828` at `0xD3A710`, flush `0xD34CC0` at `0xD3A720`. Not encrypted.
   **Total payload 1 byte.** The ELF agrees with `PROTOCOL.md`, which records the same builder
   address and "a single u8 argument, value 8" observed live.
+  ## When it is sent
+
+  Traced 2026-07-26. The lobby-entry state machine reaches the sending state (state 1, `0x89774C`)
+  only when, in a training lobby, **skill 17's record is present and its flag byte is zero**
+  (`0x897314` / `0x897320`). A nonzero flag routes to state 3 instead and this command is never
+  sent. Since that flag arrives only from our `0x4125`/`0x4129` and nothing in the client writes
+  it, we decide whether the client asks us this question at all.
 doc-ref: dev/docs/PROTOCOL.md "0x43d0 — training parameter fetch"
 seq:
   - id: request_kind

@@ -5,7 +5,7 @@ meta:
 doc: |
   UNMAPPED SUBSYSTEM. Nothing in PROTOCOL.md or OBSERVED.md describes 0x49B1.
 
-  Evidence: dispatcher 0xD38804, entry stub 0xD39660 -> thunk 0xD4B640, which sets
+  Evidence: GAME dispatcher 0xD387C8 (compare tree at 0xD38804), entry stub 0xD39660 -> thunk 0xD4B640, which sets
   `li r4,0x49B1` (0xD4B648) and `addi r5,r1,112` (the result out-param) and tail-calls the
   SHARED parser 0xD4AF34.
 
@@ -22,14 +22,26 @@ doc: |
   exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
   All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
   packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: result
-    type: u4
+    type: s4
     doc: |
       [ELF] read at 0xD4B074 into the thunk's out-param. MUST be 0 to continue: the parser
       checks it at 0xD4B084 and on non-zero jumps to 0xD4B454, past every other read - so an
       error reply is FOUR BYTES and nothing more. The thunk then only fires its notify when the
       value is not -1 (0xD4B668).
+      SIGNEDNESS RESOLVED 2026-07-26: this file typed it `u4` while its five siblings on the
+      same parser (0x4911, 0x4913, 0x4985, 0x4987, 0x49A1) typed it `s4`. **s4 wins, on caller
+      evidence**: the 0x49B1 thunk reloads the out-param with `lwa r5,112(r1)` (0xD4B5A8, and
+      the same instruction in each sibling thunk) before handing it to 0xD32E70. Not from the
+      read primitive - 0xD5CC64 is byte-identical to 0xD5CCD8 and is not a signed accessor.
   - id: record_id
     type: u4
     doc: "[ELF] read at 0xD4B0A8, compared against a client-held id (0xD4B0D8) and stored at record+0x000. Mismatch aborts. [UNKNOWN] which id."
@@ -105,10 +117,17 @@ seq:
     doc: "[UNKNOWN] read at 0xD4B40C -> record+0x298. Note: record+0x298 is the offset the 0x4Axx echo checks compare against (0xD4F050 etc.), so if these are the same object this is the field that must be echoed later. [INFERRED], offset-mirror reasoning only."
   - id: unknown_0x2a0
     type: u4
-    doc: "[UNKNOWN] read at 0xD4B428 -> record+0x2A0."
+    doc: |
+      [UNKNOWN] read at 0xD4B428 -> record+0x2A0. **Signedness [UNKNOWN]**, deliberately: this
+      file and its five siblings on the same parser disagreed (u4 here, s4 in 0x4911/0x4913/
+      0x4985/0x4987/0x49A1) and neither side had evidence. Nothing reloads record+0x2A0 with
+      `lwa` and no consumer was traced; 0xD5CC64 is byte-identical to 0xD5CCD8, so the address
+      proves nothing. u4 is the corpus default for an unproven 4-byte read, not a claim.
   - id: unknown_0x2a4
     type: u4
-    doc: "[UNKNOWN] read at 0xD4B444 -> record+0x2A4. Last field; the payload ends here at 420 bytes."
+    doc: |
+      [UNKNOWN] read at 0xD4B444 -> record+0x2A4. Last field; the payload ends here at 420
+      bytes. Signedness [UNKNOWN] for the same reason as unknown_0x2a0.
 types:
   slot:
     doc: "[ELF] 25 wire bytes, stored with stride 28 at record+0x17C (word) / record+0x180 (the rest)."

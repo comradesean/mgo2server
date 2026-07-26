@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43e1 — server -> client: automatch status (reply to 0x43e0)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43E1` at `0xD38A34` -> stub `0xD39D3C` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43E1` at `0xD38A34` -> stub `0xD39D3C` ->
   parser **`0xD5BF98`** (PROTOCOL.md cites `0xD5BFC0`, inside the same function).
   Request-status slot **50**. Destination base `A = ctx+0x10000`.
 
@@ -21,6 +21,13 @@ doc: |
   which additionally fills `A+0x14A3`, `A+0x14A4` and two 16-byte arrays at `A+0x14A5` /
   `A+0x14B5`. That makes `0x43E1` a *partial* view of a larger automatch state block, and is
   the best available lead on what these bytes mean.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x43e0 — automatch status fetch"
 seq:
   - id: result

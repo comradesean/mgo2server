@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4341 — server -> client: peer-register ack for 0x4340 player connected"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` -> stub `0xD39230` -> parser **`0xD42D58`**.
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) -> stub `0xD39230` -> parser **`0xD42D58`**.
 
   **Not a bare ack.** The four peer-register replies `0x4341` / `0x4343` / `0x4345` /
   `0x4347` share one byte-identical 268-byte parser body (laid out back to back from
@@ -33,6 +33,13 @@ doc: |
   it matches the javadoc already in `HostGameController` (`{u32 result, u32 key}`), which was
   traced from the same parsers. Live standing: confirmed against a client 2026-07-21 (mx1
   joining a localhost-hosted game) — its absence hangs the join.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md; src/main/java/mgo2server/game/controller/HostGameController.java
 seq:
   - id: result

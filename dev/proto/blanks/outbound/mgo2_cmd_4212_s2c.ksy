@@ -13,7 +13,7 @@ doc: |
   incremented, so records accumulate across packets.
 
   **Client capacity is 1000 records**: `lwz r4,4(r31); cmpwi r4,999; bgt -> bail(-71)` at
-  0xd3b3c0. That is a far larger cap than any other list in the protocol (`0x2003` allows 32,
+  0xd3b3c0-0xd3b3cc; the compare itself is at **0xd3b3c4**. That is a far larger cap than any other list in the protocol (`0x2003` allows 32,
   `0x200a` 10), which suggests a history or roster rather than a menu.
 
   Read primitives in order: u32 (0xd3b370), fixed[16] (0xd3b390), u32 (0xd3b3ac) = **24 wire

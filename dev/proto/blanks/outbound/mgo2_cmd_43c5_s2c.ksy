@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43C5 — server -> client: bare result ack for 0x43c4 (never observed; COMMANDS.md reachable-in-ordinary-flow gap)"
   endian: be
 doc: |
-  Evidence: reply dispatcher `0xD38804` (the `0x41xx`-`0x4Exx` compare chain) matches
+  Evidence: GAME reply dispatcher `0xD387C8` (the `0x41xx`-`0x4Exx` id space; compare tree head at `0xD38804`) matches
   `cmpwi 0x43C5` and branches to the stub at `0xd392e0`, which tail-calls the parser at
   `0xd40098`.
 
@@ -25,6 +25,13 @@ doc: |
   request slot, where a nonzero code surfaces as the screen's error dialog.
 
   COMMANDS.md files 0x43c5 under "result singles" — parsed but never sent.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md, dev/docs/PROTOCOL.md
 seq:
   - id: result

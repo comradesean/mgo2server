@@ -7,7 +7,7 @@ doc: |
   0x4A11; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
   Field ORDER and WIDTH below come out of the client parser and are solid. MEANINGS are not.
 
-  Evidence: dispatcher 0xD38804 (the 0x41xx-0x4Exx literal compare chain), entry stub 0xD39890,
+  Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39890,
   parser 0xD51F2C.
   A SIZE-DRIVEN LIST: the loop is fronted by the length-aware call 0xD5CEB0 at 0xD51FD4
   (`cmpwi r3,-1` -> exit), so the record count is however many fit in the payload - there is no
@@ -22,6 +22,13 @@ doc: |
   exactly N on the wire), 0xD5CEB0 "cursor < payload length" (the only length-aware call).
   All of them bound-check the 1023-byte receive buffer, not the payload length, so a short
   packet desyncs rather than erroring - see mgo2_cmd_4902.ksy.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 seq:
   - id: entries
     type: entry

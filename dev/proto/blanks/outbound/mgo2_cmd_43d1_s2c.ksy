@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x43d1 — server -> client: training parameters (reply to 0x43d0)"
   endian: be
 doc: |
-  Evidence: dispatcher `0xD38804` matches `cmpwi 0x43D1` at `0xD38A48` -> stub `0xD39310` ->
+  Evidence: GAME dispatcher `0xD387C8` (compare tree at `0xD38804`) matches `cmpwi 0x43D1` at `0xD38A48` -> stub `0xD39310` ->
   parser **`0xD3A564`** (PROTOCOL.md cites `0xD3A560`, four bytes into the same prologue).
   Request-status slot **31**.
 
@@ -24,6 +24,13 @@ doc: |
   it to the string formatter with message id 847, so a zero would put a zero on screen.
   Nothing is known about the other four. Answering this did **not** make the training Graduate
   action work — that is gated elsewhere on player state.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "Reply 0x43d1 — 10 bytes"
 seq:
   - id: params

@@ -3,7 +3,7 @@ meta:
   title: "MGO2 0x4393 — server -> client: bare result ack for 0x4392 set game (advance the rotation)"
   endian: be
 doc: |
-  Evidence: reply dispatcher `0xD38804` (the `0x41xx`-`0x4Exx` compare chain) matches
+  Evidence: GAME reply dispatcher `0xD387C8` (the `0x41xx`-`0x4Exx` id space; compare tree head at `0xD38804`) matches
   `cmpwi 0x4393` and branches to the stub at `0xd39290`, which tail-calls the parser at
   `0xd406b8`.
 
@@ -26,6 +26,13 @@ doc: |
 
   PROTOCOL.md: 4-byte result 0. Confirmed against a live client 2026-07-22, twice
   (host executing "Restart (Next)").
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/COMMANDS.md, dev/docs/PROTOCOL.md
 seq:
   - id: result

@@ -25,9 +25,9 @@ doc: |
   Registered in all three lobby dispatchers, each a trampoline into the shared handler
   **0xd359c8**:
 
-    * GATE    dispatcher 0xd361e8, arm 0xd367a0 -> `bl 0xd359c8`, `r4 = 0`
-    * ACCOUNT dispatcher 0xd37074, arm 0xd37894 -> `bl 0xd359c8`, `r4 = 1`
-    * GAME    dispatcher 0xd38804, arm 0xd39544 -> `bl 0xd359c8`, `r4 = 2`
+    * GATE    dispatcher 0xd361a4 (compare tree 0xd361e8), arm 0xd367a0 -> `bl 0xd359c8`, `r4 = 0`
+    * ACCOUNT dispatcher 0xd37024 (compare tree at 0xd37074), arm 0xd37894 -> `bl 0xd359c8`, `r4 = 1`
+    * GAME    dispatcher 0xd387c8 (compare tree 0xd38804), arm 0xd39544 -> `bl 0xd359c8`, `r4 = 2`
 
   0xd359c8 calls `READ_BEGIN` (0xd5c844 at 0xd35a24) and `READ_END` (0xd5c858 at 0xd35a30) back to
   back with **nothing in between**, then `notify(r4 + 7, state 2)` at 0xd35a38. So:
@@ -42,5 +42,12 @@ doc: |
   This settles PROTOCOL.md's flagged item 25 ("`0x0005` ping replies with an empty payload rather
   than echoing the request", previously reference-derived and not observed): echoing would be
   harmless but pointless, since the client cannot read the echo.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
 doc-ref: dev/docs/PROTOCOL.md "0x0005 — ping"
 seq: []

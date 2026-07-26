@@ -4,7 +4,8 @@ meta:
   endian: be
 doc: |
   **One byte.** Evidence: builder call site `bl 0xd5cf40` at `0xd43ccc`. One write primitive:
-  `bl 0xd5c8a0` (write-u8) at `0xd43cdc` from stack `1328(r1)`. Seal at `0xd43ce8`; wait slot
+  `bl 0xd5c86c` (write-u8) at `0xd43cdc` from stack `1328(r1)` (corrected 2026-07-26 from
+  `0xd5c8a0`; the two are write-u8 twins, so the conclusion is unaffected). Seal at `0xd43ce8`; wait slot
   `0x25` (`li r4,37`). [ELF]
 
   **This corrects PROTOCOL.md's phrasing.** It says "Request payload is **not read at all**",
