@@ -16,22 +16,41 @@
 -- list it was sent. Ordering by name was a bug -- see dev/docs/OBSERVED.md.
 -- Idempotent, and with fixed ids.
 --
--- The ids are not an implementation detail: compose passes MGO2SERVER_LOBBY_ID to each server, so
--- lobby 1/2/3 must be the gate/account/game rows. An earlier version of this file deleted and
+-- The ids are not an implementation detail: compose passes MGO2SERVER_LOBBY_ID and
+-- MGO2SERVER_LOBBY_SUBTYPE to each server, so every id below must keep matching the service that
+-- claims it (gate 1, account 2, automatching 3, game 4, basic training 5, combat training 6). An earlier version of this file deleted and
 -- reinserted without specifying ids, which let the serial advance on every run -- the rows looked
 -- right, but games then failed to insert with a foreign key violation against a lobby id that no
 -- longer existed.
 --
 -- Games reference lobbies, so they go first.
 DELETE FROM public.game;
-DELETE FROM public.lobby WHERE type IN (0, 1, 2);
+DELETE FROM public.lobby WHERE type IN (0, 1, 2, 3, 4, 5, 6, 7);
 
 -- OVERRIDING SYSTEM VALUE because id is GENERATED ALWAYS; the whole point here is to choose it.
 INSERT INTO public.lobby (id, type, subtype, name, ip, port)
 OVERRIDING SYSTEM VALUE VALUES
     (1, 0, 0, 'Gate',    :'host_ip', 15731),
     (2, 1, 0, 'Account', :'host_ip', 15732),
-    (3, 2, 1, 'Game',    :'host_ip', 15733);
+    (3, 2, 2, 'Automatching', :'host_ip', 15740),
+    (4, 2, 1, 'Game', :'host_ip', 15733),
+    (5, 2, 7, 'Basic Training', :'host_ip', 15737),
+    (6, 2, 8, 'Combat Training', :'host_ip', 15738);
+
+-- Basic Training is 7 and Combat Training is 8, and the difference is not cosmetic. Both list
+-- either way -- the sibling list at 0x89147C groups 7 and 8 and separates by lobby id, which is why
+-- two subtype-7 rows both appeared on echo -- but the menu INSIDE a training lobby is gated row by
+-- row by 0x884584(n), which matches the current lobby's own subtype exactly. A Combat Training
+-- lobby seeded as 7 renders the basic-training menu: Solo/Novice only.
+--
+-- The port check is what constrains this table. It does not dial the lobby you pick: it connects
+-- to the *ordinal-th* game lobby in the gate list, where the ordinal is a saved client setting
+-- (group 25, id 0xFE, defaulting to 0) — see PROTOCOL.md, 0x4900. So whichever game lobby that
+-- ordinal lands on must have a server listening on its ip and port, or login fails with "unable
+-- to connect to lobby" before any of this is reached. Inserting a row ahead of the others moves
+-- that target. Either give every game lobby its own instance (compose has one per row) or point
+-- them all at a port that is actually up.
+
 
 -- Keep the sequence ahead of the explicit ids so later inserts do not collide.
 SELECT setval(pg_get_serial_sequence('public.lobby', 'id'),

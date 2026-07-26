@@ -33,7 +33,8 @@ terminal) — the social family: `mgo2_cmd_4682.ksy` (met-players history record
 201 B single reply) — and the client→server round-end pair: `mgo2_cmd_4390.ksy` (the host's
 per-player stat report, 167 B long form / ~51 B short form; what `round_report` stores) and
 `mgo2_cmd_43a2.ksy` (per-player round weapon tallies — one packet per scoring player, fully
-decoded).
+decoded). Server→client: `mgo2_cmd_4902.ksy` (game-lobby list entries, **99 B each**, from the
+parser at `0xD47E18` — both reference servers write 35 B and lose every lobby after the first).
 
 List-triple start/end packets (`0x4601`/`0x4603`, `0x4681`/`0x4683`, `0x4685`/`0x4687`)
 are not specced separately: each is a single u32 **result code**, 0 for success in both

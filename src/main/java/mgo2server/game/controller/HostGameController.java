@@ -140,6 +140,23 @@ public class HostGameController implements IGameController {
 	 */
 	public static final int START_ROUND = 0x43c8;
 
+	/**
+	 * A client settings write, pushed to the server rather than a host action despite the id.
+	 * <p>
+	 * The sender at {@code 0x27E0E4} reads client setting id <b>332</b> (4 bytes, from the settings
+	 * group the caller selects) and puts that value straight on the wire, so the request is a
+	 * single u32 whose meaning is whatever setting 332 is. First seen live 2026-07-26 carrying
+	 * {@code 3}, moments after a training graduation.
+	 * <p>
+	 * Reply {@code 0x43a7} is a bare u32 result and nothing else: the parser at {@code 0xD3FFE0}
+	 * reads one word and signals request-status 48 with it, taking no other branch. We do not
+	 * persist the value — what setting 332 means is unknown, and storing an unidentified number
+	 * against a character would be inventing a model.
+	 */
+	public static final int PUT_CLIENT_SETTING = 0x43a6;
+
+	public static final int PUT_CLIENT_SETTING_RESULT = 0x43a7;
+
 	public static final int START_ROUND_RESULT = 0x43c9;
 
 	/** Host cycles the rule/map in the rotation while staging. Answered {@code result(0)}. */
@@ -297,6 +314,8 @@ public class HostGameController implements IGameController {
 
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
+		handlers.put(PUT_CLIENT_SETTING,
+			ctx -> ctx.write(PUT_CLIENT_SETTING_RESULT, GameError.NONE));
 		handlers.put(GET_HOST_SETTINGS, this::getHostSettings);
 		handlers.put(CHECK_HOST_SETTINGS, this::checkHostSettings);
 		handlers.put(CREATE_GAME, this::createGame);

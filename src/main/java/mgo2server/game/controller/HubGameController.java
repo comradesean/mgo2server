@@ -58,10 +58,80 @@ public class HubGameController implements IGameController {
 
 	public static final int LOBBY_DISCONNECT_RESULT = 0x4151;
 
+	public static final int GET_TRAINING_PARAMS = 0x43d0;
+
+	public static final int TRAINING_PARAMS_RESULT = 0x43d1;
+
+	/**
+	 * The five values behind {@code 0x43d1}, and the least evidenced thing in this class.
+	 * <p>
+	 * The <em>shape</em> is read from the binary: the parser at {@code 0xD3A560} performs exactly
+	 * five u16 reads into a 10-byte block, copies it to {@code ctx+0x117EC} and signals
+	 * request-status 31. The reset path at {@code 0xD35780} zeroes the same five halfwords, so
+	 * unanswered they read 0.
+	 * <p>
+	 * The <em>values</em> are mgo2-server's, which is tier 4 and unexplained there too. They are
+	 * used rather than zeros because at least one is rendered to the player: {@code 0x8978C8}
+	 * loads the first halfword and passes it to the string formatter with message id 847, so a
+	 * zero would put a zero on screen. Treat every number here as a placeholder with a plausible
+	 * shape, not as protocol — the first capture of a real server's reply replaces it.
+	 */
+	private static final int[] TRAINING_PARAMS_DEFAULT = { 10, 21, 58, 8, 97 };
+
+	/**
+	 * Overridable so the five values can be swept against a live client without a rebuild:
+	 * {@code MGO2SERVER_TRAINING_PARAMS=10,21,58,8,97}. Exactly five comma-separated numbers;
+	 * anything else falls back to the defaults, because the count is protocol (the parser performs
+	 * five u16 reads) while the values are not.
+	 * <p>
+	 * The experiment this exists for: the first value is rendered on the training screen through
+	 * message id 847 ({@code 0x897894}/{@code 0x8978C8}), so changing it and watching the screen
+	 * identifies which field it is. The other four have no reader found yet.
+	 */
+	private static final int[] TRAINING_PARAMS = trainingParams(System.getenv("MGO2SERVER_TRAINING_PARAMS"));
+
+	static int[] trainingParams(String configured) {
+		if (configured == null || configured.isBlank()) {
+			return TRAINING_PARAMS_DEFAULT;
+		}
+
+		var fields = configured.trim().split(",");
+		if (fields.length != TRAINING_PARAMS_DEFAULT.length) {
+			return TRAINING_PARAMS_DEFAULT;
+		}
+
+		var values = new int[fields.length];
+		for (var i = 0; i < fields.length; i++) {
+			try {
+				values[i] = Integer.parseInt(fields[i].trim());
+			}
+			catch (NumberFormatException malformed) {
+				return TRAINING_PARAMS_DEFAULT;
+			}
+		}
+
+		return values;
+	}
+
+	public static final int GET_AUTOMATCH_STATUS = 0x43e0;
+
+	public static final int AUTOMATCH_STATUS_RESULT = 0x43e1;
+
 	private static final int NAME_LENGTH = 16;
 
-	/** index, attributes, id, name, open and close times, and the open flag. */
-	private static final int ENTRY_SIZE = 4 + 4 + 2 + NAME_LENGTH + 4 + 4 + 1;
+	/**
+	 * A per-lobby text block the client reads straight after the name.
+	 * <p>
+	 * Read from the ELF, not from a reference server: the {@code 0x4902} parser at {@code 0xD47E18}
+	 * pulls 64 bytes into the entry struct at {@code +0x1b}, and the hub menu builder at
+	 * {@code 0x890504} hands that pointer to the string formatter for the one lobby subtype that
+	 * displays it. Every other subtype ignores it, so NULs are fine — but the bytes must be on the
+	 * wire or every entry after the first is parsed from the wrong offset.
+	 */
+	private static final int TEXT_LENGTH = 64;
+
+	/** index, attributes, id, name, text, open and close times, and the open flag. */
+	private static final int ENTRY_SIZE = 4 + 4 + 2 + NAME_LENGTH + TEXT_LENGTH + 4 + 4 + 1;
 
 	private static final int ENTRIES_PER_PACKET = 8;
 
@@ -80,6 +150,48 @@ public class HubGameController implements IGameController {
 		handlers.put(GET_GAME_ENTRY_INFO, this::getGameEntryInfo);
 		handlers.put(LOBBY_DISCONNECT, this::lobbyDisconnect);
 		handlers.put(UNKNOWN_4440, ctx -> ctx.write(UNKNOWN_4440_RESULT, GameError.NONE));
+		handlers.put(GET_TRAINING_PARAMS, this::getTrainingParams);
+		handlers.put(GET_AUTOMATCH_STATUS, this::getAutomatchStatus);
+	}
+
+	/**
+	 * Answers the automatching lobby's status fetch, sent on entry with a single u8 argument
+	 * (observed value 11).
+	 * <p>
+	 * Shape from the parser at {@code 0xD5BFC0}: a u32 result, and <em>only if it is zero</em> two
+	 * u8s, which the client stores at {@code +0x14A1}/{@code +0x14A2} behind a "loaded" flag it
+	 * sets at {@code +0x14A0}. Request-status 50 is signalled either way, so a nonzero result is a
+	 * legitimate "nothing to report" rather than an error the client chokes on.
+	 * <p>
+	 * We send result 0 and two zero bytes. Neither reference server implements this command at
+	 * all, so unlike {@code 0x43d0} there are no borrowed values to lean on — the two bytes are
+	 * unidentified and zero is the only defensible placeholder. What they gate is unknown; if
+	 * automatching misbehaves in a way that looks like a missing capability, this is the first
+	 * thing to vary.
+	 */
+	private void getAutomatchStatus(GameControllerContext ctx) {
+		var buffer = ctx.buffer(4 + 2);
+		buffer.writeInt(GameError.NONE.result()).writeByte(0).writeByte(0);
+
+		ctx.write(new GamePacket(AUTOMATCH_STATUS_RESULT, buffer));
+	}
+
+	/**
+	 * Answers the training lobby's parameter fetch, sent once on entry with a single u8 argument
+	 * (observed value 8, from the state machine at {@code 0x897758}).
+	 * <p>
+	 * Observed 2026-07-25: unanswered in both training lobbies, and with it unanswered the
+	 * Graduate action does nothing at all — the client sends no request when it is pressed, so it
+	 * is failing a precondition rather than waiting on us. The request argument is not read; there
+	 * is only one caller and it always sends 8.
+	 */
+	private void getTrainingParams(GameControllerContext ctx) {
+		var buffer = ctx.buffer(TRAINING_PARAMS.length * 2);
+		for (var value : TRAINING_PARAMS) {
+			buffer.writeShort(value);
+		}
+
+		ctx.write(new GamePacket(TRAINING_PARAMS_RESULT, buffer));
 	}
 
 	private void getGameLobbyInfo(GameControllerContext ctx) {
@@ -88,6 +200,9 @@ public class HubGameController implements IGameController {
 			return;
 		}
 
+		// Only game lobbies. The hub menu matches on subtype and ignores anything it has no
+		// category for, so a gate or account row would be silently dropped anyway — but it would
+		// still occupy one of the client's 64 entry slots.
 		var lobbies = lobbyService.getLobbies().stream()
 			.filter(lobby -> lobby.getType() == LobbyType.GAME.ordinal())
 			.toList();
@@ -114,6 +229,9 @@ public class HubGameController implements IGameController {
 
 		buffer.writeInt(index).writeInt(attributes).writeShort((int) lobby.getId());
 		BufferUtil.writeString(buffer, lobby.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
+
+		// The text block. Only the survival-host category renders it; the rest read past it.
+		buffer.writeZero(TEXT_LENGTH);
 
 		// Open and close times are unset, and the lobby is always open.
 		buffer.writeInt(0).writeInt(0).writeByte(1);
