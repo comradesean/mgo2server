@@ -84,9 +84,12 @@ public class HubGameController implements IGameController {
 	 * anything else falls back to the defaults, because the count is protocol (the parser performs
 	 * five u16 reads) while the values are not.
 	 * <p>
-	 * The experiment this exists for: the first value is rendered on the training screen through
-	 * message id 847 ({@code 0x897894}/{@code 0x8978C8}), so changing it and watching the screen
-	 * identifies which field it is. The other four have no reader found yet.
+	 * <b>These are display-only.</b> Settled 2026-07-26 by exhausting the xrefs: the whole binary
+	 * touches the block at {@code ctx+0x117EC} in three places — the parser that fills it, the
+	 * reset that zeroes it, and {@code 0x8978C8}, which passes the <em>first</em> u16 to the
+	 * message-847 formatter. The other four are written and never read by anything. So this
+	 * override changes one number on the training screen and nothing else; in particular it cannot
+	 * affect the graduation requirement, whatever that turns out to read.
 	 */
 	private static final int[] TRAINING_PARAMS = trainingParams(System.getenv("MGO2SERVER_TRAINING_PARAMS"));
 

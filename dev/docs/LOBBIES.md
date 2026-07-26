@@ -150,7 +150,7 @@ Rows appear in scan order, so **an Automatching lobby is always the topmost row 
 The `scan` column is where each loop begins; the table is ordered by that address, which here
 happens to match execution order.
 
-| subtype | our name (source) | scan | row emitted | string ids | action | status |
+| subtype | our name (source) | scan | row emitted | string ids | help id | status |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2 | Automatching (tier 4) | `0x890410` | `0x89097C` | 251 / 260 | 9 | **in use** |
 | 1 | Free Battle (tier 4) | `0x89044C` | `0x890908` | 245 / 261 | 10 | **in use** |
@@ -166,10 +166,16 @@ Subtypes 7 and 8 share one scan because that loop tests a *range* (`subtype - 7 
 rather than a single value. Every other scan is an exact comparison.
 
 The **string ids** are the pair the row is built from — the client resolves both through
-`0x8E0C24` — and the **action** is the code stored on the menu item that decides what selecting it
-does. Neither is a value we send; see "What the ELF does and does not name" below. Where the "our
-name" column says *tier 4*, the name comes from another server implementation and has never been
-verified against this client.
+`0x8E0C24`. The last column was labelled "action" here until 2026-07-26; it is really a
+**help-topic id**. A menu row is 792 bytes and that number sits at `row+784`, whose only two readers
+in the whole binary (`0x94A394`, `0x94B374`) latch it through `0x886010` into the screen object and
+eventually format `"%shelp/%d_%d.txt"` at `0x7F8E50` — a contextual help filename, nothing more.
+**What a row actually does is a function descriptor at `row+772`**, called through `bctrl` at
+`0x897A3C` after the selected index is resolved at `0x897A08`. Those descriptors are unresolved, so
+this file cannot yet say what any row invokes.
+
+Neither the strings nor the help id is a value we send. Where the "our name" column says *tier 4*,
+the name comes from another server implementation and has never been verified against this client.
 
 ### The range the client accepts
 
