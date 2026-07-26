@@ -442,10 +442,10 @@ it, not the ordering itself.
   `0x4129` and `0x4131`.
 
   **Both flags are already satisfied by what we send, so this gate is not the blocker.** Traced to
-  `0x4125`, the skill catalogue: its parser (`0xD3CA3C`) scatters each record into
-  `base + 11440 + 4 + index*12`, so `+0x2D80` is skill **17**'s index byte and `+0x2D88` is that
-  record's trailing u8. `LoadoutWriter.writeSkills` advertises skills 1–25 with a zero trailing
-  byte, which gives exactly `17` and `0` — the two values the gate wants. That also explains why
+  **`0x4129`**, the post-game results payload: its parser (`0xD3C9B0`) scatters each skill record
+  into `base + 11440 + 4 + index*12`, so `+0x2D80` is skill **17**'s index byte and `+0x2D88` is
+  that record's trailing u8. `HostGameController` writes records 1–25 with a zero trailing byte,
+  which gives exactly `17` and `0` — the two values the gate wants. That also explains why
   the Graduate row renders at all. Equipping the instructor skill in-game changes neither byte,
   and was confirmed not to help.
 
