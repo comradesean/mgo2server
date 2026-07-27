@@ -75,6 +75,32 @@ version-mismatch theory that was false.
 - Sending the real 0/1/2 membership state still matters: a state-0 applicant row is dropped by the
   display filter, so the vocabulary is load-bearing even though the badge does not use it.
 
+### The emblem half is CONFOUNDED — do not cite it
+
+[2026-07-27] The badge and the emblem were fixed in one commit and reported as one cause. The
+badge holds up. **The emblem does not, and the confound is a client-side cache.**
+
+Round 2 of the probe sent the id in `0x4b81` only. The badge disappeared, as expected. **The
+in-game emblem still rendered** — which under the one-cause story it should not have.
+
+The likely explanation is the role-swap experiment itself. While leadership sat with poop, Sean was
+an ordinary member and his emblem rendered correctly. The client caches clan emblems by clan id (a
+30-entry texture cache, plus the 768-byte buffer at `profile+6873`) and neither is cleared by a
+relog, because the process survives it. So clan 2's emblem was warmed into every client during the
+window when the bug was not biting, and every emblem observation since may be reading that cache
+rather than anything the server sent.
+
+If that is right, the leader id fixed the badge and did nothing for the emblem — the emblem was
+masked, not repaired, and is still broken on a cold client.
+
+**The test that settles it:** fully restart the client process (not a relog — the caches live in the
+process), with the leader id absent from both packets, and look at a leader's emblem in a game
+session. Until that is run, treat "one field, two symptoms" as unproven for the emblem.
+
+The lesson is not about the cache. It is that an experiment which *changes the game state* — here,
+who leads the clan — can leave a residue that survives into every later observation. The role swap
+was a good experiment and it silently poisoned the well for everything measured afterwards.
+
 ### Which packet supplies it: `0x4b21`, for the badge
 
 [CONFIRMED 2026-07-27] Separated with a probe (`MGO2SERVER_LEADER_ID_PROBE`) rather than left as a
@@ -82,10 +108,9 @@ reasoned guess, because both packets had been changed in one commit. With the id
 `0x4b21`** and `0x4b81` zeroed, the Clan Leader badge still renders on the Member List. So the
 clan-affiliation view is the source, and `0x4b81`'s copy is not what the roster reads.
 
-Still open: whether the **in-game emblem** also reads it from `0x4b21`. If it does, the "one field,
-two symptoms" account holds. If the emblem breaks while the badge survives, the two were never the
-same bug — they were two packets short of the same value, fixed in one commit and mistaken for one
-cause.
+Round 2 settled it for the badge in both directions: with the id in `0x4b81` only, the badge
+disappeared. So `0x4b21` is **necessary**, not merely sufficient — a distinction round 1 alone could
+not have made, and one an earlier draft of this section blurred.
 
 ## A clan leader's emblem in game — same missing field as the badge (2026-07-27, FIXED)
 
