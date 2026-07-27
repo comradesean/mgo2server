@@ -36,7 +36,7 @@ public class PersonalInfoWriterTest {
 	private static io.netty.buffer.ByteBuf write() {
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara(), new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, false);
+			mgo2server.common.service.ClanService.Membership.NONE, false, skill -> 0);
 		return buffer;
 	}
 
@@ -90,7 +90,7 @@ public class PersonalInfoWriterTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, false);
+			mgo2server.common.service.ClanService.Membership.NONE, false, skill -> 0);
 
 		assertThat(buffer.readableBytes()).isEqualTo(PersonalInfoWriter.PAYLOAD_SIZE);
 	}
@@ -104,7 +104,7 @@ public class PersonalInfoWriterTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara(), appearance, skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, false);
+			mgo2server.common.service.ClanService.Membership.NONE, false, skill -> 0);
 
 		assertThat(buffer.getByte(49)).isEqualTo((byte) 1);
 		assertThat(buffer.getByte(50)).isEqualTo((byte) 2);
@@ -122,7 +122,7 @@ public class PersonalInfoWriterTest {
 		var withEmblem = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(withEmblem, chara(), new CharaAppearance(), skills(),
 			PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, true);
+			mgo2server.common.service.ClanService.Membership.NONE, true, skill -> 0);
 
 		assertThat(withEmblem.getByte(0xf0)).isEqualTo((byte) PersonalInfoWriter.EMBLEM_ON_DISPLAY);
 		assertThat(write().getByte(0xf0)).isEqualTo((byte) 0);
