@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.AccountService;
+import mgo2server.common.service.CharacterService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
@@ -33,9 +34,13 @@ public class AccountGameController implements IGameController {
 
 	private final AccountService accountService;
 
+	private final CharacterService characterService;
+
 	private final LobbyType lobbyType;
 
-	public AccountGameController(AccountService accountService, LobbyType lobbyType) {
+	public AccountGameController(AccountService accountService,
+			CharacterService characterService, LobbyType lobbyType) {
+		this.characterService = characterService;
 		this.accountService = accountService;
 		this.lobbyType = lobbyType;
 	}
@@ -70,12 +75,26 @@ public class AccountGameController implements IGameController {
 		// The session is real, but it has to belong to whoever the client says it is; otherwise a
 		// leaked token would let any id be claimed.
 		if (lobbyType == LobbyType.GAME) {
-			var current = account.getCurrentCharaId();
-			if (current == null || current != claimedId) {
-				logger.warn("Check session: account {} has character {} selected, client claimed {}.",
-					account.getId(), current, claimedId);
+			// The client decides which of its characters is entering, so the check is OWNERSHIP,
+			// not equality with whatever we last recorded. Requiring the two to match rejected a
+			// legitimate login: creating a character points current_chara_id at the new one, and
+			// entering the lobby as a DIFFERENT character then failed with
+			// "Unable to connect to lobby.(0925:C0FFEE02)" — C0FFEE02 being our own INVALID_SESSION.
+			//
+			// A leaked token still cannot claim someone else's character: the id has to belong to
+			// this account and be active. What it can do is pick between this account's own
+			// characters, which is exactly what the character-select screen is for.
+			var claimed = characterService.get(claimedId).orElse(null);
+			if (claimed == null || claimed.getAccountId() != account.getId() || !claimed.isActive()) {
+				logger.warn("Check session: account {} claimed character {}, which it does not own.",
+					account.getId(), claimedId);
 				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
 				return;
+			}
+
+			if (account.getCurrentCharaId() == null || account.getCurrentCharaId() != claimedId) {
+				characterService.setCurrentCharacter(account.getId(), claimedId);
+				account.setCurrentCharaId(claimedId);
 			}
 		} else {
 			if (account.getId() != claimedId) {

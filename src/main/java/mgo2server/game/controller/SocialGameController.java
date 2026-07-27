@@ -264,14 +264,17 @@ public class SocialGameController implements IGameController {
 		buffer.writeInt(0);                                       // result: success
 		buffer.writeInt(playerId);
 		BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		// PROBE 2026-07-27: which of these is LEVEL? It renders as 0 whatever we send, and there are
-		// four candidates between the name and the play time. Each carries a distinct number, so the
-		// value on screen names the field: 11 -> wire 0x18, 22 -> 0x1c, 33 -> 0x1d, 44 -> 0x1e.
-		// Replace with the real field once the answer is known.
-		buffer.writeInt(11);                                      // [PROBE] wire 0x18
-		buffer.writeByte(22);                                     // [PROBE] wire 0x1c
-		buffer.writeByte(33);                                     // [PROBE] wire 0x1d
-		buffer.writeInt(44);                                      // [PROBE] wire 0x1e
+		// PROBE round 2. Round 1 sent 11/22/33/44 and Level still read 0 — which is consistent with
+		// one of these being EXPERIENCE rather than a level: the client derives the level from a
+		// threshold table (125, 250, 375, 500, 650, ...) and every one of those values is below the
+		// first threshold, so all four would render as level 0.
+		//
+		// These values are chosen to land on DISTINCT levels, so the number on screen names the
+		// field: level 10 -> wire 0x18, level 2 -> 0x1c, level 1 -> 0x1d, level 4 -> 0x1e.
+		buffer.writeInt(1450);                                    // [PROBE] wire 0x18 -> level 10
+		buffer.writeByte(250);                                    // [PROBE] wire 0x1c -> level 2
+		buffer.writeByte(130);                                    // [PROBE] wire 0x1d -> level 1
+		buffer.writeInt(500);                                     // [PROBE] wire 0x1e -> level 4
 		buffer.writeInt((int) playSeconds);                       // play time, seconds
 		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x26
 		BufferUtil.writeString(buffer, comment == null ? "" : comment,

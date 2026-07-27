@@ -134,29 +134,49 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 	}
 
-	/** Sending the account id, as an account lobby would expect, must be refused here. */
+	/**
+	 * Claiming a character this account does not own must be refused.
+	 * <p>
+	 * This used to send the account id, on the reasoning that an account lobby expects one and a
+	 * game lobby must not. That worked by accident: both identity sequences start at 1 in a fresh
+	 * test database, so the "account id" was frequently a character id this account really owned,
+	 * and the test only passed because check-in compared against the selected character rather than
+	 * ownership. It now claims an id that exists nowhere.
+	 */
 	@Test
-	public void rejectsAccountIdInGameLobby() {
+	public void rejectsCharacterTheAccountDoesNotOwn() {
 		givenSelectedCharacter("Snake");
 
-		var replies = connect(accountId, 1);
+		var replies = connect(charaId + 9999, 1);
 
 		assertThat(replies).hasSize(1);
 		assertThat(replies.get(0).getPayload().getInt(0))
 			.isEqualTo(GameError.INVALID_SESSION.result());
 	}
 
+	/**
+	 * A stale or absent selection is not a reason to refuse: the client names the character it is
+	 * entering with, and check-in adopts it.
+	 * <p>
+	 * The old rule demanded that the claim equal {@code current_chara_id}, which broke a real login
+	 * — creating a character points the selection at the new one, so entering the lobby as any other
+	 * character failed with "Unable to connect to lobby.(0925:C0FFEE02)".
+	 */
 	@Test
-	public void rejectsCheckInWithNoCharacterSelected() {
+	public void adoptsTheClaimedCharacterWhenTheSelectionIsStale() {
 		givenSelectedCharacter("Snake");
 		TestDatabase.get().jdbi().useHandle(handle ->
 			handle.createUpdate("update account set current_chara_id = null where id = :id")
 				.bind("id", accountId).execute());
 
-		var replies = connect(charaId, 1);
+		var replies = connect(charaId, BURST_REPLIES);
 
-		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		var current = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select current_chara_id from account where id=:id")
+				.bind("id", accountId).mapTo(Long.class).findOne());
+		assertThat(current).contains(charaId);
 	}
 
 	/** Check-in must not clear the selection here, unlike in an account lobby. */
