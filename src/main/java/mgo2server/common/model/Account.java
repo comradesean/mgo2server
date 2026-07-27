@@ -43,6 +43,23 @@ public class Account {
 		this.password = password;
 	}
 
+	/**
+	 * How many character slots this account may fill. Sent in {@code 0x3049}'s header, where the
+	 * client uses it as the number of rows on the character-selection screen.
+	 * <p>
+	 * <b>Operator policy, one to four.</b> One by default: retail sold the rest, and the screen still
+	 * offers "Use your Metal Gear Points to buy an additional character registration slot". Four is
+	 * the retail maximum, enforced as a database constraint because the packet does not enforce it —
+	 * {@code 0x3049} has room for eight entries and would carry a larger value without complaint.
+	 * <p>
+	 * Grant more per account with {@code update account set slots = N where ...} — it is read fresh
+	 * on every character-list fetch, so it takes effect on the next visit to that screen with no
+	 * restart.
+	 * <p>
+	 * Lowering it below the number of characters an account already has would hide the surplus
+	 * rather than delete them; the characters remain in the database and reappear if the count goes
+	 * back up.
+	 */
 	public int getSlots() {
 		return slots;
 	}

@@ -24,6 +24,31 @@ public class ClanService {
 	/** The clan's leader — what creating one makes you ({@code 0xD56E90}). */
 	public static final int STATE_LEADER = 2;
 
+	/**
+	 * How long a clan must exist before it can be disbanded — seven days, the same interval as the
+	 * character-delete and emblem-display cooldowns.
+	 * <p>
+	 * Operator policy in the sense that we enforce it, but not invented: it is the retail interval.
+	 * The client cannot display it — the disband countdown strings (lobby 17312 / 17318) are
+	 * orphaned in this build exactly like the emblem ones, referenced by no instruction and no
+	 * string table — so a refusal shows a generic error rather than a countdown.
+	 */
+	public static final java.time.Duration DISBAND_COOLDOWN = java.time.Duration.ofHours(168);
+
+	/** Seconds until this clan may be disbanded, or 0 when it already may be. */
+	public long secondsUntilDisbandable(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select greatest(0, :cooldown - extract(epoch from now() - created_at))::bigint
+				from clan where id = :clan
+				""")
+			.bind("cooldown", DISBAND_COOLDOWN.toSeconds())
+			.bind("clan", clanId)
+			.mapTo(Long.class)
+			.findOne()
+			.orElse(0L));
+	}
+
 	/** Name bounds the client enforces before it will even send {@code 0x4b00}. */
 	public static final int NAME_MIN_LENGTH = 3;
 
