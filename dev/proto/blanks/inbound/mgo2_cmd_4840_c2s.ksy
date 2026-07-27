@@ -22,9 +22,19 @@ doc: |
   `0xD5C86C` s1 · `0xD5C8A0` u1 · `0xD5C8D4` s2 · `0xD5C918` u2 · `0xD5C95C` s4 · `0xD5C9BC` u4 ·
   `0xD5CADC` NUL-terminated string · `0xD5D0AC` raw block of r5 bytes.
 seq:
-  - id: unknown_00
+  - id: category
     type: s1
-    doc: "[ELF] `0xD5C86C` (signed) at `0xD53308`, from `base-8584`. Meaning [UNKNOWN]."
-  - id: unknown_01
+    doc: |
+      [CONFIRMED live 2026-07-26] The mailbox category of the letter to open — the same value the
+      server put in wire byte 0 of that letter's `0x4822`. A client opening the first letter of
+      its Sent tab sent `01 00`, and 1 was the category we had assigned to Sent; opening the
+      second sent `01 01`.
+      [ELF] `0xD5C86C` (signed) at `0xD53308`, from `base-8584` — the category the UI saved at
+      `0xD54218`. Valid range 0..3 (4 = flat view); see `../outbound/mgo2_cmd_4822_s2c.ksy`.
+  - id: index
     type: u1
-    doc: "[ELF] `0xD5C8A0` (unsigned) at `0xD53318`, from `base-8576`. Meaning [UNKNOWN]."
+    doc: |
+      [CONFIRMED live 2026-07-26] The letter's index WITHIN that category — the `0x4822` index
+      byte (wire 0x01) echoed back. It is a message handle, not a display position: every entry
+      we send needs a distinct value or every row asks to open the same letter.
+      [ELF] `0xD5C8A0` at `0xD53318`, from `base-8576` = record struct+0x00.

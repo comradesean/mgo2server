@@ -23,9 +23,20 @@ doc: |
   `0xD5C86C` s1 · `0xD5C8A0` u1 · `0xD5C8D4` s2 · `0xD5C918` u2 · `0xD5C95C` s4 · `0xD5C9BC` u4 ·
   `0xD5CADC` NUL-terminated string · `0xD5D0AC` raw block of r5 bytes.
 seq:
-  - id: unknown_00
+  - id: category
     type: s1
-    doc: "[ELF] `0xD5C86C` (signed) at `0xD531DC`, from `base-8584`. Meaning [UNKNOWN]."
-  - id: unknown_01
+    doc: |
+      [CONFIRMED live 2026-07-26] Mailbox category of the letter to delete — identical field to
+      `0x4840`'s, read from the same struct slot. A client deleting the second letter of its Sent
+      tab sent `01 01`.
+      [ELF] `0xD5C86C` (signed) at `0xD531DC`, from `base-8584`.
+  - id: index
     type: u1
-    doc: "[ELF] `0xD5C8A0` (unsigned) at `0xD531EC`, from `base-8576`. Meaning [UNKNOWN]."
+    doc: |
+      [CONFIRMED live 2026-07-26] The letter's index within that category, as in `0x4840`.
+      [ELF] `0xD5C8A0` at `0xD531EC`, from `base-8576` = record struct+0x00.
+
+      NOTE what is absent: there is no "delete for both parties" flag and no deletion state
+      anywhere in the mailbox protocol. `0x4822` is 266 bytes fully accounted for without one, so
+      "deleted by the recipient but still in the sender's Sent list" exists only in server
+      storage. Deletion is expressed by not sending the entry next time the list is built.

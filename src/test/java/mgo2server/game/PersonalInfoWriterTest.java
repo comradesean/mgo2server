@@ -35,7 +35,7 @@ public class PersonalInfoWriterTest {
 
 	private static io.netty.buffer.ByteBuf write() {
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara(), new CharaAppearance(), skills());
+		PersonalInfoWriter.write(buffer, chara(), new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 		return buffer;
 	}
 
@@ -88,7 +88,7 @@ public class PersonalInfoWriterTest {
 		chara.setComment(null);
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), skills());
+		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 
 		assertThat(buffer.readableBytes()).isEqualTo(PersonalInfoWriter.PAYLOAD_SIZE);
 	}
@@ -101,7 +101,7 @@ public class PersonalInfoWriterTest {
 		appearance.setAccessory2Color(9);
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara(), appearance, skills());
+		PersonalInfoWriter.write(buffer, chara(), appearance, skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 
 		assertThat(buffer.getByte(49)).isEqualTo((byte) 1);
 		assertThat(buffer.getByte(50)).isEqualTo((byte) 2);

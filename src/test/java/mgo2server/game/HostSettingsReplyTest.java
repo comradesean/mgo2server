@@ -30,7 +30,9 @@ public class HostSettingsReplyTest {
 
 	@Test
 	public void replyIsExactlyNomadsSize() {
-		assertThat(written().readableBytes()).isEqualTo(0x163);
+		// 348 = 0x15C, where the parser's last read ends (0xD4548C; final opaque read 0x14E..0x15B).
+		// Was 0x163 until 2026-07-26 — that was Nomad's struct length, not this client's packet.
+		assertThat(written().readableBytes()).isEqualTo(0x15C);
 	}
 
 	@Test
@@ -58,8 +60,13 @@ public class HostSettingsReplyTest {
 		assertThat(reply.getByte(0x143)).isEqualTo((byte) 0x40); // uniques <- 0x140
 		assertThat(reply.getByte(0x145)).isEqualTo((byte) 0x42); // commonA <- 0x142
 		assertThat(reply.getByte(0x146)).isEqualTo((byte) 0x43); // commonB <- 0x143
-		assertThat(reply.getByte(0x149)).isEqualTo((byte) 0x46); // idle kick <- 0x146
-		assertThat(reply.getByte(0x14B)).isEqualTo((byte) 0x48); // team-kill kick <- 0x148
+		// Kick timers are u16 on both sides: request 0x145/0x147 -> reply 0x148/0x14a. The low
+		// halves land where the old byte-wise mapping put them, so these two assertions are
+		// unchanged; the high halves below are what the truncation used to zero.
+		assertThat(reply.getByte(0x148)).isEqualTo((byte) 0x45); // idle kick high <- 0x145
+		assertThat(reply.getByte(0x149)).isEqualTo((byte) 0x46); // idle kick low  <- 0x146
+		assertThat(reply.getByte(0x14A)).isEqualTo((byte) 0x47); // team-kill high <- 0x147
+		assertThat(reply.getByte(0x14B)).isEqualTo((byte) 0x48); // team-kill low  <- 0x148
 		assertThat(reply.getByte(0x14C)).isEqualTo((byte) 0x49); // capture extra <- 0x149
 		assertThat(reply.getByte(0x14D)).isEqualTo((byte) 0x4A); // Snake side <- 0x14A
 		assertThat(reply.getByte(0x14E)).isEqualTo((byte) 0x4B); // byte timers <- 0x14B
@@ -94,12 +101,13 @@ public class HostSettingsReplyTest {
 
 		assertThat(reply.getByte(0x0ED)).isEqualTo((byte) 0x02);
 		assertThat(reply.getByte(0x147)).isEqualTo((byte) 0x20); // commonC constant, not echoed
-		assertThat(reply.getByte(0x0D5)).isZero(); // rotation padding
+		// Rotation entry 16 (wire 0x0D3..0x0D5) — copied since 2026-07-26. It used to be zero
+		// because we sent only 15 triples, which silently dropped a full rotation's last round.
+		assertThat(reply.getByte(0x0D5)).isEqualTo((byte) 0xD2);
+		assertThat(reply.getByte(0x0D6)).isZero(); // padding starts here now
 		assertThat(reply.getByte(0x0F0)).isZero(); // pre-stance padding
-		assertThat(reply.getByte(0x148)).isZero();
-		assertThat(reply.getByte(0x14A)).isZero();
 		assertThat(reply.getByte(0x156)).isZero();
-		assertThat(reply.getByte(0x162)).isZero(); // trailing zeros
+		assertThat(reply.getByte(0x15B)).isZero(); // last byte the parser reads
 	}
 
 	@Test

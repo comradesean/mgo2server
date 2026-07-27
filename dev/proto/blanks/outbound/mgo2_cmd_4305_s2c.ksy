@@ -80,7 +80,14 @@ seq:
     repeat: expr
     repeat-expr: 16
     doc: |
-      [CONFIRMED] wire 0x0a6..0x0d5, block +0..+47. Sixteen `{rule, map, flags}` triples.
+      [ELF] wire 0x0a6..0x0d5, block +0..+47. Sixteen `{rule, map, flags}` triples — the count is
+      tier 1 (parser loop `cmpdi r27,16` at 0xD45648), the per-field names are tier 4.
+
+      **SERVED SHORT UNTIL 2026-07-26:** `HostSettingsReply` copied 45 bytes (15 triples), so
+      round 16 went out zeroed and a host with a full rotation lost its last round on the Create
+      Game pre-fill. Fixed to 48. The 15 was a reference-server figure defended by a
+      reference-derived terminator claim ("the reader stops at the first `rule==0 && map==0`")
+      that the writer contradicts — it always emits all sixteen.
       The parser scatters them into three parallel 16-byte client arrays (rules at B+752,
       maps at B+768, flags at B+784, B = ctx+0x10000-29904), which is the same storage
       `0x43F1` writes and the same 48 wire bytes as `0x4313`.
@@ -95,10 +102,16 @@ seq:
     doc: "[CONFIRMED] wire 0x0d8, block +50. 16-byte lock bitfield, 1 = locked; byte 0 bit 0 is the master enable. Bit map in PROTOCOL.md. The server copies this block opaquely between 0x4310, 0x4313 and here."
   - id: max_players
     type: u1
-    doc: "[CONFIRMED] wire 0x0e8, block +66."
+    doc: |
+      [ELF] wire 0x0e8, block +66. Position exact; the **name** is tier 4 and the request-side
+      spec (`../inbound/mgo2_cmd_4310_c2s.ksy`) tags the same field `[ELF]`. Downgraded
+      2026-07-26 — the two specs describe one field set and must not disagree about confidence.
   - id: briefing_time
     type: u4
-    doc: "[CONFIRMED] wire 0x0e9, block +68. **Immediately follows max_players** — the current-player-count byte at block +67 is not on this wire."
+    doc: |
+      [ELF] wire 0x0e9, block +68. **Immediately follows max_players** — the current-player-count
+      byte at block +67 is not on this wire. Position exact; **name tier 4** (downgraded
+      2026-07-26, as `max_players`).
   - id: unknown_0ed
     type: u4
     doc: "[UNKNOWN] wire 0x0ed, block +72. This is where the server injects the constant 0x02; the client stored it and echoed it back in the next 0x4310 push (OBSERVED.md), so the slot is real and round-trips, but its meaning is unestablished."
@@ -119,7 +132,11 @@ seq:
       Position exact; name [INFERRED], tier 4. See mgo2_cmd_4313_s2c.ksy.
   - id: level_limit_tolerance
     type: u1
-    doc: "[CONFIRMED] wire 0x0fa, block +95."
+    doc: |
+      [ELF] wire 0x0fa, block +95. **The request spec calls this same value `unknown_0f7` and
+      tags it [UNKNOWN]** — one byte cannot be capture-proven in the reply and unknown in the
+      request. Downgraded 2026-07-26; the level-limit reading is [INFERRED] from its adjacency to
+      `level_limit_base`, which OBSERVED.md's sweep did move.
   - id: level_limit_base
     type: u4
     doc: |
@@ -168,10 +185,16 @@ seq:
     doc: "[UNKNOWN] wire 0x147, block +179. Where the server injects the constant 0x20; it came back in the next 0x4310 push, so the client stores it. echo zeroes the same slot in 0x4313."
   - id: idle_kick
     type: u2
-    doc: "[CONFIRMED] wire 0x148, block +180."
+    doc: |
+      [ELF] wire 0x148, block +180. u16. **Was served as a single low byte until 2026-07-26** —
+      `HostSettingsReply` copied one byte into this field's low half and left the high half zero,
+      the third instance of the same truncation (see `../inbound/mgo2_cmd_4310_c2s.ksy` and
+      `GameService`). Correct for values <= 255, silently wrong above. Name tier 4.
   - id: team_kill_kick
     type: u2
-    doc: "[CONFIRMED] wire 0x14a, block +182."
+    doc: |
+      [ELF] wire 0x14a, block +182. u16, same low-byte truncation as `idle_kick`, fixed the same
+      day. Name tier 4.
   - id: capture_extra_time
     type: u1
     doc: |

@@ -3,6 +3,10 @@ meta:
   title: "MGO2 0x4581 \u2014 bulk roster fetch, list START (server -> client)"
   endian: be
 doc: |
+  Implementing this packet is not enough on its own: `0x4583` (`mgo2_cmd_4583_s2c.ksy`) discards
+  every collected `0x4582` record whose u16 at wire 0x14 is zero, so a correct start packet plus
+  zero-filled records still yields an empty roster screen. See `mgo2_cmd_4582_s2c.ksy`.
+
   Start packet of the 0x4580 roster triple (0x4581 start / 0x4582 records / 0x4583 end).
   Parser 0xD469C0, dispatcher stub 0xD39340.
 
@@ -29,4 +33,13 @@ seq:
     type: u4
     doc: |
       Result code. 0 = success (resets the count for state 0x51/0x52); nonzero =
-      the roster screen fails with this value. [CONFIRMED by PROTOCOL.md; ELF 0xD46A90]
+      the roster screen fails with this value. [CONFIRMED by PROTOCOL.md; ELF 0xD46A90;
+      **CONFIRMED live 2026-07-26 by failing**]
+
+      **NOT A COUNT.** Our server sent the entry count here, and a character with exactly one
+      friend got *"Unable to acquire Friend List.(1002:00000001)"* — the dialog number was the
+      count, stored verbatim as the transaction's failure code (`0xD46AB4`-`0xD46B20`). This is
+      the same mechanism that produced the recorded `1032:00000005` for the `0x4680` family, and
+      it hid for months because an empty roster sends a count of 0, which is also the success
+      code. Every list triple in this protocol works this way: start and end are results, and the
+      client counts the item records itself.

@@ -44,6 +44,19 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	public void channelRead(ChannelHandlerContext ctx, Object msg) {
 		if (msg instanceof GamePacket packet) {
 			var command = (int) packet.getCommand();
+
+			// Before dispatch and regardless of whether anything handles this command: a controller
+			// that pushes to other clients needs to see every connection, not just the ones that
+			// talk to it. Failures here must not stop the packet being served.
+			var connection = GameConnection.of(ctx.channel());
+			for (var controller : controllers) {
+				try {
+					controller.onPacket(connection, ctx.channel());
+				} catch (Exception e) {
+					logger.error("onPacket failed in {}", controller.getClass().getSimpleName(), e);
+				}
+			}
+
 			var handler = handlers.get(command);
 			if (handler == null) {
 				// Silently dropping these makes a stalled client impossible to diagnose: the

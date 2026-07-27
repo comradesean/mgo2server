@@ -49,6 +49,16 @@ types:
           struct+0x16, at 0xD466D4 — see mgo2_cmd_4583.ksy), so this field decides whether the
           entry survives at all. PROTOCOL.md notes the tier-4 Nomad test payload for the
           byte-identical 0x4602 record puts 36 here and guesses level/rank; unverified.
+
+          SERVED 2026-07-26: we send **1**. Only the nonzero-ness is evidenced — 1 is simply the
+          smallest value that passes the gate, and it asserts nothing about the meaning. We did
+          NOT copy Nomad's 36: a level/rank guess dressed as a value is exactly the tier-4 habit
+          this project pays for. If a number ever appears on the friend row, this is the field to
+          fingerprint, and the answer replaces the constant with real data.
+
+          Note the asymmetry with the byte-identical 0x4602 search record: its end handler
+          (0x4603) does NO such filtering, so zeros there display fine. Two records with the same
+          layout, two different survival rules.
       - id: unknown_0x16
         size: 16
         type: str

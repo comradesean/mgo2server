@@ -65,10 +65,12 @@ public class CharacterService {
 	 * Accumulated training seconds for one character, split the three ways {@code 0x4107} reports
 	 * them.
 	 * <p>
-	 * The source is {@code round_report.seconds_in_game}, which is the <b>host's</b> measurement of
-	 * how long that player was present — CONFIRMED in {@code mgo2_cmd_4390.ksy} and observed live
-	 * 2026-07-26 as 1987 seconds for a 33-minute lecture. Summing it is therefore the same number
-	 * the original would have accumulated, not an invention.
+	 * The source is {@code chara_training_time}, which the server accumulates from presence:
+	 * {@code game_player.joined_at} to the moment the row is removed. It replaced a derivation from
+	 * {@code round_report.seconds_in_game} — the host's own measurement — because the host only
+	 * reports when a player leaves early, so a host who quits first reports nobody and a whole
+	 * session was lost. The host's numbers remain in {@code round_report}; when both exist they
+	 * should agree, and a live 33-minute lecture reported 1987 seconds against the same presence.
 	 * <p>
 	 * The split is ours, not the game's: reports stamped with subtype 7 count as training mode,
 	 * subtype 8 as combat training, with the instructor being whoever hosted
@@ -76,35 +78,293 @@ public class CharacterService {
 	 * are CONFIRMED; this mapping of our lobby subtypes onto them is operator policy and is the
 	 * first thing to revisit if the totals read wrong on screen.
 	 * <p>
-	 * Written with {@code !=} rather than {@code <>} on purpose: Jdbi runs statements through the
-	 * StringTemplate engine, which parses {@code <...>} as a template expression and fails to
-	 * compile the query.
-	 * <p>
-	 * Reads {@code round_report.lobby_subtype} rather than joining through {@code game}: game rows
-	 * are deleted on teardown and carry no foreign key, so a join loses every report the moment
-	 * its host leaves — which is every historical report. Rows written before V19 hold 0 and are
-	 * counted nowhere.
+	 * <b>Not</b> the graduation gate. That requirement is client-side and per session — the student
+	 * must be present for the full 30 minutes in one sitting — and no value here shortens it.
+	 * These are the career totals the stats screen renders.
 	 */
+	/**
+	 * Grants the instructor skill and its announcement to a character who has a recognised
+	 * graduation on file, meets the eligibility rule, and does not hold the skill yet. Returns
+	 * whether anything was granted.
+	 * <p>
+	 * <b>The rule is Konami's, documented on the official MGO2 site: "Level 3 or above and 20 or
+	 * more hours of gameplay".</b> It is service policy, not protocol — the client enforces neither
+	 * half, proven live on 2026-07-27 when a character with zero accumulated play time was shown the
+	 * recognition prompt and answered it. Konami's servers withheld the reward instead, which is
+	 * exactly what happens here. An earlier version of this used level <em>4</em>, taken from player
+	 * accounts rather than the source; the official wording says 3.
+	 * <p>
+	 * This is deliberately <b>not</b> done when {@code 0x43c8} arrives. It is driven by the
+	 * end-of-round stats report ({@code 0x4390}), which the host sends for every player as they
+	 * leave — including leaving combat training — so the award is a consequence of the session
+	 * ending rather than of one packet, and a graduation that somehow misses its award is picked up
+	 * by the next report instead of being lost.
+	 * <p>
+	 * The ordering that makes this safe was checked against a live capture: leaving produces
+	 * {@code 0x4390} at 02:41:26 and the student's mailbox fetch ({@code 0x4820}) at 02:41:29, so
+	 * the letter exists before it is read. That was the original reason for granting inline, and it
+	 * still holds here.
+	 * <p>
+	 * Idempotent by construction: the insert is {@code on conflict do nothing} and the letter is
+	 * sent only when the insert actually granted the skill, so repeated reports — and repeated
+	 * graduations — never duplicate either.
+	 */
+	public boolean awardPendingInstructorSkill(long charaId) {
+		return jdbi.inTransaction(handle -> {
+			// Experience follows the same main/alt split the stats screen uses: a character that is
+			// its account's main spends the main pool, everyone else the alt pool.
+			var eligible = handle.createQuery("""
+					select count(*) from chara c
+					join account a on a.id = c.account_id
+					join chara_instructor i on i.chara_id = c.id
+					left join chara_training_time t on t.chara_id = c.id
+					where c.id = :student
+					  and coalesce(t.total_seconds, 0) >= :seconds
+					""")
+				.bind("student", charaId)
+				.bind("seconds", INSTRUCTOR_MIN_SECONDS)
+				.mapTo(Integer.class)
+				.one() > 0;
+			if (!eligible) {
+				return false;
+			}
+
+			var granted = handle.createUpdate("""
+					insert into chara_skill (chara_id, skill_id, experience, flag)
+					values (:student, :skill, :experience, 0)
+					on conflict (chara_id, skill_id) do nothing
+					""")
+				.bind("student", charaId)
+				.bind("skill", INSTRUCTOR_SKILL_ID)
+				.bind("experience", CharaSkill.MINIMUM_VISIBLE_EXPERIENCE)
+				.execute() > 0;
+
+			if (granted) {
+				handle.createUpdate("""
+						insert into mail (recipient_chara_id, sender_chara_id, sender_name,
+							subject, body)
+						values (:student, null, :sender, :subject, :body)
+						""")
+					.bind("student", charaId)
+					.bind("sender", GRADUATION_SENDER)
+					.bind("subject", GRADUATION_SUBJECT)
+					.bind("body", GRADUATION_BODY)
+					.execute();
+			}
+			return granted;
+		});
+	}
+
 	public TrainingSeconds trainingSeconds(long charaId) {
 		return jdbi.withHandle(handle -> handle.createQuery("""
 					select
-						coalesce(sum(seconds_in_game) filter (where lobby_subtype = 7), 0)
-							as training,
-						coalesce(sum(seconds_in_game) filter (
-							where lobby_subtype = 8 and host_chara_id = chara_id), 0) as instructor,
-						coalesce(sum(seconds_in_game) filter (
-							where lobby_subtype = 8 and host_chara_id != chara_id), 0) as student
-					from round_report
+						coalesce(max(training_mode_seconds), 0) as training,
+						coalesce(max(instructor_seconds), 0) as instructor,
+						coalesce(max(student_seconds), 0) as student,
+						coalesce(max(total_seconds), 0) as total
+					from chara_training_time
 					where chara_id = :chara
 					""")
 			.bind("chara", charaId)
 			.map((rs, c) -> new TrainingSeconds(
-				rs.getLong("training"), rs.getLong("instructor"), rs.getLong("student")))
+				rs.getLong("training"), rs.getLong("instructor"), rs.getLong("student"),
+				rs.getLong("total")))
 			.one());
 	}
 
-	/** Seconds, as {@code 0x4107} slots 46, 47 and 48 want them. */
-	public record TrainingSeconds(long trainingMode, long instructor, long student) {
+	/**
+	 * Seconds, as {@code 0x4107} slots 46, 47 and 48 want them, plus the total that feeds the
+	 * play-time line ({@code 0x4105} column 17).
+	 */
+	public record TrainingSeconds(long trainingMode, long instructor, long student, long total) {
+	}
+
+	/**
+	 * Play time a character must have accumulated before the instructor skill is awarded — Konami's
+	 * documented "20 or more hours of gameplay". Measured against the same total that feeds the
+	 * play-time line on the personal-stats screen ({@code 0x4105} column 17).
+	 */
+	public static final long INSTRUCTOR_MIN_SECONDS = 20 * 60 * 60;
+
+	/**
+	 * The measured experience threshold for character level 4.
+	 * <p>
+	 * This was {@code GRADUATION_MIN_EXPERIENCE} and gated the graduation award until 2026-07-27,
+	 * when both halves of that rule were falsified — see {@link #recordGraduation}. It is kept
+	 * because the measurement is worth having and nothing else records it, not because anything
+	 * enforces it.
+	 * <p>
+	 * The client shows a <em>level</em>, and that level comes from experience, not from
+	 * {@code chara.rank} — five live readings on 2026-07-26, all at rank 0: 214 showed level 1,
+	 * 499 level 3, 500 level 4, 1,600 level 10, and 49,250 level 22.
+	 * <p>
+	 * <b>500 is the exact threshold, bracketed to one experience point:</b> 499 displays as level 3
+	 * and 500 as level 4 on the live client. Not derived — measured.
+	 * <p>
+	 * Do not try to compute it. A {@code 100 * level^2} curve fitted the first two readings and
+	 * predicted level 4 at 1,600; the next reading falsified it — 1,600 is level 10. No simple
+	 * power law or geometric progression fits the four readings either, because levels 1 to 10 cost
+	 * under 1,400 experience between them while 10 to 22 costs over 47,000. The thresholds are a
+	 * table, and the honest source for it is the binary.
+	 */
+	public static final int LEVEL_4_EXPERIENCE = 500;
+
+	/** The skill graduation awards. */
+	public static final int INSTRUCTOR_SKILL_ID = 17;
+
+	/**
+	 * What a graduation did, so the caller can log it without re-querying.
+	 *
+	 * @param generation which generation of instructor the student now belongs to
+	 * @param recognised whether the student answered yes to the recognition prompt; a review
+	 *     without it is only a star rating, and changes no relationship
+	 */
+	public record Graduation(int generation, boolean recognised) {
+	}
+
+	/**
+	 * Records an instructor review, and — only when the student <em>recognised</em> the instructor —
+	 * writes the relationship. The skill and the announcement follow separately; see
+	 * {@link #awardPendingInstructorSkill}.
+	 * <p>
+	 * {@code 0x43c8} carries two answers. The star rating is always given. The recognition decision
+	 * comes from the prompt "Save current instructor, %s, as the instructor for your personal data?
+	 * (Instructor name cannot be erased once saved)" ({@code n002a} string 3099), which the client
+	 * shows before the rating screen ({@code n002a} string 3105) — and which it suppresses entirely
+	 * unless {@code 0x4122}'s saved-instructor field is zero. That prompt is the moment the player
+	 * chooses to make the relationship permanent, so it, not the bare arrival of the packet, is what
+	 * this keys on.
+	 * <p>
+	 * Every review is stored regardless, so a rating without recognition is not lost and the
+	 * instructor score has a source. Without recognition nothing else happens: no relationship, no
+	 * skill, no letter.
+	 * <p>
+	 * There is <b>no level or play-time requirement</b>. There used to be one here — level 4 and 20
+	 * hours, taken from player accounts of retail behaviour — and it was our invention. Falsified
+	 * twice on 2026-07-27: a character with 428 experience (level 3) and zero accumulated play time
+	 * was shown the recognition prompt, answered yes, and was then refused the award by our own
+	 * rule; and the client's eligibility logic contains no read of level, experience, skill
+	 * ownership or instructor generation anywhere ({@code 0x6D8B10}, {@code 0x6D8BB0},
+	 * {@code 0x6D97E0}, {@code 0x27DF38}, {@code 0x27E050}).
+	 * <p>
+	 * What the client does gate on is a timer, and it is not ours to enforce: {@code 0x6D8BB0} scans
+	 * the roster each tick on the <em>instructor's</em> machine and approves a student once a
+	 * per-slot accumulator passes {@code 5,400,000} ({@code 0x6D8C10}), resetting to zero the moment
+	 * the slot empties ({@code 0x6D8CA8}). It is session-accumulated, never sent to us, and the
+	 * server is never consulted — by the time {@code 0x43c8} arrives the client has already decided.
+	 * <p>
+	 * Idempotent on the award: a student who already holds the skill gets the relationship updated
+	 * and no second letter, so re-graduating with a different instructor re-parents them without
+	 * spamming the mailbox.
+	 */
+	public Graduation recordGraduation(long studentId, long instructorId, int rating,
+			boolean recognised, int answerByte) {
+		return jdbi.inTransaction(handle -> {
+			var instructorName = handle
+				.createQuery("select name from chara where id = :id")
+				.bind("id", instructorId)
+				.mapTo(String.class)
+				.findOne()
+				.orElse("");
+
+			handle.createUpdate("""
+					insert into instructor_review (instructor_chara_id, student_chara_id, rating,
+						recognised, answer_byte)
+					values (:instructor, :student, :rating, :recognised, :answer)
+					""")
+				.bind("instructor", instructorId)
+				.bind("student", studentId)
+				.bind("rating", rating)
+				.bind("recognised", recognised)
+				.bind("answer", answerByte)
+				.execute();
+
+			// An instructor with no record of their own is first generation.
+			var generation = handle
+				.createQuery("select generation from chara_instructor where chara_id = :id")
+				.bind("id", instructorId)
+				.mapTo(Integer.class)
+				.findOne()
+				.orElse(1) + 1;
+
+			// Rated but not recognised: the review is on file and that is all the player asked for.
+			if (!recognised) {
+				return new Graduation(generation, false);
+			}
+
+			handle.createUpdate("""
+					insert into chara_instructor as ci
+						(chara_id, instructor_chara_id, instructor_name, generation, rating,
+						 graduated_at)
+					values (:student, :instructor, :name, :generation, :rating, now())
+					on conflict (chara_id) do update set
+						instructor_chara_id = excluded.instructor_chara_id,
+						instructor_name = excluded.instructor_name,
+						generation = excluded.generation,
+						rating = excluded.rating,
+						graduated_at = excluded.graduated_at
+					""")
+				.bind("student", studentId)
+				.bind("instructor", instructorId)
+				.bind("name", instructorName)
+				.bind("generation", generation)
+				.bind("rating", rating)
+				.execute();
+
+			return new Graduation(generation, true);
+		});
+	}
+
+	private static final String GRADUATION_SENDER = "GameMaster";
+
+	private static final String GRADUATION_SUBJECT = "You've been awarded the Instructor Skill";
+
+	/**
+	 * The announcement body, reproduced verbatim from a live client's letter — including the
+	 * Konami URL, which no longer resolves.
+	 * <p>
+	 * An earlier version dropped the URL and the sign-off on the grounds that pointing players at a
+	 * dead domain was unhelpful. That was the wrong call: this is a reproduction of what the
+	 * original service sent, and silently shortening it makes the letter a paraphrase. The line
+	 * break inside the URL is the client's own wrapping at the field width, not ours.
+	 */
+	private static final String GRADUATION_BODY = """
+			Congratulations!
+
+			You've been approved for graduation by
+			your instructor and have accumulated
+			ample experience on the battlefield.
+			As a result, you are now certified as an
+			"Instructor" and have been awarded
+			the "Instructor Skill".
+
+			You can now create your own Combat
+			Training sessions to train others, just
+			as your instructor did for you.
+			For more info on Combat Training, see
+			the Combat Training Manual.
+
+			Combat Training Manual:
+			http://www.konami.jp/mgo/en/instructor.html
+
+			From:
+			the MGO staff at Kojima Productions""";
+
+	/** Who trained a character, as the stats screen shows it. */
+	public record Instructor(long instructorCharaId, String instructorName, int generation,
+			int rating) {
+	}
+
+	public java.util.Optional<Instructor> instructorOf(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select instructor_chara_id, instructor_name, generation, rating
+					from chara_instructor where chara_id = :id
+					""")
+				.bind("id", charaId)
+				.map((rs, c) -> new Instructor(rs.getLong("instructor_chara_id"),
+					rs.getString("instructor_name"), rs.getInt("generation"), rs.getInt("rating")))
+				.findOne());
 	}
 
 	/** Wire value the ADDLIST uses for a friend; see {@code V14__chara_relations.sql}. */
@@ -177,6 +437,162 @@ public class CharacterService {
 				.map((rs, ctx) -> new Relation(rs.getLong("target_chara_id"),
 					rs.getString("name"), rs.getInt("state")))
 				.list());
+	}
+
+	/**
+	 * One stored letter, as the mailbox replies need it.
+	 * <p>
+	 * {@code counterparty} is the name the list entry shows: the <em>sender</em> for a received
+	 * letter, the <em>recipient</em> for a sent one. The 0x4822 entry has exactly one 128-byte
+	 * name field, so which end it names depends on which list the entry belongs to.
+	 * <p>
+	 * {@code index} is the position within its own list, newest first — what the 0x4822 index byte
+	 * carries and what 0x4840 sends back to open a letter.
+	 */
+	/**
+	 * @param systemSender true when no character sent this — a GameMaster announcement rather than
+	 *                     player mail, which the client files under a different tab
+	 */
+	public record Mail(long id, int index, String counterparty, String subject, String body,
+		java.time.Instant sentAt, boolean read, boolean systemSender) {
+	}
+
+	/**
+	 * Delivers one letter, resolving the recipient by name. Returns false when no character owns
+	 * that name — the client lets the player type a recipient freely, so an unknown name is an
+	 * ordinary outcome rather than an error.
+	 * <p>
+	 * The sender's name is stored alongside the id: the id is the honest link, but a list entry
+	 * has to render a name even if that character is later deleted or renamed.
+	 */
+	public boolean sendMail(long senderCharaId, String senderName, String recipientName,
+		String subject, String body) {
+		return jdbi.withHandle(handle -> handle.createUpdate("""
+					insert into mail (recipient_chara_id, sender_chara_id, sender_name, subject, body)
+					select c.id, :sender, :senderName, :subject, :body
+					from chara c where c.name = :recipient
+					""")
+			.bind("sender", senderCharaId)
+			.bind("senderName", senderName)
+			.bind("recipient", recipientName)
+			.bind("subject", subject)
+			.bind("body", body)
+			.execute()) > 0;
+	}
+
+	/**
+	 * Letters a character has received, newest first. Counterparty is the sender.
+	 * <p>
+	 * The ordering has to be stable: the 0x4822 index byte is a position in it, and 0x4840 sends
+	 * that position back to choose which letter to open.
+	 */
+	public java.util.List<Mail> mailbox(long charaId, int limit) {
+		return mail("""
+				select id, sender_name as counterparty, subject, body, sent_at, is_read,
+					sender_chara_id
+				from mail where recipient_chara_id = :chara and not recipient_deleted
+				order by sent_at desc, id desc
+				limit :limit
+				""", charaId, limit);
+	}
+
+	/**
+	 * Letters a character has sent, newest first. Counterparty is the recipient.
+	 * <p>
+	 * Read from the same rows as {@link #mailbox}, from the other end — one row per delivery,
+	 * never a duplicate "sent copy". A letter to eight recipients is eight rows and therefore
+	 * eight entries here, which is what the wire format can express: the 0x4822 entry has one
+	 * name field, so a single row naming all eight is not representable.
+	 */
+	public java.util.List<Mail> sentMail(long charaId, int limit) {
+		return mail("""
+				select m.id, c.name as counterparty, m.subject, m.body, m.sent_at,
+					m.sender_read as is_read, m.sender_chara_id
+				from mail m join chara c on c.id = m.recipient_chara_id
+				where m.sender_chara_id = :chara and not m.sender_deleted
+				order by m.sent_at desc, m.id desc
+				limit :limit
+				""", charaId, limit);
+	}
+
+	/**
+	 * Marks one letter read for the end that opened it — what the client cannot do for us.
+	 * <p>
+	 * The client sets its own copy's read byte on open ({@code 0x8E2CD8}), but that is local
+	 * state: the next {@code 0x4821} zeroes all four category counters and the lists are rebuilt
+	 * entirely from the {@code 0x4822} entries we send, so an unrecorded read comes back as new.
+	 * There is no "mark as read" command — opening ({@code 0x4840}) is the only signal, which is
+	 * why this is called from the read handler rather than a command of its own.
+	 * <p>
+	 * Per-side, like deletion: a sender opening their own letter in Sent must not clear the
+	 * recipient's unread badge for mail they have never seen.
+	 */
+	public void markMailRead(long charaId, long mailId, boolean sent) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate(sent
+					? """
+						update mail set sender_read = true
+						where id = :id and sender_chara_id = :chara
+						"""
+					: """
+						update mail set is_read = true
+						where id = :id and recipient_chara_id = :chara
+						""")
+				.bind("id", mailId)
+				.bind("chara", charaId)
+				.execute());
+	}
+
+	/**
+	 * Removes one letter from the asking end's list only.
+	 * <p>
+	 * A row is one delivery seen from both ends, so a recipient deleting a letter must not remove
+	 * it from the sender's Sent list. Each end has its own flag; the row goes when neither end can
+	 * see it any more.
+	 */
+	public void deleteMail(long charaId, long mailId, boolean sent) {
+		jdbi.useHandle(handle -> {
+			handle.createUpdate(sent
+					? """
+						update mail set sender_deleted = true
+						where id = :id and sender_chara_id = :chara
+						"""
+					: """
+						update mail set recipient_deleted = true
+						where id = :id and recipient_chara_id = :chara
+						""")
+				.bind("id", mailId)
+				.bind("chara", charaId)
+				.execute();
+			handle.createUpdate("""
+					delete from mail
+					where id = :id and recipient_deleted and (sender_deleted or sender_chara_id is null)
+					""")
+				.bind("id", mailId)
+				.execute();
+		});
+	}
+
+	/** Shared body of {@link #mailbox} and {@link #sentMail}: the index is the row's position. */
+	private java.util.List<Mail> mail(String sql, long charaId, int limit) {
+		return jdbi.withHandle(handle -> {
+			var rows = handle.createQuery(sql)
+				.bind("chara", charaId)
+				.bind("limit", limit)
+				.map((rs, ctx) -> new Object[] { rs.getLong("id"), rs.getString("counterparty"),
+					rs.getString("subject"), rs.getString("body"),
+					rs.getTimestamp("sent_at").toInstant(), rs.getBoolean("is_read"),
+					rs.getObject("sender_chara_id") == null })
+				.list();
+			var mail = new java.util.ArrayList<Mail>(rows.size());
+			for (var index = 0; index < rows.size(); index++) {
+				var row = rows.get(index);
+				mail.add(new Mail((long) row[0], index, (String) row[1], (String) row[2],
+					(String) row[3], (java.time.Instant) row[4], (boolean) row[5],
+					(boolean) row[6]));
+			}
+			return mail;
+		});
 	}
 
 	/**
@@ -295,24 +711,17 @@ public class CharacterService {
 	}
 
 	/**
-	 * The skills a character owns, seeding the starting set on first use.
+	 * The skills a character owns — exactly what the table holds, with no top-up.
 	 * <p>
-	 * The starting set is every id the client defines, 1..{@value CharaSkill#MAX_ID}, at the
-	 * experience `LoadoutWriter` used to hard-code — which keeps existing characters exactly where
-	 * they were when this table was introduced (V20). It is a <em>policy</em> choice, not protocol:
-	 * a server that wanted skills earned rather than given would seed nothing here and insert on
-	 * whatever event grants one.
+	 * The starting set is granted once, at character creation, and V20 backfilled the characters
+	 * that predate the table. Nothing re-seeds afterwards, deliberately: a character with a subset
+	 * keeps that subset, and a character with no rows sends an empty {@code 0x4125}, which is the
+	 * only way "does not have this skill" can be expressed at all.
+	 * <p>
+	 * Which skills a character starts with is <em>policy</em>, not protocol. A server that wanted
+	 * them earned would seed nothing at creation and insert on whatever grants one.
 	 */
-	public List<CharaSkill> getOrCreateSkills(long charaId) {
-		jdbi.useHandle(handle -> handle.createUpdate("""
-					insert into chara_skill (chara_id, skill_id, experience, flag)
-					select :chara, id, case when id = 17 then 8192 else 24576 end, 0
-					from skill
-					on conflict (chara_id, skill_id) do nothing
-					""")
-			.bind("chara", charaId)
-			.execute());
-
+	public List<CharaSkill> getSkills(long charaId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("select * from chara_skill where chara_id=:id order by skill_id")
 				.bind("id", charaId)
@@ -395,6 +804,32 @@ public class CharacterService {
 
 			appearance.setCharaId(charaId);
 			insertAppearance(handle, appearance);
+
+			// The starting skill set: ids 1..16 at level 1, and no skill 17.
+			//
+			// Seeded here rather than on read so that a character's skills are afterwards whatever
+			// the table says — including none. A read that top-up-seeded could not express "this
+			// character has lost, or never had, skill N".
+			//
+			// Level 1 rather than 0 because 0 is not a thing the client can show: its list builder
+			// rejects any record at or below 8191 experience (0x8DD5F0), so a zero-experience skill
+			// is invisible and a gameplay check reads it as level 0 anyway. Skill 17 is withheld —
+			// see CharaSkill.STARTING_MAX_ID.
+			//
+			// The bound reads ":maxId >= id" rather than the natural way round, and this note lives
+			// out here rather than in the SQL, for the same reason: Jdbi renders statements through
+			// StringTemplate, which treats a less-than sign as the start of an expression and fails
+			// to compile — in the statement text or in a comment inside it.
+			handle.createUpdate("""
+					insert into chara_skill (chara_id, skill_id, experience, flag)
+					select :chara, id, :experience, 0
+					from skill
+					where :maxId >= id
+					""")
+				.bind("chara", charaId)
+				.bind("experience", CharaSkill.MINIMUM_VISIBLE_EXPERIENCE)
+				.bind("maxId", CharaSkill.STARTING_MAX_ID)
+				.execute();
 
 			handle.createUpdate("""
 					update account

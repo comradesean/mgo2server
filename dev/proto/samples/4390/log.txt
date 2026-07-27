@@ -3576,3 +3576,27 @@
   seconds_in_game           = 468
   experience_total          = 428
   detail_present            = 1
+=== #491  2026-07-26 20:42:40  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 491_204240_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  seconds_in_game           = 1924
+  experience_total          = 214
+  detail_present            = 1
+=== #492  2026-07-27 02:41:26  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 492_024126_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  seconds_in_game           = 1923
+  experience_total          = 500
+  detail_present            = 1
+=== #493  2026-07-27 03:28:03  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 493_032803_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  seconds_in_game           = 1908
+  experience_total          = 428
+  detail_present            = 1
+=== #494  2026-07-27 03:28:43  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 494_032843_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  seconds_in_game           = 2055
+  experience_total          = 500
+  detail_present            = 1

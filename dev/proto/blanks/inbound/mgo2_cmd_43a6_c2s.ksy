@@ -8,11 +8,48 @@ doc: |
   `0xD40DC4`, seal `0xD5C828` at `0xD40DD0`, flush `0xD34CC0` at `0xD40DE0`. Not encrypted.
   **Total payload 4 bytes.**
 
-  No validation of the argument at all — it is staged and written straight through. Meaning
-  unestablished: `COMMANDS.md` and `PROTOCOL.md` both list `0x43A6` only as a sendable,
-  unanswered gap in the in-match/host family. Reply `0x43A7`.
+  No validation of the argument at all — it is staged and written straight through. Reply `0x43A7`.
+
+  ## Identified 2026-07-27: this is the INSTRUCTOR half of a graduation
+
+  Sole call site `0x27E0E4`, inside the graduate action `0x27E050`, immediately after that function
+  sets the "graduated" bit on the target's roster entry:
+
+      27e08c-27e0a0  entry[8] |= 0x00010000          ; the bit 0x6D8C70 tests
+      27e0a4         sess = 0x2810E0()
+      27e0b0-27e0d4  rec = 0x27EF90((idx & 0xFF) + 1); 0x27F160(rec, 332, 4, &v)
+      27e0e4         0xD40D40(sess, v)               -> this command
+
+  Gated on `0x26E958()` (I am the instructor) and `0x26EA58() & 0x2000`. So the argument is
+  **character-record field 332** of the graduating student, fetched through the replicated-variable
+  accessor `0x27F160`, not a chara id the server assigned. [PROVED as to provenance; the meaning of
+  field 332 itself is UNKNOWN — see the live note below.]
+
+  **The graduation flow is two commands from two different machines:**
+
+  | command | sender | carries |
+  | --- | --- | --- |
+  | `0x43A6` | the **instructor's** client | student's record field 332 |
+  | `0x43C8` | the **student's** client | star rating + the recognition answer |
+
+  Live, 2026-07-27: the instructor's `0x43A6` body was `00000003` while the student being graduated
+  was character id 3, and a second graduation in the same session sent `00000003` again for a
+  different student. So field 332 is not simply the chara id — one sample matched it by coincidence
+  of numbering. [UNKNOWN, and worth a capture with a student whose id is not a small number.]
+
+  Eligibility is decided entirely on the instructor's machine before this is sent: `0x6D8BB0` scans
+  24 roster slots per tick and fires approval event `0x16002A` — the "%s - Approved for graduation"
+  strings, `n002a` 3087/3093 — once a per-slot accumulator passes `5,400,000` (`0x6D8C10`), zeroed
+  when the slot empties (`0x6D8CA8`). Session time, never sent to us, and no level, experience or
+  skill check anywhere near it.
 doc-ref: dev/docs/COMMANDS.md "Reachable in ordinary flow (priority)"
 seq:
   - id: unknown_00
     type: u4
-    doc: "[UNKNOWN] 0x00. Position and width exact from `0xD40DC4`; meaning unestablished. A character id is the family-wide pattern (`0x43A0`, `0x43C4`) but nothing in `0xD40D40` narrows it."
+    doc: |
+      [UNKNOWN meaning; PROVED provenance] 0x00. Position and width exact from `0xD40DC4`. The value
+      is **character-record field 332** of the student being graduated, read via `0x27F160(rec, 332,
+      4, &v)` at `0x27E0D4` and passed straight to the builder. Observed `00000003` live while
+      graduating character id 3 — consistent with a chara id but not evidence for it, since a second
+      graduation of a different student sent the same value. Do not assume it identifies the student
+      until a capture with a large or non-matching id says so.

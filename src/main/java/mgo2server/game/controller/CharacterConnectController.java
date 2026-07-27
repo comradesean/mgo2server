@@ -43,7 +43,13 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int UPDATE_CONNECTION_INFO_RESULT = 0x4701;
 
-	/** Private port, private address, public port, then two bytes the client pads with. */
+	/**
+	 * Private port, private address, public port, then a <b>u16 the client populates</b> — not
+	 * padding (corrected 2026-07-26). The sender writes it from its fourth argument
+	 * ({@code 0xD5C918} at {@code 0xD38708}), so the request is exactly 22 bytes, not "at least
+	 * 20". Its meaning is [UNKNOWN] and we do not read it; the constant below is only a minimum
+	 * length check. See {@code dev/proto/blanks/inbound/mgo2_cmd_4700_c2s.ksy}.
+	 */
 	private static final int PRIVATE_IP_LENGTH = 16;
 
 	private static final int CONNECTION_INFO_SIZE = 2 + PRIVATE_IP_LENGTH + 2;
@@ -269,7 +275,7 @@ public class CharacterConnectController implements IGameController {
 	}
 
 	private void writeSkills(GameControllerContext ctx, long charaId) {
-		var skills = characterService.getOrCreateSkills(charaId);
+		var skills = characterService.getSkills(charaId);
 
 		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize(skills.size()));
 		LoadoutWriter.writeSkills(buffer, skills);
@@ -305,8 +311,14 @@ public class CharacterConnectController implements IGameController {
 		var appearance = characterService.getAppearance(chara.getId()).orElseGet(CharaAppearance::new);
 		var skills = characterService.getOrCreateEquippedSkills(chara.getId());
 
+		// A saved instructor is announced to peers; without it the client re-offers the recognition
+		// prompt every session and no "your instructor" tag can appear.
+		var savedInstructor = characterService.instructorOf(chara.getId())
+			.map(instructor -> (int) instructor.instructorCharaId())
+			.orElse(PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
+
 		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, appearance, skills);
+		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor);
 
 		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}

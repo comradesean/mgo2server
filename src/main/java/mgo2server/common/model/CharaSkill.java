@@ -11,6 +11,21 @@ public class CharaSkill {
 	/** Ids the client defines. Beyond this every id-keyed lookup in the client clamps to 17. */
 	public static final int MAX_ID = 17;
 
+	/**
+	 * The highest id granted at character creation. 17 is withheld deliberately: it is the record
+	 * the training screen reads, and a character that has it skips the training parameter fetch
+	 * entirely. Withholding it is what leaves room for it to be earned.
+	 */
+	public static final int STARTING_MAX_ID = 16;
+
+	/**
+	 * The lowest experience the client will display. Its skill-list builder rejects any record
+	 * with {@code experience <= 8191} outright ({@code 0x8DD5F0}), so a skill below this is
+	 * indistinguishable from one we never sent — confirmed live 2026-07-26 with 1 and 8191 both
+	 * invisible and 8192 visible. Level is {@code min(experience >> 13, 3)}, making this level 1.
+	 */
+	public static final int MINIMUM_VISIBLE_EXPERIENCE = 8192;
+
 	private long charaId;
 
 	private int skillId;

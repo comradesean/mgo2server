@@ -38,21 +38,46 @@ seq:
     type: str
     encoding: ISO-8859-1
     doc: "[ELF] Wire 0x04 -> ctx+29308, fixed 16, NUL at +16. Always empty."
-  - id: unknown_14
+  - id: clan_state
     type: u1
     doc: |
-      [UNKNOWN] Wire 0x14 -> ctx+29325. First byte of what PROTOCOL.md calls the 25-byte unknown
-      prefix; the original's value here is `01`. Also rewritten by 0x4129 (its wire +36 u8).
-  - id: unknown_15
+      [PROVED 2026-07-26] Wire 0x14 -> ctx+29325 = **profile+6837** (`0xd3a094` returns ctx+22488,
+      which is what maps every ctx offset in this parser onto a profile displacement). Clan
+      membership state, and the client writes it itself, so the enum is readable from its handlers:
+      **0** affiliation pending (`0xD58740`, the 0x4B42 request builder), **1** member
+      (`0xD56B68`, 0x4B41 status -1201), **2** leader (`0xD56B84` status -1212; `0xD56E90` for
+      0x4B01), **99** not in a clan (`0xD56B44`, `0xD56C7C`, `0xD56D68` — each `li r0,99;
+      stb r0,6837(r3)` with the base from `bl 0xd3a094`, and each zeroes the clan id alongside).
+      Every reader tests membership with the same idiom `addi r9,r9,-1; cmplwi cr7,r9,1; bgt`,
+      i.e. in a clan iff the value is 1 or 2; the client never distinguishes 1 from 2.
+      Written by four commands — 0x4103 (`0xD3EC34`), 0x4122 (`0xD3D0D0`), 0x4129 (`0xD3CBE4`),
+      0x4B47 (`0xD5849C`) — so it is live server-owned state, not padding.
+      We sent `01` (in a clan) with a clan id of 0; harmless only because nearly every reader
+      checks the id first. Now `0x63`.
+  - id: clan_privileges
     type: u2
     repeat: expr
     repeat-expr: 12
     doc: |
-      [UNKNOWN] Wire 0x15 -> ctx+29326 + i*2. **Twelve separate 2-byte reads** (0xd5cc14) — the
-      remaining 24 bytes of PROTOCOL.md's 25-byte prefix are a u16 array, not opaque padding.
-      Reading the original's transcribed prefix as u16s gives
-      `0000 000C 0001 0000 0000 0000 0100 0100 0000 0000 0001 ....`; PROTOCOL.md prints it as
-      bytes and records no meaning. The first element (ctx+29326) is also rewritten by 0x4129.
+      [PROVED for element 0; elements 1-11 PROVED unread] Wire 0x15 -> ctx+29326 + i*2 =
+      **profile+6838 + i*2**. Twelve separate 2-byte reads (0xd5cc14).
+
+      **Element 0 is the clan privilege bitmask**, part of the same clan block: 0x4B47's parser
+      writes clan id, clan name, +6837, +6838 and the emblem flag in one run
+      (`0xD58490`-`0xD584B0`), and 0x4129 writes clan id + 6838 + 6837 + emblem
+      (`0xD3CBAC`-`0xD3CC0C`). Bits are tested individually — bit 0 at `0x8F9944`
+      (`lhz r0,6838(r3); clrldi. r9,r0,63`), bit 8 at `0xAB3480` — and the whole value is OR'd
+      into a UI flags word at `0xAB0118` and passed as a mask to `0xCFD0A0` (`0xACF188`,
+      `0xAD26A8`). Every one of those bases comes from a `bl 0xd3a094` within a few instructions.
+
+      **Elements 1-11 (profile+6840..+6860) have no reader in the binary.** Checked exhaustively:
+      no lhz/lha/sth/lbz at any of those 22 displacements, and no `addi` producing a pointer into
+      the array; the only `addi ...,6838` sites are the two parsers themselves (`0xD3CBC8`,
+      `0xD3EC50`). The one apparent array walk, `0x950480`-`0x9505CC`, was rejected on provenance:
+      its base is a per-player results record striding 200 bytes, and it writes rather than reads.
+
+      The original's transcribed values (`0000 000C 0001 0000 ...`) were one captured character's
+      clan record. We send zero throughout: no clan, no privileges.
   - id: current_time
     type: u4
     doc: "[ELF] Wire 0x2d. Read as u32, widened and stored as u64 at ctx+29352. PROTOCOL.md: current time, Unix seconds."
@@ -61,7 +86,19 @@ seq:
     doc: "[CONFIRMED] (order per PROTOCOL.md) Wire 0x31 -> ctx+30136..30144, nine separate u8 reads. Appearance bytes 0-8 (gender … pitch), same order as 0x3049."
   - id: unknown_3a
     type: u4
-    doc: "[UNKNOWN] Wire 0x3a -> ctx+30148. PROTOCOL.md: zero, purpose unknown. Sits in the appearance struct between the two appearance groups."
+    doc: |
+      [UNKNOWN meaning; PROVED inert] Wire 0x3a -> ctx+30148 = **profile+7660** = appearance
+      struct +12. Written only by 0x4122 (`0xD3D358`) and 0x4103 (`0xD3EEB8`); **read by nothing**.
+      Eliminations actually run: no instruction uses displacement 7660-7663 off any
+      profile-provenanced base (the one hit, `0x412D88`, is a 16-byte-record table init whose
+      sibling does `lfs`/`stfs` — a float struct, rejected on provenance); the appearance struct is
+      reached as a pointer via `addi rX,rY,7648` at `0x8DF554`, `0x929280`, `0x93DF9C`, `0x93E9C8`,
+      `0x9CB4E8`, `0x9D0F28`, `0x9D102C`, of which four are 200-byte memcpys and two feed
+      `0xD3BB28`, the **0x4130 request builder**, which serialises +2..+6, +16..+29, +30..+34,
+      +35..+39, +60 and +68..+195 and **omits +12**; 0x4131's parser (`0xD3C3DC`) likewise skips
+      the +12 slot; and the character-edit screen's copy at `r29+26660` has **no instruction
+      anywhere using displacement 26672**. The confirming observation would have been a load at
+      profile+7660 or at +12 of any provable copy. None exists. Send 0 (we do).
   - id: appearance_b
     size: 14
     doc: "[CONFIRMED] (order per PROTOCOL.md) Wire 0x3e -> ctx+30152..30165, fourteen separate u8 reads. Appearance head … accessory-2 colour."
@@ -84,7 +121,18 @@ seq:
       `0x600000` each — skill progression does not exist.
   - id: unknown_6a
     type: u1
-    doc: "[UNKNOWN] Wire 0x6a -> ctx+30196. The single byte after the experience array. Zero."
+    doc: |
+      [UNKNOWN meaning; PROVED round-tripped] Wire 0x6a -> ctx+30196 = **profile+7708** =
+      appearance struct +60. Unlike the +12 slot this one is on the wire in both directions: the
+      **0x4130 request builder reads it** (`0xD3BD88 addi r4,r31,60` -> `bl 0xd5c8a0`, r31's
+      provenance `0x9CB4D8 bl 0xd3a094; 0x9CB4E8 addi r4,r3,7648`) and **0x4131's reply parser
+      reads it back** (`0xD3C6AC addi r4,r1,176`, `0xD3C6C0` u8 reader) before memcpying the struct
+      over profile+7648. In the 0x4130 request it sits between the skill levels (+35..+39) and the
+      128-byte comment (+68); the skill-experience array is not sent, so the client's notion of
+      "the loadout I own" includes this byte. No other reader: nothing uses displacement 7708 off a
+      profile-provenanced base, and nothing uses 26720 (the edit-screen copy's +60), so no UI reads
+      or writes it — the client is a pure conduit. Send 0 (we do), but note the consequence: our
+      0x4130 handler must preserve whatever we sent, or it is lost on the first appearance change.
   - id: chara_id
     type: u4
     doc: "[ELF] Wire 0x6b -> ctx+30200. PROTOCOL.md: \"the original sends the character id here; its purpose is not documented\"."
@@ -99,6 +147,30 @@ seq:
   - id: emblem_flag
     type: u1
     doc: "[ELF] Wire 0xf0 -> ctx+29360. PROTOCOL.md: 3 when the clan has an emblem; always 0 here. Also rewritten by 0x4129."
-  - id: unknown_f1
+  - id: saved_instructor
     type: u4
-    doc: "[UNKNOWN] Wire 0xf1 -> ctx+35536. PROTOCOL.md reproduces the original's suffix as `00 A7 00 0D` = 0x00A7000D and records no meaning."
+    doc: |
+      [CONFIRMED 2026-07-26] Wire 0xf1. The character's **saved instructor** marker; 0 = none.
+      Read at `0xD3D624` (`addi r4,r25,13048` -> the u32 reader `0xD5CCD8`) into `profile+0x32F8`,
+      **unguarded** — unlike the `0x43c9` path (`0xD3FF6C`), which stores only a nonzero value, this
+      one stores whatever we send, every time. From there: join-announcement packer `0x8842AC` ->
+      P2P message 36 -> `G+0x1C0` (sole writer `0x9D17C8`, sole reader `0x9CD5D0`) -> gate
+      `0xA359A4`, where nonzero suppresses the "Save current instructor, %s, as the instructor for
+      your personal data?" prompt (stage `n002a` string resource 3099; the rating prompt we do get
+      is 3105).
+
+      PROTOCOL.md long reproduced this as a fixed suffix `00 A7 00 0D` = 0x00A7000D copied from
+      another server. That is not a constant — it was one captured character's saved instructor,
+      and echoing it made every character on this server announce "I already have an instructor",
+      which suppressed the prompt for everyone.
+
+      **Now populated (2026-07-27).** Zero when the character has no saved instructor; otherwise the
+      instructor's **character id**, from `chara_instructor`. A character who answered yes to the
+      recognition prompt (`0x43c8` answer byte `0x01`) therefore keeps their instructor across a
+      login, which is what "Instructor name cannot be erased once saved" requires — the client's own
+      copy at `profile+0x32F8` is RAM only and is never sent back to us.
+
+      [INFERRED that the field is an id. PROVED that it is peer-visible: stored verbatim, copied to
+      the join announcement at `0x8842AC`, broadcast as P2P message 36. A peer-visible identity is
+      what an in-match "instructor" tag would need, and the captured `0x00A7000D` looks like an id
+      rather than a flag. Untested: whether the tag renders, and whether the id namespace is ours.]

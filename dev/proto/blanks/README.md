@@ -14,7 +14,7 @@ Direction is encoded by the folder, from **the server's** point of view:
 | folder | direction | suffix | count | id list |
 | --- | --- | --- | --- | --- |
 | `inbound/` | client -> server (what we receive and must answer) | `_c2s` | 109 | `dev/analysis/c2s_ids.txt` (112 ids, 2 already verified) |
-| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 195 | `dev/analysis/s2c_ids.txt` (204 ids, 8 already verified) |
+| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 194 | `dev/analysis/s2c_ids.txt` (204 ids, 9 already verified) |
 | (root) | both directions, identical schema | none | 1 | `0x0005` only |
 
 Direction is carried **twice on purpose** — by the folder and by the `_c2s`/`_s2c` filename

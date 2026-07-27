@@ -25,7 +25,24 @@ doc-ref: dev/docs/PROTOCOL.md "0x4101 — character info, 0x142 = 322 bytes"
 seq:
   - id: chara_id
     type: u4
-    doc: "[CONFIRMED] Wire 0x000 -> +0x00."
+    doc: |
+      [CONFIRMED] Wire 0x000 -> +0x00, i.e. `netctx+0x57D8`.
+
+      **This is the id space the rest of the session identifies players by** [ELF 2026-07-26,
+      traced for chat]. Two consumers found so far, both outside this parser:
+
+      - **In-game chat attribution.** `0x4401` carries a speaker id which the display consumer
+        (`0xC9FFD8`) matches against `roster_entry+0x60` to resolve who spoke. That roster field is
+        seeded from this value: the local player's peer descriptor is built at `0x9444BC` with
+        `blob[0] = *(netctx+0x57D8)` (verified by disassembly; the descriptor's full 20-byte layout
+        is in `dev/docs/STUN.md` "Where the checked address actually goes"), and the peer-join path reads a u32 from the session stream
+        and compares it against `netctx+0x57D8` at `0x276694` to recognise itself before storing it
+        to `entry+0x60` (`0x27687C`).
+      - So a `0x4401` speaker id only renders a name if it equals the `0x4101` chara_id that
+        player was sent. Confirmed live 2026-07-26: chat lines render with names.
+
+      Practical consequence: this field is load-bearing beyond the connect burst, and changing what
+      we put here would silently break chat attribution rather than failing visibly.
   - id: name
     size: 16
     type: str

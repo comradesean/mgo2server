@@ -47,3 +47,12 @@ dev/ref/
 
 # Recreated by the Maven container; never has anything worth keeping
 tmp/
+
+### mgo2server: generated analysis output
+# Extracted from the retail disc (Solideye + Gcx) and from container logs. Both are large and
+# regenerable, and the string dumps are Konami's text — reproduce them locally, do not vendor them.
+dev/analysis/strings/
+dev/analysis/logs/
+dev/tools/__pycache__/
+*.bak
+*.bak2

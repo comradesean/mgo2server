@@ -2,6 +2,7 @@ package mgo2server.game;
 
 import mgo2server.GameClient;
 import mgo2server.TestDatabase;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.common.Services;
 import mgo2server.common.ServicesFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -51,6 +52,27 @@ public abstract class BaseGameClientServerIT {
 		server.start().join();
 
 		client = new GameClient(server.boundPort());
+	}
+
+	/**
+	 * Grants a character the starting skill set the service grants at creation.
+	 * <p>
+	 * Tests that insert a `chara` row directly bypass {@code CharacterService.create}, which is
+	 * where skills are granted — so a fixture that wants a character with skills has to say so.
+	 * That is the point of the design: ownership is data, not something a read invents.
+	 */
+	protected static void grantStartingSkills(long charaId) {
+		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
+					insert into chara_skill (chara_id, skill_id, experience, flag)
+					select :chara, id, :experience, 0
+					from skill
+					where :maxId >= id
+					on conflict (chara_id, skill_id) do nothing
+					""")
+			.bind("chara", charaId)
+			.bind("experience", CharaSkill.MINIMUM_VISIBLE_EXPERIENCE)
+			.bind("maxId", CharaSkill.STARTING_MAX_ID)
+			.execute());
 	}
 
 	@AfterEach

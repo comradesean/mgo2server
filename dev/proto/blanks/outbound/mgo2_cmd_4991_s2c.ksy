@@ -31,12 +31,16 @@ doc: |
   The record area is memset to 296 bytes before the reads (`0xDD36F8`, `r5 = 296`), i.e.
   4 records of 72 bytes plus the trailing word at 0x120.
 
+  SERVED 2026-07-26 at 236 bytes (`HubGameController`), with the four records zeroed because the
+  57-byte layout is undecoded. The previous 172-byte reply was a reference-server length; the
+  client read the missing 64 bytes out of stale receive buffer without erroring.
+
   So the payload the parser expects is **4 + 4 + 4*57 = 236 bytes**, not 172. The fixed
   answer both reference servers send is 64 bytes short; it "works" only because the readers
   bound-check against the 1023-byte receive buffer rather than the payload length, so the
   last record and a half are read out of whatever follows in the buffer. That is exactly the
   mechanism PROTOCOL.md documents for the truncated `0x4902` entries. **Untested against a
-  real server capture** — the 172-byte answer is what we send today and the screen advances,
+  real server capture** — the 172-byte answer was what we sent until 2026-07-26 and the screen advanced,
   which means the four records' contents have never mattered so far, not that they are absent.
 
   DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
