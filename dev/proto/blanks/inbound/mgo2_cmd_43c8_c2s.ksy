@@ -53,6 +53,14 @@ doc: |
   | 2026-07-27 02:40 | 5 | `00000005 01` | shown, **YES** |
   | 2026-07-27 03:27 | 5 | `00000005 00` | shown, **NO** |
   | 2026-07-27 03:27 | 1 | `00000001 01` | shown, **YES** (different character) |
+  | 2026-07-27 04:43 | 1 | `00000001 00` | shown, **NO** |
+  | 2026-07-27 04:43 | 5 | `00000005 21` | not shown — server sent a saved instructor in `0x4122` |
+
+  The last row is the round trip closing: that character had recognised this instructor earlier, the
+  server sent the saved instructor in `0x4122` wire `0xf1`, and the client suppressed the prompt —
+  so the field both raises and withholds it, and a saved instructor now survives a login. `0x21`
+  appearing a third time, again only when the prompt never ran, is further evidence it is stale
+  buffer contents rather than a defined value.
 
   **[CONFIRMED] `0x00` = no, `0x01` = yes.** Only bit 0 is defined. The `0x21` seen on the two runs
   where the prompt never ran is **not** a "not asked" flag — the ELF shows the dialog result buffer

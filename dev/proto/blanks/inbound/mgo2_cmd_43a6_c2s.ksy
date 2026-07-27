@@ -32,10 +32,11 @@ doc: |
   | `0x43A6` | the **instructor's** client | student's record field 332 |
   | `0x43C8` | the **student's** client | star rating + the recognition answer |
 
-  Live, 2026-07-27: the instructor's `0x43A6` body was `00000003` while the student being graduated
-  was character id 3, and a second graduation in the same session sent `00000003` again for a
-  different student. So field 332 is not simply the chara id — one sample matched it by coincidence
-  of numbering. [UNKNOWN, and worth a capture with a student whose id is not a small number.]
+  Live, 2026-07-27: one session graduated two different students back to back and the instructor's
+  client sent `00000003` then `00000002` — the students' character ids 3 and 2, in that order. An
+  earlier session sent `00000003` for character 3. So **field 332 carries the student's character
+  id** [INFERRED, three samples, two of them distinguishing]. Still worth one capture with an id
+  above 255 to rule out a slot index that happens to track our small id space.
 
   Eligibility is decided entirely on the instructor's machine before this is sent: `0x6D8BB0` scans
   24 roster slots per tick and fires approval event `0x16002A` — the "%s - Approved for graduation"
@@ -51,5 +52,7 @@ seq:
       is **character-record field 332** of the student being graduated, read via `0x27F160(rec, 332,
       4, &v)` at `0x27E0D4` and passed straight to the builder. Observed `00000003` live while
       graduating character id 3 — consistent with a chara id but not evidence for it, since a second
-      graduation of a different student sent the same value. Do not assume it identifies the student
-      until a capture with a large or non-matching id says so.
+      graduation of a different student sent the same value. Resolved later the same day: a session
+      that graduated two students sent `00000003` then `00000002`, matching character ids 3 and 2 in
+      order, so this identifies the **student being graduated** [INFERRED]. A capture with an id
+      above 255 would settle whether it is the id itself or a slot index tracking it.
