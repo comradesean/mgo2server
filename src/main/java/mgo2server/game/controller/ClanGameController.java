@@ -177,26 +177,48 @@ public class ClanGameController implements IGameController {
 	private static final int EMBLEM_ON_DISPLAY = 3;
 
 	/**
-	 * How to refuse an emblem upload without destroying the player's work.
+	 * Refusing an emblem re-display: {@code -1216}, which the client renders as
+	 * <em>"A fixed amount of time must pass in order for the emblem to be updated."</em>
 	 * <p>
-	 * {@code 0x4b51}'s result is routed at {@code 0xAD3E20}. Only {@code -1207} and {@code -1202}
-	 * fall through to {@code 0xAD3EA8}, which raises UI event 2 — an error dialog. <b>Every other
-	 * non-zero value takes {@code 0xAD3ED0}, which memsets the client's 768-byte emblem buffer and
-	 * raises event 13</b>, destroying the emblem being edited. So the choice is between those two
-	 * codes and nothing else.
+	 * Found by dumping the client's error table at {@code 0x106D714} — 664 entries of
+	 * {@code {u32 dialogId, i32 ordinal}} — and the dispatcher that feeds it
+	 * ({@code 0xA7E410} for this op, {@code 0x885A08} raises the dialog, {@code 0xB8F988} resolves
+	 * it, {@code 0x240708} fetches the string). The chain was verified against a case we already
+	 * ship: {@code -260} on character creation resolves to "Desired PC name is already in use",
+	 * which is exactly what the client shows.
 	 * <p>
-	 * Both were checked live on 2026-07-27 and the codes carry specific text, so the choice matters:
-	 * <ul>
-	 *   <li>{@code -1207} → <em>"Unable to locate designated clan.(1904:FFFFFB49)"</em> — wrong, and
-	 *       actively misleading: it tells the player their clan is missing.</li>
-	 *   <li>{@code -1202} → <em>"Unable to update clan emblem.(197F:FFFFFB4E)"</em> — accurate about
-	 *       what happened, which is the best available. This is the one we send.</li>
-	 * </ul>
-	 * The message that <em>belongs</em> here — "You must wait another %d hours %d minutes before you
-	 * can put this emblem on display" (lobby 17247) — cannot be produced: no code path in this build
-	 * formats it. The player is told the update failed, not how long to wait.
+	 * Previously {@code -1202}, "Unable to update clan emblem" — true but vague. Other codes on this
+	 * op: {@code -1215} "Use of the clan emblem is currently forbidden", {@code -1218} "You do not
+	 * have emblem editing rights", {@code -1207} "Unable to locate designated clan".
+	 * <p>
+	 * <b>Caveat.</b> An earlier trace concluded only {@code -1207} and {@code -1202} reach a dialog
+	 * and that every other value memsets the client's 768-byte emblem buffer. The later, deeper
+	 * trace could not reproduce that: in this dispatcher every branch reaches a dialog and neither
+	 * it nor the {@code 0x4b51} handler ({@code 0xD555D4}) contains a memset — so the wipe, if it
+	 * happens, lives in the emblem screen's event-104 consumer, which nobody has located. If a
+	 * refusal ever clears a work-in-progress emblem, revert this to {@code -1202}.
 	 */
-	private static final int EMBLEM_REFUSED = -1202;
+	private static final int EMBLEM_REFUSED = -1216;
+
+	/**
+	 * Refusing a clan creation on the requirements: {@code -1206} ->
+	 * <em>"Conditions to create clan have not been met."</em> ({@code 0xA7E680}).
+	 * <p>
+	 * Neighbours on the same op, worth having when the checks they describe exist: {@code -1200} a
+	 * clan by that name already exists, {@code -1230} banned from creating clans, {@code -1231}
+	 * comment contains an invalid word, {@code -1233} clan name contains an invalid character,
+	 * {@code -24} clan name is not long enough.
+	 */
+	private static final int CLAN_CONDITIONS_NOT_MET = -1206;
+
+	/**
+	 * Refusing a disband inside the cooldown: {@code -1205} ->
+	 * <em>"A fixed amount of time must pass in order to disband the clan."</em> ({@code 0xA7E74C}).
+	 * <p>
+	 * This is the message the orphaned countdown strings (17312/17318) would have accompanied. The
+	 * countdown itself is still unreachable — this says the same thing without the number.
+	 */
+	private static final int DISBAND_TOO_SOON = -1205;
 
 	/**
 	 * How long a clan must wait before putting another emblem on display.
@@ -869,12 +891,9 @@ public class ClanGameController implements IGameController {
 
 		var wait = clanService.secondsUntilDisbandable(membership.id());
 		if (wait > 0) {
-			// Seven days from creation, like the character-delete and emblem cooldowns. The client
-			// cannot show the countdown — lobby strings 17312/17318 are orphaned in this build, the
-			// same way the emblem ones are — so this surfaces as a generic error.
 			logger.info("Clan {}: disband refused, {}s of the {}s cooldown remaining.",
 				membership.id(), wait, ClanService.DISBAND_COOLDOWN.toSeconds());
-			ctx.write(DISBAND_RESULT, GameError.GENERAL);
+			writeCode(ctx, DISBAND_RESULT, DISBAND_TOO_SOON);
 			return;
 		}
 
@@ -1037,11 +1056,22 @@ public class ClanGameController implements IGameController {
 		writeResult(ctx, MEMBER_ACTION_END);
 	}
 
-	/** Refuses an emblem upload without destroying the client's copy. See {@link #EMBLEM_REFUSED}. */
+	/** Refuses an emblem upload. See {@link #EMBLEM_REFUSED}. */
 	private void refuseEmblem(GameControllerContext ctx) {
+		writeCode(ctx, UPLOAD_EMBLEM_RESULT, EMBLEM_REFUSED);
+	}
+
+	/**
+	 * A bare result carrying a raw client error code.
+	 * <p>
+	 * These codes are not ours and are not masked: the client resolves them through its own table at
+	 * {@code 0x106D714} ({@code dialogId -> ordinal -> string}), so each one selects a specific
+	 * message. {@link GameError} exists for our masked codes; this is for the client's own.
+	 */
+	private void writeCode(GameControllerContext ctx, int command, int code) {
 		var buffer = ctx.buffer(Integer.BYTES);
-		buffer.writeInt(EMBLEM_REFUSED);
-		ctx.write(new GamePacket(UPLOAD_EMBLEM_RESULT, buffer));
+		buffer.writeInt(code);
+		ctx.write(new GamePacket(command, buffer));
 	}
 
 	/** The re-display cooldown in seconds, from the environment or the default. */
@@ -1188,7 +1218,7 @@ public class ClanGameController implements IGameController {
 		if (!characterService.meetsClanRequirements(charaId)) {
 			logger.info("Character {} tried to create clan '{}' without 20 hours and level 3.",
 				charaId, name);
-			ctx.write(CREATE_CLAN_RESULT, GameError.GENERAL);
+			writeCode(ctx, CREATE_CLAN_RESULT, CLAN_CONDITIONS_NOT_MET);
 			return;
 		}
 

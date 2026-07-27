@@ -93,6 +93,16 @@ public class MessageGameController implements IGameController {
 	 */
 	private static final int SEND_RESULT_FLAGS = 0x01;
 
+	/**
+	 * The client's own code for "this recipient has blocked you": {@code -830}, which it renders as
+	 * <em>"The receiver has blocked incoming mail."</em>
+	 * <p>
+	 * Not one of ours and not masked — the client resolves it through its error table at
+	 * {@code 0x106D714}. It goes in the reply's status <em>and</em> in the per-recipient entry, so
+	 * the screen names the person who blocked you rather than failing the whole send anonymously.
+	 */
+	private static final int RECIPIENT_BLOCKED_MAIL = -830;
+
 	/** Wire offset of the eight recipient-name slots: one leading count byte. */
 	private static final int SEND_RECIPIENTS_OFFSET = 1;
 
@@ -246,7 +256,7 @@ public class MessageGameController implements IGameController {
 		var body = readString(payload, bodyOffset, BODY_LENGTH);
 
 		var delivered = 0;
-		var blocked = 0;
+		var blocked = new java.util.ArrayList<String>();
 		for (var slot = 0; slot < count; slot++) {
 			var recipient = readString(payload, SEND_RECIPIENTS_OFFSET + slot * NAME_LENGTH,
 				NAME_LENGTH);
@@ -260,7 +270,7 @@ public class MessageGameController implements IGameController {
 			if (target != null && characterService.hasBlocked(target, charaId)) {
 				logger.info("Send mail: \"{}\" has blocked character {}; letter dropped.",
 					recipient, charaId);
-				blocked++;
+				blocked.add(recipient);
 			} else if (characterService.sendMail(charaId, senderName, recipient, subject, body)) {
 				delivered++;
 			} else {
@@ -269,10 +279,27 @@ public class MessageGameController implements IGameController {
 		}
 		logger.info("Send mail from \"{}\": {} of {} recipient(s) delivered{}, subject \"{}\".",
 			senderName, delivered, count,
-			blocked == 0 ? "" : " (" + blocked + " blocked)", subject);
+			blocked.isEmpty() ? "" : " (" + blocked.size() + " blocked)", subject);
 
-		var buffer = ctx.buffer(Integer.BYTES + 1);
-		buffer.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);
+		if (blocked.isEmpty()) {
+			var buffer = ctx.buffer(Integer.BYTES + 1);
+			buffer.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);
+			ctx.write(new GamePacket(SEND_MESSAGE_RESULT, buffer));
+			return;
+		}
+
+		// A nonzero status makes the client read the per-recipient error list that follows, and each
+		// entry names one recipient and why it failed. -830 resolves to "The receiver has blocked
+		// incoming mail" through the client's error table; its neighbours are -810 "You are on the
+		// receiver's Block List", -801/-820 and -802 for unknown or invalid recipients.
+		var buffer = ctx.buffer(Integer.BYTES + 1 + Integer.BYTES
+			+ blocked.size() * (NAME_LENGTH + Integer.BYTES));
+		buffer.writeInt(RECIPIENT_BLOCKED_MAIL).writeByte(SEND_RESULT_FLAGS);
+		buffer.writeInt(blocked.size());
+		for (var name : blocked) {
+			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
+			buffer.writeInt(RECIPIENT_BLOCKED_MAIL);
+		}
 		ctx.write(new GamePacket(SEND_MESSAGE_RESULT, buffer));
 	}
 
