@@ -742,9 +742,9 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			.doesNotContain(CharacterService.INSTRUCTOR_SKILL_ID);
 	}
 
-	/** Konami's documented "20 or more hours of gameplay", the half of the rule we can enforce. */
-	private static void givenTwentyHoursPlayed(long charaId) {
-		TestDatabase.get().jdbi().useHandle(handle ->
+	/** Konami's documented instructor rule: "Level 3 or above and 20 or more hours of gameplay". */
+	private static void givenInstructorEligible(long charaId) {
+		TestDatabase.get().jdbi().useHandle(handle -> {
 			handle.createUpdate("""
 					insert into chara_training_time (chara_id, total_seconds)
 					values (:id, :seconds)
@@ -752,7 +752,17 @@ public class MatchStateIT extends BaseGameClientServerIT {
 					""")
 				.bind("id", charaId)
 				.bind("seconds", CharacterService.INSTRUCTOR_MIN_SECONDS)
-				.execute());
+				.execute();
+			// Level comes from experience, not rank, and the check reads whichever pool applies to
+			// that character — a joined player's account has an alt pool and no main character.
+			handle.createUpdate("""
+					update account set main_exp = :exp, alt_exp = :exp
+					where id = (select account_id from chara where id = :id)
+					""")
+				.bind("exp", CharacterService.LEVEL_3_EXPERIENCE)
+				.bind("id", charaId)
+				.execute();
+		});
 	}
 
 	/** The stats report is what actually hands over the skill and the announcement. */
@@ -763,7 +773,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		var student = givenJoinedPlayer(gameId, "Otacon");
 		givenCombatTrainingLobby();
 
-		givenTwentyHoursPlayed(student);
+		givenInstructorEligible(student);
 		var graduation = services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
 		assertThat(graduation.recognised()).isTrue();
 
@@ -814,7 +824,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		var second = givenJoinedPlayer(gameId, "Meryl");
 		givenCombatTrainingLobby();
 
-		givenTwentyHoursPlayed(student);
+		givenInstructorEligible(student);
 		services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
 		services.getCharacterService().awardPendingInstructorSkill(student);
 		services.getCharacterService().recordGraduation(student, second, 2, true, 0x01);
