@@ -1,6 +1,7 @@
 package mgo2server.common.service;
 
 import mgo2server.common.CharacterNames;
+import mgo2server.common.Policy;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.CharaSkill;
@@ -18,8 +19,13 @@ import java.util.List;
 import java.util.Optional;
 
 public class CharacterService {
-	/** A character cannot be deleted until it has existed this long. */
-	public static final Duration DELETE_COOLDOWN = Duration.ofDays(7);
+	/**
+	 * A character cannot be deleted until it has existed this long — a week by default.
+	 * <p>
+	 * Operator policy. Tune with {@code MGO2SERVER_CHARACTER_DELETE_COOLDOWN_HOURS} in
+	 * {@code server.env}; see {@link mgo2server.common.Policy}.
+	 */
+	public static final Duration DELETE_COOLDOWN = Policy.current().characterDeleteCooldown();
 
 	private final Jdbi jdbi;
 

@@ -79,12 +79,44 @@ public final class PersonalInfoWriter {
 	 */
 	public static final int NO_SAVED_INSTRUCTOR = 0;
 
+	/**
+	 * Wire {@code 0xf0} -> {@code profile+6872}: the byte that says this character's clan has an
+	 * emblem worth downloading.
+	 *
+	 * <p>[CONFIRMED] The value is <b>3</b> and it is the client's own constant, not an inherited
+	 * guess. The emblem-upload commit path writes it itself — {@code 0xAD4724}
+	 * ({@code stb r29,56(r11)} where {@code r11 = profile+6816}) — immediately before
+	 * {@code memcpy}ing the 768-byte bitmap to {@code profile+6873}, so the flag physically
+	 * precedes the image it describes. Only upload mode 3 reaches that store; modes 2 and 4 leave
+	 * the byte alone.
+	 *
+	 * <p>It is <b>not</b> a boolean and not a bitfield. Every reader is an exact equality —
+	 * {@code cmpwi cr7,r0,3} at {@code 0x8F9954} and {@code 0x905A94}, with no mask test and no
+	 * comparison against 1 or 2 anywhere. So 1 and 2 behave exactly like 0.
+	 *
+	 * <p>What it gates is a <b>network fetch</b>, not merely rendering: at {@code 0x8F9914} the
+	 * lobby-entry state machine advances only when the clan id is nonzero, membership is 1 or 2,
+	 * and (privilege bit 0 is set <em>or</em> this byte is 3), then sends {@code 0x4b48} and blocks
+	 * on {@code 0x4b49} for 6000 ticks. The clan-info screen does the same with {@code 0x4b4a} at
+	 * {@code 0x905A7C}.
+	 *
+	 * <p>This was hardcoded to 0 with the note "emblems are not modelled, so never". They are
+	 * modelled now, and 0 was not conservative — it meant a character in a clan with an emblem
+	 * never fetched it at login and the clan-info screen silently skipped the fetch.
+	 */
+	public static final int EMBLEM_ON_DISPLAY = 3;
+
+	private static final int NO_EMBLEM = 0;
+
 	private PersonalInfoWriter() {
 	}
 
 	/**
 	 * @param clan the character's clan record — id, name and membership state. {@link
 	 *     ClanService.Membership#NONE} is the ordinary case and means state 99, id 0, empty name.
+	 * @param clanHasEmblem whether that clan has an emblem on display. See {@link
+	 *     #EMBLEM_ON_DISPLAY}: true makes the client fetch it with {@code 0x4b48} during connect
+	 *     and block on the reply, so this must not be set for a clan we cannot serve an emblem for.
 	 * @param savedInstructor the character id of the instructor this character has permanently
 	 *     saved, or {@link #NO_SAVED_INSTRUCTOR} when they have none. Nonzero suppresses the
 	 *     recognition prompt for them from that point on, which is what "cannot be erased once
@@ -101,7 +133,7 @@ public final class PersonalInfoWriter {
 	 *     whoever's session was recorded.
 	 */
 	public static void write(ByteBuf buffer, Chara chara, CharaAppearance a, EquippedSkills skills,
-			int savedInstructor, ClanService.Membership clan) {
+			int savedInstructor, ClanService.Membership clan, boolean clanHasEmblem) {
 		var start = buffer.writerIndex();
 
 		buffer.writeInt((int) clan.id());
@@ -140,8 +172,7 @@ public final class PersonalInfoWriter {
 			StandardCharsets.ISO_8859_1, COMMENT_LENGTH);
 
 		buffer.writeByte(chara.getRank());
-		// Emblem flag: 3 when the character's clan has one. Emblems are not modelled, so never.
-		buffer.writeByte(0);
+		buffer.writeByte(clanHasEmblem ? EMBLEM_ON_DISPLAY : NO_EMBLEM);
 
 		buffer.writeInt(savedInstructor);
 

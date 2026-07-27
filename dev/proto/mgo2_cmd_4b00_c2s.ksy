@@ -35,13 +35,48 @@ doc: |
   and sends nothing. So a name that reaches the server is already well-formed, and the only
   failure left for the server to raise is a collision.
 
-  **Correction to an earlier reading of the preconditions.** This file previously recorded
-  that the sender also requires 0xD57750 — the session clan record at
-  `session_ctx+0x1AA0` non-NULL with id != 0, else -1201. That cannot gate this path as
-  written: the 2026-07-27 capture was produced by a character with *no* clan, whose record
-  id is 0, and the packet went out. So either the 0xD57750 call sits on a branch this path
-  does not take, or the gate was misattributed. The clan-record gates on the *other* senders
-  (0x4b04, 0x4b30, 0x4b40, 0x4b42, 0x4b48, 0x4b64, 0x4b66) are unaffected and still stand.
+  **Correction to an earlier reading of the preconditions — the test was read backwards.**
+  This file previously recorded that the sender requires 0xD57750 to report a clan, else
+  -1201. The call is real and is on this path; what was wrong is the polarity. -1201 here
+  means **"you are already in a clan"**, and a clanless character passes — which is exactly
+  what the 2026-07-27 capture shows.
+
+  0xD57750 returns -1 when the clan id at `profile+6816` is non-zero, 0 when it is zero, and
+  -24 with no session (`0xD56EDC` is a one-line accessor: `bl 0xD3A094` for the profile then
+  `addi r3,r3,6816`). It never reads the membership state at `profile+6837` — the test is
+  purely `clan_id != 0`. This site compares against -1:
+
+      d57a74:  bl      0xd57750
+      d57a78:  cmpwi   cr7,r3,-1        ; already in a clan?
+      d57a7c:  li      r3,-1201
+      d57a80:  beq     cr7,0xd57b14     ; yes -> refuse
+      d57a98:  li      r4,19200         ; no  -> build 0x4b00
+
+  All six callers of 0xD57750, with the opcode each builds and the direction of its test:
+
+  | site     | opcode | test           | meaning                        |
+  |----------|--------|----------------|--------------------------------|
+  | 0xD57814 | 0x4b48 | `cmpwi r3,0`   | -1202 if **not** in a clan     |
+  | 0xD5791C | 0x4b40 | `cmpwi r3,0`   | -1202 if **not** in a clan     |
+  | 0xD57A74 | 0x4b00 | `cmpwi r3,-1`  | -1201 if **already** in a clan |
+  | 0xD57BF4 | 0x4b66 | `cmpwi r3,0`   | -1201 if **not** in a clan     |
+  | 0xD57D5C | 0x4b64 | `cmpwi r3,0`   | -1201 if **not** in a clan     |
+  | 0xD586A8 | 0x4b42 | `cmpwi r3,-1`  | -1201 if **already** in a clan |
+
+  Two further corrections follow. **0x4b42 is also an "already in a clan" refusal**, not a
+  "must be in a clan" one, and was grouped wrongly for the same reason this file was.
+  **0x4b04 and 0x4b30 do not call 0xD57750 at all** — they use 0xD5709C and refuse with
+  -1203 (`li r0,-1203` at 0xD57568 and 0xD57664).
+
+  So -1201 is **no single command's** refusal. The only four `li` of it in the whole image
+  are in this family (0xD57A7C, 0xD57C00, 0xD57D68, 0xD586B0) and it is used with *both*
+  polarities. Read it as "clan membership state is wrong for this operation", with the
+  calling command supplying the direction.
+
+  Unresolved: these are client-side return values from the sender to the UI layer. Whether
+  the server may also send -1201 as a result word is untested — not disproven, just never
+  checked — and `dev/docs/ERRORS.md` has -1201 with its dialog id unrecovered, so there is
+  no string to confirm the wording against.
 
   **The founding requirement is not checked here.** 0xD579AC reads no play time and no
   level, and lobby string 17193 ("You must have 20 hours of playing time and a Level of at

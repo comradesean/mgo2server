@@ -1,112 +1,99 @@
 # Handoff — next session
 
-Five items, all scoped and evidenced. Nothing here needs a live client except where marked.
-Ground rules as always: `mvn verify` (never `mvn test`, expect two counts — currently 151 unit
+Ground rules as always: `mvn verify` (never `mvn test`, expect two counts — currently 159 unit
 and 136 integration), ksy sizes and types are evidence and must not change, no AI attribution in
 commits, and other servers are not specifications.
 
 ---
 
-## 1. `0x4b90` is registered twice, so `memberAction` is dead code
+All five items below were done on 2026-07-27. What is left is the "Still open" list at the
+bottom, plus two things that need a live client rather than a build:
 
-`ClanGameController` puts `0x4b90` into the handler map twice — once as `MEMBER_ACTION`, then
-again as `CLAN_SEARCH`. The second registration wins, so clan search works (which is why live
-testing never caught it) and `memberAction` is unreachable.
+- **The emblem flag now goes out at login.** That newly exercises `0x4b48` on the connect path,
+  where `PROTOCOL.md` records that it blocks character select. Set a clan emblem, relog, and
+  confirm the emblem renders and the lobby does not stall.
+- **`0x4b42`'s precondition is an open conflict**, recorded in that spec rather than resolved. See
+  item 4.
 
-Decide which one the command actually is. The evidence says search: the payload's two selector
-bytes are `{partial_or_exact, ignore_case}`, matching the two toggles on the Clan Search screen
-("Partial and Exact Matches" / "Exact Matches Only" and "Case Sensitive" / "Case Insensitive"),
-and search was verified working live. `memberAction`'s reading of the same bytes is a guess that
-predates that.
+---
 
-- Delete `memberAction` and its registration, or, if the ELF shows a second opcode it was meant
-  for, register it there instead.
-- Its javadoc still describes the bytes as `{exact_only, case_sensitive}`. The second byte means
-  **ignore case** — 1 ignores. Note the polarity where it lands; it caught us once already, on
-  `0x4600`, where a test asserted the wrong reading on no authority but the field's own name.
-- A duplicate key in a handler map should not be silent. Consider making registration reject a
-  repeat, and see whether any other command is shadowed the same way.
+## 1. `0x4b90` registered twice — DONE
 
-## 2. `0x4122`'s emblem flag is hardcoded to zero
+`memberAction` and its constants deleted; clan search keeps the opcode. Its javadoc's
+`case_sensitive` renamed to `ignore_case` (1 ignores) — the read in `clanSearch` was already the
+right way round, so only the name was wrong.
 
-`PersonalInfoWriter` line ~144 writes `0` for the emblem flag at wire `0xf0`, with the comment
-"Emblems are not modelled, so never." That comment is now out of date — emblems are modelled,
-stored, and served by `0x4b47`. The result is that a clan's emblem shows up when you open Clan
-Info but not in the connect burst.
+`GameServerHandler` now tracks which controller claimed each command and throws at construction on
+a second claim, naming both. Registration was a `put` plus a `putAll`, so declaration order decided
+in silence; here the *correct* handler happened to win, which is worse than the wrong one winning,
+because the loser sat there looking maintained. Covered by `GameServerHandlerTest`.
 
-The value is documented as `3` when the character's clan has one. **Confirm that 3 before
-shipping it** — read the client's parser rather than trusting the comment, since the same field's
-neighbour (the saved-instructor u32) was a transcribed constant that cost a day. The write is at
-`profile+6872`; find its readers and see what values they distinguish.
+## 2. `0x4122` emblem flag — DONE, and 3 is confirmed
 
-`write()` already receives the `ClanService.Membership`, so the plumbing exists if `Membership`
-carries an emblem-present flag; otherwise add one there rather than doing a second lookup inside
-the writer.
+Read out of the binary rather than trusted. The value is the client's own constant: the
+emblem-upload commit path writes it at `0xAD4724` (`stb r29,56(r11)`, `r11 = profile+6816`)
+immediately before `memcpy`ing the 768-byte bitmap to `profile+6873` — the flag physically
+precedes the image it describes. Only upload mode 3 reaches that store; modes 2 and 4 leave the
+byte alone.
 
-Needs a live check: set an emblem, relog, and confirm it renders without opening Clan Info.
+It is **not** a boolean and not a bitfield. Every reader is an exact equality — `cmpwi cr7,r0,3`
+at `0x8F9954` and `0x905A94` — so 1 and 2 behave exactly like 0. And it gates a **network fetch**,
+not merely rendering: the lobby-entry state machine at `0x8F9914` advances only when the clan id
+is nonzero, membership is 1 or 2, and (privilege bit 0 is set *or* this byte is 3), then sends
+`0x4b48` and blocks on `0x4b49` for 6000 ticks.
 
-## 3. The `0x3049` tail framing only holds below eight characters
+So the hardcoded 0 was not conservative — a character in a clan with an emblem never fetched it.
+`PersonalInfoWriter.write` takes a `clanHasEmblem` flag, and `CharacterConnectController` sets it
+only when `emblemFlagOf` returns exactly 3, so a stored mode of 2 or 4 is not echoed. `clanInfo`
+was sending the raw mode unclamped and now clamps like its two siblings.
 
-`CharacterGameController` frames the tail as `0x1b4` + 35 bytes. The layout is `0x1b7` + 32.
-Those are equivalent at small character counts and diverge as the list grows — above eight
-characters the zero-fill length goes negative.
+Not chased: the peer-side reader of the join-announcement copy at `0x884164`, and what UI-global
+value 99 (`0x8F9A44`, on reply `-1215`) is distinguished from 0.
 
-Not currently reachable: slots cap at 4. Fix it anyway and add a unit test that builds a list at
-the maximum slot count and asserts the total length, so the cap and the framing cannot drift
-apart. This is the packet that broke twice in one session from two errors that cancelled each
-other out (28-vs-31 appearance bytes, 4-byte index vs 1-byte slot), which is the argument for
-asserting the length rather than eyeballing the arithmetic.
+## 3. `0x3049` tail framing — DONE
 
-## 4. `mgo2_cmd_4b00_c2s.ksy` claims a precondition the client contradicts
+Now `LIST_HEADER_SIZE + LIST_SLOTS * LIST_ENTRY_SIZE` = 439 = `0x1b7`, with a 32-byte trailer.
+Byte-for-byte identical output; the three bytes that used to lead the trailer are zero fill, which
+is what they always were. Entries are capped at eight so a raised slot count cannot overrun the
+grid, and the payload length is asserted.
 
-The spec records that clan creation requires a non-zero session clan id, else `-1201`, citing
-`0xD579AC`. The 2026-07-27 capture came from a character with **no** clan and the create packet
-went out and succeeded.
+## 4. `mgo2_cmd_4b00_c2s.ksy` — DONE, and it was neither option
 
-So either that call sits on a branch create does not take, or the citation is misattributed to
-the wrong command. Resolve it against the ELF — this is an opus subagent job, ELF at
-`dev/ref/MGO2 (decrypted).elf` — and correct the spec's note. Do not delete the observation;
-record which of the two it was, the way the other falsifications in that directory are recorded.
+The citation is real and *is* on the `0x4b00` path. **The test was read backwards.** `0xD57750`
+returns -1 when `profile+6816` is nonzero and 0 when it is zero — it reads the character's own
+clan id and never touches the membership state. This site compares against -1, so `-1201` on
+`0x4b00` means **"you are already in a clan"**, and a clanless character passes. Which is exactly
+what the capture showed.
 
-Related, from the same sweep: `-1201` may still be the right refusal for some create path. If it
-is not create's, find out whose.
+All six callers are now tabulated in the spec with the direction of each test. Two corrections
+fell out: `0x4b42` is also an "already in a clan" refusal, not a "must be in a clan" one, and
+`0x4b04`/`0x4b30` do not call `0xD57750` at all (they use `0xD5709C` and `-1203`, which is what
+their specs already said).
 
-## 5. `server.env` — one file for the tunables
+`-1201` is **no single command's** refusal. All four `li` of it in the image are in this family and
+it is used with *both* polarities. Read it as "clan membership state is wrong for this operation",
+with the calling command supplying the direction.
 
-Requested: "anything with a cooldown should probably just be defaulted to a week, but we should
-also provide a global config file in root that stores these values for the docker container for
-easy editing."
+`mgo2_cmd_4b42_c2s.ksy` has the conflict written into it rather than resolved: the live
+observation (with `0x4b81` serving zeros, Apply sent nothing) is not in doubt, but whether
+`0xD57750` is what produced that `-24`, or whether `0xD585FC` and `0xD586A8` are two separate
+gates, was not settled. Disassemble `0xD585FC` before rewriting that section.
 
-**Current state, verified:**
+## 5. `server.env` — DONE
 
-| Cooldown | Where | Default now |
-| --- | --- | --- |
-| Character delete | `CharacterService.DELETE_COOLDOWN` | `Duration.ofDays(7)` — correct |
-| Clan disband | `ClanService.DISBAND_COOLDOWN` | `Duration.ofHours(168)` — correct |
-| Clan emblem | `ClanGameController.DEFAULT_EMBLEM_COOLDOWN_MINUTES` | **60 minutes — wrong, make it a week** |
+Root `server.env`, committed, wired through `env_file:` on an anchor every service carries. The
+three cooldowns moved into `mgo2server.common.Policy`, which keeps the defaults in code so a
+deleted `server.env` degrades rather than breaks. Also folded in the five probe variables that
+were reading `System.getenv` directly.
 
-Only the emblem one is configurable today, via `MGO2SERVER_EMBLEM_COOLDOWN_MINUTES` read through
-a bare `System.getenv` rather than through `Config`. The other two are compile-time constants.
+**The emblem cooldown defaulted to sixty minutes**, not the week its two siblings used — no
+reason beyond the order the three were written. It is a week now and all three come from one
+place. `PolicyTest` covers the defaults, blank-means-default (an empty `env_file` line must not
+read as "no cooldown"), and rejection of negatives.
 
-**What to build:**
-
-- A root `server.env` holding every operator-tunable value, each with a comment saying what it
-  does and what the default means. Cooldowns in **hours**, so all three read alike; the emblem
-  variable's `_MINUTES` name should change with it.
-- Wire it into `compose.yaml` with `env_file:` on the shared `*server-env` anchor, so every lobby
-  picks it up. Compose reads `.env` for interpolation and `env_file:` for the container's
-  environment — these are different mechanisms, and this wants the second.
-- Read the values through the existing `mgo2server.common.Config` pattern rather than scattered
-  `System.getenv` calls. Three cooldowns, at minimum; fold in the strays while you are there
-  (`MGO2SERVER_GRADUATION`, `MGO2SERVER_LOGIN_PERKS`, `MGO2SERVER_TRAINING_PARAMS`, the three
-  `MGO2SERVER_MAIL_CATEGORY_*`).
-- Defaults must stay in the code. `server.env` is an override file; a missing or deleted one
-  should leave the server running the documented defaults, not crash it.
-- Label each entry **operator policy**, because that is what all of it is. None of these numbers
-  are protocol — the client never sends or validates them. The 168 hours is what players
-  reported, not something read out of the binary, and the file should say so.
-- `server.env` is committed (it holds no secrets); `MGO2SERVER_DB_PASSWORD` stays out of it and
-  keeps its current injection path.
+Precedence to remember: compose gives `environment:` priority over `env_file:`, so anything named
+in a service's environment block cannot be overridden from `server.env`. That is deliberate for
+the per-lobby wiring, and it is why `MGO2SERVER_LOG_LEVEL` is documented as *not* living there.
 
 ---
 

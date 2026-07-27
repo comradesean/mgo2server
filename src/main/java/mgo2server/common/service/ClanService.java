@@ -25,15 +25,19 @@ public class ClanService {
 	public static final int STATE_LEADER = 2;
 
 	/**
-	 * How long a clan must exist before it can be disbanded — seven days, the same interval as the
-	 * character-delete and emblem-display cooldowns.
+	 * How long a clan must exist before it can be disbanded — a week by default, the same interval
+	 * as the character-delete and emblem-display cooldowns.
 	 * <p>
-	 * Operator policy in the sense that we enforce it, but not invented: it is the retail interval.
-	 * The client cannot display it — the disband countdown strings (lobby 17312 / 17318) are
-	 * orphaned in this build exactly like the emblem ones, referenced by no instruction and no
-	 * string table — so a refusal shows a generic error rather than a countdown.
+	 * Operator policy in the sense that we enforce it, but not invented: it is the retail interval
+	 * as players report it. The client cannot display it — the disband countdown strings (lobby
+	 * 17312 / 17318) are orphaned in this build exactly like the emblem ones, referenced by no
+	 * instruction and no string table — so a refusal shows a generic error rather than a countdown.
+	 * <p>
+	 * Tune with {@code MGO2SERVER_CLAN_DISBAND_COOLDOWN_HOURS} in {@code server.env}; see
+	 * {@link mgo2server.common.Policy}.
 	 */
-	public static final java.time.Duration DISBAND_COOLDOWN = java.time.Duration.ofHours(168);
+	public static final java.time.Duration DISBAND_COOLDOWN =
+		mgo2server.common.Policy.current().clanDisbandCooldown();
 
 	/** Seconds until this clan may be disbanded, or 0 when it already may be. */
 	public long secondsUntilDisbandable(long clanId) {

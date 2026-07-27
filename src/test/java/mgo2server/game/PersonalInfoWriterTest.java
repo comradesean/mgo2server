@@ -36,7 +36,7 @@ public class PersonalInfoWriterTest {
 	private static io.netty.buffer.ByteBuf write() {
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara(), new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE);
+			mgo2server.common.service.ClanService.Membership.NONE, false);
 		return buffer;
 	}
 
@@ -90,7 +90,7 @@ public class PersonalInfoWriterTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE);
+			mgo2server.common.service.ClanService.Membership.NONE, false);
 
 		assertThat(buffer.readableBytes()).isEqualTo(PersonalInfoWriter.PAYLOAD_SIZE);
 	}
@@ -104,10 +104,27 @@ public class PersonalInfoWriterTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara(), appearance, skills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE);
+			mgo2server.common.service.ClanService.Membership.NONE, false);
 
 		assertThat(buffer.getByte(49)).isEqualTo((byte) 1);
 		assertThat(buffer.getByte(50)).isEqualTo((byte) 2);
 		assertThat(buffer.getByte(75)).isEqualTo((byte) 9);
+	}
+
+	/**
+	 * The emblem flag at wire 0xf0. [ELF] 3 is the client's own constant, stored to
+	 * {@code profile+6872} by the upload path at {@code 0xAD4724} and tested by exact equality at
+	 * {@code 0x8F9954} and {@code 0x905A94} — so any non-3 value reads as "no emblem", and 0 is the
+	 * one the client itself writes on the -1214 path.
+	 */
+	@Test
+	public void announcesTheClanEmblemOnlyWhenThereIsOne() {
+		var withEmblem = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
+		PersonalInfoWriter.write(withEmblem, chara(), new CharaAppearance(), skills(),
+			PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
+			mgo2server.common.service.ClanService.Membership.NONE, true);
+
+		assertThat(withEmblem.getByte(0xf0)).isEqualTo((byte) PersonalInfoWriter.EMBLEM_ON_DISPLAY);
+		assertThat(write().getByte(0xf0)).isEqualTo((byte) 0);
 	}
 }
