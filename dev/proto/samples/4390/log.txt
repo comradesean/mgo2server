@@ -3600,3 +3600,9 @@
   seconds_in_game           = 2055
   experience_total          = 500
   detail_present            = 1
+=== #495  2026-07-27 04:07:58  0x4390  167 bytes  [mgo2server-combattraining-1]  -> 495_040758_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  seconds_in_game           = 1345
+  experience_total          = 428
+  detail_present            = 1

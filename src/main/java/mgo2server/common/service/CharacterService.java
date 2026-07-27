@@ -92,7 +92,8 @@ public class CharacterService {
 	 * half, proven live on 2026-07-27 when a character with zero accumulated play time was shown the
 	 * recognition prompt and answered it. Konami's servers withheld the reward instead, which is
 	 * exactly what happens here. An earlier version of this used level <em>4</em>, taken from player
-	 * accounts rather than the source; the official wording says 3.
+	 * accounts rather than the source; the official wording says 3, which is
+	 * {@link #LEVEL_3_EXPERIENCE} = 375 experience in the client's own threshold table.
 	 * <p>
 	 * This is deliberately <b>not</b> done when {@code 0x43c8} arrives. It is driven by the
 	 * end-of-round stats report ({@code 0x4390}), which the host sends for every player as they
@@ -120,9 +121,12 @@ public class CharacterService {
 					left join chara_training_time t on t.chara_id = c.id
 					where c.id = :student
 					  and coalesce(t.total_seconds, 0) >= :seconds
+					  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
+						  >= :experience
 					""")
 				.bind("student", charaId)
 				.bind("seconds", INSTRUCTOR_MIN_SECONDS)
+				.bind("experience", LEVEL_3_EXPERIENCE)
 				.mapTo(Integer.class)
 				.one() > 0;
 			if (!eligible) {
@@ -187,12 +191,22 @@ public class CharacterService {
 	public static final long INSTRUCTOR_MIN_SECONDS = 20 * 60 * 60;
 
 	/**
-	 * The measured experience threshold for character level 4.
+	 * Experience for character level 3 — Konami's documented instructor requirement, "Level 3 or
+	 * above". Recovered from the client's own threshold table, which the level display walks: the
+	 * first entries are 125, 250, <b>375</b>, 500, 650, and the level is one more than the number of
+	 * thresholds the experience clears. 22 entries, capped at 4,600.
 	 * <p>
-	 * This was {@code GRADUATION_MIN_EXPERIENCE} and gated the graduation award until 2026-07-27,
-	 * when both halves of that rule were falsified — see {@link #recordGraduation}. It is kept
-	 * because the measurement is worth having and nothing else records it, not because anything
-	 * enforces it.
+	 * The table reproduces all six live readings below, which is why it is trusted: 214 -> 1,
+	 * 428 -> 3, 499 -> 3, 500 -> 4, 1,600 -> 10, 49,250 -> 22.
+	 */
+	public static final int LEVEL_3_EXPERIENCE = 375;
+
+	/**
+	 * The measured experience threshold for character level 4 — {@code T[3]} of that same table.
+	 * <p>
+	 * This was {@code GRADUATION_MIN_EXPERIENCE} and gated the award at level <em>4</em> until
+	 * 2026-07-27, when the official requirement turned out to be level 3. Kept because the
+	 * measurement is worth having, not because anything enforces it.
 	 * <p>
 	 * The client shows a <em>level</em>, and that level comes from experience, not from
 	 * {@code chara.rank} — five live readings on 2026-07-26, all at rank 0: 214 showed level 1,
