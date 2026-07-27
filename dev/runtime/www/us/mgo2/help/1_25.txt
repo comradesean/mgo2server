@@ -1,18 +1,12 @@
-COMMUNITY SUPPORT
-
-This server is a private, non-commercial revival of METAL GEAR
-ONLINE. It is not operated by or affiliated with Konami.
-
-The original support channels no longer exist, and the addresses
-printed in the game's manual will not reach anyone.
-
-For help with this server, contact the operator directly.
-
-Reporting a problem is most useful when it includes:
-
-  - your character name
-  - the screen you were on
-  - what you expected to happen
-  - the error code, if one was shown
-
-Thank you for playing.
+<title>COMMUNITY SUPPORT</title>
+This server is a private, non-commercial
+revival of METAL GEAR ONLINE. It is not
+operated by or affiliated with Konami.
+<page-break>
+The original support channels no longer
+exist. For help with this server, contact
+the operator directly.
+<page-break>
+When reporting a problem, include your
+character name, the screen you were on,
+what you expected, and any error code.

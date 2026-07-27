@@ -223,6 +223,29 @@ public class CharacterService {
 	 */
 	public static final int LEVEL_4_EXPERIENCE = 500;
 
+	/**
+	 * Game modes that carry a play-time figure — modes 0..5 in the {@code 0x4105} grid.
+	 * <p>
+	 * Play time is stored as one aggregate and written into every one of these rows, so the total
+	 * the client derives is that aggregate times this count. Both screens that show a play time have
+	 * to agree about that, which is why the arithmetic lives here rather than in either controller.
+	 */
+	public static final int PLAYABLE_MODES = 6;
+
+	/**
+	 * The play time the client displays: the sum across game modes, which is what both the personal
+	 * stats screen and player details show.
+	 * <p>
+	 * The client totals the per-mode column itself, so this is the same figure {@code 0x4105}
+	 * produces — not an independent calculation. It reads high for the wrong reason: we have one
+	 * aggregate and no per-mode breakdown, so the same number goes into every row and the total
+	 * counts it {@value #PLAYABLE_MODES} times. Real per-mode accounting is the fix; until then this
+	 * at least keeps every screen telling the same story.
+	 */
+	public long displayedPlaySeconds(long charaId) {
+		return trainingSeconds(charaId).total() * PLAYABLE_MODES;
+	}
+
 	/** The skill graduation awards. */
 	public static final int INSTRUCTOR_SKILL_ID = 17;
 

@@ -61,7 +61,7 @@ public class PersonalStatsController implements IGameController {
 	 * 3 Capture, 4 Sneaking, 5 Base. Row 6 is hidden — it has no page but is still summed into the
 	 * header and every Total — and row 7 is excluded from all sums. Both are served as zeros.
 	 */
-	private static final int LAST_PLAYABLE_MODE = 5;
+	private static final int LAST_PLAYABLE_MODE = CharacterService.PLAYABLE_MODES - 1;
 
 	/** The 8×18 u32 matrix in {@code 0x4105}. */
 	private static final int MATRIX_CELLS = 144;
