@@ -233,7 +233,16 @@ types:
         doc: "slot 9. [CONFIRMED] preset radio message uses (2/2; strays refit)."
       - id: text_chat_uses
         type: s2
-        doc: "slot 10. [PREDICTED] text chat uses — untestable so far: RPCS3's OSK never commits the buffer (client-side; no server chat-permission field exists)."
+        doc: |
+          slot 10. [CONFIRMED 2026-07-27] Text chat messages sent, **both channels combined** —
+          there is no separate all-chat or team-chat counter anywhere in the frame.
+
+          Three-player single-variable round, each player sending a different number: Sean 2 all +
+          2 team, poop 1 + 1, rawr 3 + 3. Reports came back 4 / 2 / 6, matching the totals exactly
+          and distinguishing all three players. The split is not recoverable from this command.
+
+          This retires the "untestable" note: RPCS3's on-screen keyboard does commit the buffer,
+          so the earlier failure was a harness problem rather than a client one.
       - id: cqc_given
         type: s2
         doc: "slot 11. [CONFIRMED] CQC attacks given — grabs/hold-ups (4 CQC round, 11 hold-up-heavy hack round)."
