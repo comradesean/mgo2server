@@ -20,6 +20,22 @@ doc: |
   looked unimplemented when it had simply never been sent. Serving a real `subject_id` in
   `0x4b81` is what makes 0x4b42 start arriving.
 
+  **Open conflict — the observation stands, the attribution may not.** A later reading of
+  0xD57750 has it returning **-1** when `profile+6816` is non-zero and **0** when it is zero,
+  reading the character's own clan id and never touching `session_ctx+0x1AA0`. On that
+  reading this sender's use of it at 0xD586A8 is `cmpwi r3,-1` -> -1201, i.e. **"you are
+  already in a clan, so you may not apply to another"** — the opposite gate from the one
+  described above, and the same polarity error that was corrected in
+  `mgo2_cmd_4b00_c2s.ksy`.
+
+  What is not in doubt is the live behaviour: with `0x4b81` serving 217 zero bytes, Apply
+  sent nothing, and serving a real `subject_id` made it send. So *something* in this sender
+  reads a cached clan id and gives up. Whether that something is 0xD57750 or a separate -24
+  check on the argument — 0xD585FC and 0xD586A8 are different addresses and may well be two
+  gates, one on the target clan and one on the sender's own membership — has not been
+  settled. Do not collapse the two into one claim; disassemble 0xD585FC and confirm which
+  address produces the -24 before rewriting this section.
+
   ## After the send, the client marks itself pending
 
   0xD58714..0xD58758: the client writes into its session context (0xD3A094) at `+0x1AA0` —

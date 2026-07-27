@@ -338,9 +338,18 @@ public class CharacterConnectController implements IGameController {
 			.map(instructor -> (int) instructor.instructorCharaId())
 			.orElse(PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 
+		var membership = clanService.membershipOf(chara.getId());
+
+		// Only a clan we can actually serve an emblem for: the flag makes the client send 0x4b48
+		// during connect and wait on the reply, so claiming an emblem we do not have would hand it
+		// an empty one. emblemFlagOf returns the raw stored upload mode; 3 is the only mode the
+		// client itself records as "on display".
+		var clanHasEmblem = membership.id() != 0
+			&& clanService.emblemFlagOf(membership.id()) == PersonalInfoWriter.EMBLEM_ON_DISPLAY;
+
 		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor,
-			clanService.membershipOf(chara.getId()));
+		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor, membership,
+			clanHasEmblem);
 
 		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}

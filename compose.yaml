@@ -7,11 +7,22 @@
 
 name: mgo2server
 
+# Operator-tunable values live in server.env at the repository root, one documented file rather
+# than scattered through this one. It is committed and holds no secrets.
+#
+# Note the two mechanisms compose has and do not confuse them: a `.env` file is interpolated into
+# THIS file's ${...} placeholders, while `env_file:` puts variables into the CONTAINER. These
+# tunables are read by the server process, so they want the second.
+#
+# Precedence runs `environment:` over `env_file:`, so anything named in a service's environment
+# block below cannot be overridden from server.env. That is deliberate for the per-lobby wiring
+# (lobby type, id, port) — those differ per container and are not operator policy.
+x-server-env-file: &server-env-file
+  - server.env
+
 x-server-env: &server-env
   # Set to DEBUG to trace every packet, including hex dumps, when testing a real client.
   MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-DEBUG}
-  # Third field of the login reply; see AuthWebController. Set to try alternatives.
-  MGO2SERVER_LOGIN_PERKS: ${MGO2SERVER_LOGIN_PERKS:-}
   MGO2SERVER_DB_URL: jdbc:postgresql://postgres:5432/mgo2server
   MGO2SERVER_DB_USER: mgo2server
   MGO2SERVER_DB_PASSWORD: ${MGO2SERVER_DB_PASSWORD:-mgo2server}
@@ -35,6 +46,7 @@ services:
 
   # Runs migrations once, then exits. Both servers wait for it so neither races the schema.
   migrate:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["migrate"]
@@ -47,6 +59,7 @@ services:
   # One server per lobby, matching the lobby rows created by dev/tools/seed.sql. Each instance answers
   # only its own lobby's commands, so all three must run for a client to get past the gate.
   gate:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
@@ -76,6 +89,7 @@ services:
     restart: unless-stopped
 
   account:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
@@ -106,6 +120,7 @@ services:
   # MGO2SERVER_LOBBY_ID must be the row's id and MGO2SERVER_LOBBY_SUBTYPE its subtype: hosted
   # games are inserted against that id, and the game list filters on it.
   gamelobby:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
@@ -130,6 +145,7 @@ services:
     restart: unless-stopped
 
   automatching:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
@@ -153,16 +169,13 @@ services:
     restart: unless-stopped
 
   basictraining:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
     network_mode: host
     environment:
       <<: *server-env
-      # Five u16s for 0x43d1, comma-separated. The count is protocol; the values are mgo2-server's
-      # and unexplained. Set this to sweep them against a live client without a rebuild — the first
-      # is rendered on the training screen through message 847.
-      MGO2SERVER_TRAINING_PARAMS: ${MGO2SERVER_TRAINING_PARAMS:-}
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "5"
       MGO2SERVER_LOBBY_SUBTYPE: "7"
@@ -180,13 +193,13 @@ services:
     restart: unless-stopped
 
   combattraining:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
     network_mode: host
     environment:
       <<: *server-env
-      MGO2SERVER_TRAINING_PARAMS: ${MGO2SERVER_TRAINING_PARAMS:-}
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "6"
       # Subtype 8, not 7. Every row in the training menu is gated by 0x884584(n), which matches the
@@ -207,6 +220,7 @@ services:
     restart: unless-stopped
 
   web:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["web"]

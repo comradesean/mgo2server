@@ -117,9 +117,19 @@ public class ClanGameController implements IGameController {
 	private static final int WITHDRAW_RESULT = 0x4b41;
 
 	/**
-	 * Clan search: {@code {u8 exact_only, u8 case_sensitive, name[16]}} — the two bytes are the
+	 * Clan search: {@code {u8 exact_only, u8 ignore_case, name[16]}} — the two bytes are the
 	 * screen's own toggles, "Partial and Exact Matches" vs "Exact Matches Only" and "Case Sensitive"
 	 * vs "Case Insensitive".
+	 * <p>
+	 * Note the polarity of the second byte: <b>1 ignores case</b>. It was named
+	 * {@code case_sensitive} here and read the right way round in {@link #clanSearch} anyway, so the
+	 * name was harmless — but the identical byte on the player-search screen had a test asserting
+	 * the inverted meaning on no authority but the field's own name. A field name is not evidence.
+	 * <p>
+	 * This opcode was also registered twice, as this and as a "member action" that read the same two
+	 * bytes as {@code {selector, argument}}. Search is what the client sends; the member-action
+	 * reading was a guess made before the search screen was tested, and because it registered first
+	 * it was silently overwritten by this one and never ran.
 	 */
 	public static final int CLAN_SEARCH = 0x4b90;
 
@@ -231,9 +241,15 @@ public class ClanGameController implements IGameController {
 	 * themselves, or the countdown is fed by something not yet found.
 	 * <p>
 	 * The interval is a guess — the client computes its own from a constant we have not located.
-	 * Override with {@code MGO2SERVER_EMBLEM_COOLDOWN_MINUTES}; {@code 0} disables it.
+	 * Tune with {@code MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS} in {@code server.env}; {@code 0}
+	 * disables it. See {@link mgo2server.common.Policy}.
+	 * <p>
+	 * This defaulted to <b>sixty minutes</b> while the character-delete and clan-disband cooldowns
+	 * defaulted to a week, for no reason beyond the order the three were written. It is a week now,
+	 * like its siblings, and all three come from one place so they cannot drift apart again.
 	 */
-	private static final int DEFAULT_EMBLEM_COOLDOWN_MINUTES = 60;
+	private static final long EMBLEM_COOLDOWN_SECONDS =
+		mgo2server.common.Policy.current().clanEmblemCooldown().toSeconds();
 
 	/** The emblem upload: {@code u8 mode} then 768 bytes. */
 	public static final int UPLOAD_EMBLEM = 0x4b50;
@@ -376,17 +392,7 @@ public class ClanGameController implements IGameController {
 
 	private static final int APPLICANT_TEXT_LENGTH = 64;
 
-	/**
-	 * An action naming a player: {@code {u8, u8, name[16]}}. The two selector bytes are [UNKNOWN] —
-	 * they are logged on every call so the codes can be read off real use rather than guessed.
-	 */
-	public static final int MEMBER_ACTION = 0x4b90;
-
-	private static final int MEMBER_ACTION_START = 0x4b91;
-
-	private static final int MEMBER_ACTION_END = 0x4b93;
-
-	/** {@code u32 id, name[16], u32, name[16], u8 x4, u32} — 48 bytes. */
+/** {@code u32 id, name[16], u32, name[16], u8 x4, u32} — 48 bytes. */
 	private static final int CLAN_LIST_RECORD_SIZE = 48;
 
 	/** {@code 0x4b70} -> the per-mode stat grid, {@code 4 + 4 + 8*18*4} = 584 bytes. */
@@ -498,7 +504,6 @@ public class ClanGameController implements IGameController {
 		handlers.put(CLAN_LIST, this::clanList);
 		handlers.put(APPLY_TO_JOIN, this::applyToJoin);
 		handlers.put(APPLICANTS, this::applicants);
-		handlers.put(MEMBER_ACTION, this::memberAction);
 		handlers.put(WITHDRAW, this::withdraw);
 		handlers.put(DISBAND, this::disband);
 		handlers.put(CLAN_SEARCH, this::clanSearch);
@@ -1026,38 +1031,6 @@ public class ClanGameController implements IGameController {
 		writeResult(ctx, reply);
 	}
 
-	/**
-	 * A leader acting on a named player — approve, reject, promote or kick.
-	 * <p>
-	 * The two selector bytes are not understood, so this does the one thing that is unambiguous when
-	 * the named player is a <b>pending applicant</b> of the caller's clan: approve them. The bytes
-	 * are logged on every call, so the real codes can be read off use and the other actions
-	 * implemented from evidence instead of guesswork. Anything else is acknowledged and ignored.
-	 */
-	private void memberAction(GameControllerContext ctx) {
-		var account = ctx.connection().account();
-		var charaId = account != null ? account.getCurrentCharaId() : null;
-		var payload = ctx.packet().getPayload();
-
-		if (charaId != null && payload.readableBytes() >= 18) {
-			var selector = payload.readUnsignedByte();
-			var argument = payload.readUnsignedByte();
-			var name = readNulTerminated(payload, CLAN_NAME_LENGTH);
-			var membership = clanService.membershipOf(charaId);
-
-			logger.info("0x4b90 from character {}: selector 0x{}, argument 0x{}, name '{}'.",
-				charaId, Integer.toHexString(selector), Integer.toHexString(argument), name);
-
-			if (membership.state() == ClanService.STATE_LEADER
-					&& clanService.approveByName(membership.id(), name)) {
-				logger.info("Clan {}: '{}' approved by character {}.", membership.id(), name, charaId);
-			}
-		}
-
-		writeResult(ctx, MEMBER_ACTION_START);
-		writeResult(ctx, MEMBER_ACTION_END);
-	}
-
 	/** Refuses an emblem upload. See {@link #EMBLEM_REFUSED}. */
 	private void refuseEmblem(GameControllerContext ctx) {
 		writeCode(ctx, UPLOAD_EMBLEM_RESULT, EMBLEM_REFUSED);
@@ -1076,20 +1049,12 @@ public class ClanGameController implements IGameController {
 		ctx.write(new GamePacket(command, buffer));
 	}
 
-	/** The re-display cooldown in seconds, from the environment or the default. */
+	/** The re-display cooldown in seconds. See {@link #EMBLEM_COOLDOWN_SECONDS}. */
 	private static long displayCooldownSeconds() {
-		var override = System.getenv("MGO2SERVER_EMBLEM_COOLDOWN_MINUTES");
-		if (override != null) {
-			try {
-				return Long.parseLong(override.trim()) * 60L;
-			} catch (NumberFormatException ignored) {
-				logger.warn("MGO2SERVER_EMBLEM_COOLDOWN_MINUTES is not a number: {}", override);
-			}
-		}
-		return DEFAULT_EMBLEM_COOLDOWN_MINUTES * 60L;
+		return EMBLEM_COOLDOWN_SECONDS;
 	}
 
-	/** Everything a leader may do, nothing for anyone else. See {@link #LEADER_PRIVILEGES}. */
+/** Everything a leader may do, nothing for anyone else. See {@link #LEADER_PRIVILEGES}. */
 	private static int privileges(int state) {
 		return state == ClanService.STATE_LEADER ? LEADER_PRIVILEGES : 0;
 	}
@@ -1255,7 +1220,11 @@ public class ClanGameController implements IGameController {
 			.writeInt((int) membership.id())
 			.writeByte(membership.state())
 			.writeShort(privileges(membership.state()))
-			.writeByte(clanService.emblemFlagOf(membership.id()));   // 3 once an emblem is on display
+			// 3 once an emblem is on display, 0 otherwise. Clamped like every other writer of this
+			// byte: emblemFlagOf returns the raw stored upload mode, and modes 2 and 4 must not be
+			// echoed — the client only ever stores 3 here (0xAD4724), so sending 2 would put our
+			// record out of step with the one the client keeps for itself.
+			.writeByte(clanService.emblemFlagOf(membership.id()) == 3 ? 3 : 0);
 		BufferUtil.writeString(buffer, membership.name(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);
 

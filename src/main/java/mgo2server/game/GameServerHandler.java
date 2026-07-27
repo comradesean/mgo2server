@@ -31,12 +31,42 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 
 	private final List<IGameController> controllers;
 
+	/**
+	 * Which controller claimed each command, so a second claim can name both parties.
+	 * <p>
+	 * Registration used to be a plain {@code put} into a {@code HashMap} followed by
+	 * {@code putAll}, which meant a command claimed twice was resolved by declaration order and
+	 * nothing said so. {@code ClanGameController} claimed {@code 0x4b90} twice — as a "member
+	 * action" and as clan search — and the second silently won for months. The wrong one winning
+	 * would have been a stall; the right one winning was worse, because it left dead code that read
+	 * the same bytes a different way and looked maintained.
+	 * <p>
+	 * A command has exactly one handler. Two is a bug in our wiring, not a runtime condition, so it
+	 * fails at construction rather than being resolved by chance.
+	 */
+	private final Map<Integer, String> owners = new HashMap<>();
+
 	public GameServerHandler(List<IGameController> controllers) {
 		this.controllers = controllers;
 		for (var controller : controllers) {
+			var name = controller.getClass().getSimpleName();
 			var map = new HashMap<Integer, Consumer<GameControllerContext>>();
 			controller.register(map);
-			handlers.putAll(map);
+
+			for (var entry : map.entrySet()) {
+				claim(entry.getKey(), name);
+				handlers.put(entry.getKey(), entry.getValue());
+			}
+		}
+	}
+
+	private void claim(int command, String controller) {
+		var previous = owners.put(command, controller);
+		if (previous != null) {
+			throw new IllegalStateException(String.format(
+				"Command 0x%04x is registered twice, by %s and %s. One of them is dead code: a "
+					+ "command has exactly one handler, and which one wins is declaration order.",
+				command, previous, controller));
 		}
 	}
 

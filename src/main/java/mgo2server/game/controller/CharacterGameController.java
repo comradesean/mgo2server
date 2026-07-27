@@ -60,24 +60,44 @@ public class CharacterGameController implements IGameController {
 
 	private static final int NAME_LENGTH = 16;
 
-	/** Total size of the character list payload, zero-filled up to the trailer. */
-	private static final int LIST_TRAILER_OFFSET = 0x1b4;
+	/** The 23-byte header: result, slot count, character count, selected slot, selected name. */
+	private static final int LIST_HEADER_SIZE = 23;
+
+	/** One character: slot index, id, name, appearance. */
+	private static final int LIST_ENTRY_SIZE = 52;
+
+	/**
+	 * The client's parser (0xD3732C) consumes a fixed grid regardless of how many characters are in
+	 * it: the header, then <b>eight</b> 52-byte slots, then a trailing block. Slots beyond the
+	 * character count are zero-filled.
+	 */
+	private static final int LIST_SLOTS = 8;
+
+	/** Where the eight slots end and the trailing block begins: 23 + 8*52 = 439. */
+	private static final int LIST_TRAILER_OFFSET = LIST_HEADER_SIZE + LIST_SLOTS * LIST_ENTRY_SIZE;
 
 	private static final int LIST_PAYLOAD_SIZE = 0x1d7;
 
 	/**
-	 * Fixed trailer after the character entries, 35 bytes so the whole payload is 0x1d7. The
-	 * client's parser (0xD3732C) consumes a fixed grid regardless of character count: a 23-byte
-	 * header, then eight 52-byte slots ending at offset 439, then 32 trailing bytes — so the
-	 * first three trailer bytes complete the eighth slot and the rest is the trailing block.
-	 * Both Nomad upstreams and mgo2-server send these exact 35 bytes.
+	 * The trailing block, 32 bytes, so the whole payload is 0x1d7.
+	 * <p>
+	 * This was written as a 35-byte constant zero-filled to offset 0x1b4, on the reading that the
+	 * first three bytes "complete the eighth slot". The totals are identical and it is wrong: the
+	 * slots end at 0x1b7, and the three bytes belong to the zero fill. That is invisible while the
+	 * grid is short — but at eight characters the writer index passes 0x1b4 and the zero-fill length
+	 * goes negative. Slots are capped at four by policy, so it was not reachable; a policy number is
+	 * a poor thing to have load-bearing under a framing error, hence {@link #LIST_SLOTS} and the
+	 * length assertion below.
+	 * <p>
+	 * This packet has already cost one live break from arithmetic that happened to add up — a
+	 * three-byte-short appearance block cancelling a four-byte slot index — which is the argument
+	 * for asserting the total rather than trusting that it works out.
 	 */
 	private static final byte[] LIST_TRAILER = {
-		0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x03, 0x00,
+		0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00,
 	};
 
 	private final AccountService accountService;
@@ -107,6 +127,10 @@ public class CharacterGameController implements IGameController {
 
 		var characters = characterService.listForAccount(account.getId(), account.getMainCharaId());
 
+		// The grid has eight slots and no more. Slot counts are policy and could be raised past the
+		// current maximum of four by an operator edit; the packet's shape cannot follow them.
+		var shown = Math.min(characters.size(), LIST_SLOTS);
+
 		// Header: result, slot count, character count, the selected slot, then that character's
 		// name. Then one FIXED 52-byte entry per character.
 		//
@@ -135,11 +159,11 @@ public class CharacterGameController implements IGameController {
 		var buffer = ctx.buffer(LIST_PAYLOAD_SIZE);
 		buffer.writeInt(GameError.NONE.result())
 			.writeByte(account.getSlots())
-			.writeByte(characters.size())
+			.writeByte(shown)
 			.writeByte(selectedSlot);
 		BufferUtil.writeString(buffer, selectedName, StandardCharsets.ISO_8859_1, NAME_LENGTH);
 
-		for (var i = 0; i < characters.size(); i++) {
+		for (var i = 0; i < shown; i++) {
 			var chara = characters.get(i);
 			var name = displayName(chara, account.getMainCharaId());
 
@@ -152,6 +176,9 @@ public class CharacterGameController implements IGameController {
 
 		buffer.writeZero(LIST_TRAILER_OFFSET - buffer.writerIndex());
 		buffer.writeBytes(LIST_TRAILER);
+
+		assert buffer.readableBytes() == LIST_PAYLOAD_SIZE
+			: "Character list must be " + LIST_PAYLOAD_SIZE + " bytes, was " + buffer.readableBytes();
 
 		ctx.write(new GamePacket(CHARACTER_LIST_RESULT, buffer));
 	}
