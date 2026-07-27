@@ -2529,13 +2529,32 @@ mail), not as a roster entry, and **there is no applicant-list command** — whi
 never sent one. `0x4b73`'s triple is unexercised.
 
 **Clan founding requires 20 hours of play time and level 3, and that is the game's rule, not ours.**
-The client carries the text (lobby string 17193, *"You must have 20 hours of playing time and a
-Level of at least 3 to create a clan"*) and never gets to show it, because the refusal comes back
-as a result code. Note that string 17199 beside it states 5 hours and level 2 — two tiers shipped
-and only one can be live. But the *enforcement* is entirely ours: `0xD579AC` validates only the name
-and the comment before sending `0x4b00`, with no play-time or level read anywhere, and 17193 is not
-reachable from the error table. We refuse with `-1206`, *"Conditions to create clan have not been
-met."*
+The client carries the text — "You must have 20 hours of playing time and a Level of at least 3 to
+create a clan" — as ordinal 81 of string group `0x333C8E` (control base 16524, text base 16738).
+**It is not reachable as a result code**, and it is not the only tier: ordinal 82 immediately beside
+it says **5 hours and Level 2**.
+
+**Which tier this build uses is unknown, and our 20h/level-3 is operator policy on community
+report.** Nothing in `MGO2.elf` chooses between them — neither item hash (`0xE5EEC8`, `0x3E91BB`)
+is referenced in the binary or in `scenerio.gcl`, and there is no selector table.
+
+That absence is *not* an elimination, and the reason is worth keeping. Only **24 of that group's
+153 strings** are referenced by literal hash anywhere; the unreferenced 129 include "Create Clan",
+"Clan List", "Disband" and "Create a clan using these settings?" — strings that unquestionably
+render. The group is addressed through an indirection in the packed UI resources that nobody has
+decoded. So the same "no reference found" test that is decisive for the error table proves nothing
+here. Do not promote it to a finding.
+
+**What is settled: the client never checks either rule.** The create-clan sender `0xD579AC`
+validates name length (>2, <=16), character class (`0xD32DD0`), comment length (<=128),
+connectivity (`0xD3844C`) and whether you are already in a clan (`0xD57750` -> `-1201`), then
+sends. It reads no play time and no level. Nor does anything else: 18000 and 72000 (5h and 20h in
+seconds) occur as **no immediate anywhere in the binary**, and the only two `{20,3}` comparison
+adjacencies are unrelated switch dispatches. So the server is the sole enforcer whichever tier is
+correct, and choosing the stricter one is a choice, not a reading.
+
+Settling it needs either a decoder for the packed UI resource — to see whether ordinal 81 or 82 is
+bound to a screen — or a live capture of a real server refusing a create.
 
 Disband inside its cooldown refuses with `-1205`, *"A fixed amount of time must pass in order to
 disband the clan."* The countdown strings beside it (17312/17318) are orphaned exactly as the

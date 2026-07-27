@@ -277,7 +277,11 @@ public class CharacterService {
 			.orElse(0L));
 	}
 
-	/** Play time a clan founder needs — 20 hours, per lobby string 17193. */
+	/**
+	 * Play time a clan founder needs — 20 hours. Operator policy on community report; see
+	 * {@link #meetsClanRequirements} for why the string that states it is not evidence, and why
+	 * the 5-hour tier beside it cannot be ruled out.
+	 */
 	public static final long CLAN_MIN_SECONDS = 20 * 60 * 60;
 
 	/** The skill graduation awards. */
@@ -481,10 +485,26 @@ public class CharacterService {
 	/**
 	 * Whether a character may found a clan: <b>20 hours of play time and level 3</b>.
 	 * <p>
-	 * The client carries the rule verbatim — "You must have 20 hours of playing time and a Level of
-	 * at least 3 to create a clan" (lobby string 17193) — so it is the game's, not ours. Note the
-	 * string beside it, 17199, states 5 hours and level 2; two tiers shipped and only one can be
-	 * live. We enforce the one the operator documented.
+	 * <b>This is operator policy on community report, not a value read from the binary.</b> The
+	 * text exists — "You must have 20 hours of playing time and a Level of at least 3 to create a
+	 * clan", ordinal 81 of string group {@code 0x333C8E} — but so does ordinal 82 beside it, which
+	 * says <b>5 hours and Level 2</b>. Two tiers shipped and nothing in {@code MGO2.elf} chooses
+	 * between them: neither item hash ({@code 0xE5EEC8}, {@code 0x3E91BB}) is referenced anywhere
+	 * in the binary or in {@code scenerio.gcl}, and there is no selector table.
+	 * <p>
+	 * That absence proves nothing either way, which is the point worth remembering. Only 24 of that
+	 * group's 153 strings are referenced by literal hash, and the unreferenced 129 include "Create
+	 * Clan", "Clan List" and "Disband" — strings that unquestionably render. The group is addressed
+	 * through an indirection in the packed UI resources that nobody has decoded, so "no reference
+	 * found" is not an elimination here, unlike in the error table where the same test is decisive.
+	 * <p>
+	 * [ELF] What <em>is</em> settled: <b>the client never checks either rule.</b> The create-clan
+	 * sender {@code 0xD579AC} reads no play time and no level — it validates name length, character
+	 * class, comment length, connectivity, and whether you are already in a clan, then sends. The
+	 * constants are absent too: 18000 and 72000 (5h and 20h in seconds) occur as no immediate
+	 * anywhere in the binary, and the two {@code {20,3}} comparison adjacencies that exist are
+	 * unrelated switch dispatches. So whichever tier is right, <b>the server is the only thing that
+	 * can enforce it</b>, and picking the stricter one is a choice rather than a reading.
 	 * <p>
 	 * The same numbers as the instructor award, which is coincidence rather than a shared rule: the
 	 * two are separate policies that happen to agree, so they are checked separately.
