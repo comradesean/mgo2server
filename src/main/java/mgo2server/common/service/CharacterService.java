@@ -246,6 +246,9 @@ public class CharacterService {
 		return trainingSeconds(charaId).total() * PLAYABLE_MODES;
 	}
 
+	/** Play time a clan founder needs — 20 hours, per lobby string 17193. */
+	public static final long CLAN_MIN_SECONDS = 20 * 60 * 60;
+
 	/** The skill graduation awards. */
 	public static final int INSTRUCTOR_SKILL_ID = 17;
 
@@ -430,6 +433,50 @@ public class CharacterService {
 	}
 
 	/** Character ids holding the given relation state, oldest first, capped for the 0x4101 grid. */
+	/** Whether {@code charaId} has blocked {@code otherId}. */
+	public boolean hasBlocked(long charaId, long otherId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select count(*) from chara_relation
+				where chara_id = :chara and target_chara_id = :other and state = :blocked
+				""")
+			.bind("chara", charaId)
+			.bind("other", otherId)
+			.bind("blocked", RELATION_BLOCKED)
+			.mapTo(Long.class)
+			.one()) > 0;
+	}
+
+	/**
+	 * Whether a character may found a clan: <b>20 hours of play time and level 3</b>.
+	 * <p>
+	 * The client carries the rule verbatim — "You must have 20 hours of playing time and a Level of
+	 * at least 3 to create a clan" (lobby string 17193) — so it is the game's, not ours. Note the
+	 * string beside it, 17199, states 5 hours and level 2; two tiers shipped and only one can be
+	 * live. We enforce the one the operator documented.
+	 * <p>
+	 * The same numbers as the instructor award, which is coincidence rather than a shared rule: the
+	 * two are separate policies that happen to agree, so they are checked separately.
+	 */
+	public boolean meetsClanRequirements(long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select count(*) from chara c
+				join account a on a.id = c.account_id
+				left join chara_training_time t on t.chara_id = c.id
+				where c.id = :chara
+				  and coalesce(t.total_seconds, 0) * :modes >= :seconds
+				  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
+					  >= :experience
+				""")
+			.bind("chara", charaId)
+			.bind("modes", PLAYABLE_MODES)
+			.bind("seconds", CLAN_MIN_SECONDS)
+			.bind("experience", LEVEL_3_EXPERIENCE)
+			.mapTo(Long.class)
+			.one()) > 0;
+	}
+
 	public java.util.List<Long> relationIds(long charaId, int state, int limit) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
@@ -502,6 +549,15 @@ public class CharacterService {
 	 * The sender's name is stored alongside the id: the id is the honest link, but a list entry
 	 * has to render a name even if that character is later deleted or renamed.
 	 */
+	/** An active character by name, case-insensitively — names are unique that way. */
+	public Optional<Long> findByName(String name) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("select id from chara where lower(name) = lower(:name) and active")
+			.bind("name", name)
+			.mapTo(Long.class)
+			.findOne());
+	}
+
 	public boolean sendMail(long senderCharaId, String senderName, String recipientName,
 		String subject, String body) {
 		return jdbi.withHandle(handle -> handle.createUpdate("""

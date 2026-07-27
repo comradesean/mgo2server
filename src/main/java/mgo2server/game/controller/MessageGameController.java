@@ -246,20 +246,30 @@ public class MessageGameController implements IGameController {
 		var body = readString(payload, bodyOffset, BODY_LENGTH);
 
 		var delivered = 0;
+		var blocked = 0;
 		for (var slot = 0; slot < count; slot++) {
 			var recipient = readString(payload, SEND_RECIPIENTS_OFFSET + slot * NAME_LENGTH,
 				NAME_LENGTH);
 			if (recipient.isEmpty()) {
 				continue;
 			}
-			if (characterService.sendMail(charaId, senderName, recipient, subject, body)) {
+			// A player who blocked you cannot be mailed by you. The client knows this state — "The
+			// receiver has blocked incoming mail" (lobby 23809) — but the block lives here, so the
+			// check has to be here too.
+			var target = characterService.findByName(recipient).orElse(null);
+			if (target != null && characterService.hasBlocked(target, charaId)) {
+				logger.info("Send mail: \"{}\" has blocked character {}; letter dropped.",
+					recipient, charaId);
+				blocked++;
+			} else if (characterService.sendMail(charaId, senderName, recipient, subject, body)) {
 				delivered++;
 			} else {
 				logger.info("Send mail: no character named \"{}\"; letter dropped.", recipient);
 			}
 		}
-		logger.info("Send mail from \"{}\": {} of {} recipient(s) delivered, subject \"{}\".",
-			senderName, delivered, count, subject);
+		logger.info("Send mail from \"{}\": {} of {} recipient(s) delivered{}, subject \"{}\".",
+			senderName, delivered, count,
+			blocked == 0 ? "" : " (" + blocked + " blocked)", subject);
 
 		var buffer = ctx.buffer(Integer.BYTES + 1);
 		buffer.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);

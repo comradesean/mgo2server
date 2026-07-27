@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import io.netty.buffer.ByteBuf;
 import mgo2server.common.BufferUtil;
+import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.ClanService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -449,8 +450,11 @@ public class ClanGameController implements IGameController {
 
 	private final ClanService clanService;
 
-	public ClanGameController(ClanService clanService) {
+	private final CharacterService characterService;
+
+	public ClanGameController(ClanService clanService, CharacterService characterService) {
 		this.clanService = clanService;
+		this.characterService = characterService;
 	}
 
 	@Override
@@ -1174,6 +1178,16 @@ public class ClanGameController implements IGameController {
 			// The client checks this itself before sending, so reaching here means a modified or
 			// replayed packet rather than a player mistake.
 			logger.warn("Create clan: name '{}' is shorter than the client's own minimum.", name);
+			ctx.write(CREATE_CLAN_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		// 20 hours of play time and level 3, which is the game's own rule — the client carries the
+		// text for it (lobby 17193) and simply never gets to show it, because the refusal comes back
+		// as a result code rather than that message.
+		if (!characterService.meetsClanRequirements(charaId)) {
+			logger.info("Character {} tried to create clan '{}' without 20 hours and level 3.",
+				charaId, name);
 			ctx.write(CREATE_CLAN_RESULT, GameError.GENERAL);
 			return;
 		}
