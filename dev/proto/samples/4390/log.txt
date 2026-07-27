@@ -3680,3 +3680,47 @@
   detail_present            = 1
   B9  text_chat_uses?       = 4
   B24 tdm_consecutive_survivals= 2
+=== #504  2026-07-27 22:12:27  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 504_221227_ch1.bin
+  chara_id                  = 1
+  deaths                    = 4
+  score                     = 0
+  headshot_deaths           = 4
+  round_completed           = 1
+  seconds_in_game           = 892
+  experience_total          = 49225
+  detail_present            = 1
+  B1  consecutive_deaths    = 4
+  B7  salutes               = 2
+=== #505  2026-07-27 22:12:27  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 505_221227_ch3.bin
+  chara_id                  = 3
+  deaths                    = 1
+  score                     = 0
+  headshot_deaths           = 1
+  round_completed           = 1
+  seconds_in_game           = 698
+  experience_total          = 487
+  detail_present            = 1
+  B1  consecutive_deaths    = 1
+  B7  salutes               = 3
+=== #506  2026-07-27 22:12:27  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 506_221227_ch2.bin
+  chara_id                  = 2
+  kills                     = 5
+  score                     = 35
+  headshots_lethal          = 5
+  round_completed           = 1
+  flawless_win              = 1
+  team_slot                 = 1
+  seconds_in_game           = 481
+  experience_total          = 466
+  detail_present            = 1
+  B0  consecutive_kills     = 5
+  B2  consecutive_headshots = 5
+  B12 rolls                 = 5
+  B24 tdm_consecutive_survivals= 1
+  B36 combo                 = 10
+=== #507  2026-07-27 22:14:00  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 507_221400_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  seconds_in_game           = 47
+  experience_total          = 428
+  detail_present            = 1
