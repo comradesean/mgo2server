@@ -1048,9 +1048,19 @@ public class ClanGameController implements IGameController {
 		buffer.writeInt((int) clan.id());                                     // T+0x00
 		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x04
-		// T+0x18 is the founding date and T+0x58 the member count, NOT the other way round: with
-		// them swapped the info screen showed 1785129141 members — the epoch seconds, verbatim.
-		buffer.writeInt((int) clan.createdAt());                              // T+0x18
+		// T+0x18 is the LEADER'S CHARACTER ID, not the founding date.
+		//
+		// The id/name pairing is this protocol's idiom everywhere, and the client's own deserializer
+		// for this packet (0xD58C90) reads exactly that shape here: u32 at +0x018 followed by a
+		// 16-byte name at +0x01C. Sending a date left the client with the leader's NAME but never
+		// their id, so nothing on any screen could match a roster row against the leader — which is
+		// why no leader badge is drawn on Check Roster.
+		//
+		// The old comment claimed this was the founding date, on the strength of an experiment that
+		// swapped this field with T+0x58 and saw the member count render as epoch seconds. That
+		// experiment proved T+0x58 is the member count. It said nothing whatever about this field —
+		// an invalid elimination, and the same shape of mistake as the 0x4103 clan probe.
+		buffer.writeInt((int) clan.leaderCharaId());                          // T+0x18
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
 		// T+0x378 is the emblem-present flag, the same slot 0x4b21 carries it in. Zero here meant a
@@ -1213,7 +1223,10 @@ public class ClanGameController implements IGameController {
 		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x04
 		buffer.writeByte(state);                                              // T+0x15
-		buffer.writeZero(4);                                                  // T+0x18
+		// The leader's character id, paired with their name at T+0x1c — the same id/name shape
+		// 0x4b81 carries at the same offsets. Zero here told the client the clan had a leader with
+		// no id, so no screen could identify which member that was.
+		buffer.writeInt((int) clan.leaderCharaId());                          // T+0x18
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
 		buffer.writeZero(4 + 16);                                             // T+0x30, T+0x34
