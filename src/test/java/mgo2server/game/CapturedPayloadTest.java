@@ -55,7 +55,8 @@ public class CapturedPayloadTest {
 		chara.setComment("");
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
+		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
+			mgo2server.common.service.ClanService.Membership.NONE);
 
 		var bytes = new byte[buffer.readableBytes()];
 		buffer.getBytes(0, bytes);

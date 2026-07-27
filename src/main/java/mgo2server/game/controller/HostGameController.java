@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBufUtil;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.model.CharaSkill;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
 import mgo2server.game.PersonalInfoWriter;
@@ -377,12 +378,15 @@ public class HostGameController implements IGameController {
 
 	private final CharacterService characterService;
 
+	private final ClanService clanService;
+
 	private final long lobbyId;
 
 	private final int lobbySubtype;
 
 	public HostGameController(GameService gameService, CharacterService characterService,
-			long lobbyId, int lobbySubtype) {
+			ClanService clanService, long lobbyId, int lobbySubtype) {
+		this.clanService = clanService;
 		this.gameService = gameService;
 		this.characterService = characterService;
 		this.lobbyId = lobbyId;
@@ -591,6 +595,7 @@ public class HostGameController implements IGameController {
 		// identical array and does not clear it first, so disagreeing here would half-update the
 		// client's view of what the player owns.
 		var skills = charaId == 0L ? List.<CharaSkill>of() : characterService.getSkills(charaId);
+		var clan = charaId == 0L ? ClanService.Membership.NONE : clanService.membershipOf(charaId);
 
 		var buffer = ctx.buffer(POST_GAME_INFO_FIXED + skills.size() * SKILL_RECORD_SIZE);
 		buffer.writeInt(GameError.NONE.result()) // result
@@ -606,12 +611,12 @@ public class HostGameController implements IGameController {
 		buffer.writeInt(0)
 			.writeInt(experience) // grade points mirror experience in both references
 			.writeInt(0xffffff)
-			.writeInt(0)          // clan id — clans are not modelled
-			.writeShort(0)        // clan privilege mask (profile+6838); no clan, no privileges
-			// Clan membership state (profile+6837), the same field 0x4122 carries at wire 0x14.
-			// Was 1, "member", next to a clan id of 0. See PersonalInfoWriter.CLAN_STATE_NONE.
-			.writeByte(PersonalInfoWriter.CLAN_STATE_NONE)
-			.writeByte(0)         // emblem — no clans, no emblem
+			// The same clan record 0x4122 carries, and this parser writes the same profile slots,
+			// so disagreeing between the two would half-update the client's view.
+			.writeInt((int) clan.id())
+			.writeShort(0)        // privilege mask (profile+6838); nothing grants privileges yet
+			.writeByte(clan.state())
+			.writeByte(0)         // emblem — emblems are not modelled
 			.writeInt((int) charaId)
 			.writeByte(0);
 

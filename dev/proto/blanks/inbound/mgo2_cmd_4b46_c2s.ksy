@@ -21,9 +21,25 @@ doc: |
   the observation that it fires unprompted during the connect sequence rather than from a
   clan menu.
 
-  Operator note: harmless as-is. The value is hex-logged if it recurs; do not add a reply
-  speculatively — the live trace proves the client does not wait for one, and 0x4115 is the
-  precedent for a reply the client has no parser for.
+  ## CORRECTION 2026-07-27: it DOES block, from the clan menu
+
+  The note below said "harmless as-is ... do not add a reply speculatively — the live trace proves
+  the client does not wait for one". That was true of the context it was observed in and false in
+  general. Opening the **Clan** menu sends the same `0x4b46` and stalls on silence, failing with
+  *Unable to update clan information (1933:FFFFFF60)* — observed live 2026-07-27 in an automatching
+  lobby, payload `0000`, the only unanswered command in the log.
+
+  So one command has two contexts: fired unprompted during the connect burst, where the player
+  walks on regardless, and fired from the clan menu, where it is blocked on. The earlier
+  elimination tested only the first. The sender (`0xD58510`) is identical in both cases and
+  advances flow state via `0xD32E08(session, 98, 1)` either way; the difference is entirely in what
+  the screen does while waiting.
+
+  A general lesson for this project's "the client does not wait for a reply" claims: a command
+  observed as non-blocking in one screen is not established as non-blocking, only as non-blocking
+  *there*.
+
+  We now answer it with `0x4b47` (28 bytes, result 0, an empty clan record with state 99).
 seq:
   - id: unknown_0000
     type: u2

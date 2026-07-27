@@ -152,9 +152,16 @@ seq:
   - id: blob_700
     size: 512
     doc: "[ELF] T+0x700, 512 bytes fixed, read with 0xD5D018 so the client NUL-terminates at T+0x900. Largest single field in the packet. [UNKNOWN] — could be a long text block or a packed table; nothing in the parser interprets it."
-  - id: unknown_904
+  - id: founded_at
     type: u4
-    doc: "[ELF] read to a stack slot then `stw` to T+0x904 (0xD58B9C). [UNKNOWN]"
+    doc: |
+      [CONFIRMED 2026-07-27] The clan's founding date, Unix seconds. Read to a stack slot then
+      `stw` to T+0x904 (0xD58B9C), and rendered as the date on the Clan Affiliation screen.
+
+      Identified by probe rather than by disassembly: every remaining u32 candidate in this packet
+      was sent the founding date offset by a different number of days, and the screen displayed the
+      +9-day value, which is this field. T+0x18 and T+0x48 had each been tried first and rendered
+      as 1969-12-31 — epoch zero — because they are not the date.
   - id: name_d
     size: 16
     type: str

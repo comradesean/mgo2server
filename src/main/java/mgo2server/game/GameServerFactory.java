@@ -6,6 +6,7 @@ import mgo2server.game.controller.CommonGameController;
 import mgo2server.game.controller.CharacterConnectController;
 import mgo2server.game.controller.CharacterGameController;
 import mgo2server.game.controller.ChatGameController;
+import mgo2server.game.controller.ClanGameController;
 import mgo2server.game.controller.EchoGameController;
 import mgo2server.game.controller.GameListGameController;
 import mgo2server.game.controller.HostGameController;
@@ -49,7 +50,7 @@ public class GameServerFactory {
 			case GAME -> {
 				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
 				controllers.add(new CharacterConnectController(services.getCharacterService(),
-					services.getGameService()));
+					services.getClanService(), services.getGameService()));
 				controllers.add(new GameListGameController(services.getGameService(), lobbyId,
 					lobbySubtype));
 				controllers.add(new ChatGameController(services.getGameService()));
@@ -60,8 +61,9 @@ public class GameServerFactory {
 					services.getGameService()));
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
 					services.getAccountService()));
+				controllers.add(new ClanGameController(services.getClanService()));
 				controllers.add(new HostGameController(services.getGameService(),
-					services.getCharacterService(), lobbyId, lobbySubtype));
+					services.getCharacterService(), services.getClanService(), lobbyId, lobbySubtype));
 			}
 		}
 
