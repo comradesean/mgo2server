@@ -563,8 +563,13 @@ public class ClanGameController implements IGameController {
 		handlers.put(DECLINE_JOIN, ctx -> judgeApplicant(ctx, false));
 		handlers.put(BANISH, ctx -> leaderAction(ctx, BANISH_RESULT, "banish",
 			(clan, target) -> clanService.banish(clan, target)));
+		// The action for this one lives inside leaderAction, which needs the acting character's id
+		// as well as the clan and the target — the BiPredicate cannot carry it. This used to pass
+		// `(clan, target) -> false`, which reads as "transfer is not implemented" and is not true:
+		// it works, and the lambda was never called. Same trap as the duplicate 0x4b90
+		// registration — code that looks maintained and is not reached.
 		handlers.put(TRANSFER_LEADERSHIP, ctx -> leaderAction(ctx, TRANSFER_LEADERSHIP_RESULT,
-			"transfer leadership to", (clan, target) -> false));
+			"transfer leadership to", UNUSED_HANDLED_INSIDE));
 		handlers.put(SET_EMBLEM_EDITOR, ctx -> leaderAction(ctx, SET_EMBLEM_EDITOR_RESULT,
 			"grant emblem-editing rights to", (clan, target) -> {
 				clanService.setEmblemEditor(clan, target);
@@ -1059,6 +1064,18 @@ public class ClanGameController implements IGameController {
 	 * result, and all three were previously answered with a success the server never carried out —
 	 * "it succeeded but nothing happened".
 	 */
+	/**
+	 * Placeholder for {@link #TRANSFER_LEADERSHIP}, whose action is taken inside
+	 * {@link #leaderAction} because it needs the acting character's id and the predicate cannot
+	 * carry it. Throws rather than returning false, so that if the special case is ever removed the
+	 * failure is loud instead of a silent "no matching member".
+	 */
+	private static final java.util.function.BiPredicate<Long, Long> UNUSED_HANDLED_INSIDE =
+		(clan, target) -> {
+			throw new IllegalStateException(
+				"transfer leadership is handled inside leaderAction; this predicate must not run");
+		};
+
 	private void leaderAction(GameControllerContext ctx, int reply, String what,
 			java.util.function.BiPredicate<Long, Long> action) {
 		var account = ctx.connection().account();
@@ -1078,6 +1095,8 @@ public class ClanGameController implements IGameController {
 			return;
 		}
 
+		// Transfer is special-cased because it needs charaId — the outgoing leader — which the
+		// predicate signature has no room for. See UNUSED_HANDLED_INSIDE.
 		var done = reply == TRANSFER_LEADERSHIP_RESULT
 			? clanService.transferLeadership(membership.id(), charaId, targetId)
 			: action.test(membership.id(), targetId);

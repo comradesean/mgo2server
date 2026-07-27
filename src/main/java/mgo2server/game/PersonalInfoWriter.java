@@ -26,10 +26,25 @@ public final class PersonalInfoWriter {
 	private static final int COMMENT_LENGTH = 128;
 
 	/**
-	 * Experience toward each equipped skill. The original sends a fixed value rather than
-	 * tracking it, so this does the same until skill progression exists.
+	 * The client's hard cap on skill experience, and its level-3 threshold — they are the same
+	 * number.
+	 *
+	 * <p>[ELF] Level is {@code clamp(experience >> 13, 0, 3)}, computed by {@code 0x6FC580} with no
+	 * table: 0 below 8192, then 8192 / 16384 / 24576 for levels 1, 2 and 3. The validator at
+	 * {@code 0x93E418} zeroes any roster record whose experience exceeds {@code 24576}
+	 * ({@code cmpwi cr7,r0,24576; ble+}), so this is a legal maximum and not merely a display
+	 * ceiling.
+	 *
+	 * <p>This field used to send a fixed {@code 0x600000}, inherited and unexplained. That is
+	 * <b>this same number shifted left eight bits</b> — {@code 0x6000 << 8} — i.e. 256x the client's
+	 * own legal maximum. It has been harmless only by luck: the range check runs on the
+	 * {@code 0x4129} roster, which we do not send, and {@code 0x600000 >> 13} clamps to 3 anyway.
+	 * It would have become a real bug the moment the roster was implemented.
 	 */
-	private static final int SKILL_EXPERIENCE = 0x600000;
+	public static final int MAX_SKILL_EXPERIENCE = 24576;
+
+	/** [ELF] {@code 0x6FC580}: one level per 8192 experience, capped at 3. */
+	private static final int EXPERIENCE_PER_LEVEL = 8192;
 
 	/**
 	 * Clan membership state, wire {@code 0x14} -> {@code profile+6837}. Not an unknown: the client
@@ -112,8 +127,35 @@ public final class PersonalInfoWriter {
 	}
 
 	/**
+	 * The experience to report for an equipped skill: the character's real total, but never so low
+	 * that it fails to support the level being reported in the same packet.
+	 *
+	 * <p><b>The floor is a guard, not a fudge, and it exists because the client deletes rather than
+	 * corrects.</b> The loadout sanitiser at {@code 0x93E46C} walks the five equipped slots and, if
+	 * a slot's level exceeds {@code experience >> 13}, clears the id, the level <em>and</em> the
+	 * experience ({@code 0x93E51C stw r0,40(r9)}). So reporting an honest 0 against an equipped
+	 * level 2 does not display "level 2 with no progress" — it makes the skill vanish from the
+	 * character.
+	 *
+	 * <p>Skill progression is not modelled yet, so most characters have no {@code chara_skill} row
+	 * for what they have equipped. Without this floor, turning on real experience would have
+	 * silently stripped every equipped skill from every character on their next login.
+	 *
+	 * <p>Once progression exists the stored value will exceed the floor on its own and this becomes
+	 * inert. It is deliberately a {@code max} rather than a replacement so that it never lowers a
+	 * real total.
+	 */
+	static int reportedExperience(int stored, int level) {
+		var supportsLevel = Math.min(level, 3) * EXPERIENCE_PER_LEVEL;
+		return Math.min(Math.max(Math.max(stored, 0), supportsLevel), MAX_SKILL_EXPERIENCE);
+	}
+
+	/**
 	 * @param clan the character's clan record — id, name and membership state. {@link
 	 *     ClanService.Membership#NONE} is the ordinary case and means state 99, id 0, empty name.
+	 * @param skillExperience the character's stored experience for a given skill id, or 0 for one
+	 *     they have no row for. See {@link #reportedExperience} for why the value sent is a floor
+	 *     rather than the raw total.
 	 * @param clanHasEmblem whether that clan has an emblem on display. See {@link
 	 *     #EMBLEM_ON_DISPLAY}: true makes the client fetch it with {@code 0x4b48} during connect
 	 *     and block on the reply, so this must not be set for a clan we cannot serve an emblem for.
@@ -133,7 +175,8 @@ public final class PersonalInfoWriter {
 	 *     whoever's session was recorded.
 	 */
 	public static void write(ByteBuf buffer, Chara chara, CharaAppearance a, EquippedSkills skills,
-			int savedInstructor, ClanService.Membership clan, boolean clanHasEmblem) {
+			int savedInstructor, ClanService.Membership clan, boolean clanHasEmblem,
+			java.util.function.IntUnaryOperator skillExperience) {
 		var start = buffer.writerIndex();
 
 		buffer.writeInt((int) clan.id());
@@ -161,8 +204,14 @@ public final class PersonalInfoWriter {
 			.writeByte(skills.getLevel3()).writeByte(skills.getLevel4())
 			.writeZero(1);
 
-		buffer.writeInt(SKILL_EXPERIENCE).writeInt(SKILL_EXPERIENCE)
-			.writeInt(SKILL_EXPERIENCE).writeInt(SKILL_EXPERIENCE)
+		buffer.writeInt(reportedExperience(skillExperience.applyAsInt(skills.getSkill1()),
+				skills.getLevel1()))
+			.writeInt(reportedExperience(skillExperience.applyAsInt(skills.getSkill2()),
+				skills.getLevel2()))
+			.writeInt(reportedExperience(skillExperience.applyAsInt(skills.getSkill3()),
+				skills.getLevel3()))
+			.writeInt(reportedExperience(skillExperience.applyAsInt(skills.getSkill4()),
+				skills.getLevel4()))
 			.writeZero(5);
 
 		// The original sends the character id here; its purpose is not documented.

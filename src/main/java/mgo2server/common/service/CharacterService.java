@@ -873,6 +873,21 @@ public class CharacterService {
 				.list());
 	}
 
+	/**
+	 * Stored experience per skill id, for the packets that report it alongside an equipped level.
+	 * <p>
+	 * Returns a lookup rather than the list because the callers need it keyed by skill id and a
+	 * character has at most eighteen rows; building a map once beats scanning the list per slot.
+	 * A skill with no row reads as 0, which is the truth — nothing has been earned toward it.
+	 */
+	public java.util.function.IntUnaryOperator skillExperience(long charaId) {
+		var byId = new java.util.HashMap<Integer, Integer>();
+		for (var skill : getSkills(charaId)) {
+			byId.put(skill.getSkillId(), skill.getExperience());
+		}
+		return skillId -> byId.getOrDefault(skillId, 0);
+	}
+
 	public List<GearSet> getOrCreateGearSets(long charaId) {
 		createSets(charaId, "chara_gear_set");
 

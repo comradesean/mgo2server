@@ -56,7 +56,7 @@ public class CapturedPayloadTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, false);
+			mgo2server.common.service.ClanService.Membership.NONE, false, skill -> 0);
 
 		var bytes = new byte[buffer.readableBytes()];
 		buffer.getBytes(0, bytes);
@@ -94,14 +94,40 @@ public class CapturedPayloadTest {
 			.containsOnly((byte) 0);
 	}
 
-	/** The four skill-experience values, which the original sends as a constant. */
+	/**
+	 * Skill experience. <b>We deliberately no longer match the fixture, and this test records why.</b>
+	 * <p>
+	 * The fixture carries {@code 0x600000} in each of the four slots. [ELF] the client's scale for
+	 * this field is {@code level = clamp(experience >> 13, 0, 3)} ({@code 0x6FC580}) with a hard
+	 * legal maximum of {@code 24576} enforced at {@code 0x93E418} — and {@code 0x600000} is
+	 * {@code 0x6000 << 8}, exactly that maximum shifted eight bits. Tier 1 beats tier 4: this
+	 * fixture's provenance is unknown (see the class comment), so it cannot outrank the binary.
+	 * <p>
+	 * Why it never broke anything: the range check runs on the {@code 0x4129} roster, which we do
+	 * not send, and in the equipped mirror {@code 0x600000 >> 13} clamps to 3 like any large value.
+	 * It was inert, not correct.
+	 * <p>
+	 * Kept as an assertion that the fixture disagrees, so that if someone "fixes" the writer back to
+	 * the captured bytes this fails and points at the reason.
+	 */
 	@Test
-	public void personalInfoSkillExperienceMatchesCapture() {
+	public void personalInfoSkillExperienceIsOnTheClientsScaleNotTheFixtures() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
-		assertThat(java.util.Arrays.copyOfRange(mine, 86, 107))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 86, 107));
+		var capturedFirst = java.nio.ByteBuffer.wrap(captured, 86, 4).getInt();
+		assertThat(capturedFirst)
+			.describedAs("the fixture still holds the inherited constant")
+			.isEqualTo(0x600000);
+		assertThat(capturedFirst)
+			.describedAs("which is 256x the client's own legal maximum")
+			.isEqualTo(PersonalInfoWriter.MAX_SKILL_EXPERIENCE << 8);
+
+		for (var slot = 0; slot < 4; slot++) {
+			assertThat(java.nio.ByteBuffer.wrap(mine, 86 + slot * 4, 4).getInt())
+				.describedAs("slot %d within the client's legal range", slot)
+				.isBetween(0, PersonalInfoWriter.MAX_SKILL_EXPERIENCE);
+		}
 	}
 
 	/**
