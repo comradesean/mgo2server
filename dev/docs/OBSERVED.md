@@ -28,6 +28,28 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
+## The clan emblem on the connect path (2026-07-27)
+
+Setting `0x4122`'s emblem flag (wire `0xf0` -> `profile+6872`) to 3 makes the client fetch the
+emblem during connect. The risk was that `0x4b48` is recorded as blocking character select, so a
+slow or wrong reply would stall the lobby. It does not:
+
+    21:30:54.943  In  - command 4b48 - 4 bytes    00000002
+    21:30:54.946  Out - command 4b49 - 772 bytes  00000000 454d4244 8000...
+    21:30:55.044  In  - command 4900              <- 98ms later, lobby continues
+
+Three things worth recording:
+
+- **The emblem block starts with the ASCII magic `EMBD`** (`45 4D 42 44`), immediately after the
+  four-byte result word. Useful for telling a real emblem from a zero-filled one at a glance in a
+  hex dump, which is exactly how this was verified.
+- **Zeros are not a stall.** An earlier connect at 21:14:58 served 772 zero bytes, because the
+  clan was mode 4 and `emblemOf` correctly declined to serve it. The client accepted that and
+  carried on identically. So a clan with no emblem costs nothing on this path.
+- The flag is what drives it. With the flag at 0, the client never sends `0x4b48` at all — the
+  emblem is silently absent rather than empty.
+
+
 ## How this file gets things wrong
 
 Two failure modes have each cost real time here, and both are cheap to avoid.
