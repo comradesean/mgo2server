@@ -75,12 +75,17 @@ version-mismatch theory that was false.
 - Sending the real 0/1/2 membership state still matters: a state-0 applicant row is dropped by the
   display filter, so the vocabulary is load-bearing even though the badge does not use it.
 
-### Not yet known
+### Which packet supplies it: `0x4b21`, for the badge
 
-Which of the two packets supplies the id — both were changed in one commit, so this is two
-variables moved at once, the same mistake the `0x4b81` id-versus-name confusion made earlier today.
-`0x4b21` is the clan-affiliation view and `0x4b81` the view of a clan you are not in; the roster is
-reached from the former, so `0x4b21` is the likely one. Testable by reverting either alone.
+[CONFIRMED 2026-07-27] Separated with a probe (`MGO2SERVER_LEADER_ID_PROBE`) rather than left as a
+reasoned guess, because both packets had been changed in one commit. With the id sent **only in
+`0x4b21`** and `0x4b81` zeroed, the Clan Leader badge still renders on the Member List. So the
+clan-affiliation view is the source, and `0x4b81`'s copy is not what the roster reads.
+
+Still open: whether the **in-game emblem** also reads it from `0x4b21`. If it does, the "one field,
+two symptoms" account holds. If the emblem breaks while the badge survives, the two were never the
+same bug — they were two packets short of the same value, fixed in one commit and mistaken for one
+cause.
 
 ## A clan leader's emblem in game — same missing field as the badge (2026-07-27, FIXED)
 
