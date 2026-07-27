@@ -19,16 +19,17 @@ public class PolicyTest {
 	}
 
 	/**
-	 * The point of the file. All three used to be written independently and the emblem one had
-	 * drifted to an hour while its siblings were a week.
+	 * The point of the file. They used to be written independently and the emblem one had drifted
+	 * to an hour while its siblings were a week.
 	 */
 	@Test
-	public void allThreeCooldownsDefaultToAWeek() {
+	public void everyCooldownDefaultsToAWeek() {
 		var policy = of(Map.of());
 
 		assertThat(policy.characterDeleteCooldown()).isEqualTo(Duration.ofHours(168));
 		assertThat(policy.clanDisbandCooldown()).isEqualTo(Duration.ofHours(168));
 		assertThat(policy.clanEmblemCooldown()).isEqualTo(Duration.ofHours(168));
+		assertThat(policy.clanJoinCooldown()).isEqualTo(Duration.ofHours(168));
 	}
 
 	@Test

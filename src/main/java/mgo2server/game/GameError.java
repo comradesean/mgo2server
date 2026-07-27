@@ -18,7 +18,18 @@ public enum GameError {
 	CHARACTER_NAME_PREFIX(0x11),
 	CHARACTER_NAME_RESERVED(0x12),
 	CHARACTER_NAME_TAKEN(-260, true),
-	CHARACTER_CANNOT_DELETE_YET(0x14),
+	/**
+	 * The delete cooldown, refused server-side. {@code -268} -> dialog 22787, <em>"A fixed amount
+	 * of time must pass in order to delete a character.\nUnable to delete character."</em> — the op
+	 * is {@code 0x3103}, dispatcher {@code 0x94F60C}.
+	 * <p>
+	 * This was {@code 0x14}, an inherited placeholder that went out masked as {@code 0xC0FFEE14}
+	 * and matched nothing in the client's table. It looked correct in testing only because the
+	 * <em>client</em> pre-checks the cooldown and puts up its own information screen with the
+	 * remaining time, so our reply was never the thing being read. A backstop that has never been
+	 * seen is not a backstop that works.
+	 */
+	CHARACTER_CANNOT_DELETE_YET(-268, true),
 
 	/** Character */
 	CHARACTER_DOES_NOT_EXIST(0x20),
