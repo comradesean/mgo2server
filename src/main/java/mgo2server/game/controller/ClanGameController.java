@@ -600,6 +600,20 @@ public class ClanGameController implements IGameController {
 		writeEmblem(ctx, CLAN_EMBLEM_RESULT, clanId);
 	}
 
+	/**
+	 * The emblem flag for a clan: {@link ClanService#EMBLEM_ON_DISPLAY} or 0, never the raw stored
+	 * mode.
+	 * <p>
+	 * Three commands write this byte and all three must agree, so the clamp lives in one place.
+	 * {@code emblemFlagOf} returns the mode the emblem was uploaded with, and 2 and 4 mean stored
+	 * but not shown — echoing one of those would put our record out of step with the client's own,
+	 * which only ever holds 3.
+	 */
+	private int onDisplay(long clanId) {
+		return clanService.emblemFlagOf(clanId) == ClanService.EMBLEM_ON_DISPLAY
+			? ClanService.EMBLEM_ON_DISPLAY : 0;
+	}
+
 	private void writeEmblem(GameControllerContext ctx, int command, long clanId) {
 		var emblem = clanId == 0L ? java.util.Optional.<byte[]>empty()
 			: clanService.emblemOf(clanId);
@@ -619,10 +633,21 @@ public class ClanGameController implements IGameController {
 	 * The emblem upload: {@code {u8 mode, byte[768]}} ({@code 0xD5804C}, reached from the emblem
 	 * screen through task kind 25).
 	 * <p>
-	 * The mode is what the client will set its own emblem flag to — 3 is "put on display" and the
-	 * only value it post-processes; 2 and 4 also occur and are [UNKNOWN]. All three are stored, and
-	 * the mode becomes the flag we report at {@code profile+6872}, so the server and the client end
-	 * up agreeing about whether the clan has an emblem to show.
+	 * The mode is what the client will set its own emblem flag to. [ELF] 3 is "put on display" and
+	 * the only value the client post-processes: the commit path at {@code 0xAD45A4} tests
+	 * {@code cmpwi r29,3} and only that branch reaches both the store to {@code profile+6872} and
+	 * the {@code memcpy} of the bitmap to {@code profile+6873}. Modes 2 and 4 also occur and touch
+	 * neither — they read as "stored, not shown".
+	 * <p>
+	 * All three modes are stored, image and all, because a non-display mode looks like the editor's
+	 * Save: work the player expects to keep. Only {@link ClanService#emblemOf} decides what may be
+	 * <em>served</em>, and it serves nothing unless the mode is 3.
+	 * <p>
+	 * [OBSERVED 2026-07-27] This javadoc used to claim that storing every mode made "the server and
+	 * the client end up agreeing about whether the clan has an emblem to show". It did not. The
+	 * flag was clamped to 3-or-0 while the emblem fetch ignored the mode entirely, so a clan whose
+	 * emblem had been deleted reported no emblem and then served one to any screen that asked —
+	 * visible on Player Details -> More Details across a full logout and login.
 	 * <p>
 	 * Only the leader may commit: the client already enforces it ({@code 0xAD409C} tests
 	 * {@code ctx+788 & 4}, which is set only when membership state is 2), and so do we.
@@ -958,7 +983,7 @@ public class ClanGameController implements IGameController {
 		// T+0x378 is the emblem-present flag, the same slot 0x4b21 carries it in. Zero here meant a
 		// clan viewed from search or the clan list never had its emblem fetched, so it rendered
 		// empty even when one was set.
-		buffer.writeByte(clanService.emblemFlagOf(clan.id()) == 3 ? 3 : 0);    // T+0x378
+		buffer.writeByte(onDisplay(clan.id()));    // T+0x378
 		BufferUtil.writeString(buffer, clan.description(), StandardCharsets.ISO_8859_1,
 			DESCRIPTION_LENGTH);                                              // T+0x67A
 		buffer.writeZero(4);                                                  // T+0x1B34
@@ -1120,7 +1145,7 @@ public class ClanGameController implements IGameController {
 		// T+0x378 = 3 when a published emblem exists. The client will not fetch or offer an emblem
 		// while this is 0, which is why Emblem Edit had nothing to apply.
 		buffer.writeByte(0);                                                  // T+0x76
-		buffer.writeByte(clanService.emblemFlagOf(clan.id()) == 3 ? 3 : 0);    // T+0x378
+		buffer.writeByte(onDisplay(clan.id()));    // T+0x378
 		BufferUtil.writeString(buffer, clan.description(), StandardCharsets.ISO_8859_1,
 			DESCRIPTION_LENGTH);                                              // T+0x67A
 		// T+0x6FC is the EMBLEM EDITOR's character id — the client compares it against its own to
@@ -1224,7 +1249,7 @@ public class ClanGameController implements IGameController {
 			// byte: emblemFlagOf returns the raw stored upload mode, and modes 2 and 4 must not be
 			// echoed — the client only ever stores 3 here (0xAD4724), so sending 2 would put our
 			// record out of step with the one the client keeps for itself.
-			.writeByte(clanService.emblemFlagOf(membership.id()) == 3 ? 3 : 0);
+			.writeByte(onDisplay(membership.id()));
 		BufferUtil.writeString(buffer, membership.name(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);
 
