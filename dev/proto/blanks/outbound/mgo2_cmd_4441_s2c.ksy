@@ -12,7 +12,9 @@ doc: |
   alone completes the 0x4440 transaction.
 
   FINDING for COMMANDS.md's open question ("check whether the 0x4440 team/spectator flow expects
-  0x4442 as well"): it does not. 0x4442's parser (0xD52878) touches neither setter for index 0x54
+  0x4442 as well"): it does not. (And 0x4442's own meaning was settled 2026-07-26 — its event 0x31
+  posts a canned system line into the chat window from the client's string table. See
+  mgo2_cmd_4442.ksy. That is unrelated to this reply, which is the point.) 0x4442's parser (0xD52878) touches neither setter for index 0x54
   -- it fires UI event 0x31 instead -- so it is a server-initiated push, not the second half of
   this reply. See mgo2_cmd_4442.ksy.
 

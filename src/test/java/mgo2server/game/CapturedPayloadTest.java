@@ -55,7 +55,7 @@ public class CapturedPayloadTest {
 		chara.setComment("");
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills());
+		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 
 		var bytes = new byte[buffer.readableBytes()];
 		buffer.getBytes(0, bytes);
@@ -67,14 +67,30 @@ public class CapturedPayloadTest {
 		assertThat(personalInfo()).hasSameSizeAs(capture("4122-personal-info.bin"));
 	}
 
-	/** The undocumented 25-byte block after the clan name. */
+	/**
+	 * The 25-byte block after the clan name is a <b>clan record</b>, not a fixed constant, so this
+	 * no longer asserts byte-equality — it asserts that both payloads are well-formed clan blocks
+	 * and that ours says "no clan".
+	 * <p>
+	 * Identified 2026-07-27: wire {@code 0x14} is the membership state at {@code profile+6837}, whose
+	 * values the client writes itself — 0 pending, 1 member, 2 leader, 99 none ({@code 0xD56B44},
+	 * {@code 0xD56C7C}, {@code 0xD56D68}) — followed by a privilege mask and eleven u16s no reader
+	 * touches. The fixture holds {@code 01}, i.e. "in a clan", with a clan id of zero: one captured
+	 * character's record, and self-contradictory for any character we serve. Copying it was the same
+	 * class of mistake as the tail below, which cost a day of debugging.
+	 */
 	@Test
-	public void personalInfoPrefixMatchesCapture() {
+	public void personalInfoPrefixIsAWellFormedClanBlock() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
-		assertThat(java.util.Arrays.copyOfRange(mine, 20, 45))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 20, 45));
+		assertThat(captured[20]).describedAs("captured clan state").isIn(
+			(byte) 0, (byte) 1, (byte) 2, (byte) 0x63);
+		assertThat(mine[20]).describedAs("our clan state — no clan")
+			.isEqualTo((byte) PersonalInfoWriter.CLAN_STATE_NONE);
+		assertThat(java.util.Arrays.copyOfRange(mine, 21, 45))
+			.describedAs("no clan, so no privileges and nothing else set")
+			.containsOnly((byte) 0);
 	}
 
 	/** The four skill-experience values, which the original sends as a constant. */
@@ -87,14 +103,27 @@ public class CapturedPayloadTest {
 			.isEqualTo(java.util.Arrays.copyOfRange(captured, 86, 107));
 	}
 
-	/** The undocumented four-byte tail. */
+	/**
+	 * The four-byte tail is the character's <b>saved instructor</b>, so byte-equality with the
+	 * fixture is exactly the assertion that must not be made.
+	 * <p>
+	 * The fixture holds {@code 00 A7 00 0D}. Sending that to every character made all of them
+	 * announce "I already have an instructor" over P2P message 36, which suppressed the
+	 * post-graduation recognition prompt ({@code n002a} string 3099) for everyone — proven live
+	 * 2026-07-27 by zeroing it and watching the prompt appear. A character with no instructor sends
+	 * zero; one who saved an instructor sends that instructor's id.
+	 */
 	@Test
-	public void personalInfoSuffixMatchesCapture() {
+	public void personalInfoSuffixIsTheSavedInstructorAndNotTheCapturedConstant() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
+		assertThat(java.util.Arrays.copyOfRange(captured, 241, 245))
+			.describedAs("the fixture carries one captured character's saved instructor")
+			.isNotEqualTo(new byte[] { 0, 0, 0, 0 });
 		assertThat(java.util.Arrays.copyOfRange(mine, 241, 245))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 241, 245));
+			.describedAs("a character with no saved instructor sends zero")
+			.containsOnly((byte) 0);
 	}
 
 	/**

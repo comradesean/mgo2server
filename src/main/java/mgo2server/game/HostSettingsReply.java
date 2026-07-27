@@ -31,8 +31,19 @@ import io.netty.buffer.ByteBuf;
  * pass confirms Nomad's map and the client misbehaves on the raw echo, canonicalise here.
  */
 public final class HostSettingsReply {
-	/** Reply size Nomad allocates: result word plus the settings structure. */
-	public static final int SIZE = 0x163;
+	/**
+	 * Payload size: the parser's last read ends here.
+	 * <p>
+	 * <strong>Trimmed 2026-07-26 from {@code 0x163} (355), which was Nomad's allocation.</strong>
+	 * The parser at {@code 0xD4548C} is straight-line: 46 reads plus the 16-iteration rotation
+	 * loop, ending with one opaque 14-byte read at wire {@code 0x14e..0x15b}. There is no read
+	 * after {@code 0x15B}, so the payload is {@code 0x15C} = 348 bytes and the seven bytes we used
+	 * to append were never looked at. They did no harm — the read primitives bound-check the
+	 * 1023-byte receive buffer, not the payload length, and nothing here calls the
+	 * cursor-vs-length test {@code 0xD5CEB0} — but 355 was a reference server's struct length, not
+	 * this client's packet length. See {@code dev/proto/blanks/outbound/mgo2_cmd_4305_s2c.ksy}.
+	 */
+	public static final int SIZE = 0x15C;
 
 	/** The lowest blob length carrying every field this mapping reads. */
 	private static final int MIN_BLOB = 0x156;
@@ -53,10 +64,18 @@ public final class HostSettingsReply {
 		copy(out, 0x014, blob, 0x10, 0x80);  // comment
 		copy(out, 0x094, blob, 0x90, 0x11);  // password: enabled flag + password[15] + pad
 		copy(out, 0x0A5, blob, 0xA1, 1);     // dedicated
-		// The request's subtype byte at 0xA2 is not replayed. Rotation: 15 [rule, map, flags]
-		// triples; the reader stops at the first rule==0 && map==0, so trailing zeros are inert.
-		copy(out, 0x0A6, blob, 0xA3, 0x2D);
-		// 0x0D3..0x0D8 zero padding.
+		// The request's subtype byte at 0xA2 is not replayed. Rotation: SIXTEEN {rule, map, flags}
+		// triples = 48 bytes, wire 0x0A6..0x0D5.
+		//
+		// Corrected 2026-07-26 from 15 (0x2D bytes). Four independent sources say 16: the 0x4305
+		// parser's own loop (cmpdi r27,16 at 0xD45648), the 0x4310 writer's (cmpdi cr7,r27,16 at
+		// 0xd44958, which always emits all sixteen), GameDetails.ROUNDS = 16 for the 0x4313 reply,
+		// and mgo2_cmd_4305_s2c.ksy. The 15 came from a reference server, and the defence for it —
+		// "the reader stops at the first rule==0 && map==0" — is reference-derived and contradicted
+		// by the writer. At 15 a host with a full rotation lost its last round on the Create Game
+		// pre-fill, and the request's two bytes at 0xD3/0xD4 were dropped with it.
+		copy(out, 0x0A6, blob, 0xA3, 0x30);
+		// 0x0D6..0x0D8 zero padding.
 		// Weapon restrictions, echoed opaquely (1 bit per item, 1 = locked; bit 0 of the first
 		// byte is the enable). The per-weapon bit map — 19 bits capture-confirmed on this build,
 		// the rest expansion-era per Nomad — is in PROTOCOL.md, "Weapon restrictions".
@@ -73,17 +92,21 @@ public final class HostSettingsReply {
 		copy(out, 0x145, blob, 0x142, 1);    // commonA
 		copy(out, 0x146, blob, 0x143, 1);    // commonB
 		out[0x147] = 0x20;                   // commonC: constant in Nomad, request byte ignored
-		// 0x148 zero.
-		copy(out, 0x149, blob, 0x146, 1);    // idle kick
-		// 0x14A zero.
-		copy(out, 0x14B, blob, 0x148, 1);    // team-kill kick
+		// Kick timers are u16 on both sides, corrected 2026-07-26. The request writes them as
+		// halfwords at 0x145/0x147 (0x4310 sender, 0xd44bf8/0xd44c0c) and the 0x4305 parser reads
+		// u16 at 0x148/0x14a (block +180/+182). Nomad's map copies one byte into each destination's
+		// LOW half and leaves the high half zero, which is identical for values <= 255 and drops
+		// the high byte above — a third instance of the same truncation as GameService and
+		// GameDetails. See dev/proto/blanks/outbound/mgo2_cmd_4305_s2c.ksy.
+		copy(out, 0x148, blob, 0x145, 2);    // idle kick (u16)
+		copy(out, 0x14A, blob, 0x147, 2);    // team-kill kick (u16)
 		copy(out, 0x14C, blob, 0x149, 1);    // capture extra time
 		copy(out, 0x14D, blob, 0x14A, 1);    // sneaking-mission Snake side
 		copy(out, 0x14E, blob, 0x14B, 8);    // sdm t/r, int t, dm r, scap t/r, race t/r
 		// 0x156 zero.
 		copy(out, 0x157, blob, 0x154, 1);    // extra-time flags
 		copy(out, 0x158, blob, 0x155, 1);    // host options (bit 1 = non-stat)
-		// 0x159..0x163 zero.
+		// 0x159..0x15B zero — the tail of the parser's final 14-byte opaque read at 0x14E.
 
 		buffer.writeBytes(out);
 	}

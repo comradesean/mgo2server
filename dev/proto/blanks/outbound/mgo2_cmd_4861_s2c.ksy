@@ -3,6 +3,10 @@ meta:
   title: "MGO2 0x4861 \u2014 0x4860 mail-manage ack (server -> client)"
   endian: be
 doc: |
+  Only needed if `0x4801` is answered with flags bit 0 clear, which makes the client re-send the
+  whole letter as `0x4860`. See `mgo2_cmd_4801_s2c.ksy` and `../inbound/mgo2_cmd_4860_c2s.ksy`.
+  We send flags = 1, so this pair never runs.
+
   Reply to the unimplemented 0x4860 mail-management request. Parser 0xD53064, dispatcher stub
   0xD394E4.
 

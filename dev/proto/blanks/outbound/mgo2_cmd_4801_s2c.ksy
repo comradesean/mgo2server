@@ -4,7 +4,8 @@ meta:
   endian: be
 doc: |
   Reply to 0x4800 (send mail / clan application). Parser 0xD53D1C (ends 0xD53F0C), dispatcher
-  stub 0xD394C4. Never sent by us — COMMANDS.md files it under "the rest of the mailbox".
+  stub 0xD394C4. **SERVED since 2026-07-26** (`MessageGameController.sendMessage`), with
+  `flags = 1`; COMMANDS.md still files it under "the rest of the mailbox", which is stale.
 
   PROTOCOL.md transcribes a tier-4 shape from Nomad: `{u32 status, u8 0, u32 error count, then
   name[16]+u32 code per error}`. THE ELF CONFIRMS THAT SHAPE, widths and order, and adds the
@@ -37,9 +38,22 @@ seq:
   - id: flags
     type: u1
     doc: |
-      [ELF 0xD53DC8] Only bit 0 is read (`clrldi. r9,r0,63` at 0xD53E90): set → complete the
-      0x55 transaction with `status`; clear → call 0xD53B6C instead. The other 7 bits are
-      [UNKNOWN] — never examined. PROTOCOL.md's tier-4 transcription sends 0 here.
+      [ELF 0xD53DC8] Only bit 0 is read (`clrldi. r9,r0,63` at 0xD53E90). The other 7 bits are
+      [UNKNOWN] — never examined.
+
+      **BIT 0 MUST BE SET.** Set → `0xD32E08(0x55,2)` at 0xD53EA4 then `0xD32E70(0x55,status)` at
+      0xD53EB8, i.e. the request completes with our status. **Clear → `0xD53B6C`, which is a
+      packet SENDER, not a completion routine**: it builds `0x4860` (`li r4,18528` at 0xD53BFC,
+      969 bytes — the same six fields as `0x4800` after two extra leading bytes preset to 1 and
+      0xFF) and then `0xD32E08(ctx,85,1)` at 0xD53CE4 puts slot 0x55 back to state 1 = in-flight.
+      So a zero here does not release the client; it silently re-sends the whole letter as a
+      command we do not answer, and the player sees the same hang as no reply at all.
+
+      PROTOCOL.md transcribes Nomad's `flags = 0`. That is self-consistent *for Nomad*, which also
+      answers `0x4860` with a no-op `0x4861` (a bare u32; parser 0xD53064, completes slot 85) — the
+      pair works, either half alone does not. This is the tier-4 trap in miniature: the value is
+      transcribed correctly and is wrong here. **We send 1** [live 2026-07-26: send completes in
+      one round trip].
   - id: error_count
     type: u4
     if: status != 0

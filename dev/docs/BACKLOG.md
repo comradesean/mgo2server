@@ -4,6 +4,52 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
+## The instructor recognition prompt is peer-supplied — the server cannot trigger it
+
+*Pinned 2026-07-26, after several live sessions and an ELF trace. **Stop changing server data to chase
+this prompt.***
+
+At the end of combat training the student should see two prompts: "Save current instructor, NAME, as
+the instructor for your personal data?" (YES/NO), then "Choose a rating". Only the rating appears on
+our server. The trigger is a single test, and its input never touches our protocol.
+
+The gate is `0xA359A4`, in the end-of-session state machine at `0xA35788`:
+
+```
+a359a4:  bl    0x9cd5b0        ; getter
+a359ac:  cmpwi cr7,r3,0
+a359b0:  bne   cr7,0xa36048    ; NON-ZERO -> skip to the rating prompt
+a359b4:  ...   post event 0x150021 -> recognition prompt (message id 253)
+a36048:  ...   post event 0x150022 -> rating prompt      (message id 254)
+```
+
+One condition, one u32 — no level, play-time or skill-17 test on this path. Both events are posted
+from exactly three sites, all inside this one function, so "only the rating appeared" is proof the
+gate read non-zero.
+
+`0x9CD5B0` (verified: exactly one caller, `0xA359A4`) returns `G->0x1C0` from the training-session
+object. That field has **one writer in the binary**, `0x9D17C8` — inside the **P2P in-game message
+handler**, opcode 36 (dispatcher `0x9D1440`): it reads a target slot byte and a u32 off the stream,
+checks the slot is this player, and stores the u32. The host emits it while walking player slots,
+from replicated player variable **key 352**, and only when that key is non-zero.
+
+So the value is **peer-supplied, from the instructor's console**, over the session link we neither
+terminate nor observe. Nothing in the lobby protocol reaches it: not `0x4103` offset 591/607, not
+the skill-17 record, not experience, not the `0x4105` play-time matrix. Changing what we send the
+*student* cannot move it, and several 30-minute sessions were spent proving that the hard way.
+
+The prompt's own wording — "Instructor name cannot be erased once saved" — fits a one-shot the host
+enforces on the student's behalf.
+
+**Open, and it lives on the instructor's side:** what makes replicated variable 352 non-zero
+(set via `0x27F258(obj, 352, 4, ...)`, e.g. `0x27815C`, `0x2763F0`). Also unverified: the agent
+found no reset or initialiser for `G->0x1C0`, which predicts that a student client that has never
+received an opcode-36 since boot reads 0 and *should* see the prompt. If a first-ever session after
+an emulator restart still skips it, the chain above is wrong somewhere.
+
+**Answering YES sends nothing.** State 5's completion handler does not read the dialog result — it
+unconditionally posts the rating event. There is no unhandled packet waiting here.
+
 ## Training progression — nothing is locked, so nothing needs unlocking (yet)
 
 *Pinned 2026-07-26, from a live combat-training session; reframed the same day.* The instructor

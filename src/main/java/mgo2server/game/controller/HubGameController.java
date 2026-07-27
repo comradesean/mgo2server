@@ -138,8 +138,28 @@ public class HubGameController implements IGameController {
 
 	private static final int ENTRIES_PER_PACKET = 8;
 
-	/** Two words the client reads, then a block it only skips. */
-	private static final int ENTRY_INFO_PADDING = 0xa4;
+	/**
+	 * The four 57-byte entry records that follow the two header words of {@code 0x4991}
+	 * ({@code 4 × 57 = 228}), sent as zeros because their layout is undecoded.
+	 * <p>
+	 * <strong>Corrected 2026-07-26 from {@code 0xa4} (164).</strong> This was "a block the client
+	 * only skips", taken from the reference servers. The parser at {@code 0xD48D40} does not skip
+	 * it: after the result it reads a u32 into {@code rec+0x120} and then runs a loop with a
+	 * hardcoded bound of four ({@code cmpwi r20,3} at {@code 0xD48F84}, stride 72 at
+	 * {@code 0xD48F88}), reading eleven fields totalling 57 wire bytes per record. The short reply
+	 * did not fault only because the read primitives bound-check the 1023-byte receive buffer
+	 * rather than the payload length, so the client silently consumed 64 bytes of stale buffer.
+	 * See {@code dev/proto/blanks/outbound/mgo2_cmd_4991_s2c.ksy}.
+	 */
+	private static final int ENTRY_INFO_RECORDS = 4 * 57;
+
+	/**
+	 * The second header word. The client compares it against 4 and overwrites it with 4 when it
+	 * differs ({@code li r0,4; stw r0,288(r3)} at {@code 0xD48FC0}), so the value is advisory and
+	 * the loop runs four times regardless. We send 4 to match what the client will store anyway;
+	 * the references send 1. Whether the original server ever varied it is unknown.
+	 */
+	private static final int ENTRY_INFO_COUNT = 4;
 
 	private final LobbyService lobbyService;
 
@@ -248,12 +268,26 @@ public class HubGameController implements IGameController {
 	 * because the client reuses it for whatever it shows next.
 	 */
 	private void lobbyDisconnect(GameControllerContext ctx) {
-		ctx.write(new GamePacket(LOBBY_DISCONNECT_RESULT, ctx.buffer(0)));
+		// Explicit 4-byte zero, not an empty payload (corrected 2026-07-26). The parser reads a
+		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
+		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
+		// than the payload length, so the client consumed four bytes of stale buffer as its
+		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4151_s2c.ksy.
+		ctx.write(LOBBY_DISCONNECT_RESULT, GameError.NONE);
 	}
 
 	/**
-	 * Entry conditions for the current lobby. Both references send the same fixed answer — a zero,
-	 * a one, then a block of padding — so no restriction is expressed here.
+	 * Entry conditions for the current lobby: {@code {s4 result, u4 count, 4 × 57-byte record}},
+	 * 236 bytes. No restriction is expressed — the four records are zeroed because nothing is
+	 * known about their fields, only their size and stride.
+	 * <p>
+	 * The references send 172 bytes here and this followed them until 2026-07-26; see
+	 * {@link #ENTRY_INFO_RECORDS} for why that was 64 bytes short. Zeroed records are not correct
+	 * either — they are merely deterministic, where the short reply left the client parsing stale
+	 * buffer. Decoding the 57-byte record is the open question.
+	 * <p>
+	 * The error path stays four bytes: a nonzero result makes the parser skip the count and every
+	 * record ({@code 0xd48df4}), so no body is expected with it.
 	 */
 	private void getGameEntryInfo(GameControllerContext ctx) {
 		if (ctx.connection().account() == null) {
@@ -261,8 +295,8 @@ public class HubGameController implements IGameController {
 			return;
 		}
 
-		var buffer = ctx.buffer(8 + ENTRY_INFO_PADDING);
-		buffer.writeInt(0).writeInt(1).writeZero(ENTRY_INFO_PADDING);
+		var buffer = ctx.buffer(8 + ENTRY_INFO_RECORDS);
+		buffer.writeInt(0).writeInt(ENTRY_INFO_COUNT).writeZero(ENTRY_INFO_RECORDS);
 
 		ctx.write(new GamePacket(GAME_ENTRY_INFO_RESULT, buffer));
 	}

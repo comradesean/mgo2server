@@ -5,6 +5,7 @@ import mgo2server.game.controller.AccountGameController;
 import mgo2server.game.controller.CommonGameController;
 import mgo2server.game.controller.CharacterConnectController;
 import mgo2server.game.controller.CharacterGameController;
+import mgo2server.game.controller.ChatGameController;
 import mgo2server.game.controller.EchoGameController;
 import mgo2server.game.controller.GameListGameController;
 import mgo2server.game.controller.HostGameController;
@@ -51,7 +52,8 @@ public class GameServerFactory {
 					services.getGameService()));
 				controllers.add(new GameListGameController(services.getGameService(), lobbyId,
 					lobbySubtype));
-				controllers.add(new MessageGameController());
+				controllers.add(new ChatGameController(services.getGameService()));
+				controllers.add(new MessageGameController(services.getCharacterService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),

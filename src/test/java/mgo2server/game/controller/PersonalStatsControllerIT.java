@@ -164,7 +164,10 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(1);
 		var payload = replies.get(0).getPayload();
-		assertThat(payload.readableBytes()).isEqualTo(34);
+		// 36 = 4 + 16 pairs x 2, corrected 2026-07-26 from 34 (fifteen pairs). The loop bound at
+		// 0xd3c8d4 is tested before the increment at 0xd3c8dc, so the client reads sixteen; at
+		// fifteen it took its last pair from stale receive buffer.
+		assertThat(payload.readableBytes()).isEqualTo(36);
 		assertThat(payload.getInt(0)).isEqualTo(0); // entry count, not a status
 	}
 }

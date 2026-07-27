@@ -66,6 +66,8 @@ public class MatchStateIT extends BaseGameClientServerIT {
 				.mapTo(Long.class)
 				.one());
 
+		grantStartingSkills(charaId);
+
 		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
 					update account set current_chara_id = :chara, main_chara_id = :chara where id = :id
 					""")
@@ -258,7 +260,13 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			getDetails(gameId), passHostTo(joiner));
 
 		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_PINGS_RESULT);
-		assertThat(replies.get(0).getPayload().readableBytes()).isZero();
+		// 4 bytes, not empty, since 2026-07-26: the 0x4399 parser (0xD40530) reads a u32
+		// unconditionally and feeds it to wait slot 44. The empty reply only ever "worked" because
+		// the read primitives bound-check the 1023-byte receive buffer instead of the payload
+		// length, so the client took four bytes of stale buffer as its result code. This assertion
+		// used to require the empty form.
+		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(Integer.BYTES);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 
 		// The joiner's entry is second (host first); ping sits 20 bytes into the 28-byte entry.
 		var details = replies.get(1).getPayload();
@@ -600,14 +608,19 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * Start round ({@code 0x43c8}) replies {@code {u32 result, u32 token}} — the ELF parser gates
-	 * on result 0 and retains the token; we send the game id. (Renumbered from the dead
-	 * {@code 0x43ca}.)
+	 * Start round ({@code 0x43c8}) replies {@code {u32 result, u32 saved_instructor}} — result 0 lets
+	 * the round proceed, and <b>the second word must be zero</b>.
+	 * <p>
+	 * It is not a round token. The parser stores a nonzero second word into {@code profile+0x32F8}
+	 * ({@code 0xD3FF6C}, guarded on {@code != 0}), which the join announcement carries to every peer
+	 * as P2P message 36 and which suppresses the post-graduation recognition prompt. We used to send
+	 * the game id here, which stamped every character that ever started a round. (Renumbered from
+	 * the dead {@code 0x43ca}.)
 	 */
 	@Test
-	public void startRoundReplyCarriesResultAndToken() {
+	public void startRoundReplyLeavesTheSavedInstructorUntouched() {
 		givenSelectedCharacter("Snake");
-		var gameId = givenHostedGame();
+		givenHostedGame();
 
 		var replies = exchange(new GamePacket(HostGameController.START_ROUND));
 
@@ -615,7 +628,9 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(reply.getCommand()).isEqualTo(HostGameController.START_ROUND_RESULT);
 		assertThat(reply.getPayload().readableBytes()).isEqualTo(8);
 		assertThat(reply.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
-		assertThat(reply.getPayload().getInt(4)).isEqualTo((int) gameId);
+		assertThat(reply.getPayload().getInt(4))
+			.describedAs("nonzero here permanently suppresses the recognition prompt")
+			.isZero();
 	}
 
 	/** Joining records round membership so a quitter's later stats still apply (0x43c8-independent). */
@@ -680,7 +695,11 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			HostGameController.LIST_ROSTER_START,
 			HostGameController.LIST_ROSTER_ENTRIES,
 			HostGameController.LIST_ROSTER_END);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(1); // only the one friend
+		// The start is a RESULT CODE, not a count. Sending the count here is what produced
+		// "Unable to acquire Friend List.(1002:00000001)" live on 2026-07-26: the parser at
+		// 0xD469C0 stores a nonzero value as the transaction's failure code, so one friend
+		// became error 1. This assertion used to expect 1 and was pinning the bug.
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 		var entry = replies.get(1).getPayload();
 		assertThat(entry.readableBytes()).isEqualTo(59);
 		assertThat(entry.getInt(0)).isEqualTo((int) friend);
@@ -688,7 +707,180 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		entry.getBytes(4, name);
 		assertThat(new String(name, java.nio.charset.StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Otacon");
+		// The u16 at wire 0x14 must be nonzero or the 0x4583 end handler drops the record from
+		// the display array (0xD466D4) — the roster would render empty with every record parsed.
+		assertThat(entry.getUnsignedShort(0x14)).isNotZero();
 		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+	}
+
+	/**
+	 * Training time is accumulated from presence, not from the host's reports — because the host
+	 * only reports when someone leaves early, and a host that quits first reports nobody. The
+	 * teardown path is the one that used to lose a whole session.
+	 */
+	/**
+	 * The instructor review ({@code 0x43c8} from a student in a combat-training lobby) records the
+	 * relationship when the student recognised the instructor, but grants nothing on its own — the
+	 * skill and the announcement ride the end-of-round stats report instead.
+	 */
+	@Test
+	public void reviewingAnInstructorRecordsTheGraduationWithoutAwardingYet() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		services.getCharacterService().recordGraduation(student, charaId, 4, true, 0x01);
+
+		var instructor = services.getCharacterService().instructorOf(student).orElseThrow();
+		assertThat(instructor.instructorName()).isEqualTo("Snake");
+		assertThat(instructor.rating()).isEqualTo(4);
+		// The instructor has no record of their own, so they are first generation.
+		assertThat(instructor.generation()).isEqualTo(2);
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.doesNotContain(CharacterService.INSTRUCTOR_SKILL_ID);
+	}
+
+	/** Konami's documented "20 or more hours of gameplay", the half of the rule we can enforce. */
+	private static void givenTwentyHoursPlayed(long charaId) {
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("""
+					insert into chara_training_time (chara_id, total_seconds)
+					values (:id, :seconds)
+					on conflict (chara_id) do update set total_seconds = excluded.total_seconds
+					""")
+				.bind("id", charaId)
+				.bind("seconds", CharacterService.INSTRUCTOR_MIN_SECONDS)
+				.execute());
+	}
+
+	/** The stats report is what actually hands over the skill and the announcement. */
+	@Test
+	public void theStatsReportAwardsTheSkillAndAnnouncementAfterARecognisedGraduation() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		givenTwentyHoursPlayed(student);
+		var graduation = services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
+		assertThat(graduation.recognised()).isTrue();
+
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isTrue();
+		// Idempotent: every later report finds the skill already held and sends no second letter.
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isFalse();
+
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.contains(CharacterService.INSTRUCTOR_SKILL_ID);
+
+		var mail = services.getCharacterService().mailbox(student, 8);
+		assertThat(mail).hasSize(1);
+		assertThat(mail.get(0).counterparty()).isEqualTo("GameMaster");
+		assertThat(mail.get(0).subject()).contains("Instructor Skill");
+	}
+
+	/**
+	 * Answering <b>no</b> to "Save current instructor ... as the instructor for your personal data?"
+	 * ({@code 0x43c8} answer byte {@code 0x00}) leaves the rating on file and nothing else — no
+	 * relationship, and no skill however many stats reports follow.
+	 */
+	@Test
+	public void decliningToRecogniseTheInstructorRecordsOnlyTheRating() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		var graduation = services.getCharacterService()
+			.recordGraduation(student, charaId, 5, false, 0x00);
+
+		assertThat(graduation.recognised()).isFalse();
+		assertThat(services.getCharacterService().instructorOf(student)).isEmpty();
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isFalse();
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.doesNotContain(CharacterService.INSTRUCTOR_SKILL_ID);
+		assertThat(services.getCharacterService().mailbox(student, 8)).isEmpty();
+	}
+
+	/** Graduating again re-parents the student without a second letter. */
+	@Test
+	public void regraduatingReplacesTheInstructorWithoutAnotherAnnouncement() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		var second = givenJoinedPlayer(gameId, "Meryl");
+		givenCombatTrainingLobby();
+
+		givenTwentyHoursPlayed(student);
+		services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
+		services.getCharacterService().awardPendingInstructorSkill(student);
+		services.getCharacterService().recordGraduation(student, second, 2, true, 0x01);
+		services.getCharacterService().awardPendingInstructorSkill(student);
+
+		var instructor = services.getCharacterService().instructorOf(student).orElseThrow();
+		assertThat(instructor.instructorName()).isEqualTo("Meryl");
+		assertThat(instructor.rating()).isEqualTo(2);
+		assertThat(services.getCharacterService().mailbox(student, 8)).hasSize(1);
+	}
+
+	private void givenCombatTrainingLobby() {
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("update lobby set subtype = 8 where id = :id")
+				.bind("id", lobbyId).execute());
+	}
+
+	@Test
+	public void endingAGameCreditsEveryPlayersTrainingTime() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+
+		var jdbi = TestDatabase.get().jdbi();
+		// Combat training, and both players joined a minute ago.
+		jdbi.useHandle(handle -> {
+			handle.createUpdate("update lobby set subtype = 8 where id = :id")
+				.bind("id", lobbyId).execute();
+			handle.createUpdate("""
+					update game_player set joined_at = now() - interval '60 seconds'
+					where game_id = :game
+					""").bind("game", gameId).execute();
+		});
+
+		services.getGameService().deleteGame(gameId);
+
+		var instructor = services.getCharacterService().trainingSeconds(charaId);
+		var learner = services.getCharacterService().trainingSeconds(student);
+
+		// The host's seconds land in the instructor column, everyone else's in the student column.
+		assertThat(instructor.instructor()).isBetween(59L, 62L);
+		assertThat(instructor.student()).isZero();
+		assertThat(learner.student()).isBetween(59L, 62L);
+		assertThat(learner.instructor()).isZero();
+		// Subtype 8 is combat training, so neither is training-mode time.
+		assertThat(instructor.trainingMode()).isZero();
+		assertThat(learner.trainingMode()).isZero();
+	}
+
+	/** A Free Battle round is not training time, whoever hosted it. */
+	@Test
+	public void ordinaryGamesCreditNoTrainingTime() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
+					update game_player set joined_at = now() - interval '60 seconds'
+					where game_id = :game
+					""").bind("game", gameId).execute());
+
+		services.getGameService().deleteGame(gameId);
+
+		var totals = services.getCharacterService().trainingSeconds(charaId);
+		assertThat(totals.trainingMode()).isZero();
+		assertThat(totals.instructor()).isZero();
+		assertThat(totals.student()).isZero();
 	}
 
 	@Test
@@ -703,16 +895,18 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		var payload = replies.get(0).getPayload();
 		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.POST_GAME_INFO_RESULT);
 		// 39 fixed bytes plus one 4-byte record per skill the character owns. 0x8b was this same
-		// arithmetic back when the table was a hard-coded 25 entries; V20 made it the character's
-		// rows, and the client defines 17 skills.
-		assertThat(payload.readableBytes()).isEqualTo(39 + CharaSkill.MAX_ID * 4);
+		// arithmetic back when the table was a hard-coded 25 entries; it is now the character's
+		// rows, and a new character is granted 1..16.
+		assertThat(payload.readableBytes()).isEqualTo(39 + CharaSkill.STARTING_MAX_ID * 4);
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
 		assertThat(payload.getByte(4)).isEqualTo((byte) 7);        // rank
 		assertThat(payload.getInt(5)).isEqualTo(500);              // main-pool experience
-		assertThat(payload.getShort(0x0E + 1)).isEqualTo((short) 0x6000); // skill 1 exp
+		// Skill 1's experience, from the character's own row — the starting grant is level 1.
+		assertThat(payload.getShort(0x0E + 1))
+			.isEqualTo((short) CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
 		// The tail sits after the skill records, so its offsets move with the table size; they were
 		// 0x76 and 0x86 when the table was a fixed 25 entries.
-		var tail = 14 + CharaSkill.MAX_ID * 4;
+		var tail = 14 + CharaSkill.STARTING_MAX_ID * 4;
 		assertThat(payload.getInt(tail + 4)).isEqualTo(500);       // grade points mirror exp
 		assertThat(payload.getInt(tail + 20)).isEqualTo((int) charaId);
 	}

@@ -26,7 +26,8 @@ doc: |
   Cross-check: `0x4124` uses the identical loop and its known-good length is
   `4 + 123*5 + 32 = 651`, which only balances with 16 pairs.
 
-  **Consequence:** our 34-byte `0x4133` is two bytes short. The read primitives bound the cursor
+  **Consequence (FIXED 2026-07-26 — `PersonalInfoController.COMMIT_TRAILER_PAIRS = 16`, pinned by
+  `PersonalStatsControllerIT`):** our 34-byte `0x4133` was two bytes short. The read primitives bound the cursor
   against the 1024-byte receive buffer, never against the payload length, so the sixteenth pair is
   read out of whatever the previous packet left there. It has not visibly broken anything (the
   stale bytes usually fail the `id <= 128` / `bit <= 31` checks, and even when they pass they can

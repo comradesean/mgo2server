@@ -19,5 +19,9 @@ seq:
       [ELF] 0x00. Which list to fetch — **0 friends, 1 blocked**, by continuity with
       `0x4500`/`0x4510` where both values are live-confirmed; the sender's own guard restricts
       it to 0 or 1. Reply is a real triple (`0x4581` start / N x `0x4582` 59-byte entries /
-      `0x4583` end); we answer it empty because the 59-byte record cannot be filled honestly.
+      `0x4583` end). **We now serve real entries** (`HostGameController.listRoster`, 2026-07-26):
+      the id and name come from `chara_relation`, and the u16 at record wire 0x14 is set nonzero
+      because `0x4583` discards any record where it is zero. The rest of the record is still
+      zeroed — see `../outbound/mgo2_cmd_4582_s2c.ksy`. Until 2026-07-26 we answered empty on the
+      grounds that the 59-byte record could not be filled honestly.
       No `valid:` constraint, per `dev/proto/README.md`.

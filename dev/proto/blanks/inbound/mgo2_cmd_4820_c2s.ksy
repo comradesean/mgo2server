@@ -34,6 +34,12 @@ seq:
       and `0x0F` (`0xD534D4`→`0xD53528`), each a compile-time literal. The enum labels below
       follow PROTOCOL.md's reference-derived naming and are **[UNKNOWN]** as a mapping — the
       constants are proven, the semantics are not.
+
+      **This byte does NOT select a tab** [CONFIRMED live 2026-07-26]. Inbox and Sent both request
+      `0x0F`; every request observed in a whole mailbox session carried `0x0F`. The tab split is
+      client-side, driven by the category byte the server puts on each `0x4822` entry. Do not
+      echo this value into the entry — see `../outbound/mgo2_cmd_4822_s2c.ksy`, where doing
+      exactly that wrote 280 bytes past the end of a client heap block.
 enums:
   mailbox_kind:
     0x0f: mail

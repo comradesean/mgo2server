@@ -1,8 +1,15 @@
-ONLINE USER AGREEMENT
-
 METAL GEAR ONLINE: ONLINE USER AGREEMENT
 
-Please read and accept this online user agreement ("Agreement") for “METAL GEAR ONLINE” ("Online Game") carefully.Specific rules and regulations for this particular Online Game ("Rules"), including, but not limited to the rules for additional ID registration (if applicable) or rules for payment (if applicable), will be separately established by KONAMI and form an integral part of this Agreement. The Rules can be found at  ("Site"). In the event any terms of this Agreement conflict with any provisions of the Rules, the provisions of the Rules shall prevail. "KONAMI" in this Agreement shall mean the Konami Entity applicable to you as set forth in Paragraph 19 below, or collectively Konami Group.
+Please read and accept this online user agreement
+("Agreement") for “METAL GEAR ONLINE” ("Online Game")
+carefully.Specific rules and regulations for this particular
+Online Game ("Rules"), including, but not limited to the
+rules for additional ID registration (if applicable) or rules for
+payment (if applicable), will be separately established by
+KONAMI and form an integral part of this Agreement. The
+Rules can be found at <http://www.konami.net/mgo/>
+("Site"). In the event any terms of this Agreement conflict
+with any provisions of the Rules, the provisions of the Rules shall prevail. "KONAMI" in this Agreement shall mean the Konami Entity applicable to you as set forth in Paragraph 19 below, or collectively Konami Group.
 
 1. ACCEPTANCE OF THIS AGREEMENT. You can only enter into this Agreement if you are considered as an "Adult" in the country where you reside. By accepting this Agreement, you affirm that you are an Adult and you have read and accepted this Agreement on your own behalf or on behalf of your Minor child.
 

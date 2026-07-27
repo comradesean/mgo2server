@@ -3,6 +3,20 @@ meta:
   title: "MGO2 0x4860 \u2014 file / forward mail (client -> server)"
   endian: be
 doc: |
+  ## THE `0xD53B6C` SENDER IS THE `0x4801` FAILURE PATH, NOT A USER ACTION
+
+  `0x4801` (send-mail reply) tests bit 0 of its flags byte (`clrldi. r9,r0,63` at `0xD53E90`).
+  When that bit is **clear** the parser calls `0xD53B6C`, which is a packet *sender*: it rebuilds
+  the entire letter as this 969-byte `0x4860` (opcode 1, second byte `0xFF`) and puts request slot
+  `0x55` back to state 1 = in-flight (`0xD32E08(ctx,85,1)` at `0xD53CE4`).
+
+  So a server that answers `0x4800` with `flags = 0` and does not implement `0x4860` hangs the
+  client exactly as if it had never replied. Nomad's `flags = 0` works only because Nomad also
+  answers `0x4860` with a no-op `0x4861`; either half alone is a stall. We send `flags = 1` and
+  therefore never see this command — see `../outbound/mgo2_cmd_4801_s2c.ksy`.
+
+  The other sender, `0xD539B8` (opcode 2), is UI-initiated and its trigger is [UNKNOWN].
+
   **Two** senders, identical wire shape, differing only in the two leading literals:
   `0xD539B8` (builder call `0xD53A50`) writes `1st = 2`, and `0xD53B6C` (builder call `0xD53C04`)
   writes `1st = 1, 2nd = 0xFF`. Subsystem index `0x55` (`li r4,85`) in both.

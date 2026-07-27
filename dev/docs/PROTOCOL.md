@@ -117,6 +117,92 @@ unknown command is logged (`No handler for command %04x; ignoring.`) and dropped
 
 **Dropping is not harmless — see "Commands we do not handle" at the end of this file.**
 
+On the client's side dispatch is not a flat map and **not a linear comparison chain**. The GAME
+lobby's reply dispatcher is a function starting at `0xD387C8`; `0xD38804` is the head of its
+**compare tree**, and the `bgt` at `0xD3880C` shows the tree is a binary search over command ids,
+not a chain walked in order. Corrected 2026-07-26: this file previously described the region
+`0xD388A8`–`0xD38948` as "a comparison chain over reply ids". Those addresses are interior nodes
+of the tree, not its entry, and nothing can be inferred from the *order* in which ids appear
+there.
+
+### The packet-reader primitives
+
+Every client-side parser in this protocol is a sequence of calls into one small reader library,
+bracketed by a READ_BEGIN/READ_END pair. Reading a parser in isolation is misleading without the
+library, so it is collected here. All addresses traced from `MGO2.elf` 2026-07-26.
+
+| primitive | width | notes |
+| --- | --- | --- |
+| `0xD5CB54`, `0xD5CB8C` | u8 | instruction-identical twins |
+| `0xD5CBC4`, `0xD5CC14` | u16 | instruction-identical twins |
+| `0xD5CC64`, `0xD5CCD8` | u32 | instruction-identical twins |
+| `0xD5CD4C`, `0xD5CDC0` | u64 | instruction-identical twins |
+| `0xD5CE34` | string | **delimiter-terminated**, delimiter supplied by the caller in `r5` |
+| `0xD5D018` | fixed block | `memcpy` of `r5` wire bytes, then a NUL written at `dest[r5]` |
+| `0xD49230` | 6-byte header | u32 + u16, validated against the open object; returns −1018 on mismatch. Used by eight parsers |
+
+Four things follow, and each of them has been got wrong here before:
+
+- **There is no signed/unsigned distinction among the read primitives, at any width.** Every pair
+  above is instruction-identical — verified 2026-07-26 by whole-function compare. **Signedness is
+  established by the caller** (e.g. reloading the stored value with `lwa`), never by which
+  primitive read it. Do not infer a field's signedness from a primitive address.
+- The same holds on the write side, where there are **three** u32 primitives, not a pair:
+  `0xD5C95C` (`sraw`), `0xD5C9BC` (`srw`), `0xD5CA1C` (`sraw`). The `sraw`/`srw` difference is
+  **semantically inert** — both operate on a value already masked by `and r0,r4,r0` with
+  `r0 = 255 << shift`, so the operand is non-negative either way. Any rule of the form "the lower
+  address is the signed accessor" is false; one was drafted here on 2026-07-26 and withdrawn the
+  same day.
+- **The string reader consumes its terminator.** `0xD5CE34` (the entry point — the preceding
+  function's `blr` is at `0xD5CE30`, and `0xD5CE3C` is two instructions into the body) loops at
+  `0xD5CE78` comparing each byte against `r5` with NUL as a secondary stop, and advances past the
+  terminator at `0xD5CEA4`. A string field of length *n* therefore costs **n+1 wire bytes**, and
+  is variable-width, not padded. The fixed-block reader `0xD5D018` is the opposite: it takes
+  exactly `r5` wire bytes and writes `r5+1` struct bytes — which is why 17-byte struct strides
+  sit over 16-byte wire reads all through this protocol.
+- **The bound checks encode the width unambiguously**: a read primitive that compares the cursor
+  against 1023/1022/1020/1016 is reading 1/2/4/8 bytes. They bound-check the **1023-byte receive
+  buffer**, never the declared payload length — the reason a short payload reads stale buffer
+  instead of failing, which this file flags repeatedly below.
+
+The sealing side: `0xD5C828` (SEAL) stores the cursor to `obj+4`, sets state 2 and zeroes the
+cursor; `0xD5C844`/`0xD5C858` set state 8/9 and zero the cursor. `0xD5CEB0` is exactly
+`cursor < obj+4 ? cursor : -1`.
+
+### Where a list's count comes from
+
+**There is no house style.** Traced 2026-07-26; single-source ELF trace, not confirmed against a
+client. Four different mechanisms are in use, and assuming the wrong one produces a list the
+client silently truncates or mis-frames:
+
+- **No count at all, size-driven.** `0x4398` enters its loop mid-body at `0xD410EC` — `u32 host
+  ping`, then pairs until the payload runs out. `0x4982` is also size-driven but with
+  **variable-length records**: bit 2 of the flag byte gates an extra 16-byte string, so a record
+  is 35 or 51 bytes with no length prefix.
+- **Count on the wire.** `0x43A4` re-reads its count from `r1+1480` at `0xD41A34`, caps it at 127,
+  and takes 3 wire bytes per entry from a 12-byte source stride.
+- **Count from client state.** Four of the `0x4Axx` lists take the entry count from the client's
+  own state rather than the wire.
+- **Index-addressed.** `0x4E11` leads each record with a u2 index and strides 52; a duplicate
+  index **silently overwrites the earlier record while still bumping the count**. Worth a server
+  WARN if we ever emit one.
+
+### Client-side list caps
+
+All of these are **hard aborts in the client**, not truncations. Traced from the ELF 2026-07-26 —
+single-source, none of them confirmed by a capture.
+
+| list | cap | note |
+| --- | --- | --- |
+| `0x2003` | **32 entries total across packets** (`0xD363FC`) | our 22-per-packet batching is policy and sits inside it, but **more than 32 lobbies breaks the client regardless of batching** |
+| `0x200a` | 10 | |
+| `0x4212` | 1000 | |
+| `0x4124`, `0x4133` | 129 records | |
+| `0x4125`, `0x4129` | 128 | |
+| `0x4302` | 999 | the 18-per-packet figure elsewhere in this file is the `0x400` transport limit, not a client cap |
+| `0x4582` | 32 | vs `0x4602`'s 100 — the two records are the same width and the caps are not. **Divergence found 2026-07-26**: `0x4583` drops any record whose u16 at wire `0x14` is zero (`0xD466D4`); `0x4603` does no such pass. Same layout, different survival rules — they are not interchangeable |
+| `0x4602` | 100 | |
+
 ## Lobby types
 
 `GameServerFactory` registers a different controller set per lobby type. The type is also what the
@@ -156,6 +242,12 @@ Confirmed: the real client sends this after the gate's lobby-list exchange (`dev
 **Client → server**, `CommonGameController.ping`. Reply is `0x0005` with an **empty** payload —
 the request payload is not echoed. Reference-derived; not observed from our client.
 
+**Settled from the ELF 2026-07-26** (single-source trace): the client's `0x0005` reply parser has
+READ_BEGIN at `0xD35A24` and READ_END at `0xD35A30`, back to back — **the reply body is never
+read**. Echoing the request would be harmless, and equally pointless. This retires the open
+question at the end of this file about whether the empty reply is a divergence; it is not
+observable to the client either way.
+
 ---
 
 # GATE lobby
@@ -174,7 +266,19 @@ Answered with three packet kinds:
 
 One `0x2003` per batch of 22 (`ENTRIES_PER_PACKET`); with no lobbies, none at all.
 
-### `0x2003` entry — 46 (`0x2e`) bytes
+**Cap, from the ELF 2026-07-26:** the client aborts above **32 entries counted across all
+packets** (`0xD363FC`) — the 22-per-packet batching is our policy and sits inside that ceiling,
+but a lobby table with more than 32 rows breaks the client however it is batched.
+
+### `0x2003` entry — 46 (`0x2e`) wire bytes, 52 struct bytes
+
+**Both numbers are right and they are about different things** (settled 2026-07-26). The wire
+record is 46 bytes, as tabulated below and as this file has always said. The client's *struct* is
+52 (`0x34`) bytes, which is the figure `LOBBIES.md` quotes and the stride the list was read back
+at out of client memory. The struct is larger because the fixed-block reader `0xD5D018` writes
+`r5+1` struct bytes for `r5` wire bytes (see "The packet-reader primitives"), so each of the two
+NUL-padded strings costs an extra struct byte; the remaining slack is layout, not wire. Neither
+document was wrong — each named a different quantity without saying which.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
@@ -198,16 +302,22 @@ client requires the identity is not proven, but ordering by name broke it in pra
 
 ## `0x2008` — get news
 
-**Client → server**, `NewsGameController.getNewsItems`. Request payload is not read. No
-authentication check — the gate has no session yet.
+**Client → server**, `NewsGameController.getNewsItems`. **The request is one u8, not empty** —
+the builder at `0xD36888` calls the u8 writer (`bl 0xD5C86C` at `0xD36898`, into slot `0x0C`) and
+then seals. Established from the ELF 2026-07-26. This file previously said only "request payload
+is not read", which is true of *us* but reads as though the wire were empty; it is not. We
+discard the byte and its meaning is unknown. No authentication check — the gate has no session
+yet.
 
 | command | payload |
 | --- | --- |
 | `0x2009` | 4 bytes: `00000000` |
-| `0x200a` | one per news item, 1023 bytes |
+| `0x200a` | one per news item, 1023 bytes as we send it — see below, the body is not a fixed field |
 | `0x200b` | 4 bytes: `00000000` |
 
-### `0x200a` item — 1023 bytes
+At most **10** news items: the client's table caps there and aborts above it (ELF 2026-07-26).
+
+### `0x200a` item — 1023 bytes as we write it
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
@@ -217,8 +327,28 @@ authentication check — the gate has no session yet.
 | `0x009` | 128 | ISO-8859-1 | title, NUL-padded |
 | `0x089` | 886 | ISO-8859-1 | body, NUL-padded |
 
-886 is not a round number and no rationale for it is recorded — it is what makes the payload
-exactly the 1023-byte maximum. Unverified: no client has been observed rendering a news item.
+**886 is not a field width — it is our padding choice** (settled from the ELF 2026-07-26,
+single-source trace). The body is read by the **delimiter-terminated string primitive**
+`0xD5CE34`, called from `0xD366B0`: the client reads until the delimiter and advances past it, so
+the body is **variable-length and self-terminating**, not a fixed 886-byte field. 886 is simply
+what makes our padded payload land on the 1023-byte maximum, and no rationale for wanting that
+was ever recorded. Our encoding still parses — a NUL-padded body terminates at its first NUL —
+so this is a documentation error, not a live bug. Unverified: no client has been observed
+rendering a news item.
+
+## `0x2006` / `0x2007` — undocumented gate pair
+
+**Undocumented everywhere until 2026-07-26** — absent from this file, `OBSERVED.md`, `LOBBIES.md`
+and `COMMANDS.md`. Single-source ELF trace; never observed live, never handled by us.
+
+`0x2007` is the reply half and is the part that is actually pinned: parser `0xD36498` reads **one
+u32**, widens it to a u64 at `ctx+0xDD8`, and signals notify slot **11**.
+
+The request half is **an open question, not a finding**. `0x2006` is the presumed pairing: it has
+an empty payload, waits on slot `0x0B` (which matches `0x2007`'s notify slot), and its sender at
+`0xD36900` is a near-clone of `0x2005`'s. That is circumstantial — no capture pairs them, and
+nothing in the binary names the request from the reply. Treat "`0x2006` asks for `0x2007`" as a
+conjecture worth one capture.
 
 ---
 
@@ -353,6 +483,11 @@ The main character is listed first and its name is prefixed with `*`. Ordering i
 
 ### The 35-byte trailer
 
+**It is not a 35-byte read** (ELF 2026-07-26, single-source trace). The client's parser takes a
+**32-byte block plus three separate u8 fields**; 35 is the number of bytes *we write* after the
+eighth entry, not the width of any structure in the binary. Worth knowing only so that nobody
+goes looking for a 35-byte field — there isn't one.
+
 ```
 00 00 00 00 07 00 03 00  00 00 00 00 00 00 00 00
 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
@@ -377,8 +512,11 @@ never compare consumed bytes against the payload length.
 | `0x00` | 16 | ISO-8859-1 | name, NUL-terminated within the field |
 | `0x10` | 27 | — | appearance, read by `readAppearance` (below) |
 
-Confirmed from the binary as "16 name bytes then the appearance bytes". The exact appearance length
-the client sends is **not** confirmed; we require at least 27 readable bytes and read exactly 27.
+Confirmed from the binary as "16 name bytes then the appearance bytes". **The payload is exactly
+43 bytes** (ELF 2026-07-26, single-source trace) — 16 name + 27 appearance, with no trailing
+field. This retires the "the exact appearance length the client sends is not confirmed" caveat
+that stood here; we require at least 27 readable appearance bytes and read exactly 27, which is
+all of them.
 
 ### `readAppearance` — what we actually store
 
@@ -393,7 +531,7 @@ the client sends is **not** confirmed; we require at least 27 readable bytes and
 | +6 | 1 | lower colour |
 | +7 | 1 | voice |
 | +8 | 1 | pitch |
-| +9 | 4 | **skipped, purpose unknown** |
+| +9 | 4 | **a single u32, skipped; purpose unknown** |
 | +13 | 1 | head |
 | +14 | 1 | chest |
 | +15 | 1 | hands |
@@ -418,8 +556,10 @@ stored as 0 for every character ever created. That claim was wrong.
 character created with `lower = 0` gained a real value the instant `0x4130` was implemented and the
 player changed clothes in the lobby. Both are now read at creation.
 
-The four bytes at +9 remain **skipped, purpose unknown**. They sit where the write path emits four
-zero bytes, so nothing is known to be lost, but nothing confirms that either.
+The four bytes at +9 remain **skipped, purpose unknown** — but they are now known to be **one u32,
+not four bytes** (ELF 2026-07-26, single-source trace): the sender emits them with a single
+`bl 0xD5C9BC` from a 4-aligned `src+0x1C`. They sit where the write path emits four zero bytes, so
+nothing is known to be lost, but nothing confirms that either.
 
 ### Reply `0x3102`
 
@@ -478,10 +618,11 @@ forty seconds, never sends `0x3101`, and fails with **`0A41:FFFFFF60`**.
 | --- | --- | --- | --- |
 | `0x00` | 4 | s32 | result — `00000000`, or the same rejection codes `0x3102` uses |
 
-**Flagged: the reply shape is inferred, not read.** `dev/docs/OBSERVED.md` lists `0x3108` among the
-replies parsed as a single s32, on the strength of its sibling result packets (`0x3004`, `0x3102`,
-`0x3104`, `0x3106`) all being parsed that way, and of the request-status arm marking id `0x12`
-complete. The `0x3108` parser itself was not read out of the binary. It works in practice.
+**The flag is retired — the guess was right** (ELF 2026-07-26, single-source trace). The parser
+exists at `0xD37154`: a single u32, notify slot 18. Until then this file flagged twice that the
+shape "was never disassembled — it is a guess", inferred from the sibling result packets
+(`0x3004`, `0x3102`, `0x3104`, `0x3106`) and from the request-status arm marking id `0x12`
+complete. The inference happened to be correct; it is now read rather than assumed.
 
 ---
 
@@ -525,6 +666,12 @@ the grid out of stale buffer. What the client actually does with that has not be
 Confirmed: state 3 of the client's `0x946F00` machine sends `0x4100` with request-status id `0x15`
 and state 4 waits for it with error `0x1037:FFFFFF60` on timeout. So the burst is required. The
 individual burst payload **layouts** are still unverified against the client's parsers.
+
+**`0x4125` is the burst's terminal packet, and the order is therefore load-bearing** (ELF
+2026-07-26, single-source trace). It alone fires `notify(21)` at `0xD3CDF0` — slot `0x15`, the one
+`0x4100` blocks on. `0x4101`, `0x4120`, `0x4121`, `0x4122` and `0x4124` notify nothing at all.
+Moving `0x4125` earlier in the burst would release the client's wait before the remaining packets
+were parsed, which is a race nobody would find by reading the sending code.
 
 ### `0x4101` — character info, `0x142` = 322 bytes
 
@@ -604,24 +751,31 @@ documented anywhere we have.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
-| `0x00` | 4 | u32 | clan id — always 0, clans are not modelled |
+| `0x00` | 4 | u32 | clan id — 0 here; clans are not modelled |
 | `0x04` | 16 | ISO-8859-1 | clan name — always empty |
-| `0x14` | 25 | — | **unknown** fixed block (below) |
+| `0x14` | 1 | u8 | **clan membership state** -> `profile+6837`: 0 pending, 1 member, 2 leader, **99 not in a clan**. The client writes these itself (`li r0,99; stb r0,6837` at `0xD56B44`/`0xD56C7C`/`0xD56D68`); readers test `state-1 <= 1`. We send 99 |
+| `0x15` | 24 | u16 × 12 | element 0 = **clan privilege mask** -> `profile+6838` (bit 0 tested at `0x8F9944`, bit 8 at `0xAB3480`). Elements 1–11 have no reader in the binary. All zero here |
 | `0x2d` | 4 | u32 | current time, Unix seconds |
 | `0x31` | 9 | — | appearance bytes 0–8 (gender … pitch), same order as `0x3049` |
-| `0x3a` | 4 | — | zero, purpose unknown |
+| `0x3a` | 4 | u32 | appearance struct +12. Written by `0x4103`/`0x4122`, **read by nothing**, and omitted from `0x4130`/`0x4131`. Meaning unknown; inert. Send 0 |
 | `0x3e` | 14 | — | appearance bytes head … accessory-2 colour |
-| `0x4c` | 4 | 4 × u8 | equipped skills 1–4 |
-| `0x50` | 1 | u8 | zero, purpose unknown |
-| `0x51` | 4 | 4 × u8 | equipped skill levels 1–4 |
-| `0x55` | 1 | u8 | zero, purpose unknown |
-| `0x56` | 16 | 4 × u32 | per-skill experience — **fixed `0x600000` each**; skill progression does not exist |
-| `0x66` | 5 | — | zero, purpose unknown |
+| `0x4c` | 5 | 5 × u8 | equipped skills 1–**5** |
+| `0x51` | 5 | 5 × u8 | equipped skill levels 1–**5** |
+| `0x56` | 20 | 5 × u32 | per-skill experience — **fixed `0x600000` each**; skill progression does not exist |
+| `0x6a` | 1 | u8 | appearance struct +60. Meaning unknown, but **round-tripped**: `0x4130` sends it back (`0xD3BD88`) and `0x4131` reads it (`0xD3C6AC`). Send 0 — and preserve whatever came back |
 | `0x6b` | 4 | u32 | character id again — "the original sends the character id here; its purpose is not documented" |
 | `0x6f` | 128 | ISO-8859-1 | comment |
 | `0xef` | 1 | u8 | rank |
 | `0xf0` | 1 | u8 | emblem flag — 3 when the clan has one; always 0 here |
-| `0xf1` | 4 | — | **unknown** suffix `00 A7 00 0D` |
+| `0xf1` | 4 | u32 | **saved instructor** marker; 0 = none. Nonzero suppresses the post-graduation recognition prompt on every peer (see below). Was wrongly reproduced as a fixed `00 A7 00 0D` |
+
+**There are five skill slots, not four** (ELF 2026-07-26, single-source trace). The parser's three
+loops are each bounded `cmpdi 5` — `0xD3D500` (skills), `0xD3D530` (levels), `0xD3D560`
+(experience). The `0x4c`–`0x6a` region was previously written here as "4 skills / zero / 4 levels
+/ zero / 4 × u32 / 5 zero". That covers **the same 31 bytes** — the byte counts were right and the
+wire is unchanged — but it put the padding in the wrong places and named the fifth element of each
+array as padding. `0x4103`'s traced tail agrees with five. `0x4131` carries the identical mistake
+and the identical correction; see its table.
 
 The 25-byte prefix:
 
@@ -643,7 +797,7 @@ whether that is faithful or a transcription slip.
 | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | item count — 123 |
 | `0x04` | 615 | 123 × 5 | per item: `u8 item id`, `u32 colour mask` |
-| `0x26b` | 32 | — | terminator: 32 bytes of `0xff` |
+| `0x26b` | 32 | 16 × 2 | **not a terminator** — 16 `{u8 item_id, u8 bit_index}` colour-unlock pairs, the same trailing block `0x4133` carries |
 
 Not per-character state: every item is advertised as owned, in every colour (`0xffffffff`).
 Progression does not exist, and a partial invented one would be worse than granting everything.
@@ -651,7 +805,14 @@ The item ids come from `LoadoutWriter.GEAR_ITEMS` and their meaning lives in the
 
 **Flagged:** the list contains `0x86` **twice** (`0x85, 0x86, 0x86, 0x87`). Whether that is a
 faithful copy of the original or a transcription slip in this project has not been checked.
-Whether the 32 `0xff` bytes are a terminator or a fixed-size trailing field is also a guess.
+
+**The 32 trailing bytes are not a terminator** (ELF 2026-07-26, single-source trace). This file
+previously called them one while flagging the call as a guess; the guess was wrong. They are
+**16 `{u8 item_id, u8 bit_index}` colour-unlock pairs**, the same block `0x4133` ends with. Our
+`0xff` filler works by accident: item id 255 is greater than the parser's 128-entry bound, so
+every pair is skipped rather than applied. It is inert, not correct — anything that starts
+populating colour unlocks must write real pairs here, and the arithmetic that makes `0x4124` come
+to 651 bytes only balances at 16 pairs (4 + 615 + 32).
 
 ### `0x4125` — skill catalogue, 104 bytes
 
@@ -697,35 +858,50 @@ clothes or edits their comment.
 The client blocks on the reply: with nothing sent back it stalls and fails with
 **`1031:FFFFFF60`**.
 
-### Request — at least 158 bytes
+### Request — exactly 158 bytes
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x00` | 19 | 19 × u8 | upper, lower, face paint, upper colour, lower colour, head, chest, hands, waist, feet, accessory 1, accessory 2, head colour, chest colour, hands colour, waist colour, feet colour, accessory 1 colour, accessory 2 colour |
-| `0x13` | 4 | 4 × u8 | skills 1–4 |
-| `0x17` | 1 | u8 | skipped, purpose unknown |
-| `0x18` | 4 | 4 × u8 | skill levels 1–4 |
-| `0x1c` | 2 | — | skipped, purpose unknown |
+| `0x13` | 5 | 5 × u8 | skills 1–**5** |
+| `0x18` | 5 | 5 × u8 | skill levels 1–**5** |
+| `0x1d` | 1 | u8 | skipped, purpose unknown |
 | `0x1e` | 128 | ISO-8859-1 | comment |
+
+**Corrected 2026-07-26** (ELF, single-source trace): the skill and level arrays are **five**
+elements each, read by two 5-iteration loops over `src+30..34` and `src+35..39`. This file
+previously wrote them as four-plus-padding — one skipped byte at `0x17` and two at `0x1c`. Total
+width is unchanged at 158 bytes and the comment still starts at `0x1e`; only the names moved.
 
 Only the appearance and the comment are persisted; the skills and levels are read and echoed back
 but not stored. **Note this request carries `lower` and `hands_color`, which `0x3101` skips** — the
 strongest evidence that the creation-time skip is wrong.
 
-### Reply `0x4131` — 186 bytes
+### Reply `0x4131` — 182 bytes read (186 written)
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x00` | 4 | s32 | result, zero |
 | `0x04` | 19 | — | the 19 clothing bytes, echoed |
-| `0x17` | 4 | — | skills, echoed |
-| `0x1b` | 1 | — | zero |
-| `0x1c` | 4 | — | levels, echoed |
-| `0x20` | 1 | — | zero |
-| `0x21` | 16 | 4 × u32 | per-skill experience — fixed `0x600000`, as in `0x4122` |
-| `0x31` | 5 | — | zero, purpose unknown |
+| `0x17` | 5 | 5 × u8 | skills 1–**5**, echoed |
+| `0x1c` | 5 | 5 × u8 | skill levels 1–**5**, echoed |
+| `0x21` | 20 | 5 × u32 | per-skill experience — fixed `0x600000`, as in `0x4122` |
+| `0x35` | 1 | u8 | zero, purpose unknown |
 | `0x36` | 128 | ISO-8859-1 | comment, echoed |
-| `0xb6` | 4 | u32 | face-paint colour unlock mask — **`0xffffffff`**, all colours |
+| `0xb6` | 4 | u32 | **never read** — see below |
+
+**Two corrections, both 2026-07-26, both from the ELF (single-source trace).**
+
+- **Five skill slots, not four.** The parser's loops are bounded `cmpdi 5` at `0xD3C644`,
+  `0xD3C66C` and `0xD3C694`. The old "4 skills / zero / 4 levels / zero / 4 × u32 / 5 zero"
+  reading covered the same 31 bytes with the padding in the wrong places — wire unchanged, names
+  wrong. Same mistake and same fix as `0x4122`.
+- **The payload the client reads is 182 bytes (`0xb6`), not 186.** The parser goes straight from
+  the 128-byte comment (`0xD3C6E0`) to READ_END (`0xD3C6F4`). **The trailing `0xffffffff` at
+  `0xb6` — documented here as a face-paint colour unlock mask — is never read at all.** That label
+  had no evidence behind it beyond the value we chose to send. We still write it; it is four inert
+  bytes past the end of the parse, and removing it is untested. Colour unlocks travel as the
+  `{item_id, bit_index}` pairs in `0x4124`/`0x4133`, not as a mask.
 
 The client wants its own values back rather than a bare result code, which is why this is not a
 four-byte reply like its neighbours. Errors are 4 bytes (`C0FFEE02`, `C0FFEE01`).
@@ -741,6 +917,11 @@ sessions; the layout to parse is `0x4120`'s own, already documented above. An ea
 that this command carried the Common Settings toggles in a 48-byte rules header was wrong — see
 OBSERVED.md.
 
+**The 304 is now derivable from the binary, not just observed** (ELF 2026-07-26): the sender emits
+one 48-byte block and then four 64-byte blocks — a loop bounded `cmpwi r28,3` at `0xD3BFF8` with
+`r5 = 48` on the first pass and `r5 = 64` on the rest. 48 + 4×64 = **304** = `0x4120[0:0x130]`,
+exactly the live capture. Two independent sources now agree, which is worth more than either.
+
 ## `0x4114` — update chat macros
 
 **Client → server**, `CharacterConnectController.updateChatMacros`. The write-back half of
@@ -750,6 +931,12 @@ into `chara_chat_macro`, so macro edits survive sessions. Reply `0x4115 {u32 0}`
 inferred from the sibling result packets, not read from the binary**; the client observably does
 not stall on it. Notably the client fires `0x4110` + both `0x4114`s in a single burst without
 waiting between them.
+
+**Why it cannot stall now has a tier-1 cause** (ELF 2026-07-26, single-source trace): `0x4114`
+**registers no wait slot at all** — there is no `li r4,<slot>` / `bl 0xD32E08` pair after the
+flush. It is fire-and-forget by construction, so `0x4115` has nothing to answer and no timeout to
+trip. "The client observably does not stall on it" was an observation about one session; this is
+the reason.
 
 ## `0x4102` — get personal stats
 
@@ -826,9 +1013,22 @@ from the sender `0xd3a844` — zero appends), blocking on wait slot `0x1b`.
 The `0x4133` reply is **not a result code**. The parser (`0xd3c77c`) zeroes the client's loadout
 table (`0x60c` bytes) and then reads: u32 **entry count**, `count ×` `{u8 slot, u32 value}`
 loadout entries (12-byte records into `charTable+0x26a0+slot*0xc`, slot ≤ `0x80`), then a fixed
-**fifteen** `{u8 slot, u8 bit}` equipped-bit pairs — total `34 + 5·count` bytes. A nonzero first
+**sixteen** `{u8 slot, u8 bit}` equipped-bit pairs — total `36 + 5·count` bytes. A nonzero first
 u32 would be read as a count, not an error, and the read primitives do not check payload length
-(the `0x4101` caveat again). We send the 34-byte empty readback (count 0, zero pairs); what the
+(the `0x4101` caveat again).
+
+**Corrected 2026-07-26 from "fifteen pairs / `34 + 5·count`"** (ELF, single-source trace). The
+loop bound at `0xD3C8D4` is `cmpwi r31,15`, but it is evaluated **before** the `addi r31,r31,1`,
+so the loop runs **16 times**. Corroborated arithmetically by `0x4124`, whose known-good 651 bytes
+= 4 + 615 + 32 and only balances with 16 pairs in the same trailing block.
+
+**Live consequence:** `PersonalInfoController.commitOutfit` writes `COMMIT_TRAILER_PAIRS = 15`, so
+we send **34 bytes where the parser reads 36**. The last pair is read out of stale receive-buffer
+contents (the primitives bound-check the 1023-byte buffer, never the payload), which means the
+16th equipped bit is whatever was left over — silently, and differently each time. Not yet fixed
+in code.
+
+We send the empty readback (count 0, zero pairs); what the
 original filled the entries with — presumably the skill/gear loadout — awaits a capture, and note
 the zero pairs redundantly touch bit 0 of slot 0, as no distinct no-op encoding is known.
 
@@ -846,8 +1046,12 @@ modelled, so every game in the lobby is listed whatever was asked for.
 | command | payload |
 | --- | --- |
 | `0x4301` | 4 bytes result (`00000000`, or `C0FFEE02` with no session and nothing further) |
-| `0x4302` | up to 18 entries, `0x37` bytes each |
+| `0x4302` | up to 18 entries per packet, `0x37` bytes each |
 | `0x4303` | 4 bytes result |
+
+**The client's array cap is 999, not 18** (ELF 2026-07-26, single-source trace: a `bgt` to −71
+above 999). 18 is the **per-packet** ceiling that falls out of the `0x400` transport limit, and
+this file previously conflated the two. Nothing stops a longer list spread over more packets.
 
 ### `0x4302` entry — 55 (`0x37`) bytes
 
@@ -855,7 +1059,7 @@ modelled, so every game in the lobby is listed whatever was asked for.
 | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | game id |
 | `0x04` | 16 | ISO-8859-1 | game name |
-| `0x14` | 1 | u8 | host options: bit 0 password set, bit 1 dedicated |
+| `0x14` | 1 | u8 | host options: bit 0 password set, bit 1 dedicated, **bit 2 — expanded into the struct like the other two; meaning unrecorded** |
 | `0x15` | 1 | u8 | **unknown**: always `0x08` |
 | `0x16` | 1 | u8 | rule |
 | `0x17` | 1 | u8 | map |
@@ -872,15 +1076,22 @@ modelled, so every game in the lobby is listed whatever was asked for.
 | `0x28` | 4 | u32 | average experience across current players |
 | `0x2c` | 4 | u32 | host score |
 | `0x30` | 4 | u32 | host votes |
-| `0x34` | 2 | — | zero, purpose unknown |
-| `0x36` | 1 | u8 | **unknown**: always `0x63` |
+| `0x34` | 1 | u8 | zero, purpose unknown |
+| `0x35` | 2 | u16 | **unknown**: always `0x0063` |
+
+**The entry tail is `u8` + `u16`, not "2 zero bytes then a u8 `0x63`"** (corrected 2026-07-26 from
+the ELF, single-source trace: parser `0xD43D48`, 20 reads totalling the same 55 bytes). The
+famous `0x63` at `0x36` is the **low half of a halfword `0x0063`** starting at `0x35`. The bytes
+on the wire are identical either way — this changes nothing we send — but it means the constant is
+99 as a 16-bit value, and that any future attempt to give it meaning should look for a u16, not a
+byte and a pad.
 
 ## `0x4304` — get host settings
 
 **Client → server**, `HostGameController.getHostSettings`. Sent when Create Game opens, so the
 screen can be pre-filled with whatever the player hosted last time. Empty request.
 
-### Reply `0x4305` — 128 bytes empty, `0x163` populated
+### Reply `0x4305` — 128 bytes empty, **348 (`0x15C`)** populated
 
 **The only payload this server encrypts on the way out.** Until this command was implemented
 nothing sent `0x4305`, so the Blowfish encrypt direction had never produced a byte the client saw.
@@ -889,9 +1100,23 @@ The empty path is confirmed working: the Create Game screen opens.
 A host with nothing saved gets 128 zero bytes, which is what both references send and what the
 client reads as "no saved settings".
 
+**The size is 348 (`0x15C`), not 355 (`0x163`) — and the 355 was a tier-4 leak** (corrected
+2026-07-26). The client's parser is at `0xD4548C`: 46 straight-line reads plus a 16-iteration
+rotation loop (`cmpdi r27,16` at `0xD45648`) scattering triples to `+752`/`+768`/`+784`, and it
+inlines the same 204-byte settings block that `0x4313` reads through the standalone reader
+`0xD4364C`, **minus eight fields** — the named omission being current player count (block+67).
+The total the parser consumes is `0x15C`.
+
+**`0x163` was never a client figure. It is the reference server's struct length**, transcribed
+here and then reasoned about as though it described the wire. That is the exact failure mode this
+project keeps paying for: a correctly-copied number from a source that does not apply. The seven
+extra bytes are inert — the parser stops at `0x15C` and the surplus is ignored — so this is a
+documentation error, not a live bug. It is written down anyway because the *next* borrowed
+constant might not be inert.
+
 **Populated (implemented 2026-07-22, verified against a live client the same day):** the raw
 `0x4310` blob the character last pushed is stored per (character, lobby subtype) and re-mapped
-into the reply shape transcribed from Nomad's `Hosts.getSettings()` — a `0x163`-byte structure
+into the reply shape transcribed from Nomad's `Hosts.getSettings()` — a structure
 that is *not* the request blob echoed: the subtype byte is dropped, two constants are inserted
 (`0x02` at `0x0ED`, `0x20` at `0x147`) and every offset is re-based. Full mapping in
 `mgo2server.game.HostSettingsReply` and its test. **Live evidence** (OBSERVED.md, "Where the
@@ -914,8 +1139,11 @@ exercise the inbound decrypt path.
 `"Sean"`, the game name of that capture. savemgo Nomad's `Hosts.checkSettings` reads the name from
 offset 0; mgo2-server makes the same misread we did.
 
-352 bytes (observed), laid out roughly (offsets from the name at 0; per savemgo `Hosts.checkSettings`
-cross-checked with the `0x4313` layout):
+**The payload is 345 bytes; 352 is the Blowfish-padded ciphertext** (ELF 2026-07-26,
+single-source trace). This file recorded "352 bytes (observed)" without distinguishing the two —
+352 is 345 rounded up to the 8-byte cipher boundary, and the seven trailing bytes are padding,
+not fields. Layout below (offsets from the name at 0; per savemgo `Hosts.checkSettings`
+cross-checked with the `0x4313` layout and, where marked, with the ELF):
 
 | offset | size | field |
 | --- | --- | --- |
@@ -924,8 +1152,8 @@ cross-checked with the `0x4313` layout):
 | `0x90` | 1 | password enabled |
 | `0x91` | 15 | password |
 | `0xA1` | 1 | dedicated |
-| `0xA2` | 1 | subtype byte (the `u8` before the rotation, as in `0x4313`) |
-| `0xA3` | 45 | rotation: `[rule, map, flags]` × 15, stride 3; `rule==0 && map==0` ends it |
+| `0xA2` | 1 | subtype byte — a standalone u8 read at `0xD448FC`, confirming the rotation starts at `0xA3` |
+| `0xA3` | 48 | rotation: `[rule, map, flags]` × **16**, stride 3; `rule==0 && map==0` ends it |
 | `0xE5` | 1 | max players |
 | `0xE6` | 4 | briefing time |
 | `0xFC`… | … | per-rule timers/rounds/tickets, then uniques, commonA/B bitfields, kicks |
@@ -934,10 +1162,17 @@ cross-checked with the `0x4313` layout):
 (`rule, map, flags` at `0xA3`) into the connection, and `createGame` writes them onto the game, so
 the browser shows the real match type/map/mode instead of DM/map-0. Since 2026-07-22 the **raw
 blob is also persisted** per (character, lobby subtype) in `chara_host_settings.blob`, which is
-what the populated `0x4304` reply and the `0x4392` rotation advance read. **One-byte caveat:** the
-rotation start is ambiguous between the references (Model A = `0xA2`, Model B = `0xA3`); we use
-`0xA3`. Confirm by hosting a game changing only the map and seeing whether byte `0xA4` or `0xA3`
-changes.
+what the populated `0x4304` reply and the `0x4392` rotation advance read.
+
+**The one-byte caveat is retired: the rotation starts at `0xA3`** (ELF 2026-07-26, single-source
+trace). It was previously recorded here as ambiguous between the two reference models (A = `0xA2`,
+B = `0xA3`), with a live experiment proposed to settle it. The binary settles it instead: `0xD448FC`
+reads `src+168` (`0xA2`) as a **standalone u8** — the subtype byte — and the rotation loop begins
+after it. We were already using `0xA3`, so nothing changes in code; the caveat simply goes away.
+
+**The rotation is 16 triples, not 15** (same trace: `cmpdi cr7,r27,16` at `0xD44958`), 48 bytes
+rather than 45, interleaved from three 16-byte source arrays. This matches `0x4313`, whose parser
+also reads 16 triples where the reference splits the region as 15 + 5 zeros.
 
 ### Weapon restrictions — the 16-byte bitfield at `0xD5`
 
@@ -971,11 +1206,27 @@ unverified names as fact for another build without re-testing.
 
 **Resolved by capture 2026-07-22** (OBSERVED.md, "Where the Common Settings toggles live"):
 `0x142`/`0x143` are the **commonA/commonB toggle bitfields** — same bit map as the `0x4302`
-entry — and level-limit base is a **u32 at `0xF8`**; flipping only friendly fire moved exactly
-`0x142` bit 3. `applyHostSettings` decodes the toggles into their columns, zeroes the idle/team-kill
-counts (`0x146`/`0x148`) when their enable bits (commonA bit 0 / commonB bit 7) are off, and reads
-non-stat from the host-options byte at `0x155` bit 1. An earlier read of a u16 base at `0x142` was
-a bug that stored toggle bits as the base.
+entry — and level-limit base is a **u32 at `0xF8`** (tolerance at `0xF7`); flipping only friendly
+fire moved exactly `0x142` bit 3. `applyHostSettings` decodes the toggles into their columns,
+zeroes the idle/team-kill counts when their enable bits (commonA bit 0 / commonB bit 7) are off,
+and reads non-stat from the host-options byte at `0x155` bit 1. An earlier read of a u16 base at
+`0x142` was a bug that stored toggle bits as the base.
+
+**The kick counts are `u16`s at `0x145` and `0x147`, not bytes at `0x146` and `0x148`** (ELF
+2026-07-26, single-source trace: `0xD44BF8` idle kick, `0xD44C0C` team-kill kick). This does not
+contradict the capture — a u16 at `0x145` has its low byte at `0x146`, and the sweep varied values
+small enough to live entirely in the low byte, so `0x146`/`0x148` are exactly what moved. The ELF
+supplies the width the capture could not.
+
+> **Fixed 2026-07-26** (`GameService` now reads a u16 via `blobU16`; `HostSettingsReply` copies
+> two bytes per timer). Kept for the lesson: our own `GameDetails` already wrote these back as
+> shorts at these exact offsets, so the two halves of this server disagreed about the width and
+> nothing caught it. The original text follows.
+>
+> **Live code bug, open as of 2026-07-26.** `GameService.java:539-540` reads
+> `blob[0x146]`/`blob[0x148]` — the low byte only. Any idle-kick or team-kill-kick value above 255
+> is silently truncated modulo 256, and the high byte at `0x145`/`0x147` is discarded. Whether
+> this build's UI can even offer such a value is unchecked; the read is wrong either way.
 
 ### Reply `0x4311` — empty
 
@@ -984,16 +1235,27 @@ accepts it and proceeds, so nothing more is *required*. That is weaker than it w
 written here ("the client only waits for the acknowledgement"), which asserted an intent nobody had
 checked.
 
-Against that reading: the client's reply dispatcher (`0xD388A8`–`0xD38948`, a comparison chain over
-reply ids) routes `0x4311` to a real handler at `0xD43550`, not a no-op. It verifies the command id
-and calls into the packet-reader library. Whether it reads any field beyond the header is
-undetermined — if the original server sent something here, we are dropping it and the client is
-tolerating the absence.
+Against that reading: the client's reply dispatcher (the compare tree headed at `0xD38804`) routes
+`0x4311` to a real handler at `0xD43550`, not a no-op.
+
+**"Whether it reads any field beyond the header is undetermined" is now answered** (ELF
+2026-07-26, single-source trace): `0xD43550` reads **exactly one u32**, and a **nonzero** value
+takes a teardown path (`0xD5BDA0` → `0xD5B41C`). Wait slot 35. So the original server did send
+something here — a result word — and we send nothing. The empty reply survives only because the
+read primitives bound-check the receive buffer rather than the payload, so the absent word is read
+out of whatever the buffer last held. **That is not zero by construction.** A stale nonzero would
+put the client down the teardown path. Sending an explicit `{u32 0}` costs four bytes and removes
+the hazard; until that is done, the empty reply is a latent bug, not merely an incomplete one.
 
 ## `0x4150` — lobby disconnect
 
 **Client → server**, `HubGameController.lobbyDisconnect`. Sent when the player backs out of a lobby
-to the previous screen. Empty request, empty `0x4151` reply.
+to the previous screen. Empty `0x4151` reply.
+
+**The request is one u8, not empty** — established from the ELF 2026-07-26: the builder at
+`0xD3859C` calls the u8 writer (`bl 0xD5C8A0` at `0xD385AC`) into slot `0x74` and seals at
+`0xD385B8`. This file said "empty request, empty `0x4151` reply"; the first half was wrong. We
+discard the byte and its meaning is unknown.
 
 Unanswered this hangs on the way **out** rather than the way in, which reads as an unrelated bug —
 everything works until you press cancel. Nothing is torn down server-side: lobby membership is not
@@ -1009,15 +1271,21 @@ undetermined.
 and the first step of Join Game; all three stalled into `0B10:FFFFFF60` while it went unanswered,
 with the client retrying every ~2 s.
 
-Request: read as one **u32 game id**. That is what echo and mgo2-server parse and it matches the
-reply's echo of the id, but the sender has not been located in the binary — the handler logs a
-warning if the payload is not exactly 4 bytes, which would be the first sign this is wrong.
+Request: **one u32 game id, now read from the binary** (ELF 2026-07-26, single-source trace). The
+sender is `0xD413C0` — `bl 0xD5CF40` (begin packet), one u32, wait slot `0x24`. This file
+previously said "the sender has not been located in the binary" and rested the 4-byte parse on
+the two reference servers agreeing. That was a tier-4 dependency for a fact the binary states
+outright; it is now tier 1 and the agreement is irrelevant.
 
-### Reply `0x4313` — 372 bytes plus 28 per player
+### Reply `0x4313` — **exactly** 372 bytes plus 28 per player
 
-**The layout below is read from the binary**: the reply dispatcher at `0xD38954` routes `0x4313`
-to the parser at `0xD44388`, whose read calls (with the settings sub-structure at `0xD4364C`) fix
-every size and position. The parser reads the fixed 372 bytes unconditionally — **a short payload
+**The layout below is read from the binary**: the reply dispatcher (compare tree headed at
+`0xD38804`) routes `0x4313` to the parser at `0xD44388`, whose read calls (with the settings
+sub-structure at `0xD4364C`) fix every size and position. **372 is exact, not approximate**
+(confirmed 2026-07-26): `0xA8` of header plus the 204-byte settings block is `0x174`, with no
+slack anywhere, and the field table below matches the parser byte for byte — including `0x098`
+and `0x099` being two separate u8 reads rather than a halfword. The parser reads the fixed 372
+bytes unconditionally — **a short payload
 is a parse error and the client keeps waiting**, so unknown fields must be present as zeros.
 Player entries are then read while payload remains, at most 18; a truncated entry is an error,
 never a shorter list. The packet-reader caps payloads at `0x400`, and 372 + 18×28 = 876 fits.
@@ -1033,7 +1301,8 @@ result slot and trips the error branch — so it targets some other build and wa
 | `0x004` | 4 | u32 | game id; if a game is currently selected the client requires this to match |
 | `0x008` | 16 | ISO-8859-1 | game name |
 | `0x018` | 128 | ISO-8859-1 | comment |
-| `0x098` | 2 | — | zero |
+| `0x098` | 1 | u8 | zero — a separate read, not half of a u16 |
+| `0x099` | 1 | u8 | zero — likewise |
 | `0x09a` | 1 | u8 | lobby subtype |
 | `0x09b` | 4 | s32 | average experience across current players |
 | `0x09f` | 4 | u32 | host score |
@@ -1048,7 +1317,7 @@ result slot and trips the error branch — so it targets some other build and wa
 | `0x0f0` | 22 | u32,u32,u16,u16,u32,u32,u16 | seven fields the parser reads and echo zeroes; unknown |
 | `0x106` | 1 | u8 | stance |
 | `0x107` | 1 | u8 | level-limit tolerance |
-| `0x108` | 4 | u32 | echo writes `0x16` verbatim; meaning unknown — **regression guard only** |
+| `0x108` | 4 | u32 | **level-limit base** (see the note below) — echo writes `0x16` = 22 verbatim |
 | `0x10c` | 68 | u32 ×17 | per-rule timers and rounds (echo: SNE t/r, CAP t/r, RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r); zeros until stored |
 | `0x150` | 2 | u8, u8 | unique characters red/blue (+`0x80` when random); zeros until stored |
 | `0x152` | 7 | u16, u32, u8 | parser reads, echo zeroes; unknown |
@@ -1073,12 +1342,31 @@ Then, per player, host's entry first:
 | `0x14` | 4 | u32 | ping — not tracked, sent as 0 |
 | `0x18` | 4 | u32 | experience, from the account's main/alt pool per character |
 
+**The `0x108` row was stale** (corrected 2026-07-26). It read "echo writes `0x16` verbatim;
+meaning unknown — **regression guard only**", which was already contradicted by this file's own
+`0x4310` prose and by `OBSERVED.md`'s single-variable hosting sweep. Three things line up:
+
+- the sweep pinned the `0x4310` pair as **`u8` tolerance at `0xF7`, `u32` base at `0xF8`**, and
+  the observed base value was **22**;
+- `0x4313` has the identical adjacency — `u8` tolerance at `0x107`, `u32` at `0x108` — at a
+  constant `0x10` offset from the `0x4310` pair;
+- the value the references write into it is `0x16` = **22**, the same number the capture saw.
+
+The `0x4302` game-list entry carries the same pair in the same order (`0x23` tolerance, `0x24`
+base), making three occurrences of one field. **This is inference from a capture plus field
+adjacency, not an ELF read** — nobody has traced where `0xD4364C` stores block+96 — so it is
+labelled as inference. It is nonetheless a great deal better than "meaning unknown", and treating
+the field as a regression guard was actively misleading: it is a value the host chose.
+
 **Untested against a live client** as of writing — implemented from the parser the same evening
 the missing handler was identified; the first two-machine session should retire this caveat.
 
 ## `0x4316` — create game
 
-**Client → server**, `HostGameController.createGame`. Request payload is **not read at all**.
+**Client → server**, `HostGameController.createGame`. **The request is one u8**, which *we* do not
+read at all — established from the ELF 2026-07-26 (`0xD43CDC`). The old wording, "request payload
+is **not read at all**", is true of our handler but reads as though the wire were empty. It is
+not; we discard the byte and its meaning is unknown.
 
 Settings come from the character's stored host-settings row (`getOrCreateHostSettings`), which is
 materialised with defaults named after the host. The client also pushes settings with `0x4310`
@@ -1094,6 +1382,13 @@ screen is lost and the defaults are used.
 
 8 bytes on success; 4 bytes with `C0FFEE02`, `C0FFEE20` or `C0FFEE01` otherwise.
 
+**The 4-byte failure form reads past the payload** (ELF 2026-07-26, single-source trace). The
+parser reads the second u32 **before** it tests the result, so on an error reply it takes the game
+id out of stale receive-buffer contents and only then discards it. Harmless as observed — the
+value is thrown away — but there is no reason to rely on that: 8 bytes always is free, and the
+contrast with `0x43c9` below (which tests its result *first*) shows the client has no house style
+here. Check the polarity per command; do not assume it.
+
 Untested against a live client — nothing has reached the host screen yet.
 
 ## `0x4700` — update connection info
@@ -1104,14 +1399,21 @@ Matches are peer-to-peer, so this is what a joining client is eventually handed.
 
 The client blocks on the reply: with nothing sent back it fails with **`092E:FFFFFF60`**.
 
-### Request — at least 20 bytes
+### Request — exactly 22 bytes
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x00` | 2 | u16 | private port |
 | `0x02` | 16 | ISO-8859-1 | private IP, dotted quad, NUL-padded |
 | `0x12` | 2 | u16 | public port |
-| `0x14` | 2 | — | present in echo's parser, which skips it. **Not read by us**; purpose unknown |
+| `0x14` | 2 | u16 | **client-populated**, from the caller's `r7`. **Not read by us**; meaning unknown |
+
+**Corrected 2026-07-26** (ELF, single-source trace). This said "at least 20 bytes", with the
+trailing pair described as "present in echo's parser, which skips it, purpose unknown" — which
+made it sound like a reference artefact that might not be on the wire at all. It is: the builder
+writes it as a **u16** via `0xD5C918` at `0xD38708`, from a value the caller passes in `r7`. The
+request is exactly 22 bytes. What the u16 carries is still unknown, but it is a real field with a
+real source, not padding.
 
 The public **address** is deliberately not taken from the payload — the reference servers read it
 off the socket, and so would we.
@@ -1134,14 +1436,27 @@ stall on `0B10:FFFFFF60` — this is the command whose absence blocked them.
 
 ### Request
 
+**21 bytes** (ELF 2026-07-26, single-source trace: sender `0xD451C8`, builder call `0xD45324`).
+
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x00` | 4 | u32 | game id |
-| `0x04` | 16 | ISO-8859-1 | password, NUL-padded — read when present; echo sends it, mgo2-server does not |
+| `0x04` | 16 | ISO-8859-1 | password, NUL-padded — **written unconditionally** |
+| `0x14` | 1 | u8 | join mode / slot selector, built at `0xD452A0`–`0xD45308`; **unknown meaning** |
 
-The leading game id is agreed by both references; the password field is echo's and read only if
-the payload extends that far. **Sender not yet located in the binary**, so the exact request width
-is unconfirmed — a mismatch shows up as a game-not-found error, not a hang.
+**Corrected 2026-07-26.** This section said "**Sender not yet located in the binary**, so the
+exact request width is unconfirmed", and gave the request as 20 bytes with the password read only
+if the payload extended that far. Both parts are now settled:
+
+- The password field is **always present**. The builder writes from a zero-filled staging buffer
+  and `strcpy`s into it only when a password is set, so an unprotected game sends 16 NULs rather
+  than omitting the field. Reading it "only if the payload extends that far" is harmless but was
+  never the condition.
+- There is a **trailing u8** nobody had noticed. It defaults to 1, may instead be loaded from
+  `lbz r3+608`, and is replaced by the sender's fourth argument when that argument is 1, 2, 7 or
+  8. It is latched into `ctx+0x11560`, and **`0x43B0` re-sends the same slot** (`0xD44DF8` reads
+  `+0x11558`, `+0x11560` and `+0x11568`) — which is the strongest lead on what it means, since
+  whatever `0x43B0` is for, this byte is part of it. We do not read it.
 
 ### Reply `0x4321`
 
@@ -1224,13 +1539,25 @@ result 0 (Nomad sends the same; its error paths are silent, ours always ack afte
 ## `0x4398` — update pings
 
 **Client → server**, `HostGameController.updatePings`. Request: `u32` host ping, then repeated
-`{u32 chara id, u32 ping}` pairs; a zero id is skipped (as in Nomad). The host ping lands on the
+`{u32 chara id, u32 ping}` pairs; a zero id is skipped (as in Nomad). **There is no count field
+and there never was one** — the client's loop is entered mid-body at `0xD410EC` and runs until the
+payload is exhausted (ELF 2026-07-26). Of the four count mechanisms in this protocol (see "Where a
+list's count comes from"), this is the size-driven one. The host ping lands on the
 game row (`0x4302` offset `0x1e`), each player's on their roster row (`0x4313` player entry offset
 `0x14`), and the game's `last_update` is touched — in Nomad this report doubles as the heartbeat
 that keeps a game from being reaped; we track the timestamp but do not reap on it (host
-disconnects already tear the game down). Reply stays the **empty** `0x4399` that is live-verified;
-Nomad sends a 4-byte 0 instead, and reshaping a working ack on reference evidence is exactly the
-mistake this project keeps regretting.
+disconnects already tear the game down).
+
+**The empty `0x4399` should become an explicit 4-byte zero — and the reasoning that kept it empty
+was wrong** (corrected 2026-07-26). This file said: "Reply stays the **empty** `0x4399` that is
+live-verified; Nomad sends a 4-byte 0 instead, and reshaping a working ack on reference evidence
+is exactly the mistake this project keeps regretting." The instinct was right and the conclusion
+was not, because there is now tier-1 evidence that has nothing to do with Nomad. The parser at
+`0xD40530` reads **a u32 unconditionally**, and bails with −71 — **without signalling slot 44** —
+if that read fails. The empty reply works only because the read primitives bound-check the
+1023-byte receive buffer rather than the declared payload, so the missing word is satisfied out of
+stale buffer contents. "Live-verified" here meant "observed not to break", which is a weaker claim
+than it looked: it verified one buffer state, not the protocol. Send an explicit `{u32 0}`.
 
 ## `0x43ca` — start round (never observed)
 
@@ -1260,6 +1587,14 @@ live reports; the server actively flags deviations):**
    `0x4390` builders provably never touch it. The `0x43c8` request itself is two config
    bytes, not an id. `round_report.game_id`/`host_chara_id` are stamped from connection
    context, not parsed.
+
+**`0x43c9` independently confirms the model from the writer's side** (ELF 2026-07-26,
+single-source trace). `0xD3FEAC` is the **sole writer** anywhere in the binary of the round token
+at session `+0x32F8`, and it writes only when `result == 0` **and** `token != 0`. Reading the
+model from the `0x4390` builder established that nothing *reads* the token; this establishes that
+almost nothing *writes* it either, and that a `{0, 0}` `0x43c9` reply leaves the slot untouched
+rather than clearing it. The two traces meet in the middle, which is as close to a proof as this
+gets without a capture.
 
 Deviation tripwires in `updateStats`: a `0x4390` on a non-host connection and a nonzero
 trailing word each log a WARN with payload hex — if either fires, these truths need revisiting.
@@ -1478,6 +1813,47 @@ no round counter** (the caller references none of the token storage; see the
 reporting-model note under `0x4390`). We ack and store nothing; storing per-player
 per-weapon tallies is backlogged.
 
+## `0x43c0` — edit game name / comment / password
+
+**Client → server**, sent by the host's admin menu on "Edit name/comment/password" (the admin
+sweep of 2026-07-22 mapped the action to this command). **Blowfish-encrypted**, like the other
+host-settings pushes. Decoded from the ELF 2026-07-26 — single-source trace, never captured.
+
+**162 bytes:**
+
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| `0x00` | 16 | ISO-8859-1 | game name |
+| `0x10` | 128 | ISO-8859-1 | comment |
+| `0x90` | 1 | u8 | password enabled |
+| `0x91` | 16 | ISO-8859-1 | password |
+| `0xa1` | 1 | u8 | unknown |
+
+The field identities are not guessed from the widths — they come from the **sender's own
+validation** at `0xD41668`–`0xD416FC`, which checks each field before building the packet. Note
+the password field is **16** bytes here where `0x4310` gives it 15; that is what the builder
+writes, and the discrepancy is not explained.
+
+Unhandled by us. It is a real gap: a host who renames a running game will have the browser keep
+showing the old name.
+
+## `0x4341` / `0x4343` / `0x4345` / `0x4347` — peer-register acks
+
+Replies to the host's three blocking peer-registration round-trips (`0x4340`, `0x4344`, `0x4346`)
+plus the disconnect ack, all `{u32 result, u32 key}`. Parsers `0xD33344`, `0xD33448`, `0xD33248`;
+javadoc in `HostGameController.java:79-107`, which the ELF trace of 2026-07-26 agrees with.
+
+**The second word is a dynamic request handle, not a fixed status slot** — and this is the part
+worth writing down, because it is unlike every other ack in the range. The parsers **search a
+pending list by value** (`0xD33178`, returning −266 if the value is absent). Everywhere else in
+`0x43xx` an ack indexes its transaction by a literal id compiled into the parser. Here the key
+must be **echoed from the request**.
+
+The failure mode is nasty: a mismatched key **parses cleanly** — right length, right shape, no
+error surfaced — and simply fails the list lookup, leaving the host's per-peer state machine to
+sit until its 30-second (`0x7530`) deadline and then disconnect the peer. Nothing in the log says
+why. Anyone tempted to answer these with a constant should read that sentence twice.
+
 # ADDLIST — friend / blocked relationships (`0x4500` / `0x4510` / `0x4580`)
 
 The in-game player list lets a player set another as **friend** or **blocked**, or clear it back
@@ -1525,10 +1901,27 @@ relation and replies with one **`0x4512`** packet — 9 bytes, **field order dif
 
 The standalone Friends/Blocked menu (distinct from the in-game ADDLIST), request a single
 `{u8 state}`. Reply is a real triple: `0x4581` start (4-byte result), N × `0x4582` entries
-(**59-byte** records — u32 id, char[16] name, u16, char[16], u32, char[16], u8; only id and name
-are of known meaning), `0x4583` end. **Never observed live**, and we cannot fill the 59-byte
-record honestly, so it is answered **empty** (start then end) — enough that the menu cannot hang.
-Populate once a real `0x4580` is captured.
+(**59-byte** records — u32 id, char[16] name, u16 at `0x14`, char[16], u32, char[16], u8; only id
+and name are of known meaning), `0x4583` end. **Never observed live**, and we cannot fill the
+59-byte record honestly, so it is answered **empty** (start then end) — enough that the menu
+cannot hang. The client's table caps at **32** entries.
+
+**The subsystem index is not fixed: it is `0x51 + the u8 state` from the request** (ELF
+2026-07-26, single-source trace, `0xD46ABC`). Friends and blocked are therefore **separate
+transactions** with separate wait slots, not one list with a filter. A reply must be keyed to the
+state that was asked for; answering a blocked-list request against the friends slot leaves the
+friends screen waiting.
+
+> **Read this before populating the list.** The end handler `0xD466D4` copies a record into the
+> display array **only if the u16 at record offset `0x14` is nonzero**. Every record with a zero
+> there parses perfectly, is counted, and is then silently dropped — producing an empty roster
+> screen with no error anywhere. We currently send nothing at all so it cannot bite yet, but the
+> obvious first implementation (fill id and name, zero the fields whose meaning is unknown) fails
+> in exactly this way. Traced 2026-07-26; single-source ELF, not confirmed live.
+>
+> **The sibling `0x4603` does no such filtering** — byte-identical record family, different
+> behaviour. Per the no-duplicates rule these two have matched shape in the one comparison made;
+> this is the first observed *divergence* between them, and it is a behavioural one.
 
 ## `0x4600` / `0x4680` / `0x4684` — player search and match history
 
@@ -1642,7 +2035,24 @@ reference parity: both references source exactly two fields from storage — the
 25-entry skill table repeats what the `0x4125` catalogue advertises (`0x6000`, or `0x2000` for
 skills 17/20/22), the clan fields stay 0, and the trailing u32 echoes the character id.
 
+**What `0x4129` is, identified by where its fields land** (ELF 2026-07-26, single-source trace).
+Every field in the tail writes a slot that `0x4101` or `0x4122` already owns —
+`ctx+22776` experience, `ctx+29304` clan id, `ctx+30333` rank. So this is not a results card in
+its own right: it is a **partial re-send of the connect-burst character record after a match**,
+overwriting the parts a match can change.
+
+That has a consequence for the burst. The `0x4101`/`0x4122` slots those three land in were being
+treated as fixed per-session values; if `0x4129` rewrites them at match end, they are
+**match-mutable values, not constants**, and any of the still-unknown slots in those two packets
+that `0x4129` also touches should be read the same way. Worth a pass over the unknown fields in
+both, looking for `0x4129` destinations.
+
 ## `0x4440` — unknown
+
+**The request is exactly one u8** (ELF 2026-07-26, single-source trace: sender `0xD52A44`, the
+u8 write at `0xD52AC8`). This file said the request shape was unknown; the width, at least, is
+not. What the byte means still is — but note that mgo2-server's "GetPlayerOptions" registration
+also reads a u8, which is now the one thing about it that is not contradicted by the binary.
 
 Still ack-only (`0x4441`, result 0, echo's shape). The references now *name* it but do not agree:
 Nomad's comment says "Set Team" (nothing parsed), mgo2-server registers it twice — once as
@@ -1658,26 +2068,62 @@ joins a game lobby. Blocks on the reply — **`092E:FFFFFF60`** without one.
 | --- | --- | --- | --- |
 | `0x00` | 1 | u8 | mailbox: `0x0f` mail, `0x10` clan applications. Anything else is logged and treated as mail |
 
-The selector values are named after the reference servers and are unverified.
+**The two selector *values* are tier-1 confirmed** (ELF 2026-07-26, single-source trace): there
+are two builders, each writing a compile-time literal — `0xD53414` writes `0x10`, `0xD53518`
+writes `0x0F`. So `0x0f` and `0x10` are exactly the values the client sends, and the previous
+note that they are "named after the reference servers and are unverified" was too pessimistic
+about the numbers. **What remains unverified is the naming** — which builder is the mailbox and
+which is clan applications comes from the references alone, and nothing in the binary has been
+traced to settle it. Treating them as opaque selectors is safe; treating `0x0f` as "mail" is
+still tier 4.
 
 | command | payload |
 | --- | --- |
 | `0x4821` | 4 bytes result |
-| `0x4822` | never sent — the mailbox is always empty |
+| `0x4822` | 266 bytes, one entry per packet — **served since 2026-07-26** |
 | `0x4823` | 4 bytes result |
 
-Start then end with nothing between is a real answer, not a stub: a player with no mail is the
-ordinary case — and it is also all either reference does for the *mail* selector (`0x0f`): Nomad
-never stores mail and never emits a `0x4822` for it, mgo2-server likewise. So an empty mailbox is
-reference parity, not a gap.
+**Superseded 2026-07-26: mail is implemented.** `0x4800` stores, `0x4820` lists both received and
+sent, `0x4840` opens, `0x4880` deletes. See OBSERVED.md, "The mailbox, live". Three things that
+paragraph assumed turned out to be wrong and are worth keeping visible:
+
+- **One entry per `0x4822` packet.** The parser has no loop — no `0xD5CEB0` cursor test, no
+  back-edge — so a packet carrying three entries delivers one and discards the rest.
+- **Wire byte 0 is a routing index, not a type.** Echoing the `0x4820` selector (`0x0f`) into it
+  wrote 280 bytes past the end of a client heap block. Valid values are 0..3 (4 = flat view).
+- **The cap is 16 per category**, enforced silently at `0xD34858`; entries past it are dropped
+  with no error.
+
+The original text follows. Start then end with nothing between is a real answer, not a stub: a
+player with no mail is the ordinary case — and it is also all either reference does for the *mail*
+selector (`0x0f`): Nomad never stores mail and never emits a `0x4822` for it, mgo2-server
+likewise. So an empty mailbox was reference parity, not a gap.
 
 For the record (transcribed from Nomad 2026-07-22, used only for **clan applications**, selector
 `0x10`, which we do not model), a `0x4822` entry is 266 bytes: `u8 mtype(0), u8 index, u8 1,
 name[128], comment[128], u32 time, u8 0, u8 important, u8 read`. Reference-derived and never sent
-by us. The rest of Nomad's mailbox: `0x4800` send implements only clan applications (reply
+by us. **The ELF confirms this transcription** (2026-07-26, single-source trace): the `0x4822`
+record's widths and field order match the parser exactly, 266 bytes. So does `0x4801`'s. That is
+worth recording — a tier-4 transcription that survives a tier-1 check is the good case, and it
+means the mailbox layouts can be trusted if clan applications are ever modelled.
+
+The rest of Nomad's mailbox: `0x4800` send implements only clan applications (reply
 `0x4801` = `{u32 status, u8 0, u32 error count, then name[16]+u32 code per error}`), `0x4840`
 get-contents replies with **command `0x4341`, empty** — almost certainly a Nomad typo for
 `0x4841`; do not copy it — and `0x4860` is a no-op `0x4861 {0}`.
+
+**Two polarity traps in this family, and they point opposite ways.** Both from the same trace:
+
+- **`0x4801` reads its count and records only when the status word is NONZERO.** That is the
+  reverse of `0x4502`, `0x4512`, `0x4841` and `0x4905`, all of which carry a body on **zero**.
+  There is no house style — state the polarity per command, and check it before writing a reply
+  in this range.
+- **`0x4841` is not an ack.** It is documented elsewhere as one; the parser reads **708 bytes
+  after the result word when `result == 0`** (`0xD5363C`, `r5 = 708`). A bare `{u32 0}` therefore
+  copies 708 bytes of stale receive buffer into the client and reports **success** — the worst
+  possible failure shape, since nothing errors. Answer `0x4840` with **712 bytes**, or with a
+  **nonzero result**. We do not answer it at all today, which is safe; the trap is for whoever
+  implements it. The 708-byte body's layout has not been decoded.
 
 ## `0x4900` — get game lobby info
 
@@ -1697,7 +2143,10 @@ Only lobbies of type GAME are listed.
 Read out of the parser at `0xD47E18`, field by field, 2026-07-25. It reads with the same
 primitives as every other command (`0xD5CCD8` u32, `0xD5CB8C` u8, `0xD5CC14` u16, `0xD5D018` raw)
 into a 120-byte struct, appends it to a 64-entry array at `ctx+0xB790`, and loops until the read
-cursor passes the payload length.
+cursor passes the payload length. The four addresses listed here are **not the whole library** —
+each has an instruction-identical twin and there are further primitives besides; see "The
+packet-reader primitives" under Transport, and in particular do not read `0xD5CCD8` versus
+`0xD5CC64` as an unsigned/signed distinction. There isn't one.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
@@ -1818,7 +2267,9 @@ borrowed values to lean on.
 conditions for the current lobby. Request payload is not read. Blocks on the reply —
 **`0A21:FFFFFF60`** without one.
 
-### Reply `0x4991` — 172 (`0xac`) bytes
+### Reply `0x4991` — **236 bytes**, not 172
+
+**Corrected 2026-07-26; this is a live bug in what we send.** The old entry read:
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
@@ -1826,9 +2277,30 @@ conditions for the current lobby. Request payload is not read. Blocks on the rep
 | `0x04` | 4 | u32 | **unknown**: always 1 |
 | `0x08` | 164 | — | **unknown**: `0xa4` zero bytes. The comment says the client "only skips" this block, which is itself unverified |
 
-Both references send this exact fixed answer — `bo.writeInt(0).writeInt(1).writeZero(0xa4)` in
-echo, byte for byte — so no restriction is expressed here by anyone. Nobody knows what the two
-words mean or why the block is `0xa4` long.
+— a 172-byte fixed answer, `bo.writeInt(0).writeInt(1).writeZero(0xa4)`, which is what both
+references send byte for byte. The client does not "only skip" it. The parser is `0xD48D40`, and
+it is established (independently re-derived from the ELF the same day) that:
+
+- it reads a u32 into `rec+0x120`, and **memsets a 296-byte record area** — so the destination is
+  a structure, not a discard;
+- it then runs a **hardcoded 4-iteration loop** — bound `cmpwi r20,3` at `0xD48F84`, stride 72 at
+  `0xD48F88` — of records that are **11 reads = 57 wire bytes each**;
+- 4 + 4 + 4×57 = **236 bytes**. That is the true payload size.
+
+And the second word is not free either: at `0xD48FB0` the client compares it against 4 and, if it
+differs, **overwrites it with 4** (`li r0,4; stw r0,288(r3)` at `0xD48FC0`). Whatever we put
+there, the client's own value ends up 4 — so the reference servers' `1` is not merely unexplained,
+it is discarded.
+
+**Fixed 2026-07-26: `HubGameController` now sends 236 bytes**, four zeroed 57-byte records, and
+the second header word as 4 rather than 1 (the client overwrites it with 4 regardless). The
+record layout is still undecoded, so the reply is correct in shape and empty in content. The
+original finding follows.
+
+We sent 172 bytes where the client reads 236. The missing 64 came out of stale receive buffer, as
+always, which is why nothing has visibly failed: entry conditions parsed from four garbage records
+land in a structure whose use has not been traced. The 57-byte record layout has not been decoded
+and is the obvious next question. Nobody knows what the first word means.
 
 ---
 
@@ -1877,10 +2349,37 @@ grouped by how likely normal play is to hit them, not listed flat.
 
 **Reachable in ordinary flow (highest priority to resolve):** the in-match/host family we have
 only partly covered — `0x4348`, `0x4394` (large struct), `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
-`0x43c8`, `0x43e0`, `0x43e2`, `0x4400` — plus connect-family write-backs `0x4112`,
+`0x43c8`, `0x43e0`, `0x43e2` — plus connect-family write-backs `0x4112`,
 `0x4210`, `0x4220`. (`0x4102` and `0x4132` were on this list until 2026-07-23, when both surfaced
-as live stalls and were traced and handled — see their sections.) The rest have not surfaced in
+as live stalls and were traced and handled — see their sections. `0x4400` left it 2026-07-26 when
+in-game chat was decoded from four live captures — see OBSERVED.md "0x4400 — in-game chat"; it is
+still unhandled, but its shape and meaning are settled.) The rest have not surfaced in
 testing yet, so each is conditional on a specific action/menu we have not exercised.
+
+**Reply shapes traced 2026-07-26 for three of the gaps.** All single-source ELF traces, none
+confirmed against a client. They are recorded because each one is a case where the obvious
+"answer it with a bare result word" would be wrong, which is the lesson the ADDLIST already
+taught once:
+
+- **`0x4401` is not a result single.** It is `{u32, NUL-terminated string}` — the string read by
+  the delimiter-terminated primitive `0xD5CE34` with delimiter 0 into a 129-byte buffer. The
+  string is **terminated on the wire, not padded to width**, and the reader consumes the
+  terminator, so a fixed-width 128-byte field is the wrong encoding.
+  Its counterpart `0x4400` is now capture-proven as the **in-game chat send** (2026-07-26), which
+  makes `0x4401` the chat line coming back for display — [INFERRED] from the pairing plus the
+  parser storing the string at `ctx+0x14D0` and firing UI event `0x30`, not confirmed. If that is
+  right, `0x4401` has to be **pushed to every player in the game**, not just answered to the
+  sender, and the server has no mechanism for that: no channel registry, no `writeAndFlush`
+  anywhere in `src/main/java`, connections held only as Netty channel attributes. Note also
+  `BufferUtil.writeString` is fixed-width NUL-*padded* only — there is no variable-length
+  terminated-string writer, so `0x4401` needs one written by hand.
+- **`0x4905` is an 822-byte record**, not a result single: 46 bytes, then a 159-byte block through
+  the standalone reader `0xD4364C` (the same one `0x4313`'s settings block uses), then 617 bytes
+  including a 512-byte text block. It also **discards the entire packet** unless its echo id
+  equals the u32 at `ctx+0x6D04` (`0xD4820C`) — so a reply must echo the request's id or it is
+  dropped in silence.
+- **`0x4841`** — see the `0x4820` mailbox section; 708 bytes of body on a zero result, and a bare
+  ack reports success over stale buffer.
 
 **Whole unmodelled subsystems (only reached if that feature's menu is opened):**
 
@@ -1891,7 +2390,7 @@ testing yet, so each is conditional on a specific action/menu we have not exerci
 | `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified |
 | mailbox rest | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail (we do only `0x4820` get) |
 | social | `0x4600`, `0x4680`, `0x4684`, `0x4220` | player search, met-players history, player details |
-| misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
+| misc | `0x2006`, `0x4e00` | lobby-layer / isolated. `0x2006`'s presumed reply `0x2007` is traced — see the GATE section |
 
 Builder addresses and best-effort payload shapes for every gap id are recorded in the enumeration
 task output; they are **not** transcribed here as field layouts, because an unparsed shape written
@@ -1919,14 +2418,18 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
    Kept in this list as the worked example: an inherited "the original server did X" claim was
    wrong, and it silently discarded player data for as long as it stood.
 
-2. **The `0x3108` reply shape is inferred, not read.** It is modelled on its sibling result packets
-   (`0x3004`, `0x3102`, `0x3104`, `0x3106`), all of which *are* confirmed as single-s32 parses. The
-   `0x3108` arm itself was never disassembled. It works, so the risk is low, but it is a guess.
+2. ~~**The `0x3108` reply shape is inferred, not read.**~~ — **RESOLVED 2026-07-26, the inference
+   was correct.** The parser is at `0xD37154`: single u32, notify slot 18. It had been modelled on
+   its sibling result packets (`0x3004`, `0x3102`, `0x3104`, `0x3106`) without the arm itself ever
+   being disassembled. Kept in the list because the *reasoning* was luck as much as method — a
+   sibling-shape argument is not evidence, and this one being right does not make the next one so.
 
 3. **`0x4700` connection info is parsed and logged but never persisted.** Whoever implements
    peer-to-peer joining will need it stored, and will have to decide then what the public address
-   should be (we take it from the socket, as the references do). The 2 trailing bytes of the
-   request are not read by us and echo only skips them; nobody knows what they carry.
+   should be (we take it from the socket, as the references do). The 2 trailing bytes are a
+   **client-populated u16** from the caller's `r7` (builder `0xD5C918` at `0xD38708`, ELF
+   2026-07-26) — a real field, not a reference artefact as this entry previously implied. We still
+   do not read it and nobody knows what it carries.
 
 4. **The error path for `0x4101` sends 4 bytes into a 322-byte fixed grid.** `0x4101` has no leading
    result field, so an error code lands where the character id goes. The client's read primitives
@@ -1945,22 +2448,30 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 7. **`0x4120`'s 32-byte trailer** `01 00 10 00 00 00 00 10 11 10 00…`, plus the two "always 1" bits
    in privacy A and voice chat A, and the 6-, 1- and 9-byte zero runs at `0x05`, `0x0c` and `0x17`.
 
-8. **`0x4122`'s 25-byte prefix** and its 4-byte suffix `00 A7 00 0D`; the fixed per-skill experience
+8. **`0x4122`'s 25-byte prefix** (its 4-byte suffix is no longer unknown — it is the saved-instructor
+   marker, see the `0x4122` table); the fixed per-skill experience
    `0x600000`; and the character id repeated at `0x6b` for no documented reason.
 
-9. **`0x4990` answers `0, 1, then 0xa4 zero bytes`.** Both references send exactly that. What the
-   two words mean, why the block is `0xa4` long, and whether the client reads any of it beyond
-   skipping, are all unknown.
+9. ~~**`0x4990` answers `0, 1, then 0xa4 zero bytes`.**~~ — **superseded 2026-07-26, and it was a
+   live bug.** The client reads **236 bytes**, not 172: a u32, a u32 it overwrites with 4 whatever
+   we send, and **four 57-byte records** in a hardcoded loop (parser `0xD48D40`). "Whether the
+   client reads any of it beyond skipping" is answered — it does. See the `0x4991` section. What
+   the first word and the 57-byte record mean is still unknown.
 
 10. **`0x4125`'s three low-experience skills** (ids 17, 20, 22 at `0x2000` where every other skill
     gets `0x6000`). Copied from the original; no rationale recorded.
 
 11. **`0x4124` lists item `0x86` twice.** Possibly faithful to the original, possibly a
-    transcription slip here. Unchecked. The 32 trailing `0xff` bytes are called a terminator on the
-    strength of nothing in particular.
+    transcription slip here. Unchecked. **The 32 trailing `0xff` bytes are not a terminator** —
+    settled 2026-07-26, they are 16 `{item_id, bit_index}` colour-unlock pairs, and `0xff` is
+    inert only because id 255 exceeds the parser's bound. The "called a terminator on the strength
+    of nothing in particular" flag was right to be there.
 
 12. **Game list entry constants**: `0x08` at offset `0x15`, bit 2 of common A always set, the
-    2 zero bytes at `0x34`, and `0x63` at `0x36`. All written verbatim from the original.
+    zero byte at `0x34`, and the **u16 `0x0063` at `0x35`** (2026-07-26: the famous `0x63` is the
+    low half of a halfword, not a byte after two pads). Also **bit 2 of the host-options byte at
+    `0x14`**, which the parser expands like bits 0 and 1 and whose meaning is unrecorded. All
+    written verbatim from the original.
 
 13. **`0x4902`'s attribute word** — subtype in the top byte, 24 bits of nothing. Reference-derived.
 
@@ -1978,8 +2489,11 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 16. **Sequence numbers are not enforced.** A mismatch resyncs silently. If a desync ever turns out
     to matter to the client, this is where it hides.
 
-17. **`ENCRYPT_COMMANDS = { 0x4305 }` outbound is dead code.** Nothing sends `0x4305`. It is
-    untested and carried only for parity.
+17. ~~**`ENCRYPT_COMMANDS = { 0x4305 }` outbound is dead code.** Nothing sends `0x4305`.~~
+    **Wrong, and struck 2026-07-26.** `HostGameController.getHostSettings` sends `0x4305` on every
+    Create Game open, and `MatchStateIT` asserts its Blowfish-padded wire length. It is the only
+    payload this server encrypts outbound, so far from untested it is the sole exercise of the
+    encrypt direction.
 
 ### Smaller loose ends
 
@@ -1988,20 +2502,28 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 
 19. **`0x4121`'s two macro types.** Both references also just call them "type".
 
-20. **`0x4820`'s mailbox selectors** `0x0f` and `0x10` are reference names. We still never send a
+20. **`0x4820`'s mailbox selector *names*** are reference-derived; the **values** `0x0f` and
+    `0x10` are tier-1 confirmed as of 2026-07-26 (two builders, each writing a literal —
+    `0xD53414` → `0x10`, `0xD53518` → `0x0F`). Which one is mail and which is clan applications
+    is the part still resting on the references. We still never send a
     `0x4822`; Nomad's clan-application entry layout is transcribed in the `0x4820` section as
     reference material, but no *mail* entry layout exists anywhere — Nomad never sends one either.
 
 21. **`0x4300`'s filter type is read and discarded.** Clan rooms are distinguished by a name prefix
     in the original; unmodelled here.
 
-22. **The empty replies `0x4311` and `0x4151` are sufficient but unverified.** Both references
-    send nothing and the client proceeds, so nothing more is required — but each dispatches to a
-    real handler (`0xD43550`, `0xD3943C`) rather than a no-op, so whether the original server sent
-    a payload there is unknown. The dispatcher is a comparison chain at `0xD388A8`–`0xD38948`,
-    which is the place to start if this ever matters.
+22. **The empty reply `0x4311` is a latent bug, not merely unverified** (2026-07-26). Its handler
+    `0xD43550` reads **one u32** and takes a teardown path on a nonzero value; with nothing sent,
+    that word comes out of stale receive buffer. Send `{u32 0}`. `0x4151`'s handler `0xD3943C` has
+    not been traced to the same depth and stays in the "sufficient but unverified" column.
+    Correction while here: the dispatcher is **not** "a comparison chain at
+    `0xD388A8`–`0xD38948`". It is a **compare tree** — function entry `0xD387C8`, tree head
+    `0xD38804`, binary search (`bgt` at `0xD3880C`) — and those two addresses are interior nodes.
+    Nothing follows from the order ids appear in.
 
-23. **`0x4316` does not read its request payload at all.** The settings the player configured
+23. **`0x4316` does not read its request payload at all** — a **one-byte** payload, as of the
+    2026-07-26 trace (`0xD43CDC`); "no payload" and "a payload we ignore" are different claims and
+    this entry used to blur them. The settings the player configured
     arrive on `0x4310` instead, which is parsed into the game row (`applyHostSettings`) and stored
     raw per character since 2026-07-22. Confirmed reachable: a game is created and the host
     enters it.
@@ -2010,8 +2532,53 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
     asymmetry is claimed to match the original. Unverified, and unreachable in practice since the
     client bounds-checks the index itself.
 
-24. **`0x200a`'s 886-byte body field.** Chosen to make the payload exactly 1023 bytes. No client has
-    been observed rendering a news item, so the whole news path is unverified.
+24. ~~**`0x200a`'s 886-byte body field.**~~ — **answered 2026-07-26: there is no 886-byte field.**
+    The body is read by the delimiter-terminated string primitive `0xD5CE34` (called from
+    `0xD366B0`), so it is variable-length and self-terminating; 886 was our padding choice to land
+    the payload on 1023, and the question "where did 886 come from" had an answer nobody liked
+    ("we made it up"). Our NUL-padded encoding still parses. No client has been observed
+    rendering a news item, so the news path is still unverified end to end.
 
-25. **`0x0005` ping replies with an empty payload rather than echoing the request.** Reference
-    behaviour; never observed from our client.
+25. ~~**`0x0005` ping replies with an empty payload rather than echoing the request.**~~ —
+    **moot as of 2026-07-26.** The client's reply parser has READ_BEGIN at `0xD35A24` and READ_END
+    at `0xD35A30` with nothing between: the body is never read, so echoing and not echoing are
+    indistinguishable to the client.
+
+## UI events: how `0xD33CD8` dispatches, traced 2026-07-26
+
+Many server → client parsers end by calling `0xD33CD8` with a small integer event id and a value.
+This is the mechanism behind every "…then fires UI event N" line in the specs under `dev/proto/`.
+It was traced while chasing in-game chat (`0x4401` fires event `0x30`) and applies to all 65 specs
+that mention the helper.
+
+`0xD33CD8` is generic — **"command N arrived"**, with no per-command meaning of its own. It does two
+independent things on the net-session context:
+
+1. **Callback table** at `netctx+0x11388 + 4*id`. If the slot is non-null it is called
+   **immediately**, as `cb(id, value)` (`0xD33D24`–`0xD33D44`). This is synchronous, inside the
+   parse, on the network thread.
+2. **Pending counter** at `netctx+0x11468 + id`, one byte per event, incremented and **saturating at
+   `0x7F`** (`0xD33D4C`–`0xD33D6C`). Read and cleared by the poller `0xD33F8C`.
+
+Two consequences worth knowing before designing anything around an event:
+
+- **Only ten ids are ever polled.** The 12 call sites of `0xD33F8C` cover ids `3`, `0x1C`, `0x1D`,
+  `0x1E`, `0x22`, `0x24`, `0x27`, `0x28`, `0x29`, `0x37`. Any other event's only route to the game
+  is the callback table — i.e. handled synchronously during the parse, or not at all.
+- **The counter saturates and the payload does not queue.** The value is passed to the callback and
+  otherwise dropped; only the count survives, and only up to 127. For an event whose parser also
+  writes a single-slot record (chat is the example: one flag, one id, one 129-byte buffer at
+  `netctx+0x114C8`), back-to-back packets overwrite each other unless a callback consumes each one
+  synchronously. That is fine for chat's callback consumer (`0xCA0D50`) and would *not* be fine for
+  a frame-polled one.
+
+**One event id per command parser.** Enumerating every `bl 0xD33CD8` with its immediate `li r4,imm`
+gives 49 sites, each a distinct id — so the id identifies which command arrived, and no two parsers
+share one. Worked examples: `0x30` is fired only by the `0x4401` parser (`0xD52CB0`) and `0x31` only
+by `0x4442`'s (`0xD52900`).
+
+These two also show that the *shape* of the handling differs sharply per event even though the
+dispatch is uniform, so an event id tells you nothing about what is rendered until its branch is
+read: event `0x30` fills the chat display record and redraws, while event `0x31` — in the same
+handler, `0xCA0060` — builds a canned system line from string-table ids `0x201B` and `-0x2D1` and
+touches none of the chat fields.

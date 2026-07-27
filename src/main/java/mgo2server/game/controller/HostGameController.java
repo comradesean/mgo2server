@@ -6,6 +6,7 @@ import mgo2server.common.model.CharaSkill;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
+import mgo2server.game.PersonalInfoWriter;
 import mgo2server.game.GameConnection;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -62,13 +63,22 @@ public class HostGameController implements IGameController {
 	/**
 	 * Byte offset of round 0's {@code [rule, map, flags]} triple in the {@code 0x4310} blob. The
 	 * blob is name(16) + comment(128) + password(17) + dedicated(1) + a subtype byte, then the
-	 * rotation. The exact start is ambiguous by one byte between the references (Model A = 162,
-	 * Model B = 163); this uses <b>Model B</b> — savemgo's push parser {@code Hosts.checkSettings}
-	 * plus our own tier-1 {@code 0x4313} layout, which has a {@code u8} immediately before its
-	 * rotation. <b>Unresolved:</b> host a game changing <em>only</em> the map to confirm whether map
-	 * is at {@code +1} (Model B) or {@code +0} (Model A) of this offset.
+	 * rotation.
+	 * <p>
+	 * <b>Resolved 2026-07-26 — 163 is right.</b> The one-byte ambiguity between the references
+	 * (Model A = 162, Model B = 163) is settled from the binary: the {@code 0x4310} writer emits
+	 * the lobby subtype as a standalone {@code u8} at wire {@code 0xA2} ({@code 0xd448fc}) and the
+	 * rotation begins at {@code 0xA3}. See {@code dev/proto/blanks/inbound/mgo2_cmd_4310_c2s.ksy};
+	 * no live experiment is needed.
 	 */
 	private static final int ROTATION_OFFSET = 163;
+
+	/**
+	 * Rotation entries in the {@code 0x4310} blob. Sixteen, not fifteen: the writer's loop bound is
+	 * {@code cmpdi cr7,r27,16} at {@code 0xd44958} and it always emits all of them, and both the
+	 * {@code 0x4305} and {@code 0x4313} parsers read sixteen. Fifteen is a reference-server figure.
+	 */
+	private static final int ROTATION_ROUNDS = 16;
 
 	/**
 	 * Host reports that a player's peer-to-peer connection to it succeeded — sent only once the
@@ -133,8 +143,9 @@ public class HostGameController implements IGameController {
 	 * Host presses Start: begin the round. Request {@code {u32, u8}} (ELF builder {@code 0xD40CB4};
 	 * the u32 reads as a round/rotation index, the u8 a flag). Reply {@code 0x43c9} must be
 	 * {@code {u32 result, u32 token}}: the client's parser ({@code 0xD3FEAC}) gates the round on
-	 * {@code result == 0}, then retains a nonzero second word as a round handle (stored at
-	 * {@code ctx+0x32F8}). We send {@code result = 0} and the game id as the token.
+	 * {@code result == 0}. <b>The second word is not a round handle</b> — corrected 2026-07-26. A
+	 * nonzero value is written into {@code profile+0x32F8} and becomes the flag that suppresses the
+	 * instructor recognition prompt; we send zero. See {@link #NO_INSTRUCTOR_TOKEN}.
 	 * <p>
 	 * <b>Renumbered from {@code 0x43ca}/{@code 0x43cb}</b> — the full send-site scan found no
 	 * builder for {@code 0x43ca}; the client sends {@code 0x43c8} and parses {@code 0x43c9}. The
@@ -221,6 +232,50 @@ public class HostGameController implements IGameController {
 
 	private static final int SKILL_RECORD_SIZE = 4;
 
+	/**
+	 * The second word of {@code 0x43c9}. Zero, always — a nonzero value is stored permanently into
+	 * the character's profile and suppresses the instructor recognition prompt from then on. Named
+	 * rather than inlined so nobody "restores" the game id thinking it is a round handle.
+	 */
+	private static final int NO_INSTRUCTOR_TOKEN = 0;
+
+	/**
+	 * The value of {@code 0x43c8}'s answer byte that means <b>the student recognised the
+	 * instructor</b> — they were shown "Save current instructor, %s, as the instructor for your
+	 * personal data?" ({@code n002a} string 3099) and chose yes.
+	 * <p>
+	 * The encoding, settled live 2026-07-27 with all three values observed:
+	 * <ul>
+	 *   <li>{@code 0x00} — prompt shown, answered <b>no</b></li>
+	 *   <li>{@code 0x01} — prompt shown, answered <b>yes</b></li>
+	 *   <li>{@code 0x21} — prompt never shown (bit {@code 0x20} = "not asked"), which is what every
+	 *       graduation produced while {@code 0x4122} was suppressing the prompt</li>
+	 * </ul>
+	 * So bit {@code 0} is the answer and bit {@code 5} says whether it was asked. Exact equality is
+	 * the right test and the tempting {@code (answer & 0x20) == 0} shorthand is <b>wrong</b>: it
+	 * reads a declined prompt ({@code 0x00}) as a recognition, which would permanently record an
+	 * instructor the player refused. That case is not hypothetical — it was the first "no" sample.
+	 */
+	private static final int RECOGNISED_ANSWER = 0x01;
+
+	/** Stand-in when the answer byte is absent; distinct from any observed value. */
+	private static final int NO_ANSWER = -1;
+
+	/** Combat training. Basic training is 7; only 8 runs the instructor/student flow. */
+	private static final int COMBAT_TRAINING_SUBTYPE = 8;
+
+	/**
+	 * Kill switch for the graduation branch: {@code MGO2SERVER_GRADUATION=off} sends every
+	 * {@code 0x43c8} down the original round-start path instead.
+	 * <p>
+	 * It exists so a live session can be A/B'd without a rebuild. This branch changes behaviour
+	 * inside a match — it answers a command differently and skips {@code markRoundPlayers} — so
+	 * when something goes wrong in-game it has to be possible to take it out of the picture in one
+	 * restart rather than by reasoning about logs.
+	 */
+	private static final boolean GRADUATION_ENABLED =
+		!"off".equalsIgnoreCase(String.valueOf(System.getenv("MGO2SERVER_GRADUATION")));
+
 	/** Skill-table entries the results parser reads: a fixed 25, each {id u8, exp u16, pad u8}. */
 
 	/**
@@ -265,12 +320,17 @@ public class HostGameController implements IGameController {
 	/**
 	 * Bulk friend/blocked roster fetch — the standalone Friends/Blocked menu, distinct from the
 	 * in-game ADDLIST. Request is a single {@code u8 state} (0 friends, 1 blocked); the reply is a
-	 * triple, one list per state. Populated from {@code chara_relation}. <b>Not observed live</b>
-	 * (the in-game path uses {@link #ADD_LIST}/{@link #REMOVE_LIST} plus the {@code 0x4101} login
-	 * arrays), so the reply is built from the ELF parser ({@code 0x4581} start `0xD469C0`,
-	 * {@code 0x4582} entries `0xD467C0`, {@code 0x4583} end `0xD465D4`) and unverified against a
-	 * client — if the Friends menu ever misbehaves, this is the suspect; the empty form was the
-	 * prior known-safe fallback. ELF send builder {@code 0xD4628C}.
+	 * triple, one list per state. Populated from {@code chara_relation}. Reply built from the ELF
+	 * parsers ({@code 0x4581} start `0xD469C0`, {@code 0x4582} entries `0xD467C0`, {@code 0x4583}
+	 * end `0xD465D4`); ELF send builder {@code 0xD4628C}.
+	 * <p>
+	 * <b>Observed live 2026-07-26, and it failed.</b> The start packet carried the entry
+	 * <em>count</em>, so a character with one friend got
+	 * <em>Unable to acquire Friend List.(1002:00000001)</em> — the dialog number was the count,
+	 * stored verbatim as the transaction's failure code. It is a result code; see
+	 * {@link #listRoster}. Two things were wrong at once: the records were also zero-filled, and
+	 * {@code 0x4583} discards any record whose u16 at wire {@code 0x14} is zero, so fixing only
+	 * the start would have produced an empty list with every record parsing correctly.
 	 */
 	public static final int LIST_ROSTER = 0x4580;
 
@@ -294,6 +354,15 @@ public class HostGameController implements IGameController {
 
 	/** Fixed name width in a 0x4502 entry, as the ELF parser reads it. */
 	private static final int RELATION_NAME_LENGTH = 16;
+
+	/**
+	 * The {@code 0x4582} u16 at wire {@code 0x14}, which decides whether the client keeps the
+	 * record at all — see the write site in {@link #listRoster}. Any nonzero value passes the
+	 * gate; 1 is chosen only because it is the smallest one, and it carries no claim about the
+	 * field's meaning. If a value ever shows up on the roster screen, this is the field to
+	 * fingerprint.
+	 */
+	private static final int ROSTER_ENTRY_VISIBLE = 1;
 
 	/** Sent on leaving a game. Unanswered, the client sits on a black screen. */
 	public static final int QUIT_GAME = 0x4380;
@@ -421,10 +490,22 @@ public class HostGameController implements IGameController {
 	/**
 	 * The standalone Friends/Blocked roster fetch ({@link #LIST_ROSTER}). Reads the requested
 	 * state ({@code u8}: 0 friends, 1 blocked) and replies with that state's relations from
-	 * {@code chara_relation}: a {@code 0x4581} start carrying the entry <em>count</em> (the parser
-	 * treats 0 as an empty list), then {@code 0x4582} packets of up to {@value #ROSTER_PER_PACKET}
-	 * entries each (id + name, the five unmapped trailing fields zeroed), then a {@code 0x4583}
-	 * end. Capped at {@value #ROSTER_MAX}, the client's own limit.
+	 * {@code chara_relation}: a {@code 0x4581} start <em>result code</em>, then {@code 0x4582}
+	 * packets of up to {@value #ROSTER_PER_PACKET} entries each, then a {@code 0x4583} end.
+	 * Capped at {@value #ROSTER_MAX}, the client's own limit.
+	 * <p>
+	 * <b>Corrected 2026-07-26, from a live failure.</b> The start used to carry the entry
+	 * <em>count</em>. It is a result code: parser {@code 0xD469C0} reads one u32 and, when it is
+	 * nonzero, completes the transaction as <em>failed</em> with the value stored verbatim
+	 * ({@code 0xD46AB4}-{@code 0xD46B20}). A player with one friend therefore got
+	 * <em>Unable to acquire Friend List.(1002:00000001)</em> — the dialog number was the count.
+	 * Zero takes the other branch, which zeroes both list counters; the client counts the
+	 * {@code 0x4582} records itself. This is the same mechanism as the recorded
+	 * {@code 1032:00000005} for the {@code 0x4680} family, and it stayed hidden because an empty
+	 * roster sends a count of 0, which is also the success code.
+	 * <p>
+	 * The subsystem index is not fixed: it is {@code 0x51 + state}, so Friends and Blocked are
+	 * separate transactions.
 	 */
 	private void listRoster(GameControllerContext ctx) {
 		var account = ctx.connection().account();
@@ -438,10 +519,10 @@ public class HostGameController implements IGameController {
 				.limit(ROSTER_MAX)
 				.toList();
 
-		// Start carries the count — the parser reads 0 as "empty list", nonzero as the number of
-		// entries that follow.
+		// Start carries a RESULT CODE, never a count: nonzero fails the roster screen with that
+		// value. See the javadoc above.
 		var start = ctx.buffer(Integer.BYTES);
-		start.writeInt(entries.size());
+		start.writeInt(GameError.NONE.result());
 		ctx.write(new GamePacket(LIST_ROSTER_START, start));
 
 		for (var offset = 0; offset < entries.size(); offset += ROSTER_PER_PACKET) {
@@ -451,7 +532,17 @@ public class HostGameController implements IGameController {
 				buffer.writeInt((int) relation.targetId());
 				BufferUtil.writeString(buffer, relation.name(), StandardCharsets.ISO_8859_1,
 					RELATION_NAME_LENGTH);
-				buffer.writeZero(ROSTER_ENTRY_SIZE - Integer.BYTES - RELATION_NAME_LENGTH);
+				// The u16 at wire 0x14 is a DISPLAY GATE, not decoration: the 0x4583 end handler
+				// compacts the collected records and copies one into the display array only when
+				// this field is nonzero (lhz +30, compare, branch — 0xD466D4..0xD46734). Zero here
+				// means the roster screen comes up empty with every record having parsed
+				// perfectly. What the value MEANS is unknown; only its nonzero-ness is evidenced.
+				// Nomad puts 36 in the byte-identical 0x4602 record and guesses level or rank,
+				// which is tier 4 and not a reason to copy it. If it turns out to render, this
+				// must come from the character rather than being a constant.
+				buffer.writeShort(ROSTER_ENTRY_VISIBLE);
+				buffer.writeZero(ROSTER_ENTRY_SIZE - Integer.BYTES - RELATION_NAME_LENGTH
+					- Short.BYTES);
 			}
 			ctx.write(new GamePacket(LIST_ROSTER_ENTRIES, buffer));
 		}
@@ -499,7 +590,7 @@ public class HostGameController implements IGameController {
 		// The same records 0x4125 sent at connect, from the same table: this parser writes into the
 		// identical array and does not clear it first, so disagreeing here would half-update the
 		// client's view of what the player owns.
-		var skills = charaId == 0L ? List.<CharaSkill>of() : characterService.getOrCreateSkills(charaId);
+		var skills = charaId == 0L ? List.<CharaSkill>of() : characterService.getSkills(charaId);
 
 		var buffer = ctx.buffer(POST_GAME_INFO_FIXED + skills.size() * SKILL_RECORD_SIZE);
 		buffer.writeInt(GameError.NONE.result()) // result
@@ -516,8 +607,10 @@ public class HostGameController implements IGameController {
 			.writeInt(experience) // grade points mirror experience in both references
 			.writeInt(0xffffff)
 			.writeInt(0)          // clan id — clans are not modelled
-			.writeShort(0)
-			.writeByte(1)
+			.writeShort(0)        // clan privilege mask (profile+6838); no clan, no privileges
+			// Clan membership state (profile+6837), the same field 0x4122 carries at wire 0x14.
+			// Was 1, "member", next to a clan id of 0. See PersonalInfoWriter.CLAN_STATE_NONE.
+			.writeByte(PersonalInfoWriter.CLAN_STATE_NONE)
 			.writeByte(0)         // emblem — no clans, no emblem
 			.writeInt((int) charaId)
 			.writeByte(0);
@@ -650,7 +743,12 @@ public class HostGameController implements IGameController {
 				account.getId(), bytes.length);
 		}
 
-		ctx.write(new GamePacket(CHECK_HOST_SETTINGS_RESULT, ctx.buffer(0)));
+		// Explicit 4-byte zero, not an empty payload (corrected 2026-07-26). The parser reads a
+		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
+		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
+		// than the payload length, so the client consumed four bytes of stale buffer as its
+		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4311_s2c.ksy.
+		ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.NONE);
 	}
 
 	/**
@@ -689,7 +787,11 @@ public class HostGameController implements IGameController {
 			var index = payload.readByte() & 0xff;
 			var blob = game.getHostSettings();
 			var offset = ROTATION_OFFSET + index * 3;
-			if (index < 15 && blob != null && blob.length >= offset + 3) {
+			// 16, not 15, corrected 2026-07-26: the 0x4310 writer emits sixteen triples
+			// (cmpdi cr7,r27,16 at 0xd44958) and the 0x4305/0x4313 parsers read sixteen. At 15 a
+			// host advancing to its last rotation entry was logged as "no stored rotation entry"
+			// and the browser kept showing the previous round.
+			if (index < ROTATION_ROUNDS && blob != null && blob.length >= offset + 3) {
 				gameService.setCurrentGame(game.getId(), index,
 					blob[offset] & 0xff, blob[offset + 1] & 0xff, blob[offset + 2] & 0xff);
 				logger.info("Game {} advanced to rotation entry {} (rule={} map={}).",
@@ -730,7 +832,12 @@ public class HostGameController implements IGameController {
 			gameService.updatePings(game.getId(), hostPing, pings);
 		}
 
-		ctx.write(new GamePacket(UPDATE_PINGS_RESULT, ctx.buffer(0)));
+		// Explicit 4-byte zero, not an empty payload (corrected 2026-07-26). The parser reads a
+		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
+		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
+		// than the payload length, so the client consumed four bytes of stale buffer as its
+		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4399_s2c.ksy.
+		ctx.write(UPDATE_PINGS_RESULT, GameError.NONE);
 	}
 
 	/**
@@ -739,17 +846,91 @@ public class HostGameController implements IGameController {
 	 * what {@link #updateStats} checks before applying a stat report to a character.
 	 */
 	private void startRound(GameControllerContext ctx) {
+		if (gradedInstructor(ctx)) {
+			return;
+		}
+
 		var game = hostedGame(ctx);
-		var token = game != null ? (int) game.getId() : 0;
 		if (game != null) {
 			gameService.markRoundPlayers(game.getId());
 			logger.info("Game {} started a round.", game.getId());
 		}
-		// {u32 result, u32 token}: result 0 lets the client proceed; the token is the round
-		// handle it retains (0xD3FEAC stores a nonzero second word). The game id serves.
+		// {u32 result, u32 token}: result 0 lets the client proceed. The second word must be ZERO.
+		//
+		// It is not a round handle. The parser (0xD3FEAC) stores a nonzero second word into
+		// profile+0x32F8 (0xD3FF6C, guarded by `!= 0`), and that field has exactly three accesses
+		// in the whole binary: its initialiser (0x414898), that write, and one read at 0x8842AC —
+		// the packer that builds a player's join announcement, where it becomes struct+12, then
+		// replicated player variable 352, then P2P opcode 0x24 to every peer. On the receiving
+		// client it lands in G->0x1C0 and gates the instructor recognition prompt at 0xA359A4:
+		// non-zero means "an instructor is already saved", and the prompt is skipped.
+		//
+		// So sending the game id here permanently stamped every character who ever started a round
+		// or graduated, and their console then told every future training host to suppress the
+		// prompt. Zero leaves the field untouched, which is what we want; the client never reads
+		// the token for anything else.
 		var buffer = ctx.buffer(2 * Integer.BYTES);
-		buffer.writeInt(GameError.NONE.result()).writeInt(token);
+		buffer.writeInt(GameError.NONE.result()).writeInt(NO_INSTRUCTOR_TOKEN);
 		ctx.write(new GamePacket(START_ROUND_RESULT, buffer));
+	}
+
+	/**
+	 * The same id, sent by a <em>student</em> in a combat-training lobby, is the instructor review
+	 * that ends a graduation — not a round start.
+	 * <p>
+	 * Evidence, three live sessions with the star rating as the only variable: 5, 3 and 1 stars
+	 * produced {@code 00000005}, {@code 00000003} and {@code 00000001} in the u32, with the
+	 * trailing byte constant at {@code 0x21}. Connection attribution puts it on the student's
+	 * socket, while the host's own packets around it ({@code 0x43a6}, {@code 0x43c0},
+	 * {@code 0x4390}, {@code 0x4342}) arrive on the other. The student then checks its mailbox
+	 * within seconds, which is why the award has to be granted here and now rather than deferred.
+	 * <p>
+	 * The distinction is narrow on purpose: only a subtype-8 lobby, and only from someone who is
+	 * not the game's host. Anything else falls through to the round start, because a single caller
+	 * in the client builds both and this id may legitimately do both jobs.
+	 *
+	 * @return whether this was a review, and has been answered
+	 */
+	private boolean gradedInstructor(GameControllerContext ctx) {
+		if (!GRADUATION_ENABLED || lobbySubtype != COMBAT_TRAINING_SUBTYPE) {
+			return false;
+		}
+
+		var account = ctx.connection().account();
+		var studentId = account != null ? account.getCurrentCharaId() : null;
+		if (studentId == null) {
+			return false;
+		}
+
+		var game = gameService.gameContaining(studentId).orElse(null);
+		if (game == null || game.getHostCharaId() == studentId) {
+			return false;
+		}
+
+		// {u32 rating, u8 answer}: both are bytes of the same dialog result buffer in the client
+		// (0xA35B0C/0xA35B14 -> 0xA36160/0xA36164), so the rating arrives widened into a u32.
+		var payload = ctx.packet().getPayload();
+		var rating = payload.readableBytes() >= Integer.BYTES
+			? payload.getInt(payload.readerIndex()) : 0;
+		var answer = payload.readableBytes() > Integer.BYTES
+			? payload.getUnsignedByte(payload.readerIndex() + Integer.BYTES) : NO_ANSWER;
+		var recognised = answer == RECOGNISED_ANSWER;
+
+		var graduation = characterService.recordGraduation(studentId, game.getHostCharaId(),
+			rating, recognised, answer);
+		logger.info("Character {} reviewed {} — rating {}, answer 0x{} ({}); {}.",
+			studentId, game.getHostCharaId(), rating, Integer.toHexString(answer),
+			recognised ? "recognised" : "not recognised",
+			recognised
+				? "generation " + graduation.generation() + ", skill follows on the stats report"
+				: "rating recorded only");
+
+		// Answered exactly as a round start is: the client is waiting on the same reply shape — and
+		// with the same zero second word, for the same reason. See startRound.
+		var buffer = ctx.buffer(2 * Integer.BYTES);
+		buffer.writeInt(GameError.NONE.result()).writeInt(NO_INSTRUCTOR_TOKEN);
+		ctx.write(new GamePacket(START_ROUND_RESULT, buffer));
+		return true;
 	}
 
 	/**
@@ -864,6 +1045,15 @@ public class HostGameController implements IGameController {
 					game.getId(), targetId, structA[0], structA[1], structA[3],
 					experience, aborted ? " (aborted round)" : "",
 					inGame ? "" : " (left mid-round; accepted from the round snapshot)");
+
+				// A recognised graduation earns the instructor skill here rather than at 0x43c8:
+				// the host reports every player as they leave, combat training included, so the
+				// award rides the session ending and a missed one is picked up next report. The
+				// letter still beats the student's mailbox fetch — leaving sends 0x4390 first.
+				if (characterService.awardPendingInstructorSkill(targetId)) {
+					logger.info("Character {} awarded the instructor skill and its announcement.",
+						targetId);
+				}
 			} else {
 				logger.warn("Game {}: stat report for character {} who neither is in the game nor "
 					+ "played the round; dropped.", game.getId(), targetId);
@@ -919,7 +1109,12 @@ public class HostGameController implements IGameController {
 		}
 
 		tearDownCharacter(account.getCurrentCharaId(), "on quit");
-		ctx.write(new GamePacket(QUIT_GAME_RESULT, ctx.buffer(0)));
+		// Explicit 4-byte zero, not an empty payload (corrected 2026-07-26). The parser reads a
+		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
+		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
+		// than the payload length, so the client consumed four bytes of stale buffer as its
+		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4381_s2c.ksy.
+		ctx.write(QUIT_GAME_RESULT, GameError.NONE);
 	}
 
 	/**

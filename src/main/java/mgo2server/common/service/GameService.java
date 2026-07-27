@@ -3,6 +3,7 @@ package mgo2server.common.service;
 import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.model.Game;
 import mgo2server.common.model.HostSettings;
+import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 
 import java.nio.charset.StandardCharsets;
@@ -106,6 +107,22 @@ public class GameService {
 	}
 
 	/** The game a character hosts in a lobby, if any — a character hosts at most one. */
+	/**
+	 * The game a character is currently joined to, if any. A character can only be in one at a
+	 * time, which is the same assumption {@link #removePlayerFromGames} rests on.
+	 */
+	public Optional<Game> gameContaining(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select g.* from game g
+					join game_player gp on gp.game_id = g.id
+					where gp.chara_id = :chara
+					""")
+				.bind("chara", charaId)
+				.mapTo(Game.class)
+				.findFirst());
+	}
+
 	public Optional<Game> getHostedGame(long lobbyId, long hostCharaId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("select * from game where lobby_id=:lobby and host_chara_id=:host")
@@ -196,6 +213,7 @@ public class GameService {
 				.bind("host", newHostCharaId)
 				.bind("id", gameId)
 				.execute();
+			creditTrainingTime(handle, gameId, oldHostCharaId);
 			handle.createUpdate("delete from game_player where game_id=:game and chara_id=:chara")
 				.bind("game", gameId)
 				.bind("chara", oldHostCharaId)
@@ -449,6 +467,19 @@ public class GameService {
 			| ((b[off + 2] & 0xff) << 8) | (b[off + 3] & 0xff);
 	}
 
+	/**
+	 * Reads a big-endian u16 from the blob.
+	 * <p>
+	 * Added 2026-07-26: the kick timers at {@code 0x145}/{@code 0x147} are halfwords, written by
+	 * the {@code 0x4310} sender at {@code 0xd44bf8} and {@code 0xd44c0c}. They were read here as
+	 * single bytes at {@code 0x146}/{@code 0x148} — the low half of each — which silently
+	 * truncated anything above 255. Our own {@code 0x4313} reply already wrote them back as
+	 * shorts at those exact offsets, so the two sides of this server disagreed.
+	 */
+	private static int blobU16(byte[] b, int off) {
+		return ((b[off] & 0xff) << 8) | (b[off + 1] & 0xff);
+	}
+
 	/** Reads a fixed-width, NUL-terminated ISO-8859-1 string from the blob. */
 	private static String blobString(byte[] b, int off, int max) {
 		if (off >= b.length) {
@@ -536,8 +567,8 @@ public class GameService {
 				.bind("enemyNametags", (commonB & 0b1000) != 0)
 				.bind("voiceChat", (commonB & 0b1000000) != 0)
 				.bind("nonStat", (blob[0x155] & 0b10) != 0)
-				.bind("idleKick", (commonA & 0b1) != 0 ? blob[0x146] & 0xff : 0)
-				.bind("teamKillKick", (commonB & 0b10000000) != 0 ? blob[0x148] & 0xff : 0)
+				.bind("idleKick", (commonA & 0b1) != 0 ? blobU16(blob, 0x145) : 0)
+				.bind("teamKillKick", (commonB & 0b10000000) != 0 ? blobU16(blob, 0x147) : 0)
 				.bind("blob", blob)
 				.bind("id", gameId)
 				.execute());
@@ -564,9 +595,28 @@ public class GameService {
 				.execute());
 	}
 
+	/**
+	 * Ends a game, crediting everyone still in it first.
+	 * <p>
+	 * {@code game_player} cascades from this delete, so without the credit an entire session's
+	 * training time disappears — and this is the common ending, because the host teardown deletes
+	 * the game while its players are still joined. It is also the case the host's own {@code
+	 * 0x4390} reports do not cover: observed live, a host that quits first reports nobody.
+	 */
 	public void deleteGame(long gameId) {
-		jdbi.useHandle(handle ->
-			handle.createUpdate("delete from game where id=:id").bind("id", gameId).execute());
+		jdbi.useHandle(handle -> {
+			creditEveryPlayer(handle, gameId);
+			handle.createUpdate("delete from game where id=:id").bind("id", gameId).execute();
+		});
+	}
+
+	/** Credits every player still joined to a game, for the paths that end it wholesale. */
+	private static void creditEveryPlayer(Handle handle, long gameId) {
+		handle.createQuery("select chara_id from game_player where game_id=:game")
+			.bind("game", gameId)
+			.mapTo(Long.class)
+			.list()
+			.forEach(charaId -> creditTrainingTime(handle, gameId, charaId));
 	}
 
 	/**
@@ -577,10 +627,15 @@ public class GameService {
 	 * @return the number of stale games removed
 	 */
 	public int deleteGamesInLobby(long lobbyId) {
-		return jdbi.withHandle(handle ->
-			handle.createUpdate("delete from game where lobby_id=:lobbyId")
+		return jdbi.withHandle(handle -> {
+			// Deliberately NOT credited. These rows are ghosts from before a restart, so their
+			// joined_at is arbitrarily old — crediting them would invent hours nobody played. The
+			// session's real time was lost when the process died, and inventing a number is worse
+			// than losing one.
+			return handle.createUpdate("delete from game where lobby_id=:lobbyId")
 				.bind("lobbyId", lobbyId)
-				.execute());
+				.execute();
+		});
 	}
 
 	/** Records a character's peer-to-peer endpoints, replacing any previous registration. */
@@ -614,10 +669,63 @@ public class GameService {
 	 * one game at a time, so this keys on the character alone.
 	 */
 	public void removePlayerFromGames(long charaId) {
-		jdbi.useHandle(handle ->
+		jdbi.useHandle(handle -> {
+			// Credit before the delete: joined_at goes with the row.
+			handle.createQuery("select game_id from game_player where chara_id=:chara")
+				.bind("chara", charaId)
+				.mapTo(Long.class)
+				.list()
+				.forEach(gameId -> creditTrainingTime(handle, gameId, charaId));
+
 			handle.createUpdate("delete from game_player where chara_id=:chara")
 				.bind("chara", charaId)
-				.execute());
+				.execute();
+		});
+	}
+
+	/**
+	 * Credits a character's presence in a game to their training totals, then forgets it.
+	 * <p>
+	 * Called on every path that removes a {@code game_player} row, because that row's
+	 * {@code joined_at} is the only record of when they arrived. The split is by the lobby's
+	 * subtype and by whether they hosted: subtype 7 is training mode, subtype 8 is combat training
+	 * as instructor when they are the host and as student otherwise.
+	 * <p>
+	 * Only the three training columns are subtype-dependent; {@code total_seconds} accrues for
+	 * every game, because the graduation award is gated on total play time. Deliberately a no-op
+	 * for a character with no row, so callers do not have to check first. Runs on the caller's
+	 * handle so it shares their transaction: the credit and the delete must not come apart.
+	 */
+	private static void creditTrainingTime(Handle handle, long gameId, long charaId) {
+		handle.createUpdate("""
+					insert into chara_training_time as t
+						(chara_id, training_mode_seconds, instructor_seconds, student_seconds,
+						 total_seconds)
+					select gp.chara_id,
+						case when l.subtype = 7 then s.seconds else 0 end,
+						case when l.subtype = 8 and g.host_chara_id = gp.chara_id
+							then s.seconds else 0 end,
+						case when l.subtype = 8 and g.host_chara_id != gp.chara_id
+							then s.seconds else 0 end,
+						s.seconds
+					from game_player gp
+					join game g on g.id = gp.game_id
+					join lobby l on l.id = g.lobby_id
+					cross join lateral (
+						select greatest(0,
+							floor(extract(epoch from (now() - gp.joined_at)))::bigint) as seconds
+					) s
+					where gp.game_id = :game and gp.chara_id = :chara
+					on conflict (chara_id) do update set
+						training_mode_seconds =
+							t.training_mode_seconds + excluded.training_mode_seconds,
+						instructor_seconds = t.instructor_seconds + excluded.instructor_seconds,
+						student_seconds = t.student_seconds + excluded.student_seconds,
+						total_seconds = t.total_seconds + excluded.total_seconds
+					""")
+			.bind("game", gameId)
+			.bind("chara", charaId)
+			.execute();
 	}
 
 	/** Adds a character to a game, ignoring a repeat join. */

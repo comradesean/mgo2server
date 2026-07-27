@@ -18,4 +18,9 @@ seq:
   - id: result
     type: u4
     doc: |
-      Result code. 0 for success. [ELF 0xD52EF4]
+      Result code. 0 for success. [ELF 0xD52EF4; live 2026-07-26 — served, and the client's
+      mailbox refreshes without a stall]
+
+      The whole payload: 4 bytes, no body, no flags byte (contrast `0x4801`, whose second byte
+      decides whether the request completes at all). The delete itself is server-side bookkeeping
+      — the client re-lists afterwards and believes whatever the new `0x4822` entries say.

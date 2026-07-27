@@ -69,6 +69,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 				.mapTo(Long.class)
 				.one());
 
+		grantStartingSkills(charaId);
+
 		assertThat(charaId).isNotEqualTo(accountId);
 
 		TestDatabase.get().jdbi().useHandle(handle -> {
@@ -426,8 +428,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 		assertThat(replies.get(6).getPayload().readableBytes())
 			.isEqualTo(LoadoutWriter.gearPayloadSize());
-		// V20 seeds every id the client defines, 1..17; the count is the character's row count now,
-		// not a constant in the writer.
-		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.MAX_ID);
+		// The count is the character's row count now, not a constant in the writer. A new character
+		// is granted 1..16; skill 17 is withheld to be earned.
+		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.STARTING_MAX_ID);
 	}
 }

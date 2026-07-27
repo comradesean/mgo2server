@@ -180,15 +180,20 @@ seq:
   - id: idle_kick
     type: u2
     doc: |
-      [ELF] wire 0x145..0x146, src+932, written by the **u16** writer (`bl 0xd5c918`). Our
-      server reads a single byte at `0x146`, which is this field's low byte — right for counts
-      <= 255, wrong above. Gated by commonA bit 0: `applyHostSettings` zeroes the count when
-      the enable bit is off (**operator policy**, mirroring what the client shows).
+      [ELF] wire 0x145..0x146, src+932, written by the **u16** writer (`bl 0xd5c918`). Gated by
+      commonA bit 0: `applyHostSettings` zeroes the count when the enable bit is off
+      (**operator policy**, mirroring what the client shows).
+
+      FIXED 2026-07-26: our server read a single byte at `0x146` — this field's low half — which
+      was right for values <= 255 and silently truncated above. It now reads the u16. The tell was
+      internal: `GameDetails` already wrote these back as shorts at these exact offsets, so the
+      two halves of our own server disagreed about the width. The `0x4305` reply had the same bug
+      in a third place (`HostSettingsReply` copied one byte into each destination's low half).
   - id: team_kill_kick
     type: u2
     doc: |
-      [ELF] wire 0x147..0x148, src+934, u16 (`bl 0xd5c918`). Same low-byte caveat as
-      `idle_kick`; gated by commonB bit 7. Note src+936..939 are not sent.
+      [ELF] wire 0x147..0x148, src+934, u16 (`bl 0xd5c918`). Gated by commonB bit 7. Note
+      src+936..939 are not sent. Same low-byte truncation as `idle_kick`, fixed the same day.
   - id: unknown_149
     type: u1
     doc: |

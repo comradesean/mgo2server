@@ -17,4 +17,13 @@ seq:
   - id: result
     type: u4
     doc: |
-      Result code. 0 for success. [CONFIRMED by PROTOCOL.md; ELF 0xD52FE4]
+      Result code. 0 for success. [CONFIRMED by PROTOCOL.md; ELF 0xD52FE4; live 2026-07-26]
+
+      Requires the in-flight flag at `mailBlock+0x1DBD0` to be **nonzero** — i.e. a `0x4821` with
+      result 0 must have preceded it — else the handler returns -73 (`0xD52FCC`). It clears the
+      flag and fires event 85/2.
+
+      **There is no compaction or filter pass here**, unlike the roster triple's `0x4583`
+      (`0xD466D4`), which drops any collected record whose u16 at wire 0x14 is zero. Entries that
+      fail to appear in the mailbox are therefore not being filtered — they were filed into a
+      category no UI code reads. See `mgo2_cmd_4822_s2c.ksy`.

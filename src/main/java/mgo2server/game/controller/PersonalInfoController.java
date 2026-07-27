@@ -38,12 +38,20 @@ public class PersonalInfoController implements IGameController {
 	public static final int COMMIT_OUTFIT_RESULT = 0x4133;
 
 	/**
-	 * The fixed tail of the {@code 0x4133} reply: fifteen {@code {u8 slot, u8 bit}} pairs the
+	 * The fixed tail of the {@code 0x4133} reply: sixteen {@code {u8 slot, u8 bit}} pairs the
 	 * parser at {@code 0xd3c77c} always reads, setting equipped bits in the loadout table it has
 	 * just zeroed. All-zero pairs redundantly touch bit 0 of slot 0 — no distinct no-op encoding
 	 * is known, and what the original filled these with awaits a capture.
+	 * <p>
+	 * <strong>Corrected 2026-07-26 from 15.</strong> The loop bound at {@code 0xd3c8d4} is tested
+	 * <em>before</em> the increment at {@code 0xd3c8dc}, so the client reads sixteen pairs and the
+	 * reply is {@code 36 + 5·count}, not {@code 34 + 5·count}. Corroborated by {@code 0x4124},
+	 * whose known-good 651 bytes ({@code 4 + 615 + 32}) only balance at sixteen. At fifteen the
+	 * client read its last pair out of stale receive buffer; those bytes usually failed the
+	 * {@code slot <= 128} / {@code bit <= 31} guards and were skipped, which is why it never
+	 * surfaced — but nothing bounded them.
 	 */
-	private static final int COMMIT_TRAILER_PAIRS = 15;
+	private static final int COMMIT_TRAILER_PAIRS = 16;
 
 	private static final int COMMENT_LENGTH = 128;
 
@@ -78,7 +86,7 @@ public class PersonalInfoController implements IGameController {
 	 * Outfit commit ({@code 0x4132}, empty payload): fired after the {@code 0x4130} updates when
 	 * the outfit screen closes, and blocked on. The reply is not a result code — the parser at
 	 * {@code 0xd3c77c} reads a u32 <em>entry count</em>, {@code count × {u8 slot, u32 value}}
-	 * loadout entries, then the fixed fifteen-pair trailer; a nonzero first u32 would be read as
+	 * loadout entries, then the fixed sixteen-pair trailer; a nonzero first u32 would be read as
 	 * a count, not an error. Zero entries is the honest reply until the entry semantics are
 	 * captured: the client zeroes its loadout table first either way.
 	 */

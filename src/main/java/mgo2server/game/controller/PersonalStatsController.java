@@ -48,6 +48,20 @@ public class PersonalStatsController implements IGameController {
 
 	private static final int TAIL_SIZE = 0x24C;
 
+	/**
+	 * Column 17 of the {@code 0x4105} matrix: play time in seconds. The screen's play-time line is
+	 * this column summed over mode rows 0..6 — rows 7 and up are excluded, which is why the
+	 * fingerprint total matched the display exactly.
+	 */
+	private static final int PLAY_SECONDS_COLUMN = 17;
+
+	/**
+	 * The last mode row with a page of its own: 0 Deathmatch, 1 Team Deathmatch, 2 Rescue,
+	 * 3 Capture, 4 Sneaking, 5 Base. Row 6 is hidden — it has no page but is still summed into the
+	 * header and every Total — and row 7 is excluded from all sums. Both are served as zeros.
+	 */
+	private static final int LAST_PLAYABLE_MODE = 5;
+
 	/** The 8×18 u32 matrix in {@code 0x4105}. */
 	private static final int MATRIX_CELLS = 144;
 
@@ -163,8 +177,20 @@ public class PersonalStatsController implements IGameController {
 			info.writeInt(4021 + i);   // 9×u32 → T+0x32C4.. (the UI reads T+0x32D0 = 4024)
 		}
 		info.writeInt(4030);           // u32 → obj+0x30, not T
-		BufferUtil.writeString(info, "FP-STR-B", StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		info.writeInt(4031).writeInt(4032);
+
+		// The instructor block, real data as of V25. It was fingerprinted ("FP-STR-B" in the name,
+		// 4031 in the generation candidate), which told every character that they already had an
+		// instructor called FP-STR-B — a lie the client may well act on, since the recognition
+		// toggle a student is offered at graduation plausibly checks whether they have one.
+		// A character who has never graduated now sends an empty name and zeros.
+		var instructor = characterService.instructorOf(charaId).orElse(null);
+		BufferUtil.writeString(info, instructor != null ? instructor.instructorName() : "",
+			StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		// Wire 607, the "generation" candidate: it rendered nothing when it carried 4031, so
+		// either it is not the generation or the line needs more than this field. Sending the real
+		// value makes the next look at that screen a test rather than another fingerprint.
+		info.writeInt(instructor != null ? instructor.generation() : 0);
+		info.writeInt(4032);
 		BufferUtil.writeString(info, "FP-STR-C", StandardCharsets.ISO_8859_1, NAME_LENGTH);
 		info.writeByte(46);            // u8 → T+0x1AD8
 		info.writeInt(4033).writeInt(4034).writeInt(4035); // → T+0x32F0/F4/F8
@@ -188,9 +214,29 @@ public class PersonalStatsController implements IGameController {
 		var deathmatch = new int[] {
 			3, 4, 5, 3004, 5, 6, 10, 20, 30, 40, 7, 6, 8, 52300, 3015, 52500, 3017, 3018,
 		};
+		// Column 17 is play_seconds (CONFIRMED, mgo2_cmd_4105.ksy), and the play-time line on the
+		// stats screen is the sum of it over mode rows 0..6 — the fingerprint values summed to
+		// exactly the 5:58:24 that was on screen, which is how the column was identified.
+		//
+		// We measure total play time, not per-mode: the presence accumulator knows how long a
+		// character spent in games, not which mode each one was. Every playable mode row therefore
+		// carries the same total, which means the header — the sum over rows 0..6 — reports six
+		// times it. That is deliberate while the graduation gate is being tested: the client checks
+		// 20 hours somewhere, and until we know whether it reads the header or a mode row, having
+		// every row satisfy it independently removes the question. Rows 6 and 7 stay zero as the
+		// spec requires (row 6 is hidden but summed; row 7 is excluded entirely).
+		//
+		// When per-mode play time exists, this becomes one value per row and the header becomes
+		// true. Until then the number on screen is an over-report by construction, not a bug.
+		var playSeconds = (int) characterService.trainingSeconds(charaId).total();
+
 		for (var cell = 0; cell < MATRIX_CELLS; cell++) {
 			var mode = cell / 18;
 			var column = cell % 18;
+			if (column == PLAY_SECONDS_COLUMN) {
+				matrix.writeInt(mode <= LAST_PLAYABLE_MODE ? playSeconds : 0);
+				continue;
+			}
 			matrix.writeInt(mode == 0 ? deathmatch[column] : 3001 + cell);
 		}
 		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, matrix));

@@ -1877,16 +1877,44 @@ special A slot); B12 stayed 0 despite a CQC kill, further narrowing its DM-round
   model. B24 similarly open (1 on a 2-0 stage win).
 - Quitter reporting reproduced exactly on the second run (immediate report, kill·3, 0x1f=0).
 
-### The token never leaves the client: attribution model binary-proven; 0x43a2 decoded
+### The token never leaves the client on the LOBBY link — but it does leave over P2P
 
 2026-07-23, closing ELF trace. The 0x43c9 start-round token is written to
 session+0x57d8+0x32f8 and read at exactly one site in the binary — a UI record populator
 using memory-copy helpers, not packet writers; the 0x43c8/0x43a2/0x4390 builders never
 reference the slot. So no packet can carry a game identifier: connection identity is the
-whole attribution mechanism, by construction. 0x43c8's {u32,u8} = two config bytes from a
+whole attribution mechanism, by construction.
+
+**Corrected 2026-07-26, and the correction matters.** The conclusion above is right about the
+lobby protocol and wrong about the slot being inert. The single reader is `0x8842AC`, the packer
+that builds a player's **join announcement**: it copies `profile+0x32F8` to `struct+12`, which
+`0x2762A0` publishes as replicated player variable **352**, which the host broadcasts as P2P
+opcode `0x24` to each peer, which lands in `G->0x1C0` on the receiving client and is tested at
+`0xA359A4` — non-zero there **skips the instructor recognition prompt**. It is not a UI record
+populator and it is not inert; it is the "an instructor is already saved" flag, and it travels
+over the in-game link rather than ours.
+
+The write at `0xD3FF6C` is guarded by `!= 0`, so only a nonzero token sets it, and nothing in the
+client ever clears it. We were sending the game id, which permanently stamped every character who
+started a round or graduated — which is why the recognition prompt never appeared for anyone.
+`HostGameController` now sends zero. 0x43c8's {u32,u8} = two config bytes from a
 settings buffer (round/rule pair, not the token). 0x43a2 fully decoded as a count-prefixed
 per-slot tally list (see PROTOCOL.md) — our three captured payloads decode exactly; what the
 127-slot table indexes is the new open question.
+
+**Resolved 2026-07-26, and it was not `0x43c9`.** Zeroing the `0x43c9` token did not raise the
+prompt. The field has a *second* writer: the `0x4122` personal-info parser at `0xD3D624`, which
+reads the payload's last u32 into the same `profile+0x32F8` **unguarded** — no `!= 0` test, so it
+stores whatever we send on every personal-info reply. We were sending `00 A7 00 0D`, a fixed suffix
+copied from another server, which is why the prompt never appeared for anyone and why the `0x43c9`
+change alone did nothing. `PersonalInfoWriter` now sends 0.
+
+Two corrections to the chain as first written here. `0xA359A4` reads **`G+0x1C0`**, not
+`profile+0x32F8`; the two are linked by the P2P hop, not by a direct read (`G+0x1C0` has one writer,
+`0x9D17C8`, reachable only from arm 36 of the P2P table at `0x9D1500`, and one reader, `0x9CD5D0`).
+And the prompt's text is real in this build — stage `n002a` string resource 3099, extracted with
+Solideye + Gcx, with the rating prompt we do get at 3105. The sender of P2P message 36 was never
+located; the receive side is proved, so the fix does not depend on it, but that is the open gap.
 
 ### Game 112 (two identical AK102 rounds): per-round model pristine; winner-flag asymmetry
 
@@ -2678,3 +2706,226 @@ trio split".
 Still open: the SNE DOGTAG score row's multiplier, **and which of the pair feeds it**. The single
 decomposed round (~16 points across two tags) had `B47 == B48`, so it cannot separate them. Needs
 a round where the two differ with the DOGTAG row read off the result screen.
+
+## The mailbox, live — 2026-07-26
+
+A single session in the automatching lobby brought the mail family up from nothing. Every claim
+below is from that session's traffic or the client's visible behaviour; the ELF addresses are the
+mechanism, the observation is the evidence. The `.ksy` files carry the byte detail —
+`dev/proto/blanks/{inbound,outbound}/mgo2_cmd_48*.ksy`.
+
+### The first live capture to validate a generated blank spec
+
+`0x4800` was specced from the disassembly alone on 2026-07-26, before any capture of it existed:
+`{u8, char[128], char[128], char[708], s8, s8}`, 967 bytes. The operator then composed a letter —
+recipient `poop`, subject `hi`, body `poop` — and pressed send with no handler registered, so the
+server logged the whole payload.
+
+It was **967 bytes**, and the three typed strings landed exactly on the three blocks the spec had
+marked as candidates: `poop` at `0x001`, `hi` at `0x081`, `poop` at `0x101`. Three distinct values
+in three distinct fields from one action — the fingerprint pass the spec had asked for, run by
+accident. Field order, widths and total size were all correct sight-unseen.
+
+A second send (`sub` / `mes`) reproduced it. The leading byte read **1** both times, and the two
+trailing bytes **0**.
+
+### The leading byte of a 0x4822 entry is a routing index, and 0x0F corrupts the client heap
+
+Our first served mailbox echoed the `0x4820` request's selector (`0x0F`) into wire byte 0 of the
+entry. The client accepted the packet, displayed nothing, and the **GM tab disappeared from the
+mailbox screen** and did not return on re-login.
+
+`0xD347E4` uses that byte as an unchecked array index (`extsb r3,r11` at `0xD34844`; the only
+guard is `count < limit`). Valid values are 0..3 — four arrays of 16 records, 280-byte stride, at
+`mailBlock+0x1E268` — plus 4, a flat view aliasing 0 with a limit of 64. With 15 it reads its
+count from `mailBlock+0x1E26F`, which is `name[5]` of category 0's first record, then writes 280
+bytes at `mailBlock+0x2E8E8` — **26,816 bytes past the end of a 0x28028-byte allocation**, once
+per entry.
+
+The UI-facing wrappers (`0xD5415C`, `0xD542A8`) *do* validate this value; only the packet path
+does not. The `0x0F` itself is legitimate in the `0x4820` **request**, where it is a compile-time
+literal at `0xD534C8` — it simply has no business in the record.
+
+*Caveat kept deliberately:* the tab-strip construction was traced and found unconditional (five
+widget ids set in one straight-line block at `0x8E3E64`, `0x8EA66C`, `0x8EB948`), and no
+server-supplied field gates it. That is a strong negative, not an exhaustive one — the widget that
+instantiates the five tab items was never positively identified. The corruption is proven; that it
+is what removed the GM tab remains inference.
+
+### Category 1 is the Sent tab, and the client echoes the category back
+
+With inbox served as category 0 and sent as category 1, a letter appeared under **Sent**. Opening
+it produced `0x4840` with payload `01 00`, and deleting the second letter produced `0x4880` with
+`01 01` — so both commands are `{s1 category, u1 index}`, both echo the category **we** assigned,
+and `index` is a per-category message handle rather than a display position.
+
+Which tab categories 0 and 3 draw is still unproven: the labels live in the language resource, not
+the binary. Category 2 has no UI reference at all. The settling experiment is four entries with
+categories 0/1/2/3 and distinct subjects, then read the tabs.
+
+### Both tabs request the same mailbox selector
+
+Every `0x4820` in the session carried `0x0F`, whichever tab was open. The inbox/sent split is
+therefore entirely client-side, driven by the entry's category byte — the request cannot express
+it. This is why both lists are served in one reply.
+
+### 0x4581 carries a result code, and sending a count fails the screen
+
+Serving the entry **count** in the roster start packet gave *"Unable to acquire Friend List.
+(1002:00000001)"* for a character with exactly one friend — the dialog number **was** the count,
+stored verbatim as the transaction's failure code (`0xD46AB4`–`0xD46B20`). Identical mechanism to
+the `1032:00000005` already recorded for the `0x4680` family.
+
+It hid because an empty roster sends a count of 0, which is also the success code. Every list
+triple in this protocol works the same way: start and end are results, and the client counts the
+item records itself.
+
+### Read state does not survive a re-login unless the server stores it
+
+Opening a letter marks it read in the client's own record (`0x8E2CD8`), but `0x4821` zeroes all
+four category counters and the lists are rebuilt from the `0x4822` entries that follow, so an
+unrecorded read comes back as new. Observed directly: open, log out, log in, still "new". There is
+no "mark as read" command — opening is the only signal, which is why `0x4840` has to persist it.
+
+The same argument applies to deletion, which has **no wire representation at all**: the 266-byte
+entry is fully accounted for without a deleted flag, and no mailbox command carries one. A letter
+is deleted by not being sent next time the list is built — so "deleted by the recipient but still
+in the sender's Sent list" exists only in server storage.
+
+### Re-send is a new letter
+
+The client's "re-send" on an existing letter emits a plain 967-byte `0x4800`. There is no edit or
+update command anywhere in the flow, and the second letter arrived as a second row.
+
+## 0x4400 — in-game chat, decoded live 2026-07-26
+
+Typing in the in-game message box sends `0x4400`, 129 bytes, and nothing in the server answered
+it — the only `No handler` line in a full session across all six servers. Four samples, typed in a
+GAME lobby, trailing NUL padding elided:
+
+| typed | payload head | reading |
+| --- | --- | --- |
+| `hi` | `00 30 68 69 00` | channel 0, `'0'`, `"hi"` |
+| `hello` | `00 30 68 65 6c 6c 6f 00` | channel 0, `'0'`, `"hello"` |
+| `/team team` | `01 31 74 65 61 6d 00` | channel 1, `'1'`, `"team"` |
+| `/all all` | `00 30 61 6c 6c 00` | channel 0, `'0'`, `"all"` |
+
+Layout: `u8 channel` (0 = all, 1 = team), then the 128-byte blob the ELF could only see as an
+opaque copy, which is one ASCII digit followed by the NUL-terminated message text, zero-padded to
+width. Full field notes in `dev/proto/blanks/inbound/mgo2_cmd_4400_c2s.ksy`.
+
+### The `/all` and `/team` prefixes never reach the wire
+
+`/all all` arrived as `"all"` and `/team team` as `"team"`. The client parses its own command word,
+sets the channel byte from it, and sends only the body. A server that tries to parse a leading
+`/all` out of the text field will be looking for something that is not there.
+
+### The ELF's "not a string" inference was wrong
+
+`mgo2_cmd_4400_c2s.ksy` argued from the builder's missing length check (`0xD52D90` copies 128 bytes
+unconditionally, unlike `0x43C0`'s length-checked comment field) that the payload must be a
+fixed-size record rather than a string. It is a string. The caller pre-pads the buffer to 128 bytes,
+so the builder has nothing left to check — absence of a length check at the send site says nothing
+about whether the content is text.
+
+### The second byte is the real channel, and the first is only a coarse flag
+
+Byte `0x01` was `0x30 + byte 0x00` in 4 of 4 captures, recorded at the time as a tracking
+relationship pending a divergence test. **The ELF supplied the divergence without an experiment
+[2026-07-26].** The send path builds four channel digits, `'0'` to `'3'`, and sets the leading
+`kind` byte to `0` for digits 0, 2 and 3 and to `1` for digit 1 (`0xCA0A70`, `0xCA0B30`-`0xCA0B48`).
+So:
+
+- **the ASCII digit carries the channel**, and the receiving client computes it as `digit - 0x30`
+  (`0xC9FF94`);
+- **`kind` is a coarse public/team flag only**, and the two disagree for channels 2 and 3.
+
+Our four captures only exercised channels 0 and 1, where they happen to agree — which is exactly
+how a tracking relationship turns out to be a coincidence of the sample. Neither byte may be
+derived from the other, and a relay must echo the digit the sender sent.
+
+Channel 3 is not a game channel at all: it resolves speakers against a server-supplied table at
+`netctx+0xD928` (`0xD491F8`, entries stride `0x1C` from `+0x17C`) instead of the game roster
+(`0xCA00CC`-`0xCA0168`). Clan or friends is the obvious guess; [UNKNOWN] which, and untested.
+
+### A missing chat reply does not stall immediately
+
+The message silently vanished and the session carried on (`0x4398` two seconds later), so the
+absent `0x4401` is a latent `FFFFFF60`, not an immediate one — some UI path waits on it and the
+send path does not. Which path is [UNKNOWN].
+
+### The server must fan 0x4401 out to every player, sender included — settled from the ELF
+
+Traced 2026-07-26 and **not ambiguous**. Three findings, each read from the disassembly:
+
+- **There is no local echo.** The `0x4400` caller falls straight into its epilogue at `0xCA0A98`
+  after `bl 0xD52CEC` and never touches the display record. The sender's own line can only arrive
+  as an inbound `0x4401` — which is exactly what we saw live, four messages typed and none
+  displayed.
+- **`0x4401`'s parser is the only producer of the display fields in the whole binary**
+  (`0xD52C84`, `0xD52C98`, `0xD52C9C`). Nothing in the P2P/session code writes them, so there is no
+  second route by which another player's text could reach the screen.
+- **The `u32` is the speaker's character id**, matched against all 24 roster slots at `0xC9FFD8`
+  (`entry+0x60`, populated from the peer-join stream at `0x276660`/`0x27687C`) to attribute the
+  line. It is the same value the server put at offset `0x000` of that speaker's `0x4101`
+  (`netctx+0x57D8`, written by the `0x4101` parser at `0xD3C160`). Plain big-endian binary, not
+  ASCII decimal. If it were only a self-echo the client would not need the scan — it already knows
+  its own slot (`0x26E980`).
+
+A sanitising/filtering server is still possible on top of this — the client displays whatever text
+it is given — but filtering cannot be the *only* mechanism, because other players' text has nowhere
+else to come from.
+
+**Field offsets corrected.** The earlier trace recorded these as `ctx+0x14C8/0x14CC/0x14D0`. The
+parser does `addis r9,r28,1` at `0xD52C74` first, so they are `+0x114C8`, `+0x114CC` and `+0x114D0`
+on the global net-session object (`0x2810E0`). Searching for the un-adjusted offsets finds only
+unrelated objects, which is why the consumers were not found before. The three fields are one
+record — `{u8 flag; u32 speaker; char text[129]}` — reset together by `0xD34304`, consumed by a
+read-and-clear at `0xD33FF4`.
+
+**UI event `0x30` carries no independent meaning.** `0xD33CD8` is a generic "command N arrived"
+notifier with a callback table at `netctx+0x11388 + 4*id`; event `0x30` is fired only by the
+`0x4401` parser (`0xD52CB0`) and `0x31` only by `0x4442`'s (`0xD52900`). The `0x31` branch
+(`0xCA0060`) is the error-ish shape — a canned system line from two string ids, touching none of
+the three fields — which is what a "request completed" notification looks like here, and `0x30` is
+not that.
+
+### Wrong speaker ids degrade to unattributed lines, not errors
+
+The parser validates nothing beyond the reads succeeding, and the consumer displays the text
+whether or not the `u32` matches a roster slot — unmatched leaves the slot at `0xFF`. So a wrong id
+looks like a *rendering* bug, not a protocol failure, and will not stall the client.
+
+This matters for us specifically: `roster_entry+0x60` is populated by the in-game session
+peer-join stream (`0x276660`), not by any TCP command. It is the first word of the 20-byte peer
+descriptor the port check feeds — layout and addresses in `dev/docs/STUN.md` "Where the checked
+address actually goes". If our server does not drive that path so
+each entry holds the peer's `0x4101` character id, chat text will appear with no name attached.
+Untested.
+
+### Chat served and confirmed live — 2026-07-26
+
+`0x4400`/`0x4401` implemented and tested with two clients in a Combat Training lobby. Confirmed:
+
+- **The fan-out design is right.** Every message logged `delivered to 2 of 2 players in the game`,
+  with two different characters (1 and 3) sending, and the messages rendered.
+- **The `u32` is the speaker's character id — now tier 2, not just tier 1.** Lines render *with the
+  speaker's name attached*, which is only possible if the id matched a roster slot at `0xC9FFD8`.
+  That also retires the risk flagged when this was implemented: `roster_entry+0x60` is populated
+  under our deployment, so we do drive whatever fills it. Untested whether that holds in a real
+  game as opposed to training.
+- **The channel digit and `kind` pair as the ELF said.** The handler logs a warning on any
+  combination outside `0/0, 1/1, 0/2, 0/3`, and across all four sends it never fired.
+
+Open, and the cheapest experiment outstanding:
+
+- **Team chat (channel 1) was delivered to both clients, but reportedly only the sender saw it.**
+  The sender was the instructor, so this is not conclusive — the second player was never asked. If
+  the second player genuinely cannot see it, the client filters team chat by team membership
+  locally, our whole-game over-delivery is harmless, and persisting the `0x4440` team byte is
+  cosmetic rather than required. If they *can* see it, team scoping has to be enforced server-side
+  and the team byte must be persisted first. One observation from a second player decides it; do
+  not implement team scoping before asking.
+
+Note the server relays message text verbatim — no word filter. The retail game had one, so any
+filtering here is operator policy, and the client will display whatever it is handed.

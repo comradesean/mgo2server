@@ -23,4 +23,15 @@ seq:
   - id: result
     type: u4
     doc: |
-      Result code. 0 for success. [CONFIRMED by PROTOCOL.md; ELF 0xD538F4]
+      Result code. **0 for success, and a nonzero value fails the whole list.**
+      [CONFIRMED by PROTOCOL.md; ELF 0xD538F4; live 2026-07-26]
+
+      This packet is the list's opening handshake, not a formality. `0xD538CC` requires the
+      in-flight flag at `mailBlock+0x1DBD0` to be **zero** on entry, then zeroes all four category
+      counters (`0xD538D4`-`0xD538E0`) and, on result 0, sets that flag to 0xFF (`0xD53990`).
+      `0x4823` then requires the flag to be **nonzero** (`0xD52FCC`, else -73) and clears it. So a
+      nonzero result here leaves the flag clear and makes the following `0x4823` fail too.
+
+      Because the counters are zeroed here, the client's lists are rebuilt entirely from the
+      `0x4822` entries that follow — which is why a letter is "deleted" or "unread" purely by what
+      the server chooses to send. It keeps no list state across a refresh.
