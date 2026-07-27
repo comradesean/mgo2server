@@ -170,7 +170,13 @@ seq:
       login, which is what "Instructor name cannot be erased once saved" requires — the client's own
       copy at `profile+0x32F8` is RAM only and is never sent back to us.
 
-      [INFERRED that the field is an id. PROVED that it is peer-visible: stored verbatim, copied to
-      the join announcement at `0x8842AC`, broadcast as P2P message 36. A peer-visible identity is
-      what an in-match "instructor" tag would need, and the captured `0x00A7000D` looks like an id
-      rather than a flag. Untested: whether the tag renders, and whether the id namespace is ours.]
+      **[CONFIRMED 2026-07-27] The value is the instructor's character id, in our id namespace.**
+      Live in a team deathmatch: a student carrying saved instructor id 1 saw the instructor badge
+      drawn next to that player's name and nobody else's, so the receiving client resolves the
+      announced id against the players present. Route: stored verbatim at `profile+0x32F8`, copied
+      into the join announcement at `0x8842AC`, broadcast as P2P message 36 — which is why the badge
+      shows in ordinary matches and not only in training lobbies.
+
+      This retires the last open question on the field, and explains the captured `0x00A7000D`: it
+      was a retail character id belonging to whoever's session that fixture came from — which is
+      also why echoing it as a constant made every character claim an instructor.

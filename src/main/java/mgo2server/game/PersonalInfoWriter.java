@@ -85,13 +85,15 @@ public final class PersonalInfoWriter {
 	 *     recognition prompt for them from that point on, which is what "cannot be erased once
 	 *     saved" means from the server's side.
 	 *     <p>
-	 *     [INFERRED] That the field holds the instructor's <em>character id</em> is the working
-	 *     hypothesis, not a proven encoding. What is proven: the value is stored verbatim at
-	 *     {@code profile+0x32F8}, copied into the join announcement by {@code 0x8842AC}, and sent to
-	 *     every peer as P2P message 36 — a peer-visible identity, which is what an "instructor" tag
-	 *     on another player would need. The one captured value, {@code 0x00A7000D}, is consistent
-	 *     with an id and inconsistent with a flag. If the tag renders wrongly, this is the line to
-	 *     change; the field is otherwise inert to us.
+	 *     [CONFIRMED 2026-07-27] The field holds the instructor's <b>character id</b>, in our own id
+	 *     namespace. Proven in a live team deathmatch: a student who had saved instructor id 1 saw
+	 *     the instructor badge rendered next to <em>that</em> player's name and no one else's, so the
+	 *     receiving client resolves the announced value against the players in the match. The route
+	 *     is {@code profile+0x32F8} -> join announcement ({@code 0x8842AC}) -> P2P message 36, which
+	 *     is why the badge appears in ordinary games and not only in training.
+	 *     <p>
+	 *     That also explains the captured {@code 0x00A7000D}: a retail character id, belonging to
+	 *     whoever's session was recorded.
 	 */
 	public static void write(ByteBuf buffer, Chara chara, CharaAppearance a, EquippedSkills skills,
 			int savedInstructor) {
