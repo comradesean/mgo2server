@@ -384,10 +384,10 @@ public class ClanGameController implements IGameController {
 	 * <b>[ELF] The sentence we wanted cannot be shown, and the obvious guess was wrong.</b>
 	 * <p>
 	 * The client carries <em>"A fixed amount of time must pass in order to apply to join a
-	 * clan.\nUnable to apply to join clan."</em> (table entry 6458, string 24137). It is
-	 * unreachable. {@code li r3,6458} does not occur anywhere in the binary, and the {@code 0x4b43}
-	 * error block at {@code 0xA7E43C} — which is <em>total</em>, every code lands somewhere — never
-	 * produces it:
+	 * clan.\nUnable to apply to join clan."</em> (dialogId 6458, string 24137). <b>No result code
+	 * we can send will show it.</b> {@code li r3,6458} — the dialogId load every error path goes
+	 * through — occurs nowhere in the binary, and the {@code 0x4b43} error block at
+	 * {@code 0xA7E43C} is <em>total</em>, so every code lands on one of these five:
 	 * <pre>
 	 *   -1217 -> 6457  "This clan is already full."
 	 *   -1201 -> 6459  "You are already a member of another clan."
@@ -401,9 +401,15 @@ public class ClanGameController implements IGameController {
 	 * the same failure the emblem refusal made three times before it was right.
 	 * <p>
 	 * So this deliberately takes the <b>default path</b>. "Unable to apply to join clan." is vague,
-	 * but it is true, and vague-and-true beats specific-and-false. Four more sentences on this
-	 * screen are unreachable the same way (6454, 6455, 6456, 6460), including the Block List one —
-	 * so the generic refusal is the client's normal answer here, not a degraded one.
+	 * but it is true, and vague-and-true beats specific-and-false. Four more dialogIds on this
+	 * screen are absent from the result-code path the same way (6454, 6455, 6456, 6460), including
+	 * the Block List one — so the generic refusal is the client's normal answer here, not a
+	 * degraded one.
+	 * <p>
+	 * <b>Scope of that elimination.</b> It covers the result-code path and only that path. 6458 is
+	 * installed as a screen-level message id by a struct initializer at {@code 0x756438} and
+	 * {@code 0x758318}, and whether any consumer there can raise it — a client-side pre-check, some
+	 * other display route — was never traced. If a way is found, this constant is what changes.
 	 */
 	private static final int APPLY_TOO_SOON = -1219;
 

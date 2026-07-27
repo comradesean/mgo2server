@@ -90,16 +90,20 @@ catch-all, so every result code produces a sentence.
 | `-160` | 24107 | A network server error has occurred.\nUnable to apply to join clan. |
 | _(any other)_ | 24101 | Unable to apply to join clan. |
 
-**Five of this screen's sentences are unreachable.** Entries 6454, 6455, 6456, 6458 and 6460 are
-never loaded into `r3` anywhere in the binary — including *"A fixed amount of time must pass in
+**Five of this screen's sentences cannot be reached through a result code.** DialogIds 6454,
+6455, 6456, 6458 and 6460 are never loaded into `r3` anywhere in the binary — including *"A fixed amount of time must pass in
 order to apply to join a clan."* (6458) and *"You are on the clan leader's Block List."* (6454). No
 result code produces them, so a server-side join cooldown or block-list refusal has to settle for
 the generic 24101. Carrying the text is not the same as being able to show it; check this table
 before designing a refusal around a sentence you found in a string dump.
 
-They are not entirely dead: `li r22,6458` appears at `0x756438` and `0x758318` inside a large
-per-screen struct initializer that installs whole families of dialogIds. Whether any client-side
-pre-check can raise one was not traced.
+Note the scope of that claim, because it is narrower than it first reads: it is about the
+**result-code path**, which is the only path this server controls. It is not a proof that the
+sentences can never appear. `li r22,6458` appears at `0x756438` and `0x758318` inside a large
+per-screen struct initializer that installs whole families of dialogIds, so 6458 *is* installed
+somewhere as a screen-level message id. Whether a client-side pre-check or some other display
+route can raise it was not traced, and until it is, "the server cannot show this" is the honest
+statement rather than "the client cannot show this".
 
 Why the generator missed this block, when it read its neighbours: `CODES` is hand-maintained from
 reading `cmpwi` chains, and this block is only eight instructions long with just one `li` inside
