@@ -82,46 +82,53 @@ variables moved at once, the same mistake the `0x4b81` id-versus-name confusion 
 `0x4b21` is the clan-affiliation view and `0x4b81` the view of a clan you are not in; the roster is
 reached from the former, so `0x4b21` is the likely one. Testable by reverting either alone.
 
-## A clan leader's emblem does not render in game (2026-07-27, OPEN)
+## A clan leader's emblem in game — same missing field as the badge (2026-07-27, FIXED)
 
-Three clients in one match. Sean and poop in clan 2, which has an emblem on display; rawr in no
-clan. **poop's emblem rendered on every screen; Sean's rendered on none — including Sean's own.**
+**Symptom.** Three clients, one match. Sean and poop in clan 2 with an emblem on display; rawr in
+no clan. poop's emblem rendered on every screen and Sean's on none, including Sean's own. The
+server was verified to be sending both identical clan data in `0x4122` — same clan id, same
+`emblem_flag=03`, same 768 bytes.
 
-The server was verified to be sending both of them identical clan data in `0x4122`, read out of the
-live log:
+**Confirmed by role swap.** Leadership was transferred from Sean to poop and the symptom went with
+the role: Sean's emblem began rendering, poop's stopped. That looked like proof the membership
+state was the discriminator.
 
-| character | state (wire 0x14) | clan id | emblem flag (wire 0xf0) |
-| --- | --- | --- | --- |
-| Sean | `02` leader | 2 | `03` |
-| poop | `01` member | 2 | `03` |
-| rawr | `63` (99) none | 0 | `00` |
+**It was not the state.** Two independent ELF passes established that, and both hold:
 
-Same clan, same 768 bytes, so the emblem data cannot be the variable. The only difference is the
-membership state byte.
+- The join-announcement packer at `0x88407C` uses the state only as a guard on the clan id, with
+  the ordinary `state - 1 <= 1` idiom that accepts 1 and 2 alike. **The state byte never travels to
+  peers at all.** All 15 readers of `profile+6837` were enumerated; the one asymmetric test
+  (`0x8E1D48`, `cmpwi r3,2`) is leader-*enabling* and cannot suppress anything.
+- Nor is it the privilege word. `0xAB0048` masks bit `0x100` only when the state switch already
+  selected leader, and with privilege `0` both branches proceed identically. (That does explain the
+  old `0xFFFF` experiment: a nonzero privilege makes the widget bail early. And it confirms `0x100`
+  is the leader bit.)
 
-**Confirmed by swapping the roles.** Leadership was transferred from Sean to poop, and the
-behaviour followed the *role*, not the person: Sean's emblem began rendering and poop's stopped.
-So a member (state 1) renders and a leader (state 2) does not.
+**The actual cause: the leader's character id was never sent.** `T+0x18` of the clan-info packets
+carries the leader's character id; we sent the founding date in `0x4b81` and zeros in `0x4b21`.
+Supplying it fixed the in-game emblem for the leader and the Check Roster badge **in the same
+change** — one missing field, two symptoms that looked unrelated.
 
-Where it fails is specific — for the leader:
+That also dissolves the role-swap result, which was real but misleading. The leader is the
+character whose id should match the clan's leader id; with no id to match, the leader is precisely
+the player whose identity check fails. The symptom tracked the role because the *role* is what the
+missing field describes — not because the state byte was being tested.
 
-- **over-character nameplate**: an empty placeholder, space reserved but blank
-- **lobby player list**: no emblem at all
-- **own HUD, top left, under the name**: renders correctly
+### What this cost, and the rule
 
-The last one is the informative half. It says the client *has* the image — it is drawn from the
-local profile buffer — while the two views fed by the join announcement (`0x8842AC` ->
-P2P message 36 -> peer record, emblem at `+4`, clan id at `+8`) do not draw it. So the failure is
-on the announcement path, and something there discriminates leader from member.
+Two ELF investigations, both correct, both answering "is it the state or the privilege word" — a
+question framed from the role-swap result. Neither was asked "what identifies the leader", because
+the swap had already convinced us the answer lay in how leader-ness was *tested* rather than in
+whether it was *transmitted*.
 
-That is unexpected, because the client's own idiom for "is in a clan" is `state - 1 <= 1`, which
-accepts 1 and 2 alike — it is what the clan-info gate at `0x905A7C` uses. Whatever the nameplate
-path uses, it is not that.
+A reproducible experiment tells you which variable moves the symptom. It does not tell you why, and
+it should not be allowed to narrow the search to mechanisms that treat that variable as an input.
+Here the variable was an input to nothing; it was a label for the record we had failed to complete.
 
-Not yet known: the exact gate. Under investigation in the binary. Do **not** work around this by
-sending state 1 for leaders until it is understood — state 2 is what drives the leader-only menu
-entries, and trading a missing emblem for a missing Disband button is not a fix.
+### Still unverified
 
+Which of `0x4b21` and `0x4b81` supplies the id — both changed in one commit. `0x4b21` is the
+likelier, being the clan-affiliation view the roster is reached from.
 
 ## Online News, and padding that was not inert (2026-07-27)
 
