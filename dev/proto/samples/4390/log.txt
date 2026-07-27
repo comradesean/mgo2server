@@ -3751,3 +3751,30 @@
   experience_total          = 428
   detail_present            = 1
   B24 tdm_consecutive_survivals= 1
+=== #511  2026-07-27 22:35:23  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 511_223523_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 629
+  experience_total          = 49225
+  detail_present            = 1
+  B24 tdm_consecutive_survivals= 2
+=== #512  2026-07-27 22:35:23  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 512_223523_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 629
+  experience_total          = 500
+  detail_present            = 1
+  B24 tdm_consecutive_survivals= 2
+=== #513  2026-07-27 22:35:23  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 513_223523_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 629
+  experience_total          = 428
+  detail_present            = 1
+  B24 tdm_consecutive_survivals= 2
