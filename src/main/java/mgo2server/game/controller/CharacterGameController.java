@@ -115,14 +115,28 @@ public class CharacterGameController implements IGameController {
 		// block was three bytes short at the same time. The two errors cancelled for a
 		// single-character account and stopped cancelling the moment a second character existed,
 		// which is what corrupted the character-select screen.
+		// The selected slot is the character this account last chose — NOT always the first.
+		//
+		// Hardcoding slot 0 quietly undid every selection. The client sends 0x3103 with the slot it
+		// picked, we record it, and then the client re-fetches this list and takes its selection
+		// back from this header: with slot 0 and the first character's name in it, choosing the
+		// second character and entering the lobby logged the player in as the first.
+		var selectedSlot = 0;
+		for (var i = 0; i < characters.size(); i++) {
+			if (account.getCurrentCharaId() != null
+					&& characters.get(i).getId() == account.getCurrentCharaId()) {
+				selectedSlot = i;
+				break;
+			}
+		}
 		var selectedName = characters.isEmpty() ? ""
-			: displayName(characters.get(0), account.getMainCharaId());
+			: displayName(characters.get(selectedSlot), account.getMainCharaId());
 
 		var buffer = ctx.buffer(LIST_PAYLOAD_SIZE);
 		buffer.writeInt(GameError.NONE.result())
 			.writeByte(account.getSlots())
 			.writeByte(characters.size())
-			.writeZero(1);
+			.writeByte(selectedSlot);
 		BufferUtil.writeString(buffer, selectedName, StandardCharsets.ISO_8859_1, NAME_LENGTH);
 
 		for (var i = 0; i < characters.size(); i++) {
