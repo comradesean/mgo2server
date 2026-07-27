@@ -28,6 +28,31 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
+## Online News, and padding that was not inert (2026-07-27)
+
+The first time anyone watched this client render news, it showed **10 pages from 2 rows**, real
+items on 1 and 8, the rest blank and dated 12-31-1969. The cause was our own 886-byte NUL padding:
+the `0x200a` parser loops inside a packet until the payload is drained, so the padding was parsed
+as further records at 138 bytes each. Full mechanism in `PROTOCOL.md` under `0x2008`.
+
+Three things worth keeping from how this went:
+
+- **The prediction was exact before the fix.** Bodies of 19 and 134 characters give 7 and 6
+  entries, 13 capped at 10, second real item at position 8. Being able to predict the *wrong*
+  behaviour to the page is what made the diagnosis safe to act on without a second experiment.
+- **A two-row test settled it in one round.** One row was ambiguous between "phantoms scale per
+  item", "fixed table size" and "a count field we send as zero". Adding a second row with a
+  deliberately different body length discriminated all three at once, because the phantom run
+  length is a function of body length.
+- **The falsified claim was a non-sequitur, not a wrong observation.** `PROTOCOL.md` said the body
+  terminates at its first NUL — correct — and concluded the padding was therefore harmless. The
+  conclusion does not follow from the premise, and it carried the note "no client has been
+  observed rendering a news item" the whole time. An untested inference sitting next to an
+  admission that it was untested still read as settled.
+
+Confirmed fixed: 2 pages, both real.
+
+
 ## The clan emblem on the connect path (2026-07-27)
 
 Setting `0x4122`'s emblem flag (wire `0xf0` -> `profile+6872`) to 3 makes the client fetch the
