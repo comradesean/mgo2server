@@ -105,6 +105,7 @@ public class CharacterConnectController implements IGameController {
 	/** 32 blocked ids follow, up to here; the remaining 25 bytes are the tail, zeroed. */
 	private static final int BLOCKED_END = 0x129;
 
+
 	/**
 	 * Four u16 values the client stores from the header (0x16AE, 0x0338, 0x013E, 0x0150).
 	 * Their meaning is undocumented; they are reproduced from the original server byte for

@@ -54,13 +54,13 @@ public class GameServerFactory {
 				controllers.add(new GameListGameController(services.getGameService(), lobbyId,
 					lobbySubtype));
 				controllers.add(new ChatGameController(services.getGameService()));
-				controllers.add(new MessageGameController(services.getCharacterService()));
+				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),
 					services.getGameService()));
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
-					services.getAccountService()));
+					services.getClanService(), services.getAccountService()));
 				controllers.add(new ClanGameController(services.getClanService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), services.getClanService(), lobbyId, lobbySubtype));

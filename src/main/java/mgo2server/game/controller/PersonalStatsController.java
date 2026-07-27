@@ -3,6 +3,7 @@ package mgo2server.game.controller;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
@@ -87,11 +88,14 @@ public class PersonalStatsController implements IGameController {
 
 	private final CharacterService characterService;
 
+	private final ClanService clanService;
+
 	private final AccountService accountService;
 
-	public PersonalStatsController(CharacterService characterService,
+	public PersonalStatsController(CharacterService characterService, ClanService clanService,
 			AccountService accountService) {
 		this.characterService = characterService;
+		this.clanService = clanService;
 		this.accountService = accountService;
 	}
 
@@ -145,11 +149,17 @@ public class PersonalStatsController implements IGameController {
 		// small values, and each string field an ASCII marker, so every on-screen value or text
 		// names its wire field. The comment slot carries the character's real comment.
 		info.writeByte(42);            // u8 @301 → T+0x3329
-		info.writeInt(4001);           // u32 → T+0x1AA0
-		BufferUtil.writeString(info, "FP-STR-A", StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		info.writeByte(43);            // u8 → T+0x1AB5
+		// The clan record — why Personal Data showed no clan. T+0x1AA0/0x1AA4/0x1AB5 are the same
+		// {u32 id, name[16], u8 status} shape as the session clan record at session_ctx+0x1AA0 and
+		// as 0x4122's clan block, and the 12 u16s after it are that block's privilege word and its
+		// eleven unread siblings. The 0x4103 spec recorded these as unknown, noting "NOT the clan
+		// field — clan stayed blank": true only because they had never carried a real clan.
+		var clan = clanService.membershipOf(charaId);
+		info.writeInt((int) clan.id());  // u32 → T+0x1AA0
+		BufferUtil.writeString(info, clan.name(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		info.writeByte(clan.state());    // u8 → T+0x1AB5
 		for (var i = 0; i < 12; i++) {
-			info.writeShort(5101 + i); // 12×u16 → T+0x1AB6..
+			info.writeShort(0);        // 12×u16 → T+0x1AB6.. — the privilege word must stay 0
 		}
 		info.writeInt(4002);           // u32 → T+0x1AD0
 		for (var i = 0; i < 9; i++) {

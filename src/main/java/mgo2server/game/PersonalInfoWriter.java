@@ -107,8 +107,8 @@ public final class PersonalInfoWriter {
 		buffer.writeInt((int) clan.id());
 		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1, CLAN_NAME_LENGTH);
 
-		// State, then the privilege mask and its eleven unread siblings. The mask stays zero — see
-		// ClanGameController.LEADER_PRIVILEGES for what happened when it did not.
+		// State, then the privilege/notification word and its eleven unread siblings. The word stays
+		// zero — see ClanGameController.LEADER_PRIVILEGES for both experiments that proved it must.
 		buffer.writeByte(clan.state()).writeZero(CLAN_BLOCK_BYTES);
 		buffer.writeInt((int) Instant.now().getEpochSecond());
 

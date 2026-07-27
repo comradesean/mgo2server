@@ -1,6 +1,7 @@
 package mgo2server.game.controller;
 
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.common.BufferUtil;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.packet.GamePacket;
@@ -34,8 +35,11 @@ public class MessageGameController implements IGameController {
 
 	private final CharacterService characterService;
 
-	public MessageGameController(CharacterService characterService) {
+	private final ClanService clanService;
+
+	public MessageGameController(CharacterService characterService, ClanService clanService) {
 		this.characterService = characterService;
+		this.clanService = clanService;
 	}
 
 	public static final int GET_MESSAGES = 0x4820;
@@ -308,6 +312,35 @@ public class MessageGameController implements IGameController {
 		sent.forEach(letter -> entries.add(new Entry(CATEGORY_SENT, letter)));
 
 		ctx.write(GET_MESSAGES_START, GameError.NONE);
+
+		// Mailbox 0x10 is the clan's pending applications, and it is where a leader approves them:
+		// an application is a MESSAGE, not a roster row, which is why nothing ever appeared under
+		// Check Roster however the records were arranged. The sender name is the applicant, and the
+		// leader acts on the entry with 0x4b30 (accept) or 0x4b32 (decline).
+		if (mailbox == CLAN_APPLICATIONS && charaId != null) {
+			var membership = clanService.membershipOf(charaId);
+			var applications = membership.state() == ClanService.STATE_LEADER
+				? clanService.applicationsFor(membership.id())
+				: java.util.List.<ClanService.Applicant>of();
+			if (!applications.isEmpty()) {
+				var buffer = ctx.buffer(applications.size() * ENTRY_SIZE);
+				for (var i = 0; i < applications.size(); i++) {
+					var applicant = applications.get(i);
+					buffer.writeByte(0);
+					buffer.writeByte(i);
+					buffer.writeByte(ENTRY_UNKNOWN_02);
+					BufferUtil.writeString(buffer, applicant.name(), StandardCharsets.ISO_8859_1,
+						SUBJECT_LENGTH);
+					BufferUtil.writeString(buffer, "", StandardCharsets.ISO_8859_1, SUBJECT_LENGTH);
+					buffer.writeInt((int) applicant.appliedAt());
+					buffer.writeZero(2);
+					buffer.writeByte(0);
+				}
+				ctx.write(new GamePacket(GET_MESSAGES_DATA, buffer));
+				logger.info("Clan {}: {} pending application(s) listed for character {}.",
+					membership.id(), applications.size(), charaId);
+			}
+		}
 
 		for (var offset = 0; offset < entries.size(); offset += ENTRIES_PER_PACKET) {
 			var batch = entries.subList(offset,

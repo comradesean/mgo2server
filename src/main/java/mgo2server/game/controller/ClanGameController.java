@@ -106,8 +106,105 @@ public class ClanGameController implements IGameController {
 	/** The opaque block of {@code 0x4b49}, whose length is the only thing the parser checks. */
 	private static final int CLAN_DATA_BLOCK = 768;
 
-	/** 768 / 16 — how many 16-byte names the block holds if it is a name table. */
-	private static final int APPLICANT_NAME_SLOTS = 48;
+	/**
+	 * Cancel Join / leave, no payload ({@code 0x4b40}). Identified live 2026-07-27: it is what the
+	 * pending-applicant screen's "Cancel Join" button sends, and answering it with a bare result
+	 * left the application in place.
+	 */
+	public static final int WITHDRAW = 0x4b40;
+
+	private static final int WITHDRAW_RESULT = 0x4b41;
+
+	/**
+	 * Clan search: {@code {u8 exact_only, u8 case_sensitive, name[16]}} — the two bytes are the
+	 * screen's own toggles, "Partial and Exact Matches" vs "Exact Matches Only" and "Case Sensitive"
+	 * vs "Case Insensitive".
+	 */
+	public static final int CLAN_SEARCH = 0x4b90;
+
+	private static final int CLAN_SEARCH_START = 0x4b91;
+
+	private static final int CLAN_SEARCH_ENTRIES = 0x4b92;
+
+	private static final int CLAN_SEARCH_END = 0x4b93;
+
+	/**
+	 * One search result: {@code u32 id, name[16], u32 leader id, name[16], u32} — <b>44 bytes</b>.
+	 * <p>
+	 * Note this differs from the 48-byte record another server writes, which adds a flag byte and
+	 * three pad bytes before the trailing u32. Our parser reads 44 and the id is the ELF's, so 44 it
+	 * is; the two builds differ.
+	 */
+	private static final int SEARCH_RECORD_SIZE = 44;
+
+	/** Disband the clan: no payload, leader only. */
+	public static final int DISBAND = 0x4b04;
+
+	private static final int DISBAND_RESULT = 0x4b05;
+
+	/** Banish a member: {@code u32 target character id}. Leader only. */
+	public static final int BANISH = 0x4b36;
+
+	private static final int BANISH_RESULT = 0x4b37;
+
+	/** Hand leadership to another member: {@code u32 target character id}. */
+	public static final int TRANSFER_LEADERSHIP = 0x4b60;
+
+	private static final int TRANSFER_LEADERSHIP_RESULT = 0x4b61;
+
+	/** Assign emblem-editing rights: {@code u32 target character id}. */
+	public static final int SET_EMBLEM_EDITOR = 0x4b62;
+
+	private static final int SET_EMBLEM_EDITOR_RESULT = 0x4b63;
+
+	/** Accept a join application: {@code u32 target character id}. Leader only. */
+	public static final int ACCEPT_JOIN = 0x4b30;
+
+	private static final int ACCEPT_JOIN_RESULT = 0x4b31;
+
+	/** Decline a join application, same payload. */
+	public static final int DECLINE_JOIN = 0x4b32;
+
+	private static final int DECLINE_JOIN_RESULT = 0x4b33;
+
+	/** The emblem display fetch: {@code u32 clan id} in, result + 768 bytes out. */
+	public static final int CLAN_EMBLEM = 0x4b4a;
+
+	private static final int CLAN_EMBLEM_RESULT = 0x4b4b;
+
+	/** The upload mode that means "put this emblem on display" — the one the client commits. */
+	private static final int EMBLEM_ON_DISPLAY = 3;
+
+	/**
+	 * The ONLY safe way to refuse an emblem upload: {@code -1207}.
+	 * <p>
+	 * {@code 0x4b51}'s result is routed at {@code 0xAD3E20}. {@code -1207} and {@code -1202} both
+	 * fall through to {@code 0xAD3EA8}, which raises UI event 2 — an error dialog. <b>Every other
+	 * non-zero value takes {@code 0xAD3ED0}, which memsets the client's 768-byte emblem buffer to
+	 * zero and raises event 13</b>, destroying the emblem the player is working on. So a generic
+	 * error code here is not merely unhelpful, it is destructive.
+	 */
+	private static final int EMBLEM_REFUSED = -1207;
+
+	/**
+	 * How long a clan must wait before putting another emblem on display.
+	 * <p>
+	 * <b>Operator policy, not protocol.</b> Emblem Edit warns about a spam filter and the client
+	 * carries the countdown string ("You must wait another %d hours %d minutes", lobby 17247), but
+	 * nothing client-side enforces it on this build: the emblem can be re-displayed immediately, and
+	 * the one timestamp-shaped field the server sends that could have driven it, {@code 0x4b21}'s
+	 * {@code T+0x48}, was tried and eliminated. So either the retail servers refused the upload
+	 * themselves, or the countdown is fed by something not yet found.
+	 * <p>
+	 * The interval is a guess — the client computes its own from a constant we have not located.
+	 * Override with {@code MGO2SERVER_EMBLEM_COOLDOWN_MINUTES}; {@code 0} disables it.
+	 */
+	private static final int DEFAULT_EMBLEM_COOLDOWN_MINUTES = 60;
+
+	/** The emblem upload: {@code u8 mode} then 768 bytes. */
+	public static final int UPLOAD_EMBLEM = 0x4b50;
+
+	private static final int UPLOAD_EMBLEM_RESULT = 0x4b51;
 
 	/**
 	 * The clan profile request: one u32, the clan id ({@code 0xD567F0}). Sent from Clan Affiliation.
@@ -132,6 +229,12 @@ public class ClanGameController implements IGameController {
 	 * 512-byte blob at {@code T+0x700}, and three further 16-byte names whose owners are unknown.
 	 */
 	public static final int CLAN_PROFILE_RESULT = 0x4b21;
+
+	/**
+	 * What the client's date formatter takes as "no timestamp": any negative value. It prints
+	 * {@code XXXX-XX-XX XX:XX:XX} rather than a date ({@code 0x884420} -> {@code 0x8844A0}).
+	 */
+	private static final int NO_TIMESTAMP = -1;
 
 	/** {@code 0x4b21} on success. Checked against what we write, since most of it is padding. */
 	private static final int PROFILE_SIZE = 777;
@@ -170,29 +273,23 @@ public class ClanGameController implements IGameController {
 	// The rest of the family. Every id below is answered in the shape its parser demands so no clan
 	// screen can stall; where the reply carries data we do not understand, it carries zeros rather
 	// than invented values. Sizes come from the parsers in dev/proto/blanks/outbound.
+	//
+	// There was a third table here, for requests answered with a bare success and nothing else. It
+	// stopped the screens hanging, which was worth having, but it turned "unimplemented" into
+	// "silently reports success" — banish, transfer leadership, disband and set-emblem-editor all
+	// said they worked while doing nothing. Every one of them is implemented now and the table is
+	// gone; do not reintroduce it. A command with no implementation should stall visibly, or return
+	// an error, rather than lie.
 	// ---------------------------------------------------------------------------------------------
-
-	/** Requests whose reply is a bare {@code u32} result. */
-	private static final int[][] RESULT_ONLY = {
-		{ 0x4b04, 0x4b05 },   // no payload
-		{ 0x4b30, 0x4b31 },
-		{ 0x4b32, 0x4b33 },
-		{ 0x4b36, 0x4b37 },
-		{ 0x4b50, 0x4b51 },   // 769-byte bulk block write
-		{ 0x4b60, 0x4b61 },
-		{ 0x4b62, 0x4b63 },
-	};
 
 	/** {@code {u32 result, byte[768]}}, the block opaque to the parser. */
 	private static final int[][] BLOCK_768 = {
 		{ 0x4b48, 0x4b49 },
-		{ 0x4b4a, 0x4b4b },
 		{ 0x4b4c, 0x4b4d },
 	};
 
 	/** Start/items/end triples. Items are never sent: the record layouts are not understood. */
 	private static final int[][] LIST_TRIPLES = {
-		{ 0x4b90, 0x4b91, 0x4b93 },   // 44-byte records, request names a player
 	};
 
 	/**
@@ -272,20 +369,41 @@ public class ClanGameController implements IGameController {
 	 * does for its cumulative/weekly pair; page 2 additionally zeroes all four page slots on receipt,
 	 * so it goes first.
 	 */
-	private static final int[] STAT_PAGES = { 2, 3 };
+	private static final int STAT_PAGE = 2;
+
+	/** The second half of the stats reply: {@code 0x4b72}, {@code 4 + 2 * 72 * 4} = 580 bytes. */
+	private static final int CLAN_STAT_BLOCKS = 0x4b72;
+
+	private static final int CLAN_STAT_BLOCKS_SIZE = 580;
 
 	/**
-	 * The clan privilege mask, wire {@code u16}. <b>Zero.</b>
-	 * <p>
-	 * Granting a leader all sixteen bits was tried on 2026-07-27 and <b>reverted the same minute</b>.
-	 * It did not make Apply Emblem send anything, so the mask is not that gate; and it put a "!"
-	 * badge on the clan and sent the client into a hard poll loop — {@code 0x4b46} every ~73 ms
-	 * without pause — because at least one bit means "something is pending" and nothing we serve
-	 * ever satisfies it. The whole value is OR-ed into a UI flags word at {@code 0xAB0118}, so a
-	 * blanket grant lights up states the server has no way to clear.
-	 * <p>
-	 * The lesson is narrower than "don't set the mask": <b>do not turn on unknown bits in bulk.</b>
-	 * When a bit is wanted, set that bit alone and watch for a poll loop.
+	 * The clan privilege/notification word at {@code profile+6838}. <b>Bit 8 only, and only for a
+	 * leader.</b>
+	 *
+	 * <p>[EXPERIMENT 2026-07-27] Emblem Edit offers no way to apply an emblem even though the commit
+	 * gate is satisfied — {@code 0xAD409C} tests {@code ctx+788 & 4}, which is set purely from
+	 * membership state 2, and we send that. So the missing piece is the menu row, not the
+	 * permission, and the mask is what feeds the menu: {@code 0xACF188} and {@code 0xAD26A8} pass it
+	 * verbatim to {@code 0xCFD0A0(ctx+876, 5, mask, 1)}, and {@code ctx+876} is the same widget queue
+	 * whose last item selects the upload mode at {@code 0xAD4138}.
+	 *
+	 * <p><b>Why bit 8 specifically, and why this is safe when 0xFFFF was not.</b> The clan screen
+	 * coroutine stalls on any bit it does not tolerate: {@code 0xAB0074} ands the word with
+	 * {@code -1}, or with {@code -257} when the player is the leader ({@code 0xAB004C}), and returns
+	 * without advancing its state machine if anything survives. {@code -257} is {@code ~0x0100}, so
+	 * bit 8 is the one bit a leader may hold without the screen re-entering and re-sending
+	 * {@code 0x4b46} forever — which is exactly what 0xFFFF caused. Every other bit still stalls,
+	 * and a non-leader tolerates nothing, so this stays leader-only.
+	 *
+	 * <p><b>Answered 2026-07-27: bit 8 is NOT emblem-editing rights.</b> Set on its own for a leader
+	 * it behaved exactly as the tolerance mask predicts — no stall and no poll loop, unlike 0xFFFF —
+	 * but it produced only the saluting-soldier "!" badge and no new menu row anywhere, and emblem
+	 * loading worked with or without it. So bit 8 is a pending-notification bit, the whole word is a
+	 * notification mask the client drains to zero rather than a permission mask, and <b>no privilege
+	 * bit gates applying an emblem</b>. Back to 0.
+	 *
+	 * <p>That also means the missing Apply row is not a permissions problem at all: the commit gate
+	 * ({@code 0xAD409C}) reads membership state 2 and nothing else, and we already send it.
 	 */
 	private static final int LEADER_PRIVILEGES = 0;
 
@@ -331,9 +449,6 @@ public class ClanGameController implements IGameController {
 		handlers.put(CLAN_PROFILE, this::clanProfile);
 		handlers.put(CLAN_MEMBERS, this::clanMembers);
 
-		for (var pair : RESULT_ONLY) {
-			handlers.put(pair[0], ctx -> writeResult(ctx, pair[1]));
-		}
 		for (var pair : BLOCK_768) {
 			handlers.put(pair[0], ctx -> writeBlock(ctx, pair[1]));
 		}
@@ -348,13 +463,34 @@ public class ClanGameController implements IGameController {
 		handlers.put(APPLICANTS, this::applicants);
 		handlers.put(MEMBER_ACTION, this::memberAction);
 		handlers.put(WITHDRAW, this::withdraw);
+		handlers.put(DISBAND, this::disband);
+		handlers.put(CLAN_SEARCH, this::clanSearch);
+		handlers.put(CLAN_EMBLEM, this::clanEmblem);
+		handlers.put(UPLOAD_EMBLEM, this::uploadEmblem);
+		handlers.put(ACCEPT_JOIN, ctx -> judgeApplicant(ctx, true));
+		handlers.put(DECLINE_JOIN, ctx -> judgeApplicant(ctx, false));
+		handlers.put(BANISH, ctx -> leaderAction(ctx, BANISH_RESULT, "banish",
+			(clan, target) -> clanService.banish(clan, target)));
+		handlers.put(TRANSFER_LEADERSHIP, ctx -> leaderAction(ctx, TRANSFER_LEADERSHIP_RESULT,
+			"transfer leadership to", (clan, target) -> false));
+		handlers.put(SET_EMBLEM_EDITOR, ctx -> leaderAction(ctx, SET_EMBLEM_EDITOR_RESULT,
+			"grant emblem-editing rights to", (clan, target) -> {
+				clanService.setEmblemEditor(clan, target);
+				return true;
+			}));
 		handlers.put(CLAN_STATS, ctx -> {
-			for (var page : STAT_PAGES) {
-				var buffer = ctx.buffer(CLAN_STATS_SIZE);
-				buffer.writeInt(GameError.NONE.result()).writeInt(page)
-					.writeZero(CLAN_STATS_SIZE - 2 * Integer.BYTES);
-				ctx.write(new GamePacket(CLAN_STATS_RESULT, buffer));
-			}
+			// ONE 0x4b71, then 0x4b72 — not two pages. Sending 0x4b71 twice completed the request
+			// slot on the first reply and the second arrived unexpected, which is the
+			// "unable to acquire clan information (1931:FFFFFF60)" stall on Clan Affiliation.
+			var grid = ctx.buffer(CLAN_STATS_SIZE);
+			grid.writeInt(GameError.NONE.result()).writeInt(STAT_PAGE)
+				.writeZero(CLAN_STATS_SIZE - 2 * Integer.BYTES);
+			ctx.write(new GamePacket(CLAN_STATS_RESULT, grid));
+
+			var blocks = ctx.buffer(CLAN_STAT_BLOCKS_SIZE);
+			blocks.writeInt(GameError.NONE.result())
+				.writeZero(CLAN_STAT_BLOCKS_SIZE - Integer.BYTES);
+			ctx.write(new GamePacket(CLAN_STAT_BLOCKS, blocks));
 		});
 		handlers.put(CLAN_PROFILE_PART, this::viewedClanInfo);
 		handlers.put(SET_DESCRIPTION, this::setDescription);
@@ -389,7 +525,7 @@ public class ClanGameController implements IGameController {
 			var notice = readNulTerminated(payload, NOTICE_LENGTH);
 			var membership = clanService.membershipOf(charaId);
 			if (membership.state() == ClanService.STATE_LEADER) {
-				clanService.setNotice(membership.id(), notice);
+				clanService.setNotice(membership.id(), notice, charaId);
 				logger.info("Clan {} notice set by character {}.", membership.id(), charaId);
 			}
 		}
@@ -397,45 +533,88 @@ public class ClanGameController implements IGameController {
 	}
 
 	/**
-	 * {@code {u32 result, byte[768]}}.
+	 * {@code {u32 result, byte[768]}} — the <b>clan emblem</b>.
 	 * <p>
-	 * [EXPERIMENT 2026-07-27] The block is filled with the names of the clan's <b>pending
-	 * applicants</b>, 16 bytes each, when the caller leads that clan; zeros otherwise.
+	 * {@code 0x4b49}'s block is copied straight into {@code profile+6873} (parser {@code 0xD56F24},
+	 * {@code addi r0,r27,57} off the clan record at {@code 0xD56EDC}), and {@code 0x4b4b}'s into the
+	 * profile struct for display. Neither parser looks inside: both NUL-terminate at +768 into a
+	 * 769-byte buffer, so the 768 bytes are opaque and are stored and returned verbatim.
 	 * <p>
-	 * The reasoning: the leader's client has never sent any applicant-list command, so it does not
-	 * believe there is anything to approve, and something must tell it. This block is 768 bytes —
-	 * exactly {@value #APPLICANT_NAME_SLOTS} x 16 — the parser never inspects it, and the client
-	 * NUL-terminates at +768, which the spec notes means "a C string or a table of them". A table of
-	 * 16-byte names is what an applicant list would look like. If an approve option appears, that is
-	 * confirmed; if nothing changes, the block is something else and this reverts to zeros.
+	 * This was briefly filled with pending applicant names on the theory that 768 = 48 x 16 made it
+	 * a name table. It is not — that was writing text into the client's emblem buffer.
 	 */
 	private void writeBlock(GameControllerContext ctx, int command) {
 		var account = ctx.connection().account();
 		var charaId = account != null ? account.getCurrentCharaId() : null;
 		var membership = charaId == null ? ClanService.Membership.NONE
 			: clanService.membershipOf(charaId);
+		writeEmblem(ctx, command, membership.id());
+	}
+
+	/** {@code 0x4b4a}: the display fetch, which names the clan whose emblem is wanted. */
+	private void clanEmblem(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
+		writeEmblem(ctx, CLAN_EMBLEM_RESULT, clanId);
+	}
+
+	private void writeEmblem(GameControllerContext ctx, int command, long clanId) {
+		var emblem = clanId == 0L ? java.util.Optional.<byte[]>empty()
+			: clanService.emblemOf(clanId);
 
 		var buffer = ctx.buffer(Integer.BYTES + CLAN_DATA_BLOCK);
 		buffer.writeInt(GameError.NONE.result());
+		emblem.ifPresentOrElse(
+			bytes -> buffer.writeBytes(bytes, 0, Math.min(bytes.length, CLAN_DATA_BLOCK)),
+			() -> buffer.writeZero(CLAN_DATA_BLOCK));
+		if (buffer.writerIndex() < Integer.BYTES + CLAN_DATA_BLOCK) {
+			buffer.writeZero(Integer.BYTES + CLAN_DATA_BLOCK - buffer.writerIndex());
+		}
+		ctx.write(new GamePacket(command, buffer));
+	}
 
-		var written = 0;
-		if (membership.state() == ClanService.STATE_LEADER) {
-			for (var applicant : clanService.applicantsFor(membership.id())) {
-				if (written == APPLICANT_NAME_SLOTS) {
-					break;
+	/**
+	 * The emblem upload: {@code {u8 mode, byte[768]}} ({@code 0xD5804C}, reached from the emblem
+	 * screen through task kind 25).
+	 * <p>
+	 * The mode is what the client will set its own emblem flag to — 3 is "put on display" and the
+	 * only value it post-processes; 2 and 4 also occur and are [UNKNOWN]. All three are stored, and
+	 * the mode becomes the flag we report at {@code profile+6872}, so the server and the client end
+	 * up agreeing about whether the clan has an emblem to show.
+	 * <p>
+	 * Only the leader may commit: the client already enforces it ({@code 0xAD409C} tests
+	 * {@code ctx+788 & 4}, which is set only when membership state is 2), and so do we.
+	 */
+	private void uploadEmblem(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		var payload = ctx.packet().getPayload();
+
+		if (charaId != null && payload.readableBytes() >= 1 + CLAN_DATA_BLOCK) {
+			var mode = payload.readUnsignedByte();
+			var emblem = new byte[CLAN_DATA_BLOCK];
+			payload.readBytes(emblem);
+
+			var membership = clanService.membershipOf(charaId);
+			if (membership.state() == ClanService.STATE_LEADER) {
+				var since = clanService.secondsSinceEmblem(membership.id());
+				if (mode == EMBLEM_ON_DISPLAY && since >= 0 && since < displayCooldownSeconds()) {
+					logger.info("Clan {}: emblem re-display refused, {}s of {}s cooldown remaining.",
+						membership.id(), displayCooldownSeconds() - since, displayCooldownSeconds());
+					refuseEmblem(ctx);
+					return;
 				}
-				BufferUtil.writeString(buffer, applicant.name(), StandardCharsets.ISO_8859_1,
-					CLAN_NAME_LENGTH);
-				written++;
-			}
-			if (written > 0) {
-				logger.info("Clan {}: reporting {} pending applicant(s) in the {} block.",
-					membership.id(), written, Integer.toHexString(command));
+				clanService.setEmblem(membership.id(), emblem, mode);
+				logger.info("Clan {}: emblem uploaded by character {}, mode {}.",
+					membership.id(), charaId, mode);
+			} else {
+				logger.info("Character {} tried to set a clan emblem without leading one.", charaId);
+				refuseEmblem(ctx);
+				return;
 			}
 		}
-		buffer.writeZero(CLAN_DATA_BLOCK - written * CLAN_NAME_LENGTH);
 
-		ctx.write(new GamePacket(command, buffer));
+		writeResult(ctx, UPLOAD_EMBLEM_RESULT);
 	}
 
 	/** A fixed-size reply whose body is not understood: result 0 then zeros to the parser's length. */
@@ -458,25 +637,57 @@ public class ClanGameController implements IGameController {
 	private void clanMembers(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
-		var members = clanId == 0L ? java.util.List.<ClanService.Member>of()
-			: clanService.membersOf(clanId);
+
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		var membership = charaId == null ? ClanService.Membership.NONE
+			: clanService.membershipOf(charaId);
+		var isLeader = membership.state() == ClanService.STATE_LEADER && membership.id() == clanId;
+
+		// Members and applicants go out as ONE batch, with the isMember byte set per row.
+		//
+		// Sending them as two separate 0x4b54 packets — members then applicants, which is how the
+		// list is built upstream — put both on the wire but the client rendered only the first, so
+		// the applicant simply vanished. Before that, when applicants were mixed into the members
+		// query, they appeared but as full members, because the flag was being set per batch rather
+		// than per row. One list with an honest per-row flag is the combination not yet tried.
+		var rows = new java.util.ArrayList<ClanService.Member>();
+		if (clanId != 0L) {
+			rows.addAll(clanService.membersOf(clanId));
+			if (isLeader) {
+				rows.addAll(clanService.applicantsFor(clanId));
+			}
+		}
 
 		writeResult(ctx, CLAN_MEMBERS_START);
-		if (!members.isEmpty()) {
-			// Size-driven, no leading count: the client reads records until the payload runs out.
-			var buffer = ctx.buffer(members.size() * MEMBER_RECORD_SIZE);
-			for (var member : members) {
-				var start = buffer.writerIndex();
-				buffer.writeInt((int) member.charaId());                        // +0x00
-				BufferUtil.writeString(buffer, member.name(), StandardCharsets.ISO_8859_1,
-					CLAN_NAME_LENGTH);                                          // +0x04
-				buffer.writeByte(member.state());                               // +0x15
-				buffer.writeZero(MEMBER_RECORD_SIZE - (buffer.writerIndex() - start));
-			}
-			ctx.write(new GamePacket(CLAN_MEMBERS_ENTRIES, buffer));
-		}
+		writeRoster(ctx, rows);
 		writeResult(ctx, CLAN_MEMBERS_END);
 	}
+
+	/**
+	 * One batch of 68-byte roster rows: {@code u32 id, name[16], u8 isMember, u32, u32}, then the
+	 * game-location fields (lobby id, lobby name, game id, host name, subtype) which stay zero until
+	 * we look up where a member is playing.
+	 */
+	private void writeRoster(GameControllerContext ctx, java.util.List<ClanService.Member> rows) {
+		if (rows.isEmpty()) {
+			return;
+		}
+		var buffer = ctx.buffer(rows.size() * MEMBER_RECORD_SIZE);
+		for (var row : rows) {
+			var recordStart = buffer.writerIndex();
+			buffer.writeInt((int) row.charaId());
+			BufferUtil.writeString(buffer, row.name(), StandardCharsets.ISO_8859_1,
+				CLAN_NAME_LENGTH);
+			// Per row: joined members 1, pending applicants 0.
+			buffer.writeByte(row.state() == ClanService.STATE_PENDING ? 0 : 1);
+			buffer.writeInt(0);
+			buffer.writeInt((int) row.charaId());
+			buffer.writeZero(MEMBER_RECORD_SIZE - (buffer.writerIndex() - recordStart));
+		}
+		ctx.write(new GamePacket(CLAN_MEMBERS_ENTRIES, buffer));
+	}
+
 
 	/**
 	 * The clan list. Header, then one entry per clan, then the end packet.
@@ -544,6 +755,121 @@ public class ClanGameController implements IGameController {
 		writeResult(ctx, CLAN_LIST_END);
 	}
 
+
+	/** Records the application and acknowledges it. */
+	private void applyToJoin(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		var payload = ctx.packet().getPayload();
+		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
+
+		if (charaId != null && clanId != 0 && clanService.clanById(clanId).isPresent()) {
+			clanService.apply(charaId, clanId);
+			logger.info("Character {} applied to join clan {}.", charaId, clanId);
+			writeResult(ctx, APPLY_TO_JOIN_RESULT);
+		} else {
+			ctx.write(APPLY_TO_JOIN_RESULT, GameError.GENERAL);
+		}
+	}
+
+
+	/** The pending applicants a leader has to approve. */
+	private void applicants(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
+		var pending = clanId == 0L ? java.util.List.<ClanService.Member>of()
+			: clanService.applicantsFor(clanId);
+
+		writeResult(ctx, APPLICANTS_START);
+		if (!pending.isEmpty()) {
+			var buffer = ctx.buffer(pending.size() * APPLICANT_RECORD_SIZE);
+			for (var applicant : pending) {
+				var recordStart = buffer.writerIndex();
+				buffer.writeInt((int) applicant.charaId());
+				// The 64-byte text: applications carry no message on the wire (0x4b42 sends only an
+				// id), so there is nothing to put here until we find what writes it.
+				buffer.writeZero(APPLICANT_TEXT_LENGTH);
+				BufferUtil.writeString(buffer, applicant.name(), StandardCharsets.ISO_8859_1,
+					CLAN_NAME_LENGTH);
+				buffer.writeZero(APPLICANT_RECORD_SIZE - (buffer.writerIndex() - recordStart));
+			}
+			ctx.write(new GamePacket(APPLICANTS_ENTRIES, buffer));
+		}
+		writeResult(ctx, APPLICANTS_END);
+	}
+
+
+	/** Searches clans by name, honouring the screen's exact-match and case-sensitivity toggles. */
+	private void clanSearch(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var exactOnly = false;
+		var caseSensitive = false;
+		var name = "";
+		if (payload.readableBytes() >= 2 + CLAN_NAME_LENGTH) {
+			exactOnly = payload.readUnsignedByte() != 0;
+			caseSensitive = payload.readUnsignedByte() != 0;
+			name = readNulTerminated(payload, CLAN_NAME_LENGTH);
+		}
+
+		var matches = name.isEmpty() ? java.util.List.<ClanService.Clan>of()
+			: clanService.searchClans(name, exactOnly, caseSensitive, CLAN_LIST_PAGE);
+		logger.info("Clan search for '{}' ({}, {}): {} match(es).", name,
+			exactOnly ? "exact" : "partial", caseSensitive ? "case-sensitive" : "case-insensitive",
+			matches.size());
+
+		writeResult(ctx, CLAN_SEARCH_START);
+		if (!matches.isEmpty()) {
+			var buffer = ctx.buffer(matches.size() * SEARCH_RECORD_SIZE);
+			for (var clan : matches) {
+				var recordStart = buffer.writerIndex();
+				buffer.writeInt((int) clan.id());
+				BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1,
+					CLAN_NAME_LENGTH);
+				buffer.writeInt((int) clan.leaderCharaId());
+				BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
+					CLAN_NAME_LENGTH);
+				buffer.writeInt((int) clan.createdAt());
+				buffer.writeZero(SEARCH_RECORD_SIZE - (buffer.writerIndex() - recordStart));
+			}
+			ctx.write(new GamePacket(CLAN_SEARCH_ENTRIES, buffer));
+		}
+		writeResult(ctx, CLAN_SEARCH_END);
+	}
+
+	/** Disbands the caller's clan, taking every membership with it. Leader only. */
+	private void disband(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		if (charaId == null) {
+			ctx.write(DISBAND_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var membership = clanService.membershipOf(charaId);
+		if (membership.state() != ClanService.STATE_LEADER) {
+			logger.info("Character {} tried to disband a clan they do not lead.", charaId);
+			ctx.write(DISBAND_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		if (clanService.disband(membership.id())) {
+			logger.info("Clan {} disbanded by character {}.", membership.id(), charaId);
+			writeResult(ctx, DISBAND_RESULT);
+		} else {
+			ctx.write(DISBAND_RESULT, GameError.GENERAL);
+		}
+	}
+
+	/** Withdraws a pending application, or leaves the clan. */
+	private void withdraw(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		if (charaId != null && clanService.withdraw(charaId)) {
+			logger.info("Character {} withdrew from their clan.", charaId);
+		}
+		writeResult(ctx, WITHDRAW_RESULT);
+	}
+
 	/**
 	 * Clan Info for a clan picked out of the list — including one the player is not in.
 	 * <p>
@@ -577,7 +903,10 @@ public class ClanGameController implements IGameController {
 		buffer.writeInt((int) clan.createdAt());                              // T+0x18
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
-		buffer.writeZero(1);                                                  // T+0x378
+		// T+0x378 is the emblem-present flag, the same slot 0x4b21 carries it in. Zero here meant a
+		// clan viewed from search or the clan list never had its emblem fetched, so it rendered
+		// empty even when one was set.
+		buffer.writeByte(clanService.emblemFlagOf(clan.id()) == 3 ? 3 : 0);    // T+0x378
 		BufferUtil.writeString(buffer, clan.description(), StandardCharsets.ISO_8859_1,
 			DESCRIPTION_LENGTH);                                              // T+0x67A
 		buffer.writeZero(4);                                                  // T+0x1B34
@@ -588,63 +917,66 @@ public class ClanGameController implements IGameController {
 	}
 
 	/**
-	 * Cancel Join / leave, no payload ({@code 0x4b40}). Identified live 2026-07-27: it is what the
-	 * pending-applicant screen's "Cancel Join" button sends, and answering it with a bare result
-	 * left the application in place.
+	 * A leader acting on one member, named by character id: banish, hand over leadership, grant
+	 * emblem-editing rights. All three take the same {@code u32} payload and reply with a bare
+	 * result, and all three were previously answered with a success the server never carried out —
+	 * "it succeeded but nothing happened".
 	 */
-	public static final int WITHDRAW = 0x4b40;
-
-	private static final int WITHDRAW_RESULT = 0x4b41;
-
-	/** Withdraws a pending application, or leaves the clan. */
-	private void withdraw(GameControllerContext ctx) {
-		var account = ctx.connection().account();
-		var charaId = account != null ? account.getCurrentCharaId() : null;
-		if (charaId != null && clanService.withdraw(charaId)) {
-			logger.info("Character {} withdrew from their clan.", charaId);
-		}
-		writeResult(ctx, WITHDRAW_RESULT);
-	}
-
-	/** Records the application and acknowledges it. */
-	private void applyToJoin(GameControllerContext ctx) {
+	private void leaderAction(GameControllerContext ctx, int reply, String what,
+			java.util.function.BiPredicate<Long, Long> action) {
 		var account = ctx.connection().account();
 		var charaId = account != null ? account.getCurrentCharaId() : null;
 		var payload = ctx.packet().getPayload();
-		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
+		if (charaId == null || payload.readableBytes() < Integer.BYTES) {
+			ctx.write(reply, GameError.INVALID_SESSION);
+			return;
+		}
 
-		if (charaId != null && clanId != 0 && clanService.clanById(clanId).isPresent()) {
-			clanService.apply(charaId, clanId);
-			logger.info("Character {} applied to join clan {}.", charaId, clanId);
-			writeResult(ctx, APPLY_TO_JOIN_RESULT);
+		var targetId = payload.readInt() & 0xFFFFFFFFL;
+		var membership = clanService.membershipOf(charaId);
+		if (membership.state() != ClanService.STATE_LEADER) {
+			logger.info("Character {} tried to {} {} without leading a clan.", charaId, what,
+				targetId);
+			ctx.write(reply, GameError.GENERAL);
+			return;
+		}
+
+		var done = reply == TRANSFER_LEADERSHIP_RESULT
+			? clanService.transferLeadership(membership.id(), charaId, targetId)
+			: action.test(membership.id(), targetId);
+		logger.info("Clan {}: character {} used {} on {}{}.", membership.id(), charaId, what,
+			targetId, done ? "" : " (no matching member)");
+		if (done) {
+			writeResult(ctx, reply);
 		} else {
-			ctx.write(APPLY_TO_JOIN_RESULT, GameError.GENERAL);
+			ctx.write(reply, GameError.GENERAL);
 		}
 	}
 
-	/** The pending applicants a leader has to approve. */
-	private void applicants(GameControllerContext ctx) {
+	/** Accepts or declines a pending applicant, named by character id. Leader only. */
+	private void judgeApplicant(GameControllerContext ctx, boolean accept) {
+		var reply = accept ? ACCEPT_JOIN_RESULT : DECLINE_JOIN_RESULT;
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
 		var payload = ctx.packet().getPayload();
-		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
-		var pending = clanId == 0L ? java.util.List.<ClanService.Member>of()
-			: clanService.applicantsFor(clanId);
-
-		writeResult(ctx, APPLICANTS_START);
-		if (!pending.isEmpty()) {
-			var buffer = ctx.buffer(pending.size() * APPLICANT_RECORD_SIZE);
-			for (var applicant : pending) {
-				var recordStart = buffer.writerIndex();
-				buffer.writeInt((int) applicant.charaId());
-				// The 64-byte text: applications carry no message on the wire (0x4b42 sends only an
-				// id), so there is nothing to put here until we find what writes it.
-				buffer.writeZero(APPLICANT_TEXT_LENGTH);
-				BufferUtil.writeString(buffer, applicant.name(), StandardCharsets.ISO_8859_1,
-					CLAN_NAME_LENGTH);
-				buffer.writeZero(APPLICANT_RECORD_SIZE - (buffer.writerIndex() - recordStart));
-			}
-			ctx.write(new GamePacket(APPLICANTS_ENTRIES, buffer));
+		if (charaId == null || payload.readableBytes() < Integer.BYTES) {
+			ctx.write(reply, GameError.INVALID_SESSION);
+			return;
 		}
-		writeResult(ctx, APPLICANTS_END);
+
+		var targetId = payload.readInt() & 0xFFFFFFFFL;
+		var membership = clanService.membershipOf(charaId);
+		if (membership.state() != ClanService.STATE_LEADER) {
+			logger.info("Character {} tried to judge an applicant without leading a clan.", charaId);
+			ctx.write(reply, GameError.GENERAL);
+			return;
+		}
+
+		var changed = accept ? clanService.approve(membership.id(), targetId)
+			: clanService.decline(membership.id(), targetId);
+		logger.info("Clan {}: character {} {} applicant {}{}.", membership.id(), charaId,
+			accept ? "accepted" : "declined", targetId, changed ? "" : " (no pending application)");
+		writeResult(ctx, reply);
 	}
 
 	/**
@@ -677,6 +1009,26 @@ public class ClanGameController implements IGameController {
 
 		writeResult(ctx, MEMBER_ACTION_START);
 		writeResult(ctx, MEMBER_ACTION_END);
+	}
+
+	/** Refuses an emblem upload without destroying the client's copy. See {@link #EMBLEM_REFUSED}. */
+	private void refuseEmblem(GameControllerContext ctx) {
+		var buffer = ctx.buffer(Integer.BYTES);
+		buffer.writeInt(EMBLEM_REFUSED);
+		ctx.write(new GamePacket(UPLOAD_EMBLEM_RESULT, buffer));
+	}
+
+	/** The re-display cooldown in seconds, from the environment or the default. */
+	private static long displayCooldownSeconds() {
+		var override = System.getenv("MGO2SERVER_EMBLEM_COOLDOWN_MINUTES");
+		if (override != null) {
+			try {
+				return Long.parseLong(override.trim()) * 60L;
+			} catch (NumberFormatException ignored) {
+				logger.warn("MGO2SERVER_EMBLEM_COOLDOWN_MINUTES is not a number: {}", override);
+			}
+		}
+		return DEFAULT_EMBLEM_COOLDOWN_MINUTES * 60L;
 	}
 
 	/** Everything a leader may do, nothing for anyone else. See {@link #LEADER_PRIVILEGES}. */
@@ -730,20 +1082,46 @@ public class ClanGameController implements IGameController {
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
 		buffer.writeZero(4 + 16);                                             // T+0x30, T+0x34
+		// T+0x48 is NOT the emblem re-display cooldown. [ELIMINATED 2026-07-27] It is the only
+		// timestamp-shaped slot we send that the client never renders (u32 read, stored with `std`
+		// as 64 bits at 0xD5899C), so it was the obvious candidate for the countdown behind lobby
+		// string 17247. Sending the real display time changed nothing: the emblem could still be
+		// re-displayed immediately, with a fresh 0x4b21 in hand. The confirming observation would
+		// have been the countdown appearing, and it did not. Back to zero.
 		buffer.writeZero(4);                                                  // T+0x48
 		buffer.writeInt(clanService.memberCount(clan.id()));                  // T+0x58  members
 		buffer.writeZero(4 + 4 + 4 + 4 + 4);                                  // T+0x5c .. T+0x6c
-		buffer.writeZero(4 + 1 + 1 + 1 + 1);                                  // flags, T+0x74..0x378
+		buffer.writeZero(4 + 1);                                              // flags_word, T+0x74
+		buffer.writeZero(1);                                                  // flags_byte
+		// T+0x76 = 2 when a work-in-progress emblem exists (we do not model one yet);
+		// T+0x378 = 3 when a published emblem exists. The client will not fetch or offer an emblem
+		// while this is 0, which is why Emblem Edit had nothing to apply.
+		buffer.writeByte(0);                                                  // T+0x76
+		buffer.writeByte(clanService.emblemFlagOf(clan.id()) == 3 ? 3 : 0);    // T+0x378
 		BufferUtil.writeString(buffer, clan.description(), StandardCharsets.ISO_8859_1,
 			DESCRIPTION_LENGTH);                                              // T+0x67A
-		buffer.writeZero(4);                                                  // T+0x6FC
+		// T+0x6FC is the EMBLEM EDITOR's character id — the client compares it against its own to
+		// decide whether to offer "set as the clan's emblem". Nobody is assigned one yet, so it
+		// falls back to the leader, who is the only person who can commit an emblem anyway.
+		buffer.writeInt((int) clan.emblemEditorCharaId());                    // T+0x6FC
 		BufferUtil.writeString(buffer, clan.notice(), StandardCharsets.ISO_8859_1,
 			NOTICE_LENGTH);                                                   // T+0x700, the notice
-		// T+0x904 is the FOUNDING DATE, Unix seconds — identified 2026-07-27 by sending every
-		// candidate slot the date offset by a different number of days and reading which one the
-		// screen displayed. T+0x18 and T+0x48 had each been tried and rendered as 1969-12-31.
-		buffer.writeInt((int) clan.createdAt());                              // T+0x904
-		buffer.writeZero(16);                                                 // T+0x908 name_d
+		// The notice's timestamp and author, which the screen draws under the notice itself.
+		//
+		// T+0x904 was identified by probe as "the date Clan Affiliation displays" and labelled the
+		// FOUNDING date, which was a guess about meaning layered on a real observation: the field is
+		// right, the label was wrong. It is the notice's date, and the 16 bytes after it are the
+		// name of whoever set it.
+		//
+		// NEVER SET: send -1, not 0. The renderer (0xAAB2D8) has no conditionals at all — it always
+		// draws the date, the author and the notice body, so the line cannot be suppressed. But the
+		// formatter 0x8843CC tests the value at 0x884420 and takes a fallback branch when it is
+		// NEGATIVE, printing the literal "XXXX-XX-XX XX:XX:XX" instead of a date. Zero is not
+		// special-cased — localtime(0) succeeds and yields 12-31-1969, which is the bug. -1 is this
+		// binary's own convention for an absent timestamp; 0x91E4C0 tests another one the same way.
+		buffer.writeInt(clan.noticeAt() == 0 ? NO_TIMESTAMP : (int) clan.noticeAt());  // T+0x904
+		BufferUtil.writeString(buffer, clan.noticeWriter(), StandardCharsets.ISO_8859_1,
+			CLAN_NAME_LENGTH);                                                // T+0x908
 		buffer.writeZero(4 + 4 + 4);                                          // T+0x1B2C .. T+0x1B34
 
 		assert buffer.writerIndex() - start == PROFILE_SIZE
@@ -809,7 +1187,7 @@ public class ClanGameController implements IGameController {
 			.writeInt((int) membership.id())
 			.writeByte(membership.state())
 			.writeShort(privileges(membership.state()))
-			.writeByte(0);   // emblem: 3 when the clan has one, and none do
+			.writeByte(clanService.emblemFlagOf(membership.id()));   // 3 once an emblem is on display
 		BufferUtil.writeString(buffer, membership.name(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);
 

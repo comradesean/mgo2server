@@ -138,9 +138,17 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 | --- | --- | --- |
 | `0x4bxx` | 23 (`0x4b00`–`0x4b90`) | clans / GHQ |
 | `0x49xx`+ | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
-| `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified |
+| `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified — **not rankings**, see below |
 | mailbox | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail |
 | misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
+
+**The `0x4Axx` block is not the ranking subsystem [ELF, 2026-07-27].** The id looks inviting and
+the block has three list replies, so it has been guessed at more than once. It is not: the
+`0x4A24`/`0x4A31` records embed the 204-byte game-settings sub-record, which puts the family with
+games. **Rankings are not in the command protocol at all** — the screen POSTs to
+`rank/mgogetrank.html` and `rank/mgogetrank_clan.html` and parses a little-endian, XOR-scrambled
+binary body. Implemented in `web/controller/RankingWebController`; the wire format is in
+`OBSERVED.md`, "Rankings — an HTTP feature, not a command". Nothing in this file needs to serve it.
 
 **`0x4e00` is not isolated — it is a forced follow-up [ELF, 2026-07-26].** The server→client
 `0x4e10` *opens* a request (slot 90 → state 1) and the client immediately builds and sends

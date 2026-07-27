@@ -41,13 +41,18 @@ public class ClanService {
 		public static final Membership NONE = new Membership(0, "", STATE_NONE);
 	}
 
+	/** A pending application, as the clan-applications mailbox shows it. */
+	public record Applicant(long charaId, String name, long appliedAt) {
+	}
+
 	/** One row of the member roster. */
 	public record Member(long charaId, String name, int state) {
 	}
 
 	/** A clan itself, for the profile screen. */
-	public record Clan(long id, String name, String description, String notice, String leaderName,
-			long createdAt) {
+	public record Clan(long id, String name, String description, String notice, String noticeWriter,
+			long noticeAt, String leaderName, long leaderCharaId, long emblemEditorCharaId,
+			long emblemAt, long createdAt) {
 	}
 
 	private final Jdbi jdbi;
@@ -77,22 +82,29 @@ public class ClanService {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""
 				select c.id, c.name, c.description, c.notice, coalesce(l.name, '') as leader_name,
+					coalesce(c.leader_chara_id, 0) as leader_chara_id,
+					coalesce(c.emblem_editor_chara_id, c.leader_chara_id, 0) as emblem_editor,
+					coalesce(w.name, '') as notice_writer,
+					coalesce(extract(epoch from c.notice_at)::bigint, 0) as notice_at,
+					coalesce(extract(epoch from c.emblem_at)::bigint, 0) as emblem_at,
 					extract(epoch from c.created_at)::bigint as created_at
 				from clan c
 				left join chara l on l.id = c.leader_chara_id
+				left join chara w on w.id = c.notice_writer_chara_id
 				where c.id = :clan
 				""")
 			.bind("clan", clanId)
 			.map((rs, ctx) -> new Clan(rs.getLong("id"), rs.getString("name"),
-				rs.getString("description"), rs.getString("notice"), rs.getString("leader_name"),
-				rs.getLong("created_at")))
+				rs.getString("description"), rs.getString("notice"), rs.getString("notice_writer"),
+				rs.getLong("notice_at"), rs.getString("leader_name"), rs.getLong("leader_chara_id"),
+				rs.getLong("emblem_editor"), rs.getLong("emblem_at"), rs.getLong("created_at")))
 			.findOne());
 	}
 
 	/**
-	 * The roster, leaders first then by seniority. <b>Actual members only</b> — a pending applicant
-	 * is a {@code clan_member} row with state 0, and including them made Clan Info count an
-	 * applicant as a member.
+	 * The roster: leader first, then members. <b>Joined members only</b> — applicants ride the same
+	 * list as a separate second batch with the {@code isMember} byte clear, so including them here
+	 * made a pending applicant appear twice, the first time as a full member.
 	 */
 	public java.util.List<Member> membersOf(long clanId) {
 		return jdbi.withHandle(handle -> handle
@@ -148,6 +160,50 @@ public class ClanService {
 			.list());
 	}
 
+	/** Pending applications with their timestamps, for the clan-applications mailbox. */
+	public java.util.List<Applicant> applicationsFor(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select m.chara_id, c.name, extract(epoch from m.joined_at)::bigint as applied_at
+				from clan_member m
+				join chara c on c.id = m.chara_id
+				where m.clan_id = :clan and m.state = :pending
+				order by m.joined_at
+				""")
+			.bind("clan", clanId)
+			.bind("pending", STATE_PENDING)
+			.map((rs, ctx) -> new Applicant(rs.getLong("chara_id"), rs.getString("name"),
+				rs.getLong("applied_at")))
+			.list());
+	}
+
+	/** Approves a pending applicant by character id — what {@code 0x4b30} names. */
+	public boolean approve(long clanId, long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("""
+				update clan_member set state = :member
+				where clan_id = :clan and chara_id = :chara and state = :pending
+				""")
+			.bind("member", STATE_MEMBER)
+			.bind("pending", STATE_PENDING)
+			.bind("clan", clanId)
+			.bind("chara", charaId)
+			.execute() > 0);
+	}
+
+	/** Declines a pending applicant by character id — {@code 0x4b32}. */
+	public boolean decline(long clanId, long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("""
+				delete from clan_member
+				where clan_id = :clan and chara_id = :chara and state = :pending
+				""")
+			.bind("pending", STATE_PENDING)
+			.bind("clan", clanId)
+			.bind("chara", charaId)
+			.execute() > 0);
+	}
+
 	/** Approves a pending applicant by name. Returns whether a pending row was actually promoted. */
 	public boolean approveByName(long clanId, String name) {
 		return jdbi.withHandle(handle -> handle
@@ -175,6 +231,120 @@ public class ClanService {
 			.execute() > 0);
 	}
 
+	/** Removes a member from a clan outright — {@code 0x4b36}, banish. The leader cannot be. */
+	public boolean banish(long clanId, long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("""
+				delete from clan_member
+				where clan_id = :clan and chara_id = :chara and state != :leader
+				""")
+			.bind("leader", STATE_LEADER)
+			.bind("clan", clanId)
+			.bind("chara", charaId)
+			.execute() > 0);
+	}
+
+	/**
+	 * Hands leadership to another member — {@code 0x4b60}. The outgoing leader stays as an ordinary
+	 * member, and the clan's own leader pointer moves too, since that is what names the leader on
+	 * every list screen.
+	 */
+	public boolean transferLeadership(long clanId, long fromCharaId, long toCharaId) {
+		return jdbi.inTransaction(handle -> {
+			var promoted = handle
+				.createUpdate("""
+					update clan_member set state = :leader
+					where clan_id = :clan and chara_id = :chara and state = :member
+					""")
+				.bind("leader", STATE_LEADER)
+				.bind("member", STATE_MEMBER)
+				.bind("clan", clanId)
+				.bind("chara", toCharaId)
+				.execute() > 0;
+			if (!promoted) {
+				return false;
+			}
+			handle.createUpdate("""
+					update clan_member set state = :member
+					where clan_id = :clan and chara_id = :chara
+					""")
+				.bind("member", STATE_MEMBER)
+				.bind("clan", clanId)
+				.bind("chara", fromCharaId)
+				.execute();
+			handle.createUpdate("update clan set leader_chara_id = :chara where id = :clan")
+				.bind("chara", toCharaId)
+				.bind("clan", clanId)
+				.execute();
+			return true;
+		});
+	}
+
+	/** Assigns emblem-editing rights — {@code 0x4b62}. */
+	public void setEmblemEditor(long clanId, long charaId) {
+		jdbi.useHandle(handle -> handle
+			.createUpdate("update clan set emblem_editor_chara_id = :chara where id = :clan")
+			.bind("chara", charaId)
+			.bind("clan", clanId)
+			.execute());
+	}
+
+	/**
+	 * Disbands a clan — {@code 0x4b04}, leader only. Members go with it: {@code clan_member} rows
+	 * cascade on the clan's deletion, so everyone lands back at state 99, no clan.
+	 */
+	public boolean disband(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("delete from clan where id = :clan")
+			.bind("clan", clanId)
+			.execute() > 0);
+	}
+
+	/** The stored emblem block, or empty when the clan has none. */
+	public Optional<byte[]> emblemOf(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("select emblem from clan where id = :clan and emblem is not null")
+			.bind("clan", clanId)
+			.mapTo(byte[].class)
+			.findOne());
+	}
+
+	/** Seconds since the clan's emblem last went on display, or -1 if it never has. */
+	public long secondsSinceEmblem(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select coalesce(extract(epoch from now() - emblem_at)::bigint, -1)
+				from clan where id = :clan
+				""")
+			.bind("clan", clanId)
+			.mapTo(Long.class)
+			.findOne()
+			.orElse(-1L));
+	}
+
+	/** The emblem flag the client expects at {@code profile+6872}: the upload's mode, or 0. */
+	public int emblemFlagOf(long clanId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("select coalesce(emblem_mode, 0) from clan where id = :clan")
+			.bind("clan", clanId)
+			.mapTo(Integer.class)
+			.findOne()
+			.orElse(0));
+	}
+
+	/** Stores an uploaded emblem, the mode it was uploaded with, and when it went on display. */
+	public void setEmblem(long clanId, byte[] emblem, int mode) {
+		jdbi.useHandle(handle -> handle
+			.createUpdate("""
+				update clan set emblem = :emblem, emblem_mode = :mode, emblem_at = now()
+				where id = :clan
+				""")
+			.bind("emblem", emblem)
+			.bind("mode", mode)
+			.bind("clan", clanId)
+			.execute());
+	}
+
 	/** How many clans exist, for the list header's total. */
 	public int countClans() {
 		return jdbi.withHandle(handle ->
@@ -191,30 +361,83 @@ public class ClanService {
 			.one());
 	}
 
+	/**
+	 * Clan search — {@code 0x4b90}. The request carries the screen's two toggles: exact-only versus
+	 * partial, and case-sensitive versus not.
+	 */
+	public java.util.List<Clan> searchClans(String name, boolean exactOnly, boolean caseSensitive,
+			int limit) {
+		var pattern = exactOnly ? name : "%" + name + "%";
+		// Spaces are part of the fragment on purpose. This clause is concatenated between two text
+		// blocks, and a text block strips trailing whitespace from every line — so "where " became
+		// "where" and produced `wherec.name`, while the block after it began "order by" and produced
+		// `:nameorder`. Carrying its own padding makes the join independent of that stripping.
+		var comparison = caseSensitive ? " c.name like :name " : " lower(c.name) like lower(:name) ";
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select c.id, c.name, c.description, c.notice, coalesce(l.name, '') as leader_name,
+					coalesce(c.leader_chara_id, 0) as leader_chara_id,
+					coalesce(c.emblem_editor_chara_id, c.leader_chara_id, 0) as emblem_editor,
+					coalesce(w.name, '') as notice_writer,
+					coalesce(extract(epoch from c.notice_at)::bigint, 0) as notice_at,
+					coalesce(extract(epoch from c.emblem_at)::bigint, 0) as emblem_at,
+					extract(epoch from c.created_at)::bigint as created_at
+				from clan c
+				left join chara l on l.id = c.leader_chara_id
+				left join chara w on w.id = c.notice_writer_chara_id
+				where """ + comparison + """
+
+				order by c.id
+				limit :limit
+				""")
+			.bind("name", pattern)
+			.bind("limit", limit)
+			.map((rs, ctx) -> new Clan(rs.getLong("id"), rs.getString("name"),
+				rs.getString("description"), rs.getString("notice"), rs.getString("notice_writer"),
+				rs.getLong("notice_at"), rs.getString("leader_name"), rs.getLong("leader_chara_id"),
+				rs.getLong("emblem_editor"), rs.getLong("emblem_at"), rs.getLong("created_at")))
+			.list());
+	}
+
 	/** A page of the clan list. The client's array holds 100, so that is the page size. */
 	public java.util.List<Clan> listClans(int offset, int limit) {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""
 				select c.id, c.name, c.description, c.notice, coalesce(l.name, '') as leader_name,
+					coalesce(c.leader_chara_id, 0) as leader_chara_id,
+					coalesce(c.emblem_editor_chara_id, c.leader_chara_id, 0) as emblem_editor,
+					coalesce(w.name, '') as notice_writer,
+					coalesce(extract(epoch from c.notice_at)::bigint, 0) as notice_at,
+					coalesce(extract(epoch from c.emblem_at)::bigint, 0) as emblem_at,
 					extract(epoch from c.created_at)::bigint as created_at
 				from clan c
 				left join chara l on l.id = c.leader_chara_id
+				left join chara w on w.id = c.notice_writer_chara_id
 				order by c.id
 				offset :offset limit :limit
 				""")
 			.bind("offset", Math.max(0, offset))
 			.bind("limit", limit)
 			.map((rs, ctx) -> new Clan(rs.getLong("id"), rs.getString("name"),
-				rs.getString("description"), rs.getString("notice"), rs.getString("leader_name"),
-				rs.getLong("created_at")))
+				rs.getString("description"), rs.getString("notice"), rs.getString("notice_writer"),
+				rs.getLong("notice_at"), rs.getString("leader_name"), rs.getLong("leader_chara_id"),
+				rs.getLong("emblem_editor"), rs.getLong("emblem_at"), rs.getLong("created_at")))
 			.list());
 	}
 
-	/** Replaces a clan's notice — the 512-byte text, {@code 0x4b66} on the wire. */
-	public void setNotice(long clanId, String notice) {
+	/**
+	 * Replaces a clan's notice — the 512-byte text, {@code 0x4b66} on the wire — and records who
+	 * wrote it and when, which the screen shows beneath it.
+	 */
+	public void setNotice(long clanId, String notice, long writerCharaId) {
 		jdbi.useHandle(handle -> handle
-			.createUpdate("update clan set notice = :notice where id = :clan")
+			.createUpdate("""
+				update clan
+				set notice = :notice, notice_writer_chara_id = :writer, notice_at = now()
+				where id = :clan
+				""")
 			.bind("notice", notice)
+			.bind("writer", writerCharaId)
 			.bind("clan", clanId)
 			.execute());
 	}
