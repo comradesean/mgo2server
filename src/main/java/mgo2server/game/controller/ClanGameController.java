@@ -1033,49 +1033,6 @@ public class ClanGameController implements IGameController {
 	 * ({@code FFFFFFE8}) without sending anything — which is exactly the error Apply produced while
 	 * this reply was 217 zero bytes.
 	 */
-	/**
-	 * <b>Temporary probe. Delete once the question below is answered.</b>
-	 * <p>
-	 * Sending the leader's character id at {@code T+0x18} fixed two things at once — the Clan Leader
-	 * badge on Check Roster and the leader's in-game emblem — but it was added to {@code 0x4b21} and
-	 * {@code 0x4b81} in the same commit, so which packet the client actually reads it from is not
-	 * known. Two variables moved at once, which is the mistake that made several diagnoses this week
-	 * slower than they needed to be.
-	 * <p>
-	 * {@code MGO2SERVER_LEADER_ID_PROBE} selects which packets carry it, so each round costs a
-	 * restart rather than a rebuild:
-	 * <ul>
-	 *   <li>{@code both} (default) — the shipping behaviour
-	 *   <li>{@code 4b21} — only the clan-affiliation view
-	 *   <li>{@code 4b81} — only the view of a clan you are not in
-	 *   <li>{@code none} — neither, which should reproduce the original bug
-	 * </ul>
-	 * The clan list ({@code 0x4b12}) is left alone throughout: it carried the leader id before any of
-	 * this and is not part of the question.
-	 */
-	private static final String LEADER_ID_PROBE = leaderIdProbe();
-
-	private static String leaderIdProbe() {
-		var configured = System.getenv("MGO2SERVER_LEADER_ID_PROBE");
-		var value = configured == null || configured.isBlank() ? "both"
-			: configured.trim().toLowerCase(java.util.Locale.ROOT);
-		if (!java.util.Set.of("both", "4b21", "4b81", "none").contains(value)) {
-			logger.warn("MGO2SERVER_LEADER_ID_PROBE=\"{}\" is not both/4b21/4b81/none; using both.",
-				configured);
-			return "both";
-		}
-		if (!"both".equals(value)) {
-			logger.warn("LEADER ID PROBE ACTIVE: sending the leader id only in {}.", value);
-		}
-		return value;
-	}
-
-	/** The leader id this packet should carry under the probe. See {@link #LEADER_ID_PROBE}. */
-	private static int leaderIdFor(String packet, ClanService.Clan clan) {
-		var send = "both".equals(LEADER_ID_PROBE) || packet.equals(LEADER_ID_PROBE);
-		return send ? (int) clan.leaderCharaId() : 0;
-	}
-
 	private void viewedClanInfo(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
@@ -1103,7 +1060,22 @@ public class ClanGameController implements IGameController {
 		// swapped this field with T+0x58 and saw the member count render as epoch seconds. That
 		// experiment proved T+0x58 is the member count. It said nothing whatever about this field —
 		// an invalid elimination, and the same shape of mistake as the 0x4103 clan probe.
-		buffer.writeInt(leaderIdFor("4b81", clan));                           // T+0x18
+		// The leader's character id. <b>Sent on shape, not on evidence.</b>
+		//
+		// The field is a leader id here by layout — a u32 immediately before the leader's name at
+		// T+0x1c, the id/name pairing this protocol uses everywhere, and the client's own parser
+		// (0xD58C90) reads exactly that: u32 at +0x018 then name[16] at +0x01C. But nothing observed
+		// depends on it. A probe that sent the id in this packet ALONE left the Check Roster badge
+		// missing, so whatever reads a leader id reads it from 0x4b21 instead.
+		//
+		// It carries the real value anyway, because a zero here would be a lie about a field we
+		// believe we understand. Treat it as unproven: if something later turns out to need a leader
+		// id and does not get one, this is not the packet that was tested.
+		//
+		// This previously held clan.createdAt(), on a claim that T+0x18 was the founding date. That
+		// came from an experiment which swapped this field with T+0x58 and saw the member count
+		// render epoch seconds — proving T+0x58 and nothing whatever about this one.
+		buffer.writeInt((int) clan.leaderCharaId());                          // T+0x18
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
 		// T+0x378 is the emblem-present flag, the same slot 0x4b21 carries it in. Zero here meant a
@@ -1269,7 +1241,19 @@ public class ClanGameController implements IGameController {
 		// The leader's character id, paired with their name at T+0x1c — the same id/name shape
 		// 0x4b81 carries at the same offsets. Zero here told the client the clan had a leader with
 		// no id, so no screen could identify which member that was.
-		buffer.writeInt(leaderIdFor("4b21", clan));                           // T+0x18
+		// The leader's character id, paired with the leader's name at T+0x1c.
+		//
+		// [PROVEN 2026-07-27] This is the field that makes the Clan Leader badge render on the Check
+		// Roster member list, and it is the only one of the two that does. Tested in both directions
+		// with a probe that sent the id one packet at a time: with it here alone the badge renders,
+		// with it in 0x4b81 alone the badge disappears. So this is necessary, not merely sufficient.
+		//
+		// We had sent zeros here, so the client knew a clan had a leader named Sean but never which
+		// character that was, and no roster row could be matched against them. The badge is not
+		// driven by the roster row at all — that row's state byte reaches the renderer but its
+		// display filter collapses member and leader into one branch (0x8EC744), and 47 of the row's
+		// 68 bytes are parsed and read by nothing. The identity comes from here.
+		buffer.writeInt((int) clan.leaderCharaId());                          // T+0x18
 		BufferUtil.writeString(buffer, clan.leaderName(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x1c
 		buffer.writeZero(4 + 16);                                             // T+0x30, T+0x34
