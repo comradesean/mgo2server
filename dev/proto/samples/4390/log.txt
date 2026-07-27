@@ -3650,3 +3650,33 @@
   detail_present            = 1
   B7  salutes               = 1
   B24 tdm_consecutive_survivals= 1
+=== #501  2026-07-27 04:53:34  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 501_045334_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 147
+  experience_total          = 428
+  detail_present            = 1
+  B9  text_chat_uses?       = 6
+  B24 tdm_consecutive_survivals= 2
+=== #502  2026-07-27 04:53:34  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 502_045334_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 146
+  experience_total          = 500
+  detail_present            = 1
+  B9  text_chat_uses?       = 2
+  B24 tdm_consecutive_survivals= 2
+=== #503  2026-07-27 04:53:34  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 503_045334_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 146
+  experience_total          = 49250
+  detail_present            = 1
+  B9  text_chat_uses?       = 4
+  B24 tdm_consecutive_survivals= 2
