@@ -112,53 +112,50 @@ Round 2 settled it for the badge in both directions: with the id in `0x4b81` onl
 disappeared. So `0x4b21` is **necessary**, not merely sufficient — a distinction round 1 alone could
 not have made, and one an earlier draft of this section blurred.
 
-## A clan leader's emblem in game — same missing field as the badge (2026-07-27, FIXED)
+## A clan leader's emblem in game — real, unexplained, did not recur (2026-07-27, UNRESOLVED)
 
-**Symptom.** Three clients, one match. Sean and poop in clan 2 with an emblem on display; rawr in
-no clan. poop's emblem rendered on every screen and Sean's on none, including Sean's own. The
-server was verified to be sending both identical clan data in `0x4122` — same clan id, same
-`emblem_flag=03`, same 768 bytes.
+**The symptom was real.** Three clients, one match. Sean and poop in clan 2 with an emblem on
+display. poop's emblem rendered on every screen and Sean's on none, including Sean's own. The
+server was verified on the wire to be sending both identical clan data in `0x4122` — same clan id,
+same `emblem_flag=03`. Transferring leadership moved the symptom with the role.
 
-**Confirmed by role swap.** Leadership was transferred from Sean to poop and the symptom went with
-the role: Sean's emblem began rendering, poop's stopped. That looked like proof the membership
-state was the discriminator.
+**Nothing we changed explains it, and it has not come back.** The leader-id field that fixed the
+Check Roster badge was the leading candidate and is now ruled out: with the id sent in **neither**
+`0x4b21` nor `0x4b81`, and clients fully restarted, the emblem still renders for the leader. The
+probe was run three ways — `4b21`, `4b81`, `none` — and the emblem was present in all three.
 
-**It was not the state.** Two independent ELF passes established that, and both hold:
+So this is filed as a **first-connection hiccup**: a transient in that session, not a server
+behaviour. It should not be cited as fixed, because nothing fixed it.
 
-- The join-announcement packer at `0x88407C` uses the state only as a guard on the clan id, with
-  the ordinary `state - 1 <= 1` idiom that accepts 1 and 2 alike. **The state byte never travels to
-  peers at all.** All 15 readers of `profile+6837` were enumerated; the one asymmetric test
-  (`0x8E1D48`, `cmpwi r3,2`) is leader-*enabling* and cannot suppress anything.
-- Nor is it the privilege word. `0xAB0048` masks bit `0x100` only when the state switch already
-  selected leader, and with privilege `0` both branches proceed identically. (That does explain the
-  old `0xFFFF` experiment: a nonzero privilege makes the widget bail early. And it confirms `0x100`
-  is the leader bit.)
+What was genuinely established while chasing it is worth keeping, since all of it is independent of
+the symptom:
 
-**The actual cause: the leader's character id was never sent.** `T+0x18` of the clan-info packets
-carries the leader's character id; we sent the founding date in `0x4b81` and zeros in `0x4b21`.
-Supplying it fixed the in-game emblem for the leader and the Check Roster badge **in the same
-change** — one missing field, two symptoms that looked unrelated.
+- **The membership state never reaches peers.** The join-announcement packer `0x88407C` uses it
+  only as a guard on the clan id, with the `state - 1 <= 1` idiom that accepts 1 and 2 alike. All
+  15 readers of `profile+6837` were enumerated; the one asymmetric test (`0x8E1D48`, `cmpwi r3,2`)
+  is leader-*enabling*.
+- **The privilege word is not a gate here either.** `0xAB0048` masks bit `0x100` only when the state
+  switch already selected leader, and at privilege `0` both branches proceed. It does explain the
+  old `0xFFFF` experiment — a nonzero privilege makes the widget bail early — and confirms `0x100`
+  is the leader bit.
+- **`0x4b49` failures are destructive.** The handler at `0xD57064` writes 2 to `profile+6872` on
+  `-1214` and 0 on `{-21, -1207, -1215, -1202}`; only success leaves it alone. A single failed
+  emblem download demotes the flag below the exact `== 3` the render path needs. Every `0x4b49` we
+  served in the observed window carried result 0, so this was not the cause here — but it is a real
+  trap for any future refusal.
 
-That also dissolves the role-swap result, which was real but misleading. The leader is the
-character whose id should match the clan's leader id; with no id to match, the leader is precisely
-the player whose identity check fails. The symptom tracked the role because the *role* is what the
-missing field describes — not because the state byte was being tested.
+### Why the role swap was misleading
 
-### What this cost, and the rule
+It moved the symptom, which looked like proof that leader-ness was the variable. Two ELF passes
+were then framed around "is it a state test or a privilege bit", both came back correct and
+negative, and the framing was never revisited. Meanwhile the swap had also warmed clan 2's emblem
+into every client's cache during the window when Sean was an ordinary member — caches that a relog
+does not clear, because the process survives it.
 
-Two ELF investigations, both correct, both answering "is it the state or the privilege word" — a
-question framed from the role-swap result. Neither was asked "what identifies the leader", because
-the swap had already convinced us the answer lay in how leader-ness was *tested* rather than in
-whether it was *transmitted*.
-
-A reproducible experiment tells you which variable moves the symptom. It does not tell you why, and
-it should not be allowed to narrow the search to mechanisms that treat that variable as an input.
-Here the variable was an input to nothing; it was a label for the record we had failed to complete.
-
-### Still unverified
-
-Which of `0x4b21` and `0x4b81` supplies the id — both changed in one commit. `0x4b21` is the
-likelier, being the clan-affiliation view the roster is reached from.
+So the experiment both misdirected the search and contaminated every later measurement. That is
+worse than a wrong hypothesis, because nothing about the subsequent observations looks wrong.
+**An experiment that changes game state leaves residue; plan the control before running it, not
+after the result looks confusing.**
 
 ## Online News, and padding that was not inert (2026-07-27)
 
