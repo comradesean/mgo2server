@@ -28,6 +28,47 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
+## A clan leader's emblem does not render in game (2026-07-27, OPEN)
+
+Three clients in one match. Sean and poop in clan 2, which has an emblem on display; rawr in no
+clan. **poop's emblem rendered on every screen; Sean's rendered on none — including Sean's own.**
+
+The server was verified to be sending both of them identical clan data in `0x4122`, read out of the
+live log:
+
+| character | state (wire 0x14) | clan id | emblem flag (wire 0xf0) |
+| --- | --- | --- | --- |
+| Sean | `02` leader | 2 | `03` |
+| poop | `01` member | 2 | `03` |
+| rawr | `63` (99) none | 0 | `00` |
+
+Same clan, same 768 bytes, so the emblem data cannot be the variable. The only difference is the
+membership state byte.
+
+**Confirmed by swapping the roles.** Leadership was transferred from Sean to poop, and the
+behaviour followed the *role*, not the person: Sean's emblem began rendering and poop's stopped.
+So a member (state 1) renders and a leader (state 2) does not.
+
+Where it fails is specific — for the leader:
+
+- **over-character nameplate**: an empty placeholder, space reserved but blank
+- **lobby player list**: no emblem at all
+- **own HUD, top left, under the name**: renders correctly
+
+The last one is the informative half. It says the client *has* the image — it is drawn from the
+local profile buffer — while the two views fed by the join announcement (`0x8842AC` ->
+P2P message 36 -> peer record, emblem at `+4`, clan id at `+8`) do not draw it. So the failure is
+on the announcement path, and something there discriminates leader from member.
+
+That is unexpected, because the client's own idiom for "is in a clan" is `state - 1 <= 1`, which
+accepts 1 and 2 alike — it is what the clan-info gate at `0x905A7C` uses. Whatever the nameplate
+path uses, it is not that.
+
+Not yet known: the exact gate. Under investigation in the binary. Do **not** work around this by
+sending state 1 for leaders until it is understood — state 2 is what drives the leader-only menu
+entries, and trading a missing emblem for a missing Disband button is not a fix.
+
+
 ## Online News, and padding that was not inert (2026-07-27)
 
 The first time anyone watched this client render news, it showed **10 pages from 2 rows**, real
