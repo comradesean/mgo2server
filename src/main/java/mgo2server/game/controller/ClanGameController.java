@@ -79,7 +79,8 @@ public class ClanGameController implements IGameController {
 	/**
 	 * One roster row: 68 wire bytes. The head is the same {@code {u32 id, name[16], u8 status}} shape
 	 * as the session clan record and the profile block, so it is filled as character id, character
-	 * name and membership state; the remaining 47 bytes — two more 16-byte names and three numbers —
+	 * name and membership state — <b>the real state, 0/1/2, not a joined-or-pending boolean</b>;
+	 * the remaining 47 bytes — two more 16-byte names and three numbers —
 	 * are [UNKNOWN] and stay zero. If the roster renders the right names in the right order, the
 	 * head is confirmed and the rest can be worked out from what is missing on screen.
 	 */
@@ -787,7 +788,7 @@ public class ClanGameController implements IGameController {
 	}
 
 	/**
-	 * One batch of 68-byte roster rows: {@code u32 id, name[16], u8 isMember, u32, u32}, then the
+	 * One batch of 68-byte roster rows: {@code u32 id, name[16], u8 state, u32, u32}, then the
 	 * game-location fields (lobby id, lobby name, game id, host name, subtype) which stay zero until
 	 * we look up where a member is playing.
 	 */
@@ -801,8 +802,15 @@ public class ClanGameController implements IGameController {
 			buffer.writeInt((int) row.charaId());
 			BufferUtil.writeString(buffer, row.name(), StandardCharsets.ISO_8859_1,
 				CLAN_NAME_LENGTH);
-			// Per row: joined members 1, pending applicants 0.
-			buffer.writeByte(row.state() == ClanService.STATE_PENDING ? 0 : 1);
+			// The membership state, per row, in the client's own vocabulary: 0 pending, 1 member,
+			// 2 leader — the same byte the session clan record and the 0x4122 profile block carry.
+			//
+			// This used to be flattened to a boolean, `state == PENDING ? 0 : 1`, which told the
+			// client that every joined row was an ordinary member and left it no way to know who
+			// leads the clan. [OBSERVED 2026-07-27] A modified client shows a "CL" leader badge on
+			// this list; ours showed none, because we never sent a 2. The value was already in hand
+			// and was being discarded on the way to the wire.
+			buffer.writeByte(row.state());
 			buffer.writeInt(0);
 			buffer.writeInt((int) row.charaId());
 			buffer.writeZero(MEMBER_RECORD_SIZE - (buffer.writerIndex() - recordStart));
