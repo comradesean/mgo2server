@@ -273,6 +273,10 @@ public class GameService {
 	 * Stores one {@code 0x4390} report verbatim — the single write of the stats/history store
 	 * (BACKLOG, "Match/encounter history"): lifetime, period and per-mode stats and the
 	 * met-players history are all derived from these rows at query time.
+	 * <p>
+	 * The game's {@code rule} is copied onto the row rather than joined to later: {@code game} rows
+	 * are deleted at teardown and reports outlive them, so the mode has to be captured while the
+	 * game still exists. The per-mode score ranking is the reader that needs it (V33).
 	 */
 	public void insertRoundReport(RoundReport report) {
 		jdbi.useHandle(handle -> {
@@ -291,12 +295,13 @@ public class GameService {
 						 headshots, headshot_deaths, counter_0x15, counter_0x17,
 						 counter_0x19, lockon_deaths, rounds_played, counter_0x1f, counter_0x21,
 						 team_slot, seconds_in_game, experience_total, detail_present,
-						 detail_counters, trailing_word, aborted, lobby_subtype)
+						 detail_counters, trailing_word, aborted, lobby_subtype, rule)
 					values (:game, :host, :chara, :flag,
 						 :a0, :a1, :a2, :a3, :a4, :a5, :a6, :a7, :a8, :a9,
 						 :a10, :a11, :a12, :a13, :a14,
 						 :team, :seconds, :exp, :detailPresent, cast(:detail as smallint[]),
-						 :trailing, :aborted, :lobbySubtype)
+						 :trailing, :aborted, :lobbySubtype,
+						 coalesce((select g.rule from game g where g.id = :game), 0))
 					""")
 				.bind("game", report.gameId())
 				.bind("host", report.hostCharaId())

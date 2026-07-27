@@ -918,6 +918,58 @@ POST https://mgo2auth.konami.com/us/mgo2/kid/gidauth5.html
 
 The double slash in `/us/mgo2//patch/` is the client's, not a typo.
 
+### Rankings — an HTTP feature, not a command [ELF, 2026-07-27]
+
+**The Rankings menu never touches the TCP protocol.** It POSTs to two endpoints, relative to the
+same base URL as the documents above (the client `strcat`s the path onto the network config's URL
+slot 2 at `0x911224`, so the base must end in `/`):
+
+```
+POST http://mgo2web.konami.com/us/mgo2/rank/mgogetrank.html       player boards
+POST http://mgo2web.konami.com/us/mgo2/rank/mgogetrank_clan.html  clan boards
+     term=..&rule=..&skey=..&from=..&records=..&pid=..   (cid on the clan endpoint)
+```
+
+It is a POST, not a GET — the transport picks its method from `flags & 1` at `0xBB4254` and the
+ranking caller passes 3. All six parameters are always present, always in that order, each
+rendered `"%u"`. `rule` is masked to 4 bits and `skey` to 3. `from` is a row offset, advanced by
+50. `records` is **1** when the client wants its own standing (with its own id in `pid`/`cid`) or
+**100** for a page (with the id 0); it sends nothing else.
+
+The reply is a binary blob, **little-endian** — note that this is the opposite order from every
+lobby packet, and the reader at `0xBC3CE8` is where that is visible. It is `12 + 28 * N` bytes:
+
+```
+u32 N          records that follow
+u32 total      entries on the whole board (drives the scroll limit and min(total,10) rows drawn)
+u32            read at 0x912BE0 and discarded
+N * { u32 rank, u32 id, char[16] name, u32 value }
+```
+
+The whole body is XOR-scrambled — see `CRYPTO.md`, "The ranking scramble".
+
+Only two things make the client reject a reply: an HTTP status other than 200 (`0xBB2D14`), and
+`N` greater than the `records` it asked for (`0x912AF4`). There is no magic prefix, no checksum
+and no length check — and the reader does not bound itself by the body length, so a reply that is
+short for its own `N` is parsed off stale buffer exactly as an under-length lobby packet is.
+
+Two hazards found while implementing:
+
+- The 16 name bytes go into a stack buffer the client never clears (`0x912D30`) and are then
+  passed to `strlen` (`0xAF7140`). A name filling all sixteen bytes has no terminator. We emit at
+  most fifteen characters; the lobby protocol's 16-byte name fields are safe only because *there*
+  the client appends its own NUL.
+- `skey` selects which board. The value set is ELF-exact — `{0,2,3,4,5}` on the player endpoint and
+  `{2,3,6}` on the clan endpoint, from the menu tables at `0x914140` and `0x9153A0` — but what each
+  one *means* is inferred, not proven. The firmest is that `skey` 4 and 5 are the only rows drawn
+  as `x.yy` with a ten-segment gauge (`0x910740`, multiplier 1/256), i.e. 8.8 fixed-point star
+  ratings, which is what Host Score and Instructor Score are. See `RankingService` for the rest and
+  for how confident each mapping is.
+
+This also settles a standing question in the negative: **the `0x4Axx` block is not rankings.** Its
+records embed the 204-byte game-settings sub-record, so it belongs to games. `COMMANDS.md` still
+lists it as an unidentified subsystem, which it remains.
+
 Note the nonce in the version check changes every launch, and the `seed` in the login request is
 48 hex characters (24 bytes) whose role is not yet understood.
 

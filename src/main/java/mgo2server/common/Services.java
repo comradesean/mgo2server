@@ -6,6 +6,7 @@ import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.common.service.LobbyService;
 import mgo2server.common.service.NewsService;
+import mgo2server.common.service.RankingService;
 
 public class Services {
 	private final AccountService accountService;
@@ -14,16 +15,18 @@ public class Services {
 	private final GameService gameService;
 	private final LobbyService lobbyService;
 	private final NewsService newsService;
+	private final RankingService rankingService;
 
 	public Services(AccountService accountService, CharacterService characterService,
 			ClanService clanService, GameService gameService, LobbyService lobbyService,
-			NewsService newsService) {
+			NewsService newsService, RankingService rankingService) {
 		this.accountService = accountService;
 		this.characterService = characterService;
 		this.clanService = clanService;
 		this.gameService = gameService;
 		this.lobbyService = lobbyService;
 		this.newsService = newsService;
+		this.rankingService = rankingService;
 	}
 
 	public AccountService getAccountService() {
@@ -48,5 +51,9 @@ public class Services {
 
 	public NewsService getNewsService() {
 		return newsService;
+	}
+
+	public RankingService getRankingService() {
+		return rankingService;
 	}
 }

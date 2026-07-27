@@ -23,7 +23,12 @@ TERMS = (b"nomad-ng test server.\r\n\r\n"
 
 
 # Paths the application server owns. Everything else is answered by this harness.
-PROXY_PREFIXES = ("/us/mgo2/kid/",)
+#
+# /rank/ is the Rankings screen: mgogetrank.html and mgogetrank_clan.html, both POSTs with a
+# form-urlencoded body. Their replies are binary and XOR-obfuscated, so they must come from the
+# application rather than from the stub below — default_body() would answer a single 0x00 byte,
+# which the client reads as a zero-record board with a garbage total.
+PROXY_PREFIXES = ("/us/mgo2/kid/", "/us/mgo2/rank/")
 
 WEB_SERVER = os.environ.get("MGO2SERVER_WEB_URL", "http://web:8080")
 

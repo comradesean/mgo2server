@@ -20,8 +20,24 @@ check (which uses none of this).
 | Blowfish (`session.key`) + custom chaining | the check-session field | `SessionField` |
 | MD5 | account passwords, hashed by the client | `AccountService.findByCredentials` |
 | TLS | the HTTPS login and version-check endpoints | `probe-https` container |
+| Rolling 8-byte XOR | the body of every ranking HTTP reply | `RankingScramble` |
 
 The port check (STUN) uses none of these. Its packets are plaintext.
+
+## The ranking scramble
+
+The Rankings screens fetch over HTTP, not over the lobby protocol, and their replies carry their
+own obfuscation — unrelated to the packet XOR above, and applied to a plain HTTP body.
+
+Key `8b 75 2c 90 3a 5e 4d f1`, read from the immediates the client stores inline at `0xBC2D80`.
+Byte `i` is XORed with `key[((i / 4) % 5) + (i % 4)]`: the offset walks a four-byte block, the
+block index advances every four bytes and wraps at five, so the keystream repeats every twenty
+bytes and touches all eight key bytes. The client applies it at `0xBC2D78` before reading a single
+field, so a **cleartext reply is not rejected — it is silently misparsed**, and every column shows
+garbage with no error.
+
+XOR is its own inverse, so the server scrambles with the same routine. [ELF] throughout; no
+capture of a genuine Konami ranking response exists to corroborate it.
 
 ## Whole-packet XOR
 
