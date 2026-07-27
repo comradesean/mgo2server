@@ -406,10 +406,25 @@ public class ClanGameController implements IGameController {
 	 * the Block List one — so the generic refusal is the client's normal answer here, not a
 	 * degraded one.
 	 * <p>
-	 * <b>Scope of that elimination.</b> It covers the result-code path and only that path. 6458 is
-	 * installed as a screen-level message id by a struct initializer at {@code 0x756438} and
-	 * {@code 0x758318}, and whether any consumer there can raise it — a client-side pre-check, some
-	 * other display route — was never traced. If a way is found, this constant is what changes.
+	 * <b>[ELF] The elimination now holds by mechanism, not by absence.</b> It was first made on
+	 * "{@code li r3,6458} occurs nowhere", which only covered the result-code path. The display
+	 * path has since been inventoried end to end: every dialogId reaches the queue through one of
+	 * <b>14 call sites</b> of {@code 0x7FA780}, and at every one of them the id is a
+	 * <b>compile-time constant</b> — 167 direct {@code li}, 20 from a two-way {@code subfic}
+	 * select, 9 set in the preceding block, and 2 memory loads whose only writers are themselves
+	 * {@code li}. No dialogId in this binary is computed from data.
+	 * <p>
+	 * 6458 is installed only by the per-screen message-id constructor {@code 0x756F90} (with a dead
+	 * identical twin at {@code 0x7550B0}, called from nowhere and absent from the OPD table), into
+	 * field {@code 200(r31)} of a 384-byte object. Nothing reads that field into a raiser. The same
+	 * mechanism accounts for 6454, 6455, 6456 and 6460 — all installed in that struct, none ever
+	 * raised — which is the corroboration that makes this an explanation rather than a gap.
+	 * <p>
+	 * There is also no client-side pre-check to raise it: {@code 0xD585FC} refuses only with
+	 * {@code -24} (name length and character class), {@code -36} (connectivity) and {@code -1201}
+	 * (already in a clan). No time check exists on the apply path at all.
+	 * <p>
+	 * What would overturn it: a capture of a real server making this client print string 24137.
 	 */
 	private static final int APPLY_TOO_SOON = -1219;
 

@@ -97,13 +97,23 @@ result code produces them, so a server-side join cooldown or block-list refusal 
 the generic 24101. Carrying the text is not the same as being able to show it; check this table
 before designing a refusal around a sentence you found in a string dump.
 
-Note the scope of that claim, because it is narrower than it first reads: it is about the
-**result-code path**, which is the only path this server controls. It is not a proof that the
-sentences can never appear. `li r22,6458` appears at `0x756438` and `0x758318` inside a large
-per-screen struct initializer that installs whole families of dialogIds, so 6458 *is* installed
-somewhere as a screen-level message id. Whether a client-side pre-check or some other display
-route can raise it was not traced, and until it is, "the server cannot show this" is the honest
-statement rather than "the client cannot show this".
+This started as "`li r3,6458` occurs nowhere", which only covered the result-code path. The
+display path has since been inventoried end to end, and the stronger claim now holds: **no
+dialogId in this binary is computed from data.** Every one reaches the display queue through one
+of **14 call sites** of `0x7FA780`, and at all of them the id is a compile-time constant — 167
+direct `li`, 20 from a two-way `subfic` select, 9 set in the preceding block, and 2 memory loads
+whose only writers are themselves `li`. None of those constants is 6454, 6455, 6456, 6458 or 6460.
+
+Where they *do* live: the per-screen message-id constructor `0x756F90` installs them into fields
+of a 384-byte object (`152/192/196/200/264`), and nothing reads those fields into a raiser.
+`0x7550B0` is an instruction-identical dead twin — called from nowhere and absent from the OPD
+table. One mechanism accounts for all five sentences at once, which is what makes this an
+explanation rather than a gap.
+
+Unresolved, and stated as such: no reader of that struct's dialogId fields was found at all, so
+what the object is *for* is unknown. That is a hole in the description, not in the conclusion,
+which rests on the raiser-side inventory being total. What would overturn it: a capture of a real
+server making this client print one of those sentences.
 
 Why the generator missed this block, when it read its neighbours: `CODES` is hand-maintained from
 reading `cmpwi` chains, and this block is only eight instructions long with just one `li` inside
