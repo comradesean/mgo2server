@@ -1,10 +1,29 @@
 meta:
   id: mgo2_cmd_4b4b_s2c
-  title: "MGO2 0x4b4b — clan/GHQ reply, result + 768-byte block (server -> client)"
+  title: "MGO2 0x4b4b — clan emblem display fetch, result + 768 bytes (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **The 768 bytes are the clan EMBLEM.** [CONFIRMED LIVE 2026-07-27]. Neither this parser nor its
+  two siblings looks inside the block — all three NUL-terminate at +768 into a 769-byte buffer — so
+  the bytes are opaque TO THE PARSER, and that is all the earlier "[UNKNOWN] contents, could be a C
+  string or a table of them" reading ever established. What the block IS was settled at the other
+  end: 0x4b49's copy lands at profile+6873 (parser 0xD56F24, `addi r0,r27,57` off the clan record
+  fetched at 0xD56EDC), 0x4b4b answers the display fetch 0x4b4a, and the same 768 bytes go the
+  other way in 0x4b50's upload. Store and return them verbatim.
+
+  **Falsified theory, on the record.** This block was briefly filled with pending applicant names,
+  on the reading that 768 = 48 x 16 made it a name table. It is not: that was writing text into the
+  client's emblem buffer. 48 x 16 is a coincidence of arithmetic, not evidence.
+
+  **This id is 0x4b4a's reply** — the emblem DISPLAY fetch, whose request names the clan whose
+  emblem is wanted (`u32 clan id`), so it can serve a clan the player is not in.
+  [CONFIRMED LIVE 2026-07-27]
+
+  The client will not send 0x4b4a at all unless the clan's emblem-present flag is non-zero
+  (0x4b21 / 0x4b81 T+0x378 = 3). A clan viewed from search or the clan list therefore renders no
+  emblem until that flag is set, however good the bytes here are.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD59EBC**, which re-checks the id (`cmpwi r0,19275`) before reading anything.
@@ -65,11 +84,10 @@ doc: |
 seq:
   - id: result
     type: s4
-    doc: "[ELF] 0 = success, block follows. Published to request slot 102."
-  - id: block
+    doc: "[CONFIRMED 2026-07-27] 0 = success and the 768-byte emblem follows; non-zero makes this a 4-byte reply. Published to request slot 102."
+  - id: emblem
     size: 768
     doc: |
-      [ELF] 768 bytes read as one opaque fixed block (0xD5D018, len=0x300); the parser does not
-      look inside it, and the client NUL-terminates at +768 — so the 769-byte destination means
-      whatever consumes it treats it as a C string or a table of them. Contents [UNKNOWN]:
-      nothing in this parser decodes a single byte of it.
+      [CONFIRMED 2026-07-27] The clan's emblem, 768 bytes, read as one fixed block (0xD5D018,
+      len=0x300) and stored for display. Opaque to the parser; the client NUL-terminates at +768.
+      The internal pixel/format encoding is [UNKNOWN] and the server does not need it.

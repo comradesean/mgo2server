@@ -7,14 +7,22 @@ the id space is fully enumerated and each id has a place to record what the ELF 
 Promotion path: when a spec's fields are all mapped and at least the shape is confirmed
 against a capture, it graduates to `dev/proto/` (the verified set) and is deleted here.
 
+**2026-07-27: 35 specs graduated in one pass** — 33 of the clan family plus `0x3103` and
+`0x4600`. The counts below moved 109 -> 90 inbound and 194 -> 178 outbound. Four clan specs that
+are individually complete were held back deliberately: `0x4b11`/`0x4b13` and `0x4b53`/`0x4b55`
+are the header and end packets of triples whose *item* packets (`0x4b12`, `0x4b54`) still carry
+unknown bytes, and splitting a triple across the two directories is a judgement call rather than
+a rule. If the convention should be "promote per file, not per triple", say so here and move
+them.
+
 ## Layout
 
 Direction is encoded by the folder, from **the server's** point of view:
 
 | folder | direction | suffix | count | id list |
 | --- | --- | --- | --- | --- |
-| `inbound/` | client -> server (what we receive and must answer) | `_c2s` | 109 | `dev/analysis/c2s_ids.txt` (112 ids, 2 already verified) |
-| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 194 | `dev/analysis/s2c_ids.txt` (204 ids, 9 already verified) |
+| `inbound/` | client -> server (what we receive and must answer) | `_c2s` | 90 | `dev/analysis/c2s_ids.txt` (112 ids, 21 already verified) |
+| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 178 | `dev/analysis/s2c_ids.txt` (204 ids, 25 already verified) |
 | (root) | both directions, identical schema | none | 1 | `0x0005` only |
 
 Direction is carried **twice on purpose** — by the folder and by the `_c2s`/`_s2c` filename

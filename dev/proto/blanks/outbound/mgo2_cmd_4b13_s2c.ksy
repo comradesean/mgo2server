@@ -1,11 +1,16 @@
 meta:
   id: mgo2_cmd_4b13_s2c
-  title: "MGO2 0x4B13 - unmapped clan/GHQ-block reply (server -> client)"
+  title: "MGO2 0x4b13 — clan list END (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4B13; COMMANDS.md lists it only as "parsed but never sent". Everything below is read out of
-  the client parser - field ORDER and WIDTH are solid, MEANINGS are not.
+  **End of the clan list.** The last packet of the 0x4b11 / 0x4b12 / 0x4b13 triple answering the
+  paged clan list request 0x4b10. [CONFIRMED LIVE 2026-07-27].
+
+  Order on the wire: 0x4b11 header `{result, offset, total}`, then 0x4b12 with the 48-byte rows
+  (omitted entirely when the page is empty), then this. Like every other list end in the protocol
+  it carries a **result code, never a count** — the client counts the 0x4b12 records itself, and
+  putting a count in a start/end slot produced the live 1032:00000005 error on the sibling social
+  path (dev/docs/OBSERVED.md).
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39B6C,
   parser 0xD55698.
@@ -35,7 +40,5 @@ seq:
   - id: result
     type: u4
     doc: |
-      [ELF] The only field the parser reads. Every reply in this family whose parser reads a
-      single u32 follows the same shape as the documented result singles (PROTOCOL.md), but
-      nothing here proves 0 means success for THIS id - the value is not compared against 0
-      inside the parser, it is handed to the UI/event layer. [UNKNOWN] semantics.
+      [CONFIRMED 2026-07-27] Clan-list-end result, and the only field the parser reads. 0 = the
+      list is complete. **Never a record count** — see the top-level doc.

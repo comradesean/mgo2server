@@ -11,9 +11,21 @@ doc: |
   Structure, fully traced:
     * u32 result. **Non-zero skips the entire rest of the packet** (0xd3739c `cmpwi r0,0; bne ->
       0xd3776c`), so an error reply is legitimately four bytes (`C0FFEE02`).
-    * three u8 header fields, a 16-byte name, then 8 fixed entries of 52 wire bytes, then a
-      32-byte tail.
+    * a **23-byte header** — `u32 result, u8 slots, u8 count, u8 selected_slot,
+      char selected_name[16]` — then 8 **uniform** entries of 52 wire bytes, then a 32-byte tail.
     * 23 + 8*52 + 32 = 471. Confirms PROTOCOL.md's size and shape exactly.
+
+  FALSIFIED READING OF THE ENTRY SHAPE (live 2026-07-27, commits 8617e21 / 0b0f93e). Our writer
+  had introduced the FIRST entry with its name and every LATER entry with a 4-byte index, i.e. it
+  treated the entries as varying by position; and it wrote 28 bytes of appearance where the
+  layout has 31. **The entries are uniform. There is no per-entry variation.** The two errors
+  cancelled to exactly 52 bytes for a single-character account, so the packet looked correct for
+  as long as only one character existed, and the second entry ran three bytes long the moment a
+  second did. Both halves are corrected: real 23-byte header, uniform 52-byte entries, with the
+  three recovered bytes belonging to `delete_cooldown_seconds` below.
+
+  This is the shape of bug this packet keeps producing: every field in a single-entry list looks
+  right whether or not it means what we think it means.
 
   Client struct destinations: header at `ctx+21968` (0x55D0), the 16-byte name into `ctx+22492`
   — **the same slot `0x4101` writes its character name into** (`0x4101`'s base is `ctx+22488`,
@@ -37,18 +49,37 @@ seq:
     doc: "[CONFIRMED] Wire 0x00. Zero gates everything below; `C0FFEE02` if the connection has not checked in."
   - id: slots
     type: u1
-    doc: "[ELF] Wire 0x04 -> ctx+21968. PROTOCOL.md names it `slots`."
+    doc: |
+      [ELF] Wire 0x04 -> ctx+21968. PROTOCOL.md names it `slots`: how many character slots this
+      account may fill.
+
+      **OPERATOR POLICY, not protocol** (per CLAUDE.md's spec/policy/presentation split). The
+      packet has room for 8 entries and the client would carry more without complaint; the retail
+      service SOLD the extra slots. Our default is 1, bounded 1..4 by a database constraint, and
+      granted per account with an UPDATE — a policy choice, and a deliberately different one from
+      the 3 we had inherited. Nothing in the binary fixes this number.
   - id: count
     type: u1
     doc: "[ELF] Wire 0x05 -> ctx+21969. Character count. **Not** a repeat count — the 8 entries are read unconditionally."
   - id: selected_slot
     type: u1
-    doc: "[ELF] Wire 0x06 -> ctx+21970. Bounded at 7 by the post-parse scan at 0xd3777c."
+    doc: |
+      [CONFIRMED live 2026-07-27] Wire 0x06 -> ctx+21970. The slot of the character this account
+      currently has selected. Bounded at 7 by the post-parse scan at 0xd3777c.
+
+      **Load-bearing — this field IS the selection, as far as the client is concerned.** After the
+      player picks a character with `0x3103` the client RE-FETCHES this list and takes its
+      selection back out of this header. Reporting a hardcoded 0 (with the first character's name
+      beside it) made the client forget the choice every time: picking the second character and
+      entering the lobby logged the player in as the first. It must carry the slot of the
+      account's current character, and `selected_name` must match it.
   - id: selected_name
     size: 16
     type: str
     encoding: ISO-8859-1
-    doc: "[ELF] Wire 0x07 -> ctx+22492, i.e. the same destination as 0x4101's character name."
+    doc: |
+      [ELF] Wire 0x07 -> ctx+22492, i.e. the same destination as 0x4101's character name. Must be
+      the name of the character in `selected_slot`; see that field.
   - id: entries
     type: character_entry
     repeat: expr
@@ -93,6 +124,23 @@ types:
       - id: appearance_b
         size: 14
         doc: "[CONFIRMED] (order per PROTOCOL.md) Wire +34 -> entry +40..+53, fourteen separate u8 reads. Appearance head … accessory-2 colour."
-      - id: unknown_30
+      - id: delete_cooldown_seconds
         type: u4
-        doc: "[UNKNOWN] Wire +48 -> entry +56. Read but never identified; we send zero."
+        doc: |
+          [CONFIRMED 2026-07-27, ELF-traced] Wire +48 -> entry +56 (parser `0xD372F8`, stored to
+          `sess+0x55D4 + 60*slot + 56`). The **per-character delete cooldown, in seconds** — how
+          long until this character may be deleted.
+
+          The client formats it ITSELF, at `0x9510B4`: a non-zero value rounds up to whole minutes
+          and produces "Characters cannot be deleted for a fixed amount of time after being
+          registered. You must wait %d hours %d minutes" (lobby strings 11848 / 11854). Zero lets
+          the deletion proceed. So the countdown shows real numbers instead of the server's rule
+          surfacing only as a refusal — this is the ONE cooldown of the three we enforce
+          (character delete / clan disband / emblem re-display) that this client build can
+          actually display; the other two have no reachable formatter.
+
+          Corrects the previous entry here, "[UNKNOWN] ... Read but never identified; we send
+          zero", and corrects a second reading: **PROTOCOL.md files this trailing u32 under the
+          appearance block.** It is not part of the appearance. Writing appearance as 28 bytes
+          plus a one-byte pad rather than 24 + this u32 is exactly the three-byte shortfall
+          described in the top-level doc.

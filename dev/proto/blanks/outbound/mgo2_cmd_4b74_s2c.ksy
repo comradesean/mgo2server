@@ -1,10 +1,17 @@
 meta:
   id: mgo2_cmd_4b74_s2c
-  title: "MGO2 0x4b74 — clan/GHQ reply, single result code (server -> client) — list-triple START"
+  title: "MGO2 0x4b74 — clan applicant list START (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven:
-  everything here is read out of the client parser.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **Start of the clan applicant list.** First packet of the 0x4b74 / 0x4b75 / 0x4b76 triple
+  answering 0x4b73, whose payload is the clan id.
+
+  **This triple is UNEXERCISED.** [CONFIRMED LIVE 2026-07-27] the client never sends 0x4b73: clan
+  APPLICATIONS are delivered as MAIL instead — mailbox type 0x10 on 0x4820, where 0x0f is ordinary
+  mail — and a leader judges them from the mailbox with 0x4b30 / 0x4b32. So nothing below has been
+  seen on the wire and everything about it stays [ELF].
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD5502C**,
   which re-checks the id (`cmpwi r0,19316` = 0x4b74) before reading anything.
@@ -79,8 +86,10 @@ seq:
   - id: result
     type: s4
     doc: |
-      [ELF] Signed 32-bit result/error code. It is typed s4 because the CALLER reloads it with
-      `lwa`, not because of the primitive: 0xD5CC64 is byte-identical to 0xD5CCD8 and is not a
-      signed accessor (see the CORRECTION in the top-level doc). Negative values are meaningful (this family's errors are in the
-      -0x4xx..-0x5xx range elsewhere in the binary). 0 = success by the convention every other
-      traced reply follows. Meaning of non-zero values here: [UNKNOWN].
+      [ELF] Applicant-list-start result. 0 = the rows follow. **A result code, never a count** —
+      see the top-level doc. Never observed live; this triple is unexercised.
+
+      It is typed s4 because the CALLER reloads it with `lwa`, not because of the primitive:
+      0xD5CC64 is byte-identical to 0xD5CCD8 and is not a signed accessor (see the CORRECTION in
+      the top-level doc). Negative values are the client's own error codes, resolved through its
+      table at 0x106D714.

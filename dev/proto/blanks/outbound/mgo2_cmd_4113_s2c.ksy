@@ -8,19 +8,25 @@ doc: |
   i.e. the value is handed straight to the request-status machine as the result of wait slot
   24. Anything after the first four bytes is ignored.
 
-  Undocumented. COMMANDS.md lists `0x4113` under "result singles" that the client parses but we
-  never send, and `0x4112` under "reachable in ordinary flow" sendable-but-unanswered gaps. This
-  parser trace settles the reply shape: a bare u32 result on wait slot 24 is sufficient, so the
-  `0x4112` gap can be closed with a four-byte ack — unlike `0x4133`, which looked like a result
-  single and was not.
+  COMMANDS.md listed `0x4113` under "result singles" that the client parses but we never send,
+  and `0x4112` under "reachable in ordinary flow" sendable-but-unanswered gaps. This parser trace
+  settled the reply shape: a bare u32 result on wait slot 24 is sufficient, so the `0x4112` gap
+  can be closed with a four-byte ack — unlike `0x4133`, which looked like a result single and was
+  not.
+
+  **We now send it.** Live 2026-07-27: `0x4112` fires right after a player search and the client
+  blocks on wait slot 0x18 (`li r4,24` at `0xD3BEDC`); a four-byte zero result released the
+  screen, which is what the parser trace predicted. See `../inbound/mgo2_cmd_4112_c2s.ksy`.
 seq:
   - id: result
     type: u4
     doc: |
-      [ELF 0xd3b148-0xd3b17c] Wire 0x00. The whole payload as far as the client is concerned.
-      **Tag downgraded 2026-07-26 from [CONFIRMED]:** 0x4113 appears nowhere in OBSERVED.md or
-      PROTOCOL.md's capture record - we have never sent it and never seen it. The layout is
-      read out of the parser, which is [ELF]; nothing about it is capture-proven. 0 on success;
+      [CONFIRMED live 2026-07-27] Wire 0x00. The whole payload as far as the client is concerned.
+      **Tag history:** downgraded 2026-07-26 from [CONFIRMED] to [ELF], because 0x4113 appeared
+      nowhere in OBSERVED.md or PROTOCOL.md's capture record — we had never sent it and never
+      seen it, and the layout was read out of the parser alone. Re-confirmed 2026-07-27 by
+      sending it: a four-byte zero result released the wait slot the client had armed on
+      `0x4112`, so the shape is now capture-proven end to end. 0 on success;
       our error codes are masked `C0FFEE**` values. See PROTOCOL.md for the per-command code
       lists. Signedness is **not** recoverable from the read primitive (it assembles four bytes
       with no sign handling); PROTOCOL.md calls it s32 because the client compares it against

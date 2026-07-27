@@ -2981,3 +2981,139 @@ Open, and the cheapest experiment outstanding:
 
 Note the server relays message text verbatim — no word filter. The retail game had one, so any
 filtering here is operator policy, and the client will display whatever it is handed.
+
+## The clan family, live end to end — 2026-07-27
+
+Twenty-three commands answered in one session, with a real client in front of every screen. The
+byte-level result is in `PROTOCOL.md`, "Clans"; what belongs here is **how it was found and what
+was believed that turned out to be false**, because almost none of it came from disassembly.
+
+The method: answer every id at once in the shape its parser demands, open each screen, and watch
+which branch comes alive. Every field we started populating **truthfully** unlocked a branch that
+had been dormant, and those unlocks were the real instrument. `0x4b48` did not appear at all until
+a character actually had a clan. `0x4b42` (Apply to join) refused to transmit — returning `-24`
+without sending a byte — until `0x4b81` carried a non-zero `subject_id`, because the sender checks
+the session clan record first. Neither could have been provoked by a better trace.
+
+### Falsified live, and worth keeping
+
+- **"`0x4b46` does not block."** Recorded in its own spec as proven by a live trace, with a warning
+  against replying speculatively. True in the connect burst, where it fires unprompted; false from
+  the clan menu, where it stalls with `1933:FFFFFF60`. One command, two contexts, one of them
+  tested. This is the single most reusable lesson of the session: **a non-blocking observation is
+  scoped to the screen it was made on.**
+- **The 768-byte block is an opaque blob.** It is the clan **emblem**. It was briefly filled with
+  pending applicant names on the theory that 768 = 48 × 16 made it a name table — i.e. we were
+  writing text into the client's emblem buffer.
+- **`0x4b11` carries `{total, offset}`.** It carries `{offset, total}`. The indicator read "2 out
+  of 1" and the record count never enters that string at all, which is why changing the rows
+  changed nothing.
+- **`T+0x904` is the founding date.** It is the **notice's** date. The field had been found
+  honestly — by sending every candidate slot the date offset by a different number of days and
+  reading which one the screen showed — and then a label was layered onto a real observation. The
+  founding date is `T+0x18`.
+- **`T+0x48` is the emblem re-display cooldown.** [ELIMINATED] Sending the real display time
+  changed nothing; the emblem could still be re-displayed immediately with a fresh `0x4b21` in
+  hand. This one is a *valid* elimination: the confirming observation (a countdown appearing) was
+  well defined, and it did not appear.
+- **Emblem editing is a privilege bit.** It is not. Granting a leader all sixteen bits of the word
+  at `profile+6838` produced a "!" badge and a **hard poll loop, re-sending `0x4b46` every ~73 ms**,
+  because `0xAB0074` returns without advancing its state machine while any intolerable bit
+  survives. Bit 8 alone — the one bit a leader's `-257` mask tolerates — gave the badge and no menu
+  row, and emblem loading worked with or without it. The word is a **notification mask the client
+  drains**, and applying an emblem is gated on membership state 2 alone.
+- **Applicants are a roster concept.** They are **mail** (`0x4820` type `0x10`). There is no
+  applicant-list command in the client's flow, which is why it never sent one however we answered.
+- **Two `0x4b71`s, by analogy with `0x4105`'s cumulative/weekly pair.** The first reply completes
+  the request slot and the second arrives unexpected: `1931:FFFFFF60`.
+
+### The acknowledge-only table
+
+A dozen ids were answered with a bare success while doing nothing. It stopped the stalls, and it
+converted "unimplemented" into "silently reports success" — disband, banish, transfer leadership
+and set-emblem-editor all reported working. It is gone and must not come back. **A command with no
+implementation should stall visibly or return an error.** A stall is a bug report; a false success
+is a bug that never gets reported.
+
+## The character list broke the moment a second character existed — 2026-07-27
+
+Two independent errors in `0x3049` that **cancelled to exactly 52 bytes**: the writer introduced
+the first entry with its name and every later one with a 4-byte index, and wrote 28 bytes of
+appearance where the layout has 31. There was even a documented explanation for why the
+inconsistent writer was nevertheless right (an index `00 00 00 nn` has three leading zeros that
+complete the previous entry's trailing `u32`). It was wrong, and it was invisible for as long as
+every account had one character.
+
+Then the same shape of bug again, hours later: `selected_slot` was hardcoded to 0. The client
+**re-fetches the list after `0x3103` and takes its selection back from that header**, so choosing
+the second character and entering the lobby logged the player in as the first.
+
+The common cause is worth stating on its own: **every field in a single-entry list looks right
+whether or not it means what we think it means.** Any list packet validated against one row is
+untested.
+
+The entry's trailing `u32` at `+0x30` is the **per-character delete cooldown in seconds**, which
+the client formats itself (`0x9510B4`) — the one cooldown of three this build can display.
+
+## `0x4221` carries real data; the level field is still open — 2026-07-27
+
+The player-details card had been left serving its own fingerprint payload — `FP-DTL-*` strings and
+numbered constants. The probe worked, the field map was written down, and then nobody filled it in,
+so the clan rendered `----` until the player opened More Details (which fetches `0x4103`, and that
+*does* carry a clan). The value looked like it was arriving late when this packet simply never had
+it.
+
+**Sending the clan name was not enough.** Wire `0xa7`/`0xab`/`0xbb` are `{u32 id, char name[16],
+u8 state}`, and every reader traced so far **checks the id first** and treats 0 as "no clan"
+whatever the name says.
+
+**Play time has one definition now**: the sum across game modes, because the client totals the
+per-mode column itself. Sending the raw stored aggregate read six times short. (That the total is
+inflated at all is a separate, open problem — we store one number and write it into every mode
+row.)
+
+**Open: LEVEL renders as 0.** Four candidates sit between the name and the play time — wire `0x18`
+(u32), `0x1c` (u8), `0x1d` (u8), `0x1e` (u32) — and a live probe is in flight carrying 1450 / 250 /
+130 / 500, chosen so each maps to a *distinct* level (10 / 2 / 1 / 4) through the client's own
+experience table. Whichever level the card renders names the field. **Nothing is concluded yet.**
+
+## The search "case sensitive" byte means the opposite — 2026-07-27
+
+Searching for `bob` with **Case Insensitive** selected on screen arrived as `{0, 1}` and matched
+nothing against a character named `Bob`; the client reported "Unable to locate that character" —
+correctly, since we ran a case-sensitive query. `1` means **ignore case**.
+
+The polarity is the client's, not a per-screen quirk: the clan-search screen sends the same
+`{0, 1}` from its own toggles. Both `0x4600` and `0x4b90` now read it that way.
+
+Note where the wrong reading came from. An integration test asserted it, and **its only authority
+was the field's own name** — no capture, no disassembly. The ELF cannot settle this either: the
+builder stores the argument and never tests it. Per `CLAUDE.md` that assertion was a regression
+guard wearing the clothes of a correctness check.
+
+## `0x4112` blocks — the wait-slot prediction paid off — 2026-07-27
+
+`COMMANDS.md` had listed `0x4112` as reachable-but-never-stalled, while noting from the ELF that it
+registers **wait slot `0x18`** (`li r4,24` at `0xD3BEDC`) and therefore *should* block. It fired
+after a player search and stalled the screen exactly as predicted. It is answered now with a bare
+`0x4113` result; the 32 bytes it carries are still unidentified:
+
+```
+0000 1000 0000 0000 1110 0000 0000 0000 0000
+```
+
+Whatever setting they hold will not persist until someone works out what they are. Answering it
+only stops the stall, and saying so is the point.
+
+## The TIPS panel is an HTTP document, not a packet — 2026-07-27
+
+Full write-up in `HELP.md`. Two misdiagnoses preceded it: Community Support was assumed to be a
+lobby command, and the Personal Data tips panel was assumed to be the **news list** — every news
+row was replaced to test that, which changed nothing, because the panel was showing the probe's
+fallback stub for a path we did not serve.
+
+The client fetches `help/<category>_<id>.txt` over HTTP and parses exactly two tags: `<title>` and
+`<page-break>`. **Pages are a property of the file, not the request** — the page counter is
+`page-breaks + 1`, parsed from the document — so serving one page per file yields a single page
+with no counter and no L1/R1, which was the symptom. The caption is chosen by category alone, so
+the server cannot change the word "TIPS"; only the title node is ours.

@@ -1,10 +1,21 @@
 meta:
   id: mgo2_cmd_4b75_s2c
-  title: "MGO2 0x4b75 — clan/GHQ list ITEMS, 93-byte records (server -> client)"
+  title: "MGO2 0x4b75 — clan APPLICANT rows, 93-byte records (server -> client)"
   endian: be
 doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
   every field below comes from the client parser only, so tags are [ELF] at best.
+
+  **The clan applicant list, and it is UNEXERCISED.** Middle packet of the 0x4b74 / 0x4b75 /
+  0x4b76 triple answering 0x4b73. [CONFIRMED LIVE 2026-07-27] that **the client never sends
+  0x4b73**: clan APPLICATIONS are delivered as MAIL instead — mailbox type 0x10 on 0x4820, where
+  0x0f is ordinary mail — and a leader accepts or declines from the mailbox with 0x4b30 / 0x4b32.
+
+  So this triple has never been on the wire, nothing here has been rendered, and a server can serve
+  it or not without any screen noticing. Everything below stays [ELF]/[UNKNOWN] until that changes.
+
+  One consequence worth recording: the 64-byte text field below has no source. An application
+  carries no message — 0x4b42 sends only a clan id — so nothing on the wire ever fills it.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD55E40**, which re-checks the id (`cmpwi r0,19317`) before reading anything.

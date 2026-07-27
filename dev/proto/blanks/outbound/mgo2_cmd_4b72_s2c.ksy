@@ -3,8 +3,13 @@ meta:
   title: "MGO2 0x4b72 — clan stat blocks, 580 bytes (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). The 72 values per
+  block are still [UNKNOWN]; the packet's role is [CONFIRMED LIVE 2026-07-27].
+
+  **The second half of the clan stats reply.** 0x4b70 is answered with exactly one 0x4b71 (584
+  bytes) followed by exactly one of these (580 bytes). Sending two 0x4b71s instead completed the
+  request slot on the first reply and stalled Clan Affiliation with
+  "unable to acquire clan information (1931:FFFFFF60)" — see mgo2_cmd_4b71_s2c.ksy.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD58F3C**, which re-checks the id (`cmpwi r0,19314`) before reading anything.
