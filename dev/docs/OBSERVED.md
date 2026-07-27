@@ -28,6 +28,39 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
+## The clan roster's leader badge (2026-07-27, OPEN)
+
+A modified client shows a "Clan Leader" badge — a white doll figure marked CL — beside the leader
+in Check Roster. The retail client (BLUS30109) shows no such badge; the leader instead gets an
+**emblem-painter icon**.
+
+The roster row's status byte was being flattened to a boolean (`state == PENDING ? 0 : 1`), so we
+never sent a 2 and the client had no way to know who led the clan. That is fixed — the row now
+carries the real state, which is what the field's own documentation always said it was, the same
+`0/1/2` vocabulary the session clan record and the `0x4122` profile block use.
+
+**Verified on the wire after the fix, and the badge still did not appear:**
+
+    0x4b54  rows=2   row0 id=00000001 name=Sean state=02   row1 id=00000003 state=01
+
+So the state byte reaching the client as 2 is **not sufficient** to draw a CL badge on this build.
+That is a real elimination — the observation that would have confirmed it (a badge appearing) was
+looked for and did not occur.
+
+Three possibilities remain, and they are distinguishable:
+
+1. **The badge does not exist in this build** — added in a later client version, which is the
+   user's hypothesis. Confirmable by finding no such sprite referenced anywhere in the binary.
+2. **It is selected by one of the 47 bytes we still send as zero.** The row is 68 bytes and we fill
+   21. This is at least as likely as (1), and is the reason (1) should not be assumed.
+3. **Something suppresses it** — most plausibly that we declare the leader to be the emblem editor
+   (`coalesce(emblem_editor_chara_id, leader_chara_id, 0)` in the clan queries), so the painter
+   icon may be taking a single shared badge slot that the CL badge would otherwise occupy.
+
+Note (3) is testable from our side alone: set `emblem_editor_chara_id` to a non-leader member and
+see whether the leader's icon changes.
+
+
 ## A clan leader's emblem does not render in game (2026-07-27, OPEN)
 
 Three clients in one match. Sean and poop in clan 2, which has an emblem on display; rawr in no
