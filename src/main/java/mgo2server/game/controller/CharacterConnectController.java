@@ -57,6 +57,20 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int CHARACTER_INFO = 0x4101;
 
+	/**
+	 * A 32-byte write-back from the connect family, contents unidentified — and the client
+	 * <b>blocks on it</b> (wait slot {@code 0x18}, {@code li r4,24} at {@code 0xD3BEDC}).
+	 * <p>
+	 * Observed live 2026-07-27 after a player search, payload
+	 * {@code 0000 1000 0000 0000 1110 0000 0000 0000 0000}, and unanswered it stalls the screen.
+	 * The reply {@code 0x4113} is a bare {@code u32} result ({@code 0xD3B148}), so acknowledging it
+	 * costs nothing; the body is stored nowhere because nothing is known about it. Whatever setting
+	 * this carries will not persist until someone identifies the 32 bytes.
+	 */
+	public static final int UNKNOWN_WRITE_BACK = 0x4112;
+
+	private static final int UNKNOWN_WRITE_BACK_RESULT = 0x4113;
+
 	public static final int GAMEPLAY_SETTINGS = 0x4120;
 
 	public static final int CHAT_MACROS = 0x4121;
@@ -134,6 +148,7 @@ public class CharacterConnectController implements IGameController {
 		handlers.put(CONNECT, this::connect);
 		handlers.put(UPDATE_CONNECTION_INFO, this::updateConnectionInfo);
 		handlers.put(UPDATE_CHAT_MACROS, this::updateChatMacros);
+		handlers.put(UNKNOWN_WRITE_BACK, ctx -> ctx.write(UNKNOWN_WRITE_BACK_RESULT, GameError.NONE));
 	}
 
 	/**

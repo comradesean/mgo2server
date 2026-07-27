@@ -172,19 +172,27 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(nameAt(replies.get(1).getPayload(), 4)).isEqualTo("Snake");
 	}
 
+	/**
+	 * The second byte means <b>ignore case</b>, so 1 matches "snake" against "Snake" and 0 does not.
+	 * <p>
+	 * This test asserted the opposite until 2026-07-27, on nothing firmer than the field's name.
+	 * Live, a search for "bob" with Case Insensitive selected arrived as {@code {0, 1}} and returned
+	 * nothing, because the server ran a case-sensitive query against a character called "Bob".
+	 */
 	@Test
 	public void caseToggleControlsSensitivity() {
 		givenSelectedCharacter("Snake");
 
-		var sensitive = loginThen(searchPacket(0, 1, "snake"),
+		var ignoringCase = loginThen(searchPacket(0, 1, "snake"),
 			SocialGameController.PLAYER_SEARCH_END);
-		assertThat(sensitive).hasSize(2);
-		assertThat(sensitive.get(0).getPayload().getInt(0)).isEqualTo(0);
+		assertThat(ignoringCase).hasSize(3);
+		assertThat(ignoringCase.get(0).getPayload().getInt(0)).isEqualTo(0);
+		assertThat(nameAt(ignoringCase.get(1).getPayload(), 4)).isEqualTo("Snake");
 
-		var insensitive = loginThen(searchPacket(0, 0, "snake"),
+		var matchingCase = loginThen(searchPacket(0, 0, "snake"),
 			SocialGameController.PLAYER_SEARCH_END);
-		assertThat(insensitive).hasSize(3);
-		assertThat(insensitive.get(0).getPayload().getInt(0)).isEqualTo(0);
+		assertThat(matchingCase).hasSize(2);
+		assertThat(matchingCase.get(0).getPayload().getInt(0)).isEqualTo(0);
 	}
 
 	/** A name of SQL wildcards must match literally (i.e. nothing), not every character. */
