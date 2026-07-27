@@ -1,5 +1,6 @@
 package mgo2server.game.controller;
 
+import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameDetails;
@@ -48,11 +49,15 @@ public class GameListGameController implements IGameController {
 
 	private final GameService gameService;
 
+	private final CharacterService characterService;
+
 	private final long lobbyId;
 
 	private final int lobbySubtype;
 
-	public GameListGameController(GameService gameService, long lobbyId, int lobbySubtype) {
+	public GameListGameController(GameService gameService, CharacterService characterService,
+			long lobbyId, int lobbySubtype) {
+		this.characterService = characterService;
 		this.gameService = gameService;
 		this.lobbyId = lobbyId;
 		this.lobbySubtype = lobbySubtype;
@@ -193,6 +198,16 @@ public class GameListGameController implements IGameController {
 
 		var stored = game.get().getPassword();
 		if (stored != null && !stored.isEmpty() && !stored.equals(password)) {
+			ctx.write(JOIN_GAME_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		// A host who blocked you cannot be joined. The game list has its own "only show games with
+		// no blocked players" filter (lobby strings 12788/12794), but that is a display preference
+		// on the joiner's side; the block itself is server state, so it is enforced here.
+		if (characterService.hasBlocked(game.get().getHostCharaId(), charaId)) {
+			logger.info("Join of game {} refused: host character {} has blocked character {}.",
+				gameId, game.get().getHostCharaId(), charaId);
 			ctx.write(JOIN_GAME_RESULT, GameError.GENERAL);
 			return;
 		}
