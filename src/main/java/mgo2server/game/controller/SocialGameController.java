@@ -264,22 +264,26 @@ public class SocialGameController implements IGameController {
 		var clan = playerId == 0 ? ClanService.Membership.NONE : clanService.membershipOf(playerId);
 		// The same total the personal stats screen shows: the sum across game modes.
 		var playSeconds = playerId == 0 ? 0L : characterService.displayedPlaySeconds(playerId);
+		var experience = playerId == 0 ? 0L : characterService.experienceOf(playerId);
 
 		var buffer = ctx.buffer(201);
 		buffer.writeInt(0);                                       // result: success
 		buffer.writeInt(playerId);
 		BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		// PROBE round 2. Round 1 sent 11/22/33/44 and Level still read 0 — which is consistent with
-		// one of these being EXPERIENCE rather than a level: the client derives the level from a
-		// threshold table (125, 250, 375, 500, 650, ...) and every one of those values is below the
-		// first threshold, so all four would render as level 0.
+		// Wire 0x18 is EXPERIENCE, not a level. The screen has no experience figure on it — it shows
+		// a Level — so the client derives that from the number here, walking its own threshold table
+		// (125, 250, 375, 500, 650, ...) and showing one more than the count of thresholds cleared.
+		// CharacterService.LEVEL_3_EXPERIENCE and LEVEL_4_EXPERIENCE record two of those points.
 		//
-		// These values are chosen to land on DISTINCT levels, so the number on screen names the
-		// field: level 10 -> wire 0x18, level 2 -> 0x1c, level 1 -> 0x1d, level 4 -> 0x1e.
-		buffer.writeInt(1450);                                    // [PROBE] wire 0x18 -> level 10
-		buffer.writeByte(250);                                    // [PROBE] wire 0x1c -> level 2
-		buffer.writeByte(130);                                    // [PROBE] wire 0x1d -> level 1
-		buffer.writeInt(500);                                     // [PROBE] wire 0x1e -> level 4
+		// Proven by probe: four candidate fields were sent values chosen to land on four distinct
+		// levels through that table — 1450 at 0x18, 250 at 0x1c, 130 at 0x1d, 500 at 0x1e — and every
+		// character read Level 10, the value at 0x18. The round before it sent 11/22/33/44 and read
+		// level 0 everywhere, which was the same answer unrecognised: all four were under the first
+		// threshold.
+		buffer.writeInt((int) experience);                        // [CONFIRMED] wire 0x18, experience
+		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x1c
+		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x1d
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0x1e
 		buffer.writeInt((int) playSeconds);                       // play time, seconds
 		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x26
 		BufferUtil.writeString(buffer, comment == null ? "" : comment,

@@ -246,6 +246,31 @@ public class CharacterService {
 		return trainingSeconds(charaId).total() * PLAYABLE_MODES;
 	}
 
+	/**
+	 * The character's experience, which is what every screen showing a <em>level</em> is really
+	 * reading — the client walks its own threshold table (125, 250, {@link #LEVEL_3_EXPERIENCE},
+	 * {@link #LEVEL_4_EXPERIENCE}, 650, ...) and displays one more than the number of thresholds
+	 * cleared.
+	 * <p>
+	 * Experience belongs to the account, not the character, and splits main from alt: a character
+	 * that is its account's main spends the main pool, everyone else the alt pool. Same expression
+	 * the eligibility checks and the ranking queries use.
+	 */
+	public long experienceOf(long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select coalesce(
+					case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end, 0)
+				from chara c
+				join account a on a.id = c.account_id
+				where c.id = :chara
+				""")
+			.bind("chara", charaId)
+			.mapTo(Long.class)
+			.findOne()
+			.orElse(0L));
+	}
+
 	/** Play time a clan founder needs — 20 hours, per lobby string 17193. */
 	public static final long CLAN_MIN_SECONDS = 20 * 60 * 60;
 
