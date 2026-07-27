@@ -5,6 +5,7 @@ import mgo2server.common.BufferUtil;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.EquippedSkills;
+import mgo2server.common.service.ClanService;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -13,8 +14,9 @@ import java.time.Instant;
  * Writes the 0x4122 personal-info payload: who a character is, how they look, and what they have
  * equipped.
  * <p>
- * Clan membership occupies the first twenty bytes. Clans are not modelled yet, so those are
- * written as "no clan" — which is a real state every character starts in, not a placeholder.
+ * Clan membership occupies the first twenty bytes, and carries the character's real clan — id,
+ * name and state — so a clan survives a login. A character in none sends state 99, which is a real
+ * state the client understands rather than a placeholder.
  */
 public final class PersonalInfoWriter {
 	public static final int PAYLOAD_SIZE = 0xf5;
@@ -39,9 +41,10 @@ public final class PersonalInfoWriter {
 	 *
 	 * <p>We had been sending {@code 01} — "this character is in a clan" — alongside a clan id of 0.
 	 * Inert only because nearly every reader checks the id first. 99 is what the client itself
-	 * writes for no clan, so it is the honest value.
+	 * writes for no clan, and it is now sent only when that is true: the state travels with the
+	 * character's real membership, so a clan survives a login.
 	 */
-	public static final int CLAN_STATE_NONE = 0x63;
+	public static final int CLAN_STATE_NONE = ClanService.STATE_NONE;
 
 	/**
 	 * Wire {@code 0x15}: twelve u16s at {@code profile+6838}. Element 0 is the clan privilege mask
@@ -80,6 +83,8 @@ public final class PersonalInfoWriter {
 	}
 
 	/**
+	 * @param clan the character's clan record — id, name and membership state. {@link
+	 *     ClanService.Membership#NONE} is the ordinary case and means state 99, id 0, empty name.
 	 * @param savedInstructor the character id of the instructor this character has permanently
 	 *     saved, or {@link #NO_SAVED_INSTRUCTOR} when they have none. Nonzero suppresses the
 	 *     recognition prompt for them from that point on, which is what "cannot be erased once
@@ -96,14 +101,15 @@ public final class PersonalInfoWriter {
 	 *     whoever's session was recorded.
 	 */
 	public static void write(ByteBuf buffer, Chara chara, CharaAppearance a, EquippedSkills skills,
-			int savedInstructor) {
+			int savedInstructor, ClanService.Membership clan) {
 		var start = buffer.writerIndex();
 
-		// No clan: id zero and an empty name.
-		buffer.writeInt(0);
-		BufferUtil.writeString(buffer, "", StandardCharsets.ISO_8859_1, CLAN_NAME_LENGTH);
+		buffer.writeInt((int) clan.id());
+		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1, CLAN_NAME_LENGTH);
 
-		buffer.writeByte(CLAN_STATE_NONE).writeZero(CLAN_BLOCK_BYTES);
+		// State, then the privilege mask and its eleven unread siblings. The mask stays zero — see
+		// ClanGameController.LEADER_PRIVILEGES for what happened when it did not.
+		buffer.writeByte(clan.state()).writeZero(CLAN_BLOCK_BYTES);
 		buffer.writeInt((int) Instant.now().getEpochSecond());
 
 		buffer.writeByte(a.getGender()).writeByte(a.getFace()).writeByte(a.getUpper())
@@ -134,7 +140,7 @@ public final class PersonalInfoWriter {
 			StandardCharsets.ISO_8859_1, COMMENT_LENGTH);
 
 		buffer.writeByte(chara.getRank());
-		// Emblem flag: 3 when the character's clan has one. No clans yet, so never.
+		// Emblem flag: 3 when the character's clan has one. Emblems are not modelled, so never.
 		buffer.writeByte(0);
 
 		buffer.writeInt(savedInstructor);

@@ -8,6 +8,7 @@ import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.ChatMacro;
 import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -116,9 +117,13 @@ public class CharacterConnectController implements IGameController {
 
 	private final CharacterService characterService;
 
+	private final ClanService clanService;
+
 	private final GameService gameService;
 
-	public CharacterConnectController(CharacterService characterService, GameService gameService) {
+	public CharacterConnectController(CharacterService characterService, ClanService clanService,
+			GameService gameService) {
+		this.clanService = clanService;
 		this.characterService = characterService;
 		this.gameService = gameService;
 	}
@@ -318,7 +323,8 @@ public class CharacterConnectController implements IGameController {
 			.orElse(PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
 
 		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor);
+		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor,
+			clanService.membershipOf(chara.getId()));
 
 		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}
