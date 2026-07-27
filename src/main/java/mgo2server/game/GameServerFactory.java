@@ -43,12 +43,14 @@ public class GameServerFactory {
 				controllers.add(new NewsGameController(services.getNewsService()));
 			}
 			case ACCOUNT -> {
-				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
+				controllers.add(new AccountGameController(services.getAccountService(),
+					services.getCharacterService(), lobbyType));
 				controllers.add(new CharacterGameController(services.getAccountService(),
 					services.getCharacterService()));
 			}
 			case GAME -> {
-				controllers.add(new AccountGameController(services.getAccountService(), lobbyType));
+				controllers.add(new AccountGameController(services.getAccountService(),
+					services.getCharacterService(), lobbyType));
 				controllers.add(new CharacterConnectController(services.getCharacterService(),
 					services.getClanService(), services.getGameService()));
 				controllers.add(new GameListGameController(services.getGameService(), lobbyId,

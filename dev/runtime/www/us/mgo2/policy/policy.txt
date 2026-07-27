@@ -9,98 +9,460 @@ payment (if applicable), will be separately established by
 KONAMI and form an integral part of this Agreement. The
 Rules can be found at <http://www.konami.net/mgo/>
 ("Site"). In the event any terms of this Agreement conflict
-with any provisions of the Rules, the provisions of the Rules shall prevail. "KONAMI" in this Agreement shall mean the Konami Entity applicable to you as set forth in Paragraph 19 below, or collectively Konami Group.
+with any provisions of the Rules, the provisions of the
+Rules shall prevail. "KONAMI" in this Agreement shall mean
+the Konami Entity applicable to you as set forth in
+Paragraph 19 below, or collectively Konami Group.
 
-1. ACCEPTANCE OF THIS AGREEMENT. You can only enter into this Agreement if you are considered as an "Adult" in the country where you reside. By accepting this Agreement, you affirm that you are an Adult and you have read and accepted this Agreement on your own behalf or on behalf of your Minor child.
+1. ACCEPTANCE OF THIS AGREEMENT. You can only
+enter into this Agreement if you are considered as an
+"Adult" in the country where you reside. By accepting this
+Agreement, you affirm that you are an Adult and you have
+read and accepted this Agreement on your own behalf or
+on behalf of your Minor child.
 
-2. AMENDMENTS. This Agreement is subject to change by KONAMI at any time without
+2. AMENDMENTS. This Agreement is subject to change by
+KONAMI at any time without notice. Any change shall be
+published on the Site and shall become effective
+immediately upon such publication. You agree to review
+these terms from time to time, and in any event promptly
+upon notice of any changes whether such notice is
+delivered to you directly or simply posted on the Site. If at
+any time, the current terms are not acceptable to you, you
+may terminate your use of the Online Game at any time.
+KONAMI will not be responsible for returning any amount
+that you have already paid to KONAMI for the Online
+Game. Your continued use of the Online Game after
+KONAMI posts any change(s) to its terms or to the scope
+of this Agreement shall constitute your agreement to and
+acceptance of all of the changes.
 
-notice. Any change shall be published on the Site and shall become effective immediately upon such publication. You agree to review these terms from time to time, and in any event promptly upon notice of any changes whether such notice is delivered to you directly or simply posted on the Site. If at any time, the current terms are not acceptable to you, you may terminate your use of the Online Game at any time. KONAMI will not be responsible for returning any amount that you have already paid to KONAMI for the Online Game. Your continued use of the Online Game after KONAMI posts any change(s) to its terms or to the scope of this Agreement shall constitute your agreement to and acceptance of all of the changes..
+3. GRANT OF LICENSE. Subject to this Agreement,
+KONAMI grants you a nonexclusive, limited right to use the
+Online Game by connecting through Internet to the online
+server designated by KONAMI ("Server"). You may not (i)
+sublicense the Online Game, (ii) modify, adapt, translate,
+reverse engineer, decompile or disassemble the Online
+Game, (iii) use it in any way not expressly authorized in
+writing by KONAMI, (iv) develop, use or distribute or have
+developed, used or distributed any software affecting or
+interfering with the operation or contents of the Online
+Game, (v) interfere with the operation of the Online Game
+in any way, including, but not limited to, illegally accessing
+the Server or Site. You will be solely responsible for
+arranging all equipments and services, including, but not
+limited to, hardware, software and internet access,
+necessary to use the Online Game, and shall pay all cost
+associated to it.
 
-3. GRANT OF LICENSE. Subject to this Agreement, KONAMI grants you a nonexclusive, limited right to use the Online Game by connecting through Internet to the online server designated by KONAMI ("Server"). You may not (i) sublicense the Online Game, (ii) modify, adapt, translate, reverse engineer, decompile or disassemble the Online Game, (iii) use it in any way not expressly authorized in writing by KONAMI, (iv) develop, use or distribute or have developed, used or distributed any software affecting or interfering with the operation or contents of the Online Game , (v) interfere with the operation of the Online Game in any way, including, but not limited to, illegally accessing the Server or Site. You
+4. COLLECTION OF INFORMATION. When you login to play
+the Online Game, KONAMI may retrieve information about
+the hardware, software and online connection you are
+using for copy protection, administration of the Site,
+account blocking, system, rules or game management
+KONAMI may request you to create an account with a user,
+player or other game name ("Game Name") and password
+before you can play the Online Game. You may also be
+asked to select or provide additional information for a
+game profile. KONAMI may record your ingame chat and
+messaging. For the avoidance of doubt, KONAMI will not
+collect any personally identifying information without your
+prior consent, and if any such personal information is
+collected by Konami, Konami will take reasonable steps to
+protect that information.
 
-will be solely responsible for arranging all equipments and services, including, but not limited to, hardware, software and internet access, necessary to use the Online Game, and shall pay all cost associated to it.
+5. PROTECTION OF IDENTITY. When you choose a Game
+Name, choose an alias to protect your identity. You may
+not use any part of your Game Name in your password.
+When you choose a password, choose a unique
+combination of letters and numbers not relevant to the
+information that other users may see in relation to you by
+playing the Online Game. You agree that you have no
+expectation of privacy or confidentiality in the personal
+information you may intentionally or unintentionally
+disclose through login, game play and chat. Any personal
+information that you disclose through login, game play and
+chat will be seen by others and may be used by them to
+send you unwanted messages or communications or
+otherwise contact you. You should avoid saying anything
+personally identifying in chat. KONAMI has no liability for
+any disclosure of your personal information through a
+violation of this Agreement by you or by any other user.
+Under no circumstance shall KONAMI be held liable for the
+damage suffered by you as a result of the use by third
+parties of the Game Name or password or any disclosure of
+your personal information through a violation of this
+Agreement by you or by any other user. You agree to
+indemnify and hold KONAMI harmless from any damages
+incurred by KONAMI as the result of any third party using
+your Game Name and/or password through a violation of
+this Agreement by you or by any other user.
 
-4. COLLECTION OF INFORMATION. When you login to play the Online Game, KONAMI may retrieve information about the hardware, software and online connection you are using for copy protection, administration of the Site, account blocking, system, rules or game management KONAMI may request you to create an account with a user, player or other game name ("Game Name") and password before you can play the Online Game. You may also be asked to select or provide additional information for a game profile. KONAMI may record your ingame chat and messaging. For the avoidance of doubt, KONAMI will not collect any personally identifying information without your prior consent, and if any such personal information is collected by Konami, Konami will take reasonable steps to protect that information.
+6. PROHIBITION OF CHEATING AND IMPROPRIETY. In 
+using the Online Game, you are prohibited from committing
+the following acts (hereinafter referred to as the
+"Cheating"):(a) altering data using a method not provided
+by KONAMI, or creating any data through illegal means; (b)
+accessing the Server through use of any method other
+than those methods authorized by KONAMI including the
+PLAYSTATION3 computer entertainment system; (c) taking
+any action other than the actions that are anticipated or
+permitted with respect to the use of Online Game; (d)
+playing the Online Game with any automated software
+code, bots, or any other tools, including program macros,
+that are not authorized by KONAMI; (e) impersonating any
+of KONAMI's employees or employees of KONAMI's
+affiliated companies or any other related party. You agree
+that you will not distribute or enable the transmission of
+any programs or data that enable Cheating to other users
+or third parties, whether or not during the use of the Online
+Game. You agree that you will not engage in any activity
+that is prohibited by KONAMI for any purpose, including
+but not limited to, gaining an unfair advantage in the
+Online Game. You agree that you will not intentionally
+attempt to change, misappropriate, publish or
+reverse-engineer any data or message to or from the
+Online Game.
 
-5. PROTECTION OF IDENTITY. When you choose a Game Name, choose an alias to protect your identity. You may not use any part of your Game Name in your password. When you choose a password, choose a unique combination of letters and numbers not relevant to the information that other users may see in relation to you by playing the Online Game.. You agree that you have no expectation of privacy or confidentiality in the personal information you may intentionally or unintentionally disclose through login, game play and chat. Any personal information that you disclose through login, game play and chat will be seen by others and may be used by them to send you unwanted messages or communications or otherwise contact you. You should avoid saying anything personally identifying in chat. KONAMI has no liability for any disclosure of your personal information through a violation of this Agreement by you or by any other user. Under no circumstance shall KONAMI be held liable for the damage suffered by you as a result of the use by third parties of the Game Name or password or any disclosure of your personal information through a violation of this Agreement by you or by any other user. You agree to indemnify and hold KONAMI harmless from any damages incurred by KONAMI as the result of any third party using your Game Name and/or password through a violation of this Agreement by you or by any other user.
+7. ONLINE CONTENT. When you play, you agree to be
+respectful of your fellow players and to never engage in
+any behavior that would be abusive or offensive to other
+players, disruptive of the Online Game experience,
+fraudulent or otherwise illegal. This includes, but is not
+limited to:
 
-6. PROHIBITION OF CHEATING AND IMPROPRIETY. In using the Online Game, you are prohibited from committing the following acts (hereinafter referred to as the "Cheating"):(a) altering data using a method not provided by KONAMI, or creating any data through illegal means; (b) accessing the Server through use of any method other than those methods authorized by KONAMI including the PLAYSTATIONR3 computer entertainment system; (c) taking any action other than the actions that are anticipated or permitted with respect to the use of Online Game; (d) playing the Online Game with any automated software code, bots, or any other tools, including program macros, that are not authorized by KONAMI; (e) impersonating any of KONAMI's employees or employees of KONAMI's affiliated companies or any other related party. You agree that you will not distribute or enable the transmission of any programs or data that enable Cheating to other users or third parties, whether or not during the use of the Online Game. You agree that you will not engage in any activity that is prohibited by KONAMI for any purpose, including but not limited to, gaining an unfair advantage in the Online Game. You agree that you will not intentionally attempt to change, misappropriate, publish or reverse-engineer any data or message to or from the Online Game.
+(a) Harassing or intimidating other players while chatting
+or playing this Online Game or using information obtained
+while chatting or playing this Online Game to harass or
+intimidate fellow players outside of the Online Game;
 
-7. ONLINE CONTENT. When you play, you agree to be respectful of your fellow players and to never engage in any behavior that would be abusive or offensive to other players, disruptive of the Online Game experience, fraudulent or otherwise illegal. This includes, but is not limited to:
+(b) Using language, selecting names or creating any other
+content that is racially, ethnically or religiously offensive,
+sexually abusive, obscene or defamatory;
 
-(a) Harassing or intimidating other players while chatting or playing this Online Game or using information obtained while chatting or playing this Online Game to harass or intimidate fellow players outside of the Online Game;
+(c) Using content that is commercial in nature such as
+advertisements, solicitation and promotions for goods or
+services;
 
-(b) Using language, selecting names or creating any other content that is racially, ethnically or religiously offensive, sexually abusive, obscene or defamatory;
+(d) Using as your Game Name the real name of any other
+person or using any word or phrase that is proprietary to
+any third party such as a brand name or a company name;
 
-(c) Using content that is commercial in nature such as advertisements, solicitation and promotions for goods or services;
+(e) Disrupting the normal flow of chat in Online Game chat
+rooms;
 
-(d) Using as your Game Name the real name of any other person or using any word or phrase that is proprietary to any third party such as a brand name or a company name;
+(f) Making a false report of user abuse to Customer
+Services at the number described in the manual of this
+Online Game ("Customer Service");
 
-(e) Disrupting the normal flow of chat in Online Game chat rooms;
+(g) Violation of any law including but not limited to laws
+related to copyright, trademark, defamation, invasion of
+privacy, identity theft, hacking and the distribution of
+counterfeit software.
 
-(f) Making a false report of user abuse to Customer Services at the number described in the manual of this Online Game ("Customer Service");
+(h) An act that constitutes a crime or any act that leads to
+a crime
 
-(g) Violation of any law including but not limited to laws related to copyright, trademark, defamation, invasion of privacy, identity theft, hacking and the distribution of counterfeit software.
-
-(h) An act that constitutes a crime or any act that leads to a crime
-
-(i) An act that trades cash (real money trade) with respect to the data, characters, items and other aspects in the Online Game, unless otherwise authorized by us;
+(i) An act that trades cash (real money trade) with respect
+to the data, characters, items and other aspects in the
+Online Game, unless otherwise authorized by us;
 
 (j) An act that defames or disparages us or any third party;
 
-(k) An act of doing business (including, but not limited to, solicitation), political activities including pre-election campaign or religious activities including missionary work;
+(k) An act of doing business (including, but not limited to,
+solicitation), political activities including pre-election
+campaign or religious activities including missionary work;
 
-(l) An act that violates, or is likely to violate, the laws and regulations (including laws, treaties, ordinances and any other codes, regardless of how they are referred to, that publicly restrict you);
+(l) An act that violates, or is likely to violate, the laws and
+regulations (including laws, treaties, ordinances and any
+other codes, regardless of how they are referred to, that
+publicly restrict you);
 
-(m) An act that defames or disparages the services or products we offer, or the content of the operations of the Online Game that we carry out; and
+(m) An act that defames or disparages the services or
+products we offer, or the content of the operations of the
+Online Game that we carry out; and
 
-(n) An act that interferes with the operation of this Online Game. If you violate this Agreement in any manner, KONAMI may at its sole discretion and without notice to you temporarily or permanently block your account in this Online Game and any related games. In appropriate cases, KONAMI may bring legal action against you or cooperate in any government or private legal action or investigation relating to your conduct within the Online Game. To report violations of this Agreement or to inquire about a blocked account, call Customer Services. KONAMI has no liability for any violation of this Agreement
+(n) An act that interferes with the operation of this Online
+Game. If you violate this Agreement in any manner,
+KONAMI may at its sole discretion and without notice to
+you temporarily or permanently block your account in this
+Online Game and any related games. In appropriate cases,
+KONAMI may bring legal action against you or cooperate in
+any government or private legal action or investigation
+relating to your conduct within the Online Game. To report
+violations of this Agreement or to inquire about a blocked
+account, call Customer Services. KONAMI has no liability
+for any violation of this Agreement by you or by any other
+user.
 
-by you or by any other user.
+8. INTELLECTUAL PROPERTY RIGHTS. All title and
+intellectual property rights in and to the content of this
+Online Game is the property of KONAMI or the content
+owner(s) and may be protected by applicable copyright and
+other intellectual property laws and treaties. This
+Agreement grants you no ownership rights in such content.
+You are not allowed to use this Online Game beyond the
+rights granted to you herein. All rights not expressly
+granted are reserved by KONAMI. You do not have any
+personal property right in your Online character(s) or items
+and any attempt to sell or purchase such character(s) or
+player's information is strictly forbidden. In the event that
+the Online Game provides services that allow you to sent
+or upload materials created by you (hereinafter referred to
+as "User Content" and shall include, blog, any images
+accompanying the blog, comments, and track backs), the
+copyright of such User Content shall belong to you. You
+hereby agree to grant KONAMI a non-exclusive, perpetual,
+royalty free, transferrable, and sub-licensable right to use
+the copyright in and to such User Content.
 
-8. INTELLECTUAL PROPERTY RIGHTS. All title and intellectual property rights in and to the content of this Online Game is the property of KONAMI or the content owner(s) and may be protected by applicable copyright and other intellectual property laws and treaties. This Agreement grants you no ownership rights in such content. You are not allowed to use this Online Game beyond the rights granted to you herein. All rights not expressly granted are reserved by KONAMI. You do not have any personal property right in your Online character(s) or items and any attempt to sell or purchase such character(s) or player's
+9. DISCLAIMER OF WARRANTY. TO THE MAXIMUM
+EXTENT ALLOWED BY LAW, KONAMI, ITS AGENTS,
+LICENSORS AND SUBCONTRACTORS DO NOT WARRANT
+ANY CONNECTION TO, TRANSMISSION OVER, OR
+RESULTS OR USE OF, ANY NETWORK CONNECTION OR
+FACILITIES PROVIDED (OR FAILED TO BE PROVIDED)
+THROUGH THE ONLINE GAME. YOU ARE RESPONSIBLE
+FOR ASSESSING YOUR OWN HARDWARE AND
+TRANSMISSION NETWORK NEEDS. THE ENTIRE RISK OF
+USE (INCLUDING WITHOUT LIMITATION ANY DAMAGE TO
+HARDWARE OR SOFTWARE) OF THE ONLINE GAME
+RESIDES WITH YOU. EXCEPT AS PROVIDED HEREIN, THE
+ONLINE GAME AND ALL RELATED SERVICES ARE
+PROVIDED "AS IS" AND "AS AVAILABLE" BASIS FOR
+YOUR USE. TO THE MAXIMUM EXTENT PROVIDED UNDER
+LAW, KONAMI DISCLAIMS ALL WARRANTIES OF ANY
+KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, NON-INFRINGEMENT OF THIRD PARTY
+RIGHTS, AND THOSE ARISING FROM A COURSE OF
+DEALING OR USAGE OF TRADE, REGARDING THE ONLINE
+GAME AND THE INTERNET. KONAMI PROVIDES THE
+ONLINE GAME ON A COMMERCIALLY REASONABLE BASIS
+AND DOES NOT GUARANTEE THAT YOU WILL BE ABLE TO
+ACCESS OR USE THE ONLINE GAME AT TIMES OR
+LOCATIONS OF YOUR CHOOSING, OR THAT KONAMI WILL
+HAVE ADEQUATE CAPACITY FOR THE SERVICE AS A
+WHOLE OR IN ANY SPECIFIC GEOGRAPHIC AREA.
+KONAMI ASSUMES NO RESPONSIBILITY FOR ANY
+DAMAGES SUFFERED BY YOU, INCLUDING, BUT NOT
+LIMITED TO, LOSS OF DATA, ITEMS OR CHARACTERS
+FROM DELAYS, NONDELIVERIES, ERRORS, SYSTEM
+DOWN TIME, MISDELIVERIES, OR SERVICE
+INTERRUPTIONS CAUSED BY KONAMI, ITS LICENSORS
+AND SUBCONTRACTORS, OR BY YOUR OR ANY OTHER
+MEMBER'S OWN ERRORS AND/OR OMISSIONS. TO THE
+MAXIMUM EXTENT ALLOWED BY LAW, KONAMI
+EXPRESSLY DISCLAIMS ANY IMPLIED WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE OR NONINFRINGEMENT. KONAMI RESERVES
+THE RIGHT TO MONITOR USER CONTENT IN THE ONLINE
+GAME. KONAMI DOES NOT ASSUME ANY
+RESPONSIBILITY OR LIABILITY FOR ANY CONTENT THAT
+YOU OR OTHER USERS COMMUNICATE ON THE ONLINE
+GAME IN EXCESS OF THE RESPONSIBILITY OF KONAMI
+STIPULATED IN THE APPLICABLE LOCAL LAW. KONAMI
+RESERVES THE RIGHT TO REMOVE, AT ITS SOLE
+DISCRETION, ANY USER CONTENT. IF KONAMI BECOMES
+AWARE OF ANY INFRINGING CONTENT IT WILL MAKE
+REASONABLE EFFORTS TO REMOVE SUCH CONTENT
+FROM THE GAME AS QUICKLY AS POSSIBLE. KONAMI
+DOES NOT ASSUME ANY LIABILITY FOR ANY REMOVAL,
+FAILURE TO REMOVE, OR ANY DELAY IN REMOVING THE
+USER CONTENT BEYOND THE ABOVE MENTIONED
+REQUIREMENTS. YOU SHALL, IN YOUR SOLE
+DISCRETION, AVOID THE EXCESSIVE USE OF THE ONLINE
+GAME SO AS NOT TO DISTURB YOUR HEALTHY AND
+SOUND LIFE. KONAMI WILL NOT BE LIABLE FOR ANY
+SOCIAL, MENTAL, PHYSICAL DAMAGES CAUSED BY THE
+EXCESSIVE USE OF THE ONLINE GAME. ANY TROUBLES
+AND/OR CONFLICT OF INTERESTS AMONG THE USERS
+OF THE ONLINE GAME SHALL BE RESOLVED AMONG
+SUCH PARTIES AND KONAMI DOES NOT ASSUME ANY
+LIABILITY OR RESPONSIBILITY REGARDING SUCH
+TROUBLES AND/OR CONFLICT OF INTERESTS.
 
-information is strictly forbidden. In the event that the Online Game provides services that allow you to sent or upload materials created by you (hereinafter referred to as "User Content" and shall include, blog, any images accompanying the blog, comments, and track backs), the copyright of such User Content shall belong to you. You hereby agree to grant KONAMI a non-exclusive, perpetual, royalty free, transferrable, and sub-licensable right to use the copyright in and to such User Content.
+10. LIMITATION OF LIABILITY. YOU ACKNOWLEDGE
+AND AGREE THAT YOUR SOLE AND EXCLUSIVE REMEDY
+FOR ANY DISPUTE WITH KONAMI, ITS AFFILIATES,
+AGENTS, LICENSORS, CONTRACTORS, THEIR
+EMPLOYEES, OFFICERS, OR DIRECTORS (COLLECTIVELY,
+"KONAMI AFFILIATES") IS TO STOP USING THE ONLINE
+GAME AND TO CANCEL YOUR ACCOUNT. YOU
+ACKNOWLEDGE AND AGREE THAT TO THE MAXIMUM
+EXTENT PERMITTED BY LAW KONAMI, AND KONAMI
+AFFILIATES ARE NOT LIABLE FOR ANY ACT OR FAILURE
+TO ACT BY THEM OR ANY OTHER PERSON REGARDING
+CONDUCT, COMMUNICATION OR CONTENT ON THE
+ONLINE GAME OR USE OF THE ONLINE GAME. IN NO
+CASE SHALL KONAMI, AND KONAMI AFFILIATES HAVE
+LIABILITY TO YOU EXCEED THE AMOUNT THAT YOU PAID
+TO KONAMI FOR THE GAME CD OF THE ONLINE GAME (IF
+APPLICABLE) AND THE ONLINE GAME. IN NO EVENT
+SHALL KONAMI OR KONAMI AFFILIATES BE LIABLE FOR
+INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING
+FROM ANY CLAIM RELATED IN ANY WAY TO YOUR USE
+OF THE ONLINE GAME.
 
-9. DISCLAIMER OF WARRANTY. TO THE MAXIMUM EXTENT ALLOWED BY LAW, KONAMI, ITS AGENTS, LICENSORS AND SUBCONTRACTORS DO NOT WARRANT ANY CONNECTION TO, TRANSMISSION OVER, OR RESULTS OR USE OF, ANY NETWORK CONNECTION OR FACILITIES PROVIDED (OR FAILED TO BE PROVIDED) THROUGH THE ONLINE GAME. YOU ARE RESPONSIBLE FOR ASSESSING YOUR OWN HARDWARE AND TRANSMISSION NETWORK NEEDS. THE ENTIRE RISK OF USE (INCLUDING WITHOUT LIMITATION ANY DAMAGE TO HARDWARE OR SOFTWARE) OF THE ONLINE GAME RESIDES WITH YOU. EXCEPT AS PROVIDED HEREIN, THE ONLINE GAME AND ALL RELATED SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE" BASIS FOR YOUR USE. TO THE MAXIMUM EXTENT PROVIDED UNDER LAW, KONAMI DISCLAIMS ALL WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT OF THIRD PARTY RIGHTS, AND THOSE ARISING FROM A COURSE OF DEALING OR USAGE OF TRADE, REGARDING THE ONLINE GAME
+11. SUSPENSION. KONAMI may temporarily suspend the
+Online Game service in whole or in part without notice due
+to routine maintenance, emergency repairs, fire,
+earthquake, tidal wave, flood, volcanic eruption, war,
+strike, governmental action or failure to act, the act of any
+civil or military authority, act of god, or by any other
+causes beyond KONAMI's control whether or not similar to
+the foregoing, or any other reasons that KONAMI
+determines in its sole discretion that temporary suspension
+is deemed necessary. KONAMI shall not be liable for any
+claims, damages and losses arising out of the suspension
+or delay of the Online Game hereunder.
 
-AND THE INTERNET. KONAMI PROVIDES THE ONLINE GAME ON A COMMERCIALLY REASONABLE BASIS AND DOES NOT GUARANTEE THAT YOU WILL BE ABLE TO ACCESS OR USE THE ONLINE GAME AT TIMES OR LOCATIONS OF YOUR CHOOSING, OR THAT KONAMI WILL HAVE ADEQUATE CAPACITY FOR THE SERVICE AS A WHOLE OR IN ANY SPECIFIC GEOGRAPHIC AREA. KONAMI ASSUMES NO RESPONSIBILITY FOR ANY DAMAGES SUFFERED BY YOU, INCLUDING, BUT NOT LIMITED TO, LOSS OF DATA, ITEMS OR CHARACTERS FROM DELAYS, NONDELIVERIES, ERRORS, SYSTEM DOWN TIME, MISDELIVERIES, OR SERVICE INTERRUPTIONS CAUSED BY KONAMI, ITS LICENSORS AND SUBCONTRACTORS, OR BY YOUR OR ANY OTHER MEMBER'S OWN ERRORS AND/OR OMISSIONS. TO THE MAXIMUM EXTENT ALLOWED BY LAW, KONAMI EXPRESSLY DISCLAIMS ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT. KONAMI RESERVES THE RIGHT TO MONITOR USER CONTENT IN THE ONLINE GAME. KONAMI DOES NOT ASSUME ANY RESPONSIBILITY OR LIABILITY FOR ANY CONTENT THAT YOU OR OTHER USERS COMMUNICATE ON THE ONLINE GAME IN EXCESS OF THE  RESPONSIBILITY OF KONAMI STIPULATED IN THE APPLICABLE LOCAL LAW. KONAMI RESERVES THE RIGHT TO REMOVE, AT ITS SOLE DISCRETION, ANY USER CONTENT. IF KONAMI BECOMES AWARE OF ANY INFRINGING CONTENT IT WILL MAKE REASONABLE EFFORTS TO REMOVE SUCH CONTENT FROM THE GAME AS QUICKLY AS POSSIBLE. KONAMI DOES NOT ASSUME ANY LIABILITY FOR ANY REMOVAL, FAILURE TO REMOVE, OR ANY DELAY IN REMOVING THE USER CONTENT BEYOND THE ABOVE MENTIONED REQUIREMENTS. YOU SHALL, IN YOUR SOLE DISCRETION, AVOID THE EXCESSIVE USE OF THE ONLINE GAME SO AS NOT TO DISTURB YOUR HEALTHY AND SOUND LIFE. KONAMI WILL NOT BE LIABLE FOR ANY SOCIAL, MENTAL, PHYSICAL DAMAGES CAUSED BY THE EXCESSIVE USE OF THE ONLINE GAME. ANY TROUBLES AND/OR CONFLICT OF INTERESTS AMONG THE USERS OF THE ONLINE GAME SHALL BE RESOLVED AMONG SUCH PARTIES AND KONAMI DOES NOT ASSUME ANY LIABILITY OR RESPONSIBILITY REGARDING SUCH TROUBLES AND/OR CONFLICT OF INTERESTS.
+12. SAVING OF DATA. KONAMI does not warrant that the
+record of your Online Game data (saved data) will be
+preserved without error. You agree that you have been
+advised in advance that, in the event that KONAMI find it
+necessary to maintain the operations of the Online Game,
+KONAMI may add, modify or make changes (including
+deletion) to the record of the Online Game (saved data)
+without obtaining your prior approval if in KONAMI'S sole
+discretion, it determines that that it is necessary. KONAMI
+reserves the right to delete records of Online Game (saved
+data) that are not used for a long period of time.
 
-10. LIMITATION OF LIABILITY. YOU ACKNOWLEDGE AND AGREE THAT YOUR SOLE AND EXCLUSIVE REMEDY FOR ANY DISPUTE WITH KONAMI, , ITS AFFILIATES, AGENTS, LICENSORS, CONTRACTORS, THEIR EMPLOYEES, OFFICERS, OR DIRECTORS (COLLECTIVELY, "KONAMI AFFILIATES") IS TO STOP USING THE ONLINE GAME AND TO CANCEL YOUR ACCOUNT. YOU ACKNOWLEDGE AND AGREE THAT TO THE MAXIMUM EXTENT PERMITTED BY LAW KONAMI, AND KONAMI AFFILIATES ARE NOT LIABLE FOR ANY ACT OR FAILURE TO ACT BY THEM OR ANY OTHER PERSON REGARDING CONDUCT, COMMUNICATION OR CONTENT ON THE ONLINE GAME OR USE OF THE ONLINE GAME. IN NO CASE SHALL KONAMI, AND KONAMI AFFILIATES HAVE LIABILITY TO YOU EXCEED THE AMOUNT THAT YOU PAID TO KONAMI FOR THE GAME CD OF THE ONLINE GAME (IF APPLICABLE) AND THE ONLINE GAME. IN NO EVENT SHALL KONAMI OR KONAMI AFFILIATES BE LIABLE FOR INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING FROM ANY CLAIM RELATED IN ANY WAY TO YOUR USE OF THE ONLINE GAME.
+13. CHANGE IN CONTENT OF THE ONLINE GAME.
+KONAMI reserves the right to make changes in the content
+of the Online Game or content of any services that shall be
+provided incidental thereto without giving prior notice to
+you.
 
-11. SUSPENSION. KONAMI may temporarily suspend the Online Game service in whole or in part without notice due to routine maintenance, emergency repairs, fire, earthquake, tidal wave, flood, volcanic eruption, war, strike, governmental action or failure to act, the act of any civil or military authority, act of god, or by any other causes beyond KONAMI's control whether or not similar to the foregoing, or any other reasons that KONAMI determines in its sole discretion that temporary suspension is deemed necessary. KONAMI shall not be liable for any claims, damages and losses arising out of the suspension or delay of the Online Game hereunder.
+14. INDEMNIFICATION. YOU EXPRESSLY AGREE THAT
+ALL USE OF THE ONLINE GAME IS AT YOUR SOLE RISK,
+AND YOU SHALL BE SOLELY LIABLE FOR ANY CLAIMS,
+DAMAGES AND LOSSES ARISING OUT OF YOUR USE OF
+THE ONLINE GAME. YOU AGREE TO INDEMNIFY, DEFEND
+AND HOLD HARMLESS KONAMI AND KONAMI AFFILIATES
+FROM ANY CLAIM, DAMAGE OR LOSS MADE AGAINST
+KONAMI REGARDING YOUR USE OF THE ONLINE GAME.
+KONAMI RESERVES THE RIGHT, AT ITS OWN EXPENSE,
+TO ASSUME THE EXCLUSIVE DEFENSE AND CONTROL OF
+ANY MATTER OTHERWISE SUBJECT TO INDEMNIFICATION
+BY YOU.
 
-12. SAVING OF DATA. KONAMI does not warrant that the record of your Online Game data (saved data) will be preserved without error. You agree that you have been advised in advance that, in the event that KONAMI find it necessary to maintain the operations of the Online Game, KONAMI may add, modify or make changes (including deletion) to the record of the Online Game (saved data) without obtaining your prior approval if in KONAMI'S sole discretion, it determines that that it is necessary. KONAMI reserves the right to delete records of Online Game (saved data) that are not used for a long period of time.
+15. INJUNCTION. Because KONAMI would be irreparably
+damaged if the terms of this Agreement were not
+specifically enforced, you agree that KONAMI shall be
+entitled, without bond, other security or proof of damages,
+to appropriate remedies including obtaining an interim
+injunction with respect to breaches of this Agreement, in
+addition to such other remedies as KONAMI may otherwise
+have under applicable laws.
 
-13. CHANGE IN CONTENT OF THE ONLINE GAME. KONAMI reserves the right to make changes in the content of the Online Game or content of any services that shall be provided incidental thereto without giving prior notice to you.
+16. NO ASSIGNMENT. You may not lend, assign or
+succeed to any third party all or part of your rights,
+obligations, status or interests to use the Online Game.
 
-14. INDEMNIFICATION. YOU EXPRESSLY AGREE THAT ALL USE OF THE ONLINE GAME IS AT YOUR SOLE RISK, AND YOU SHALL BE SOLELY LIABLE FOR ANY CLAIMS, DAMAGES AND LOSSES ARISING OUT OF YOUR USE OF THE ONLINE GAME. YOU AGREE TO INDEMNIFY, DEFEND AND HOLD HARMLESS KONAMI AND KONAMI AFFILIATES FROM ANY CLAIM, DAMAGE OR LOSS MADE AGAINST KONAMI REGARDING YOUR USE OF THE ONLINE GAME. KONAMI RESERVES THE RIGHT, AT ITS OWN EXPENSE, TO ASSUME THE EXCLUSIVE DEFENSE AND CONTROL OF ANY MATTER OTHERWISE SUBJECT TO INDEMNIFICATION BY YOU.
+17. TERMINATION. You may terminate the use of the
+Online Game at any time. KONAMI reserves the right to
+terminate the Online Game at any time without further
+obligation to you, upon 90 days prior notice. Such notice
+shall be published in the Site. Subject to the foregoing
+notice, KONAMI shall not be liable for any claims, damages
+and losses arising out of the termination of the Online
+Game. You understand and agree that if the Online Game
+is terminated or you terminate the use of the Online Game:
+(1) you will not be entitled to any pro-rated refund of any
+fees or unused access time; (2) you will lose any
+characters developed or information accumulated, if any,
+and you will not have the right to transfer, sell or otherwise
+assign any characters or items to anyone else; (3) KONAMI
+may, at its sole discretion, delete your saved data or other
+User Content; and (4) when applicable, you may not
+access the Online Game in any manner or for any reason,
+including via any other account.
 
-15. INJUNCTION. Because KONAMI would be irreparably damaged if the terms of this Agreement were not specifically enforced, you agree that KONAMI shall be entitled, without bond, other security or proof of damages, to appropriate remedies including obtaining an interim injunction with respect to breaches of this Agreement, in addition to such other remedies as KONAMI may otherwise have under applicable laws.
-
-16. NO ASSIGNMENT. You may not lend, assign or succeed to any third party all or part of your rights, obligations, status or interests to use the Online Game.
-
-17. TERMINATION. You may terminate the use of the Online Game at any time. KONAMI reserves the right to terminate the Online Game at any time without further obligation to you, upon 90 days prior notice. Such notice shall be published in the Site. Subject to the foregoing notice, KONAMI shall not be liable for any claims, damages and losses arising out of the termination of the Online Game. You understand and agree that if the Online Game is terminated or you terminate the use of the Online Game: (1) you will not be entitled to any pro-rated refund of any fees or unused access time; (2) you will lose any characters developed or information accumulated, if any, and you will not have the right to transfer, sell or otherwise assign any characters or items to anyone else; (3) KONAMI may, at its sole discretion, delete your saved data or other User Content; and (4) when applicable, you may not access the Online Game in any manner or for any reason, including via any other account.
-
-18. CONNECTION RESTRICTIONS. In playing the Online Game, you shall use the Online Game disk purchased in the country where you register to play the Online Game. You may not be able to use and/or access the Online Game using the Online Game disk that was not purchased in the country where you register to play the Online Game.
+18. CONNECTION RESTRICTIONS. In playing the Online
+Game, you shall use the Online Game disk purchased in
+the country where you register to play the Online Game.
+You may not be able to use and/or access the Online Game
+using the Online Game disk that was not purchased in the
+country where you register to play the Online Game.
 
 19. OTHER TERMS AND CONDITIONS
 
 (1) GOVERNING LAW; JURISDICTION
 
-North, Central and South America Region. If you live in North, Central or South America Region, then this Agreement is between you and Konami Digital Entertainment, Inc. (2381 Rosecrans Ave, Suite 200, El Segundo, CA 90245-4922 U.S.A.), and the laws of California govern this Agreement, regardless of conflict of laws principles. You irrevocably consent to the exclusive jurisdiction and venue of the state or federal courts in California, USA for all
+North, Central and South America Region. If you live in
+North, Central or South America Region, then this
+Agreement is between you and Konami Digital
+Entertainment, Inc. (2381 Rosecrans Ave, Suite 200, El
+Segundo, CA 90245-4922 U.S.A.), and the laws of
+California govern this Agreement, regardless of conflict of
+laws principles. You irrevocably consent to the exclusive
+jurisdiction and venue of the state or federal courts in
+California, USA for all disputes arising out of or relating to
+this Agreement.
 
-disputes arising out of or relating to this Agreement. Europe, Oceania, Middle East and Africa. If you live in Europe, Oceania, Middle East or Africa, then this Agreement is between you and Konami Digital Entertainment GmbH (Berner Str. 103-105, 60437 Frankfurt am Main, Germany), and the laws of Germany govern this Agreement regardless of conflict of laws principles. You irrevocably consent to the exclusive jurisdiction and venue of the courts in Frankfurt for all disputes arising out of or relating to this Agreement. Japan. If you live in Japan, then this Agreement is between you and Konami Digital  Entertainment Co., Ltd. (Akasaka 9-7-2, Minato-ku, Tokyo, Japan), and the laws of Japan govern this Agreement regardless of conflict of laws principles . You irrevocably consent to the exclusive jurisdiction and venue of the courts in Tokyo for all disputes arising out of or relating to this Agreement.
+Europe, Oceania, Middle East and Africa. If you live in
+Europe, Oceania, Middle East or Africa, then this
+Agreement is between you and Konami Digital
+Entertainment GmbH (Berner Str. 103-105, 60437
+Frankfurt am Main, Germany), and the laws of Germany
+govern this Agreement regardless of conflict of laws
+principles. You irrevocably consent to the exclusive
+jurisdiction and venue of the courts in Frankfurt for all
+disputes arising out of or relating to this Agreement.
 
-Hong Kong, Singapore, Taiwan. If you live in Hong Kong, Singapore, or Taiwan, then this Agreement is between you and Konami Digital Entertainment Limited (Unit 1506, Grand Millennium Plaza, No.181 Queen's Road Central, Hong Kong), and the laws of Hong Kong govern this Agreement regardless of conflict of laws principles. You irrevocably consent to the exclusive jurisdiction and venue of the courts in Hong Kong for all disputes arising out of or relating to this Agreement.
+Japan. If you live in Japan, then this Agreement is between
+you and Konami Digital Entertainment Co., Ltd. (Akasaka
+9-7-2, Minato-ku, Tokyo, Japan), and the laws of Japan
+govern this Agreement regardless of conflict of laws
+principles. You irrevocably consent to the exclusive
+jurisdiction and venue of the courts in Tokyo for all
+disputes arising out of or relating to this Agreement.
 
-Korea. If you live in Korea, then this Agreement is between you and Konami Digital Entertainment Co. (6F. Daedong Bldg. 587-21, Shinsa-Dong, Gangnam-Gu, Seoul, 135-892, Korea), and the laws of the Republic of Korea govern this Agreement regardless of conflict of laws principles. You irrevocably consent to the exclusive jurisdiction and venue of the courts in Seoul for all disputes arising out of or relating to this Agreement.
+Hong Kong, Singapore, Taiwan. If you live in Hong Kong,
+Singapore, or Taiwan, then this Agreement is between you
+and Konami Digital Entertainment Limited (Unit 1506,
+Grand Millennium Plaza, No.181 Queen's Road Central,
+Hong Kong), and the laws of Hong Kong govern this
+Agreement regardless of conflict of laws principles. You
+irrevocably consent to the exclusive jurisdiction and venue
+of the courts in Hong Kong for all disputes arising out of or
+relating to this Agreement.
 
-(2) SEVERABILITY. If any provision of this Agreement is determined by any court of competent jurisdiction to be invalid or unenforceable, such provision will be interpreted to the maximum extent to which it is valid and enforceable, all as determined by such court in such action, and the remaining provisions of this Agreement will, nevertheless, continue in full force and effect without being impaired or invalidated in any way.
+Korea. If you live in Korea, then this Agreement is between
+you and Konami Digital Entertainment Co. (6F. Daedong
+Bldg. 587-21, Shinsa-Dong, Gangnam-Gu, Seoul,
+135-892, Korea), and the laws of the Republic of Korea
+govern this Agreement regardless of conflict of laws
+principles. You irrevocably consent to the exclusive
+jurisdiction and venue of the courts in Seoul for all
+disputes arising out of or relating to this Agreement.
 
-(3) WAIVER. No waiver by Konami of any term, provision or condition of this Agreement, whether by conduct or otherwise, in any one or more instances, shall be deemed to be or be construed as a further or continuing waiver of any such term, provision or condition or as a waiver of any other term, provision or condition of this Agreement.
+(2) SEVERABILITY. If any provision of this Agreement is
+determined by any court of competent jurisdiction to be
+invalid or unenforceable, such provision will be interpreted
+to the maximum extent to which it is valid and enforceable,
+all as determined by such court in such action, and the
+remaining provisions of this Agreement will, nevertheless,
+continue in full force and effect without being impaired or
+invalidated in any way.
 
-(4) ENTIRE AGREEMENT. This Agreement, together with all incorporated documents constitutes the entire understanding and agreement between the parties with respect to the subject matter hereof and supersedes any and all prior or contemporaneous oral or written communications with respect hereto, all of which are merged herein. You acknowledge and agree that you have read this Agreement and understand and accept its terms.
+(3) WAIVER. No waiver by Konami of any term, provision or
+condition of this Agreement, whether by conduct or
+otherwise, in any one or more instances, shall be deemed
+to be or be construed as a further or continuing waiver of
+any such term, provision or condition or as a waiver of any
+other term, provision or condition of this Agreement.
+
+(4) ENTIRE AGREEMENT. This Agreement, together with all
+incorporated documents constitutes the entire
+understanding and agreement between the parties with
+respect to the subject matter hereof and supersedes any
+and all prior or contemporaneous oral or written
+communications with respect hereto, all of which are
+merged herein. You acknowledge and agree that you have
+read this Agreement and understand and accept its terms.
 
 Established on 06/06/2008
