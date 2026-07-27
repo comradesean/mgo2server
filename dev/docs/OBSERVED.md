@@ -28,38 +28,45 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
-## The clan roster's leader badge (2026-07-27, OPEN)
+## The clan roster's leader badge does not exist in this build (2026-07-27, CLOSED)
 
-A modified client shows a "Clan Leader" badge — a white doll figure marked CL — beside the leader
-in Check Roster. The retail client (BLUS30109) shows no such badge; the leader instead gets an
-**emblem-painter icon**.
+A modified client shows a "Clan Leader" badge — a white doll marked CL — beside the leader in Check
+Roster. BLUS30109 does not, and **cannot**: nothing in this binary distinguishes a leader row from
+a member row on that list.
 
-The roster row's status byte was being flattened to a boolean (`state == PENDING ? 0 : 1`), so we
-never sent a 2 and the client had no way to know who led the clan. That is fixed — the row now
-carries the real state, which is what the field's own documentation always said it was, the same
-`0/1/2` vocabulary the session clan record and the `0x4122` profile block use.
+The roster row's status byte was being flattened to a boolean, so we never sent a 2. That was a
+real bug and is fixed — the row now carries the client's own 0/1/2 vocabulary — but it was not this
+symptom's cause. Verified on the wire (`row0 id=00000001 name=Sean state=02`), and no badge
+followed.
 
-**Verified on the wire after the fix, and the badge still did not appear:**
+**Why it cannot appear**, from the parser at `0xD57E10` and the row loop at `0x8EC744`:
 
-    0x4b54  rows=2   row0 id=00000001 name=Sean state=02   row1 id=00000003 state=01
+- The state byte lands at struct `+21` and reaches the renderer, but the display filter is
+  `addi -1; clrlwi; cmplwi 1; bgt` — **1 and 2 take the same branch**, and there is no
+  `cmpwi ...,2` anywhere on the row path. The discrimination was never written.
+- Of the 68 wire bytes, only **+0 (id), +4 (name[16]) and +21 (state)** are read by anything. The
+  parser dutifully stores wire 21..67 into struct `+24/+28/+30/+48/+52/+56/+73`, and all six
+  consumer sites ignore them. **The 47 bytes we send as zero cannot change anything on screen** —
+  so there is nothing to be gained by filling them for this client.
+- No clan-leader badge resource exists in the string table. Caveat: widget ids here are opaque
+  32-bit constants that match no hash of any string (CRC32, FNV-1/1a, djb2, djb2-xor and sdbm were
+  all tested against 91,927 strings), and the real widget names live in external UI layout files —
+  so this is suggestive rather than conclusive on its own. The two code findings above are the
+  conclusive part.
 
-So the state byte reaching the client as 2 is **not sufficient** to draw a CL badge on this build.
-That is a real elimination — the observation that would have confirmed it (a badge appearing) was
-looked for and did not occur.
+**The emblem-painter icon is client-local and not ours.** It is the row's only conditional
+graphic, toggled at `0x8EC878`/`0x8EC898` by membership in an 8-entry `{flag, id, name[16]}` table
+at `global+0x1835AC`. Every writer found is either a local clear or a user-driven add/remove on
+that screen — consistent with the live observation that assigning the painter in-game moved the
+icon. What seeds the table on a fresh screen was not determined.
 
-Three possibilities remain, and they are distinguishable:
+**The emblem-editor id we send is inert.** `0x4b21`'s `T+0x6FC` parses as `{editor id, editor
+name[16]}` (`0xD58B34`, then a 16-byte read at `T+0x700` — so the old note calling `T+0x700` a
+512-byte blob is wrong about that field), and **nothing in the binary reads either**. It is not
+what produces the painter icon.
 
-1. **The badge does not exist in this build** — added in a later client version, which is the
-   user's hypothesis. Confirmable by finding no such sprite referenced anywhere in the binary.
-2. **It is selected by one of the 47 bytes we still send as zero.** The row is 68 bytes and we fill
-   21. This is at least as likely as (1), and is the reason (1) should not be assumed.
-3. **Something suppresses it** — most plausibly that we declare the leader to be the emblem editor
-   (`coalesce(emblem_editor_chara_id, leader_chara_id, 0)` in the clan queries), so the painter
-   icon may be taking a single shared badge slot that the CL badge would otherwise occupy.
-
-Note (3) is testable from our side alone: set `emblem_editor_chara_id` to a non-leader member and
-see whether the leader's icon changes.
-
+Also worth keeping: the roster holds **64 rows** across all `0x4b54` batches, and a 65th aborts the
+entire parse with `-71` — the same lose-the-whole-list failure as `0x4b12`'s 101st record.
 
 ## A clan leader's emblem does not render in game (2026-07-27, OPEN)
 
