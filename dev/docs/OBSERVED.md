@@ -28,45 +28,59 @@ Companion documents:
 This file is the record of what was *observed and verified*, including the things that turned out
 to be wrong. The other two describe what the code does today.
 
-## The clan roster's leader badge does not exist in this build (2026-07-27, CLOSED)
+## The clan roster's leader badge — the leader's ID, delivered by another packet (2026-07-27)
 
-A modified client shows a "Clan Leader" badge — a white doll marked CL — beside the leader in Check
-Roster. BLUS30109 does not, and **cannot**: nothing in this binary distinguishes a leader row from
-a member row on that list.
+**CONFIRMED FIXED.** The Clan Leader badge renders on Check Roster once `T+0x18` of the clan-info
+packets carries the leader's **character id**. We had been sending the founding date there in
+`0x4b81` and zeros in `0x4b21`, so the client knew a clan had a leader *named* Sean but never
+which character that was, and no roster row could match.
 
-The roster row's status byte was being flattened to a boolean, so we never sent a 2. That was a
-real bug and is fixed — the row now carries the client's own 0/1/2 vocabulary — but it was not this
-symptom's cause. Verified on the wire (`row0 id=00000001 name=Sean state=02`), and no badge
-followed.
+That also **confirms `T+0x18` is the leader's character id**, empirically and not by inference. The
+previous claim that it was the founding date came from an experiment that swapped it with `T+0x58`
+and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
+`T+0x18`. Second invalid elimination found in this packet family in one day.
 
-**Why it cannot appear**, from the parser at `0xD57E10` and the row loop at `0x8EC744`:
+### The wrong turn, which is the part worth keeping
 
-- The state byte lands at struct `+21` and reaches the renderer, but the display filter is
-  `addi -1; clrlwi; cmplwi 1; bgt` — **1 and 2 take the same branch**, and there is no
-  `cmpwi ...,2` anywhere on the row path. The discrimination was never written.
-- Of the 68 wire bytes, only **+0 (id), +4 (name[16]) and +21 (state)** are read by anything. The
-  parser dutifully stores wire 21..67 into struct `+24/+28/+30/+48/+52/+56/+73`, and all six
-  consumer sites ignore them. **The 47 bytes we send as zero cannot change anything on screen** —
-  so there is nothing to be gained by filling them for this client.
-- No clan-leader badge resource exists in the string table. Caveat: widget ids here are opaque
-  32-bit constants that match no hash of any string (CRC32, FNV-1/1a, djb2, djb2-xor and sdbm were
-  all tested against 91,927 strings), and the real widget names live in external UI layout files —
-  so this is suggestive rather than conclusive on its own. The two code findings above are the
-  conclusive part.
+An ELF investigation concluded the badge **could not exist in this build**, and it was wrong. Its
+two supporting facts were both true and remain true:
 
-**The emblem-painter icon is client-local and not ours.** It is the row's only conditional
-graphic, toggled at `0x8EC878`/`0x8EC898` by membership in an 8-entry `{flag, id, name[16]}` table
-at `global+0x1835AC`. Every writer found is either a local clear or a user-driven add/remove on
-that screen — consistent with the live observation that assigning the painter in-game moved the
-icon. What seeds the table on a fresh screen was not determined.
+- The roster row's state byte reaches the renderer, but the display filter is
+  `addi -1; clrlwi; cmplwi 1; bgt` — 1 and 2 take the same branch, and no `cmpwi ...,2` exists on
+  the row path. **The badge is not selected by the state byte.**
+- Of the 68 wire bytes in a row, only `+0` (id), `+4` (name[16]) and `+21` (state) are read by
+  anything. The other 47 are parsed and ignored by all six consumer sites. **Filling them changes
+  nothing.**
 
-**The emblem-editor id we send is inert.** `0x4b21`'s `T+0x6FC` parses as `{editor id, editor
-name[16]}` (`0xD58B34`, then a 16-byte read at `T+0x700` — so the old note calling `T+0x700` a
-512-byte blob is wrong about that field), and **nothing in the binary reads either**. It is not
-what produces the painter icon.
+Both correct. The conclusion drawn from them was not, because the question was "can this client
+draw a leader badge" and the evidence only covered **one packet**. The selector lives in a
+different one. The report even named its own gap — the 8-entry `{flag, id, name[16]}` table at
+`global+0x1835AC` whose network-side seeding it could not find, flagged as "a gap in my analysis,
+not a proven negative". That gap was exactly where the answer was, and the verdict was stated over
+it rather than around it.
 
-Also worth keeping: the roster holds **64 rows** across all `0x4b54` batches, and a 65th aborts the
-entire parse with `-71` — the same lose-the-whole-list failure as `0x4b12`'s 101st record.
+The rule this cost us: **an elimination is only as wide as the code you actually read.** "No field
+in this packet selects it" is a sound finding; "this build cannot draw it" is a different claim
+needing the whole client. The narrow one was true and useful; the broad one sent us to accept a
+version-mismatch theory that was false.
+
+### Still true and still useful
+
+- **The emblem-painter icon is client-local.** `0x4b21`'s `T+0x6FC` parses as `{editor id, editor
+  name[16]}` (`0xD58B34`, then a 16-byte read at `T+0x700` — so the old note calling `T+0x700` a
+  512-byte blob is wrong about that field), and nothing reads either. Assigning the painter in game
+  moves the icon because the screen writes its own table from user input.
+- **The roster caps at 64 rows**, and a 65th aborts the entire parse with `-71` — the same
+  lose-the-whole-list failure as `0x4b12`'s 101st record. We do not cap it.
+- Sending the real 0/1/2 membership state still matters: a state-0 applicant row is dropped by the
+  display filter, so the vocabulary is load-bearing even though the badge does not use it.
+
+### Not yet known
+
+Which of the two packets supplies the id — both were changed in one commit, so this is two
+variables moved at once, the same mistake the `0x4b81` id-versus-name confusion made earlier today.
+`0x4b21` is the clan-affiliation view and `0x4b81` the view of a clan you are not in; the roster is
+reached from the former, so `0x4b21` is the likely one. Testable by reverting either alone.
 
 ## A clan leader's emblem does not render in game (2026-07-27, OPEN)
 
