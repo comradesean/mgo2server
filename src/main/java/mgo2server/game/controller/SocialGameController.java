@@ -1,7 +1,9 @@
 package mgo2server.game.controller;
 
 import mgo2server.common.BufferUtil;
+import mgo2server.common.model.Chara;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
@@ -93,11 +95,14 @@ public class SocialGameController implements IGameController {
 
 	private final CharacterService characterService;
 
+	private final ClanService clanService;
+
 	private final GameService gameService;
 
-	public SocialGameController(CharacterService characterService,
+	public SocialGameController(CharacterService characterService, ClanService clanService,
 			GameService gameService) {
 		this.characterService = characterService;
+		this.clanService = clanService;
 		this.gameService = gameService;
 	}
 
@@ -241,24 +246,48 @@ public class SocialGameController implements IGameController {
 		// Deliberately INFO: this echo identifies which history-record field the client sends.
 		logger.info("Player details requested for character {}.", playerId);
 
+		// Real data, at last. This reply was a fingerprint payload — FP-DTL-NAME, FP-DTL-CLAN and
+		// numbered constants — sent to find out which offset fed which label. It did its job: the
+		// fields it identified are recorded in dev/proto/mgo2_cmd_4221.ksy, and the screen showed
+		// placeholders ever since. The clan in particular read as "----" until the player opened
+		// More Details, which fetches 0x4103 and does carry a real clan, so the value appeared to
+		// arrive late when in truth this packet never had it.
+		var chara = playerId == 0 ? java.util.Optional.<Chara>empty()
+			: characterService.get(playerId);
+		var name = chara.map(Chara::getName).orElse("");
+		var comment = chara.map(Chara::getComment).orElse("");
+		var clan = playerId == 0 ? ClanService.Membership.NONE : clanService.membershipOf(playerId);
+		// The same total the personal stats screen shows: the sum across game modes.
+		var playSeconds = playerId == 0 ? 0L : characterService.displayedPlaySeconds(playerId);
+
 		var buffer = ctx.buffer(201);
-		buffer.writeInt(0);        // result code: 0 = success
-		buffer.writeInt(playerId); // candidate id echo — echoed to test the label
-		BufferUtil.writeString(buffer, "FP-DTL-NAME", StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		buffer.writeInt(9501);
-		buffer.writeByte(61);
-		buffer.writeByte(62);
-		buffer.writeInt(9502);
-		buffer.writeInt(9503);
-		buffer.writeByte(63);
-		BufferUtil.writeString(buffer, "FP-DTL-COMMENT-128", StandardCharsets.ISO_8859_1, 128);
-		buffer.writeInt(9504);
-		BufferUtil.writeString(buffer, "FP-DTL-CLAN", StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		buffer.writeByte(64);
-		buffer.writeInt(9505);
-		buffer.writeInt(9506);
-		buffer.writeByte(65);
-		buffer.writeInt(9507);
+		buffer.writeInt(0);                                       // result: success
+		buffer.writeInt(playerId);
+		BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		// PROBE 2026-07-27: which of these is LEVEL? It renders as 0 whatever we send, and there are
+		// four candidates between the name and the play time. Each carries a distinct number, so the
+		// value on screen names the field: 11 -> wire 0x18, 22 -> 0x1c, 33 -> 0x1d, 44 -> 0x1e.
+		// Replace with the real field once the answer is known.
+		buffer.writeInt(11);                                      // [PROBE] wire 0x18
+		buffer.writeByte(22);                                     // [PROBE] wire 0x1c
+		buffer.writeByte(33);                                     // [PROBE] wire 0x1d
+		buffer.writeInt(44);                                      // [PROBE] wire 0x1e
+		buffer.writeInt((int) playSeconds);                       // play time, seconds
+		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x26
+		BufferUtil.writeString(buffer, comment == null ? "" : comment,
+			StandardCharsets.ISO_8859_1, 128);
+		// The clan record, as a {u32 id, name[16], u8 state} triple — the same shape this protocol
+		// uses for a clan everywhere else (session record at +0x1AA0, 0x4122's block, 0x4b47,
+		// 0x4b21's head, 0x4103's tail). The name alone was not enough: every reader traced so far
+		// checks the ID first and treats zero as "no clan" whatever the name says, which is why the
+		// field rendered as "----" while carrying "best clan".
+		buffer.writeInt((int) clan.id());                         // wire 0xa7, clan id
+		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		buffer.writeByte(clan.state());                           // wire 0xbb, membership state
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xbc
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc0
+		buffer.writeByte(0);                                      // [UNKNOWN] wire 0xc4
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc5
 		ctx.write(new GamePacket(PLAYER_DETAILS_RESULT, buffer));
 	}
 
