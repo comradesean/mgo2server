@@ -107,27 +107,33 @@ public class CharacterGameController implements IGameController {
 
 		var characters = characterService.listForAccount(account.getId(), account.getMainCharaId());
 
+		// Header: result, slot count, character count, the selected slot, then that character's
+		// name. Then one FIXED 52-byte entry per character.
+		//
+		// This used to introduce the first entry with its name and every later one with a 4-byte
+		// index, which is not the layout — it happened to total 52 bytes only because the appearance
+		// block was three bytes short at the same time. The two errors cancelled for a
+		// single-character account and stopped cancelling the moment a second character existed,
+		// which is what corrupted the character-select screen.
+		var selectedName = characters.isEmpty() ? ""
+			: displayName(characters.get(0), account.getMainCharaId());
+
 		var buffer = ctx.buffer(LIST_PAYLOAD_SIZE);
 		buffer.writeInt(GameError.NONE.result())
 			.writeByte(account.getSlots())
 			.writeByte(characters.size())
 			.writeZero(1);
+		BufferUtil.writeString(buffer, selectedName, StandardCharsets.ISO_8859_1, NAME_LENGTH);
 
 		for (var i = 0; i < characters.size(); i++) {
 			var chara = characters.get(i);
 			var name = displayName(chara, account.getMainCharaId());
 
-			// The first entry is introduced by its name; later ones by their index.
-			if (i == 0) {
-				BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
-				buffer.writeZero(1);
-			} else {
-				buffer.writeInt(i);
-			}
-
+			buffer.writeByte(i);
 			buffer.writeInt((int) chara.getId());
 			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
-			writeAppearance(buffer, characterService.getAppearance(chara.getId()).orElseGet(CharaAppearance::new));
+			writeAppearance(buffer, characterService.getAppearance(chara.getId()).orElseGet(CharaAppearance::new),
+				characterService.secondsUntilDeletable(chara, OffsetDateTime.now()));
 		}
 
 		buffer.writeZero(LIST_TRAILER_OFFSET - buffer.writerIndex());
@@ -144,7 +150,22 @@ public class CharacterGameController implements IGameController {
 		return chara.getName();
 	}
 
-	private static void writeAppearance(ByteBuf buffer, CharaAppearance a) {
+	/**
+	 * The appearance block and the entry's trailing {@code u32}, which is the <b>delete cooldown in
+	 * seconds</b> — how long until this character may be deleted.
+	 * <p>
+	 * The client reads it at wire {@code +0x30} of each 52-byte entry (parser {@code 0xD372F8},
+	 * stored to {@code sess+0x55D4+60*slot+56}) and the character-management screen formats it at
+	 * {@code 0x9510B4}: non-zero rounds up to whole minutes and produces "Characters cannot be
+	 * deleted for a fixed amount of time after being registered. You must wait %d hours %d minutes"
+	 * (lobby strings 11848 / 11854); zero lets the deletion proceed.
+	 * <p>
+	 * This also corrects the entry's size. The block was written as 28 bytes — nine appearance
+	 * bytes, four zero, fourteen appearance bytes and a single pad — where the layout is 31, the pad
+	 * standing in for this u32. Every entry was three bytes short, which the trailer padding hid
+	 * because only the first entry is ever populated for a one-character account.
+	 */
+	private static void writeAppearance(ByteBuf buffer, CharaAppearance a, long deleteCooldown) {
 		buffer.writeByte(a.getGender()).writeByte(a.getFace()).writeByte(a.getUpper())
 			.writeByte(a.getLower()).writeByte(a.getFacePaint()).writeByte(a.getUpperColor())
 			.writeByte(a.getLowerColor()).writeByte(a.getVoice()).writeByte(a.getPitch())
@@ -154,7 +175,7 @@ public class CharacterGameController implements IGameController {
 			.writeByte(a.getAccessory2()).writeByte(a.getHeadColor()).writeByte(a.getChestColor())
 			.writeByte(a.getHandsColor()).writeByte(a.getWaistColor()).writeByte(a.getFeetColor())
 			.writeByte(a.getAccessory1Color()).writeByte(a.getAccessory2Color())
-			.writeZero(1);
+			.writeInt((int) deleteCooldown);
 	}
 
 	private void createCharacter(GameControllerContext ctx) {

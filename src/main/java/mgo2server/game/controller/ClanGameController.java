@@ -176,15 +176,26 @@ public class ClanGameController implements IGameController {
 	private static final int EMBLEM_ON_DISPLAY = 3;
 
 	/**
-	 * The ONLY safe way to refuse an emblem upload: {@code -1207}.
+	 * How to refuse an emblem upload without destroying the player's work.
 	 * <p>
-	 * {@code 0x4b51}'s result is routed at {@code 0xAD3E20}. {@code -1207} and {@code -1202} both
+	 * {@code 0x4b51}'s result is routed at {@code 0xAD3E20}. Only {@code -1207} and {@code -1202}
 	 * fall through to {@code 0xAD3EA8}, which raises UI event 2 — an error dialog. <b>Every other
-	 * non-zero value takes {@code 0xAD3ED0}, which memsets the client's 768-byte emblem buffer to
-	 * zero and raises event 13</b>, destroying the emblem the player is working on. So a generic
-	 * error code here is not merely unhelpful, it is destructive.
+	 * non-zero value takes {@code 0xAD3ED0}, which memsets the client's 768-byte emblem buffer and
+	 * raises event 13</b>, destroying the emblem being edited. So the choice is between those two
+	 * codes and nothing else.
+	 * <p>
+	 * Both were checked live on 2026-07-27 and the codes carry specific text, so the choice matters:
+	 * <ul>
+	 *   <li>{@code -1207} → <em>"Unable to locate designated clan.(1904:FFFFFB49)"</em> — wrong, and
+	 *       actively misleading: it tells the player their clan is missing.</li>
+	 *   <li>{@code -1202} → <em>"Unable to update clan emblem.(197F:FFFFFB4E)"</em> — accurate about
+	 *       what happened, which is the best available. This is the one we send.</li>
+	 * </ul>
+	 * The message that <em>belongs</em> here — "You must wait another %d hours %d minutes before you
+	 * can put this emblem on display" (lobby 17247) — cannot be produced: no code path in this build
+	 * formats it. The player is told the update failed, not how long to wait.
 	 */
-	private static final int EMBLEM_REFUSED = -1207;
+	private static final int EMBLEM_REFUSED = -1202;
 
 	/**
 	 * How long a clan must wait before putting another emblem on display.
@@ -848,6 +859,17 @@ public class ClanGameController implements IGameController {
 		var membership = clanService.membershipOf(charaId);
 		if (membership.state() != ClanService.STATE_LEADER) {
 			logger.info("Character {} tried to disband a clan they do not lead.", charaId);
+			ctx.write(DISBAND_RESULT, GameError.GENERAL);
+			return;
+		}
+
+		var wait = clanService.secondsUntilDisbandable(membership.id());
+		if (wait > 0) {
+			// Seven days from creation, like the character-delete and emblem cooldowns. The client
+			// cannot show the countdown — lobby strings 17312/17318 are orphaned in this build, the
+			// same way the emblem ones are — so this surfaces as a generic error.
+			logger.info("Clan {}: disband refused, {}s of the {}s cooldown remaining.",
+				membership.id(), wait, ClanService.DISBAND_COOLDOWN.toSeconds());
 			ctx.write(DISBAND_RESULT, GameError.GENERAL);
 			return;
 		}

@@ -792,9 +792,21 @@ public class CharacterService {
 				.list());
 	}
 
+	/**
+	 * Whether a character name is already in use, <b>ignoring case</b>.
+	 *
+	 * <p>It was case-sensitive, so "sean" was accepted alongside "Sean". Two characters whose names
+	 * differ only in case are indistinguishable everywhere the game shows a name — rosters, friend
+	 * lists, the instructor badge — and the client's own error for this,
+	 * {@code CHARACTER_NAME_TAKEN} (-260, "Desired PC name is already in use"), exists precisely so
+	 * the server can refuse it.
+	 *
+	 * <p>Deleted characters keep their row but release the name (it moves to {@code old_name}), so
+	 * only active ones count.
+	 */
 	public boolean isNameTaken(String name) {
 		return jdbi.withHandle(handle ->
-			handle.createQuery("select count(*) from chara where name=:name")
+			handle.createQuery("select count(*) from chara where lower(name) = lower(:name) and active")
 				.bind("name", name)
 				.mapTo(Long.class)
 				.one()) > 0;
@@ -918,6 +930,21 @@ public class CharacterService {
 				.bind("charaId", charaId)
 				.bind("id", accountId)
 				.execute());
+	}
+
+	/**
+	 * Seconds until a character may be deleted, or 0 when it already may be.
+	 * <p>
+	 * The client enforces this itself and shows the countdown, given the value in {@code 0x3049}'s
+	 * per-entry trailing u32 — so this is what makes "You must wait %d hours %d minutes" appear with
+	 * real numbers instead of the deletion simply being refused.
+	 */
+	public long secondsUntilDeletable(Chara chara, OffsetDateTime now) {
+		if (chara.getCreatedAt() == null) {
+			return 0;
+		}
+		var ready = chara.getCreatedAt().plus(DELETE_COOLDOWN);
+		return now.isBefore(ready) ? java.time.Duration.between(now, ready).toSeconds() : 0;
 	}
 
 	public boolean canDelete(Chara chara, OffsetDateTime now) {

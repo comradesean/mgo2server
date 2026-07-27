@@ -117,7 +117,7 @@ public class LobbyGameControllerIT extends BaseGameClientServerIT {
 			h.createQuery("select id from lobby where type = 2").mapTo(Long.class).one());
 		var accountId = jdbi.withHandle(h -> h.createUpdate("""
 				insert into account (username, password, session, slots, main_exp)
-				values ('host', '', 'feed', 8, 0)
+				values ('host', '', 'feed', 2, 0)
 				""").executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 		var hostChara = jdbi.withHandle(h ->
 			h.createUpdate("insert into chara (account_id, name) values (:a, 'Snake')")

@@ -70,9 +70,11 @@ VALUES ('tester', md5('nomad'), 3, 0)
 ON CONFLICT (username) DO NOTHING;
 
 -- Something for the news screen, which is one of the first things the client asks for.
+-- The WHERE NOT EXISTS is deliberate: this insert has no natural conflict target, and without it
+-- every run of the seed appended another copy — twelve had accumulated before anyone noticed.
 INSERT INTO public.news (important, title, body)
-VALUES (true, 'mgo2server', 'Test server online.')
-ON CONFLICT DO NOTHING;
+SELECT true, 'mgo2server', 'Test server online.'
+WHERE NOT EXISTS (SELECT 1 FROM public.news);
 
 SELECT id, type, name, ip, port FROM public.lobby ORDER BY id;
 SELECT id, username, coalesce(session, '(no session until first login)') FROM public.account ORDER BY id;
