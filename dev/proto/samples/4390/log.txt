@@ -3618,3 +3618,35 @@
   seconds_in_game           = 3515
   experience_total          = 500
   detail_present            = 1
+=== #498  2026-07-27 04:51:06  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 498_045106_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 153
+  experience_total          = 428
+  detail_present            = 1
+  B7  salutes               = 1
+  B9  text_chat_uses?       = 1
+  B12 rolls                 = 2
+  B24 tdm_consecutive_survivals= 1
+=== #499  2026-07-27 04:51:07  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 499_045107_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 151
+  experience_total          = 500
+  detail_present            = 1
+  B9  text_chat_uses?       = 1
+  B24 tdm_consecutive_survivals= 1
+=== #500  2026-07-27 04:51:07  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 500_045107_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 142
+  experience_total          = 49250
+  detail_present            = 1
+  B7  salutes               = 1
+  B24 tdm_consecutive_survivals= 1
