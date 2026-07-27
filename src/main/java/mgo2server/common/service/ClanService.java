@@ -253,24 +253,86 @@ public class ClanService {
 	 * A leader cannot: the clan would be left without one. Returns whether a row was removed.
 	 */
 	public boolean withdraw(long charaId) {
-		return jdbi.withHandle(handle -> handle
-			.createUpdate("delete from clan_member where chara_id = :chara and state != :leader")
+		return jdbi.inTransaction(handle -> {
+			// Whether this was a real membership or only a pending application, read before the row
+			// goes. Cancelling an application must NOT start the join cooldown: the same command
+			// backs "Cancel Join", and charging a week for pressing it would lock a player out of
+			// clans for having changed their mind on a screen that offers exactly that button.
+			var wasMember = handle
+				.createQuery("select state from clan_member where chara_id = :chara")
+				.bind("chara", charaId)
+				.mapTo(Integer.class)
+				.findOne()
+				.filter(state -> state != STATE_PENDING)
+				.isPresent();
+
+			var removed = handle
+				.createUpdate("delete from clan_member where chara_id = :chara and state != :leader")
+				.bind("chara", charaId)
+				.bind("leader", STATE_LEADER)
+				.execute() > 0;
+
+			if (removed && wasMember) {
+				stampDeparture(handle, charaId);
+			}
+			return removed;
+		});
+	}
+
+	/** Records that a character has stopped being in a clan, starting the apply-to-join cooldown. */
+	private static void stampDeparture(org.jdbi.v3.core.Handle handle, long charaId) {
+		handle.createUpdate("update chara set clan_left_at = now() where id = :chara")
 			.bind("chara", charaId)
-			.bind("leader", STATE_LEADER)
-			.execute() > 0);
+			.execute();
+	}
+
+	/**
+	 * Seconds until this character may apply to join a clan again, or 0 when they may now.
+	 *
+	 * <p><b>Operator policy, and policy twice over.</b> That the wait exists is the game's own — it
+	 * carries the sentence and has a result code for it. Both the length and the decision to
+	 * measure it from leaving a clan rather than from the last application are ours; nothing in the
+	 * binary states which, because nothing in the binary checks it. A character who has never been
+	 * in a clan has no departure and is never held.
+	 */
+	public long secondsUntilCanApply(long charaId) {
+		var cooldown = mgo2server.common.Policy.current().clanJoinCooldown().toSeconds();
+		if (cooldown <= 0) {
+			return 0;
+		}
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+				select greatest(0, :cooldown - extract(epoch from now() - clan_left_at))::bigint
+				from chara where id = :chara and clan_left_at is not null
+				""")
+			.bind("cooldown", cooldown)
+			.bind("chara", charaId)
+			.mapTo(Long.class)
+			.findOne()
+			.orElse(0L));
 	}
 
 	/** Removes a member from a clan outright — {@code 0x4b36}, banish. The leader cannot be. */
 	public boolean banish(long clanId, long charaId) {
-		return jdbi.withHandle(handle -> handle
-			.createUpdate("""
-				delete from clan_member
-				where clan_id = :clan and chara_id = :chara and state != :leader
-				""")
-			.bind("leader", STATE_LEADER)
-			.bind("clan", clanId)
-			.bind("chara", charaId)
-			.execute() > 0);
+		return jdbi.inTransaction(handle -> {
+			var removed = handle
+				.createUpdate("""
+					delete from clan_member
+					where clan_id = :clan and chara_id = :chara and state != :leader
+					""")
+				.bind("leader", STATE_LEADER)
+				.bind("clan", clanId)
+				.bind("chara", charaId)
+				.execute() > 0;
+
+			// A banished member left a clan, however involuntarily, so the cooldown applies. Whether
+			// it should is a policy question we cannot answer from the binary: it is defensible that
+			// being thrown out shouldn't cost you a week. Change it here if it plays badly.
+			if (removed) {
+				stampDeparture(handle, charaId);
+			}
+			return removed;
+		});
 	}
 
 	/**
@@ -323,10 +385,26 @@ public class ClanService {
 	 * cascade on the clan's deletion, so everyone lands back at state 99, no clan.
 	 */
 	public boolean disband(long clanId) {
-		return jdbi.withHandle(handle -> handle
-			.createUpdate("delete from clan where id = :clan")
-			.bind("clan", clanId)
-			.execute() > 0);
+		return jdbi.inTransaction(handle -> {
+			// Everyone who was actually in the clan leaves at once. Stamped before the delete,
+			// because clan_member cascades away with the clan row. Pending applicants are excluded:
+			// they were never members, and an application that was never answered should not cost
+			// them anything.
+			handle.createUpdate("""
+					update chara set clan_left_at = now()
+					where id in (
+						select chara_id from clan_member where clan_id = :clan and state != :pending
+					)
+					""")
+				.bind("clan", clanId)
+				.bind("pending", STATE_PENDING)
+				.execute();
+
+			return handle
+				.createUpdate("delete from clan where id = :clan")
+				.bind("clan", clanId)
+				.execute() > 0;
+		});
 	}
 
 	/**

@@ -79,12 +79,35 @@ raw, not masked with `GameError.MASK`.
 
 ### `0x4b43` — apply to join clan  <sub>0xA7E43C</sub>
 
+Recovered by hand from the disassembly, 2026-07-27. The block is **total** — it ends in a
+catch-all, so every result code produces a sentence.
+
 | code | string | message |
 | --- | --- | --- |
-| `-1217` | — | _(dialogId not recovered)_ |
-| `-1201` | — | _(dialogId not recovered)_ |
-| `-1207` | — | _(dialogId not recovered)_ |
-| `-160` | — | _(dialogId not recovered)_ |
+| `-1217` | 24131 | This clan is already full.\nUnable to apply to join clan. |
+| `-1201` | 24143 | You are already a member of another clan.\nUnable to apply to join clan. |
+| `-1207` | 24155 | Unable to locate designated clan, or clan may be disbanded.\nUnable to apply to join clan. |
+| `-160` | 24107 | A network server error has occurred.\nUnable to apply to join clan. |
+| _(any other)_ | 24101 | Unable to apply to join clan. |
+
+**Five of this screen's sentences are unreachable.** Entries 6454, 6455, 6456, 6458 and 6460 are
+never loaded into `r3` anywhere in the binary — including *"A fixed amount of time must pass in
+order to apply to join a clan."* (6458) and *"You are on the clan leader's Block List."* (6454). No
+result code produces them, so a server-side join cooldown or block-list refusal has to settle for
+the generic 24101. Carrying the text is not the same as being able to show it; check this table
+before designing a refusal around a sentence you found in a string dump.
+
+They are not entirely dead: `li r22,6458` appears at `0x756438` and `0x758318` inside a large
+per-screen struct initializer that installs whole families of dialogIds. Whether any client-side
+pre-check can raise one was not traced.
+
+Why the generator missed this block, when it read its neighbours: `CODES` is hand-maintained from
+reading `cmpwi` chains, and this block is only eight instructions long with just one `li` inside
+it. `bgt cr7,0xA7E924` sends everything above `-1207` to a continuation 0x4E0 bytes away, past
+several other operations; `-1217`'s `li` lives in a shared trampoline pool at `0xA7E7A0`; and
+`-160` takes two hops through `0xA7E808`, itself shared with the mail block. Automating this needs
+a real CFG walk from each block entry to the `0x885A08` tail — and it should record each block's
+default path, which the hand-maintained list omits everywhere.
 
 ### `0x4801` — send mail (per recipient)  <sub>0x8EFD40</sub>
 

@@ -23,7 +23,8 @@ import java.util.function.UnaryOperator;
 public record Policy(
 	Duration characterDeleteCooldown,
 	Duration clanDisbandCooldown,
-	Duration clanEmblemCooldown
+	Duration clanEmblemCooldown,
+	Duration clanJoinCooldown
 ) {
 	/** A week. What all three cooldowns default to. */
 	public static final Duration DEFAULT_COOLDOWN = Duration.ofHours(168);
@@ -44,7 +45,8 @@ public record Policy(
 		return new Policy(
 			hours(env, "MGO2SERVER_CHARACTER_DELETE_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_DISBAND_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
-			hours(env, "MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS", DEFAULT_COOLDOWN)
+			hours(env, "MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
+			hours(env, "MGO2SERVER_CLAN_JOIN_COOLDOWN_HOURS", DEFAULT_COOLDOWN)
 		);
 	}
 

@@ -378,6 +378,35 @@ public class ClanGameController implements IGameController {
 
 	private static final int APPLY_TO_JOIN_RESULT = 0x4b43;
 
+	/**
+	 * Refusing an application inside the join cooldown.
+	 * <p>
+	 * <b>[ELF] The sentence we wanted cannot be shown, and the obvious guess was wrong.</b>
+	 * <p>
+	 * The client carries <em>"A fixed amount of time must pass in order to apply to join a
+	 * clan.\nUnable to apply to join clan."</em> (table entry 6458, string 24137). It is
+	 * unreachable. {@code li r3,6458} does not occur anywhere in the binary, and the {@code 0x4b43}
+	 * error block at {@code 0xA7E43C} — which is <em>total</em>, every code lands somewhere — never
+	 * produces it:
+	 * <pre>
+	 *   -1217 -> 6457  "This clan is already full."
+	 *   -1201 -> 6459  "You are already a member of another clan."
+	 *   -1207 -> 6461  "Unable to locate designated clan, or clan may be disbanded."
+	 *   -160  -> 6453  "A network server error has occurred."
+	 *   any other -> 6452  "Unable to apply to join clan."
+	 * </pre>
+	 * {@code -1217} was this constant's first value, picked by elimination on the theory that the
+	 * other three had jobs and it did not. It has a job: the clan is full. Shipping it would have
+	 * told a player on cooldown that the clan was at capacity — a confident, specific lie, which is
+	 * the same failure the emblem refusal made three times before it was right.
+	 * <p>
+	 * So this deliberately takes the <b>default path</b>. "Unable to apply to join clan." is vague,
+	 * but it is true, and vague-and-true beats specific-and-false. Four more sentences on this
+	 * screen are unreachable the same way (6454, 6455, 6456, 6460), including the Block List one —
+	 * so the generic refusal is the client's normal answer here, not a degraded one.
+	 */
+	private static final int APPLY_TOO_SOON = -1219;
+
 	/** The applicant list, payload the clan id: {@code 0x4b75} records of 93 bytes. */
 	public static final int APPLICANTS = 0x4b73;
 
@@ -830,13 +859,23 @@ public class ClanGameController implements IGameController {
 		var payload = ctx.packet().getPayload();
 		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
 
-		if (charaId != null && clanId != 0 && clanService.clanById(clanId).isPresent()) {
-			clanService.apply(charaId, clanId);
-			logger.info("Character {} applied to join clan {}.", charaId, clanId);
-			writeResult(ctx, APPLY_TO_JOIN_RESULT);
-		} else {
+		if (charaId == null || clanId == 0 || clanService.clanById(clanId).isEmpty()) {
 			ctx.write(APPLY_TO_JOIN_RESULT, GameError.GENERAL);
+			return;
 		}
+
+		var wait = clanService.secondsUntilCanApply(charaId);
+		if (wait > 0) {
+			logger.info("Character {} may not apply to clan {} yet, {}s of {}s remaining.",
+				charaId, clanId, wait,
+				mgo2server.common.Policy.current().clanJoinCooldown().toSeconds());
+			writeCode(ctx, APPLY_TO_JOIN_RESULT, APPLY_TOO_SOON);
+			return;
+		}
+
+		clanService.apply(charaId, clanId);
+		logger.info("Character {} applied to join clan {}.", charaId, clanId);
+		writeResult(ctx, APPLY_TO_JOIN_RESULT);
 	}
 
 

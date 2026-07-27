@@ -296,9 +296,31 @@ public class SocialGameController implements IGameController {
 		buffer.writeInt((int) clan.id());                         // wire 0xa7, clan id
 		BufferUtil.writeString(buffer, clan.name(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 		buffer.writeByte(clan.state());                           // wire 0xbb, membership state
-		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xbc
-		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc0
-		buffer.writeByte(0);                                      // [UNKNOWN] wire 0xc4
+		// [ELF] wire 0xbc/0xc0 -> profile+13016/+13020, read as a pair at 0x91858C and put through
+		// 0x94258C, which is min(10, ((a*20)/b - 1)/10 + 1) and returns 0 if either is 0. They drive
+		// a 1-of-10 star gauge, with the second also printed literally as " / N". So 0xbc is a
+		// numerator and 0xc0 its total. WHAT they count is still unknown — the widget is named only
+		// by hash — so they stay zero, which the gauge reads as "no bar" rather than as a wrong one.
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xbc, gauge value
+		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc0, gauge total
+
+		// [CONFIRMED ELF] wire 0xc4 -> profile+6872: the clan emblem flag, the same byte 0x4122 and
+		// 0x4b47 write. The parser stores it at 0xD3DA84, and the Player Details screen tests it at
+		// 0x905A90 (cmpwi r0,3) — but only after 0x905A8C has checked the membership state at 0xbb
+		// is 1 or 2. On a match it calls 0xD56704, which sends 0x4b4a and fetches the image.
+		//
+		// Sending 0 is not "no picture", it is "never ask" — the fetch is skipped and the emblem is
+		// silently absent. This screen is the ONLY writer of 6872 on this path (0x4103 does not
+		// touch it), so the emblem on Player Details depends on this byte alone.
+		buffer.writeByte(clan.id() == 0 ? 0
+			: (clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
+				? ClanService.EMBLEM_ON_DISPLAY : 0));       // wire 0xc4, emblem flag
+
+		// [ELF] wire 0xc5 -> profile+292, read at 0x905E00 and 0x915F64. Both run it through the
+		// level-from-experience walker 0x6F9260, clamp to 1..23, index a 24-entry table and render
+		// "%s (%d)" — a title for its level, then the raw number. So it is a second experience-scale
+		// quantity, distinct from wire 0x18 (which is the Level and renders bare). Which quantity is
+		// unknown: the table holds resource hashes, not strings. Zero until that is answered.
 		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc5
 		ctx.write(new GamePacket(PLAYER_DETAILS_RESULT, buffer));
 	}
