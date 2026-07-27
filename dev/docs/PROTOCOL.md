@@ -311,30 +311,69 @@ yet.
 
 | command | payload |
 | --- | --- |
-| `0x2009` | 4 bytes: `00000000` |
-| `0x200a` | one per news item, 1023 bytes as we send it — see below, the body is not a fixed field |
-| `0x200b` | 4 bytes: `00000000` |
+| `0x2009` | 4 bytes: `00000000` — a **result code**, not a count |
+| `0x200a` | one per news item, **trimmed to the item's real length** — see below |
+| `0x200b` | 4 bytes: `00000000` — a result code |
 
-At most **10** news items: the client's table caps there and aborts above it (ELF 2026-07-26).
+`0x2009` (`0xD36504`) and `0x200b` (`0xD36710`) each read one u32 and signal it as an error if
+nonzero; neither carries an item count. Zeros are correct.
 
-### `0x200a` item — 1023 bytes as we write it
+### `0x200a` item
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
 | `0x000` | 4 | u32 | news id |
 | `0x004` | 1 | u8 | important flag (0/1) |
 | `0x005` | 4 | u32 | timestamp, Unix seconds |
-| `0x009` | 128 | ISO-8859-1 | title, NUL-padded |
-| `0x089` | 886 | ISO-8859-1 | body, NUL-padded |
+| `0x009` | **128, fixed** | ISO-8859-1 | title, NUL-padded. `0xD5D018` advances the cursor by exactly 128 whatever the content. |
+| `0x089` | `len(body)` | ISO-8859-1 | body, **no padding** |
+| `0x089+len` | 1 | u8 | **one NUL terminator — required** |
 
-**886 is not a field width — it is our padding choice** (settled from the ELF 2026-07-26,
-single-source trace). The body is read by the **delimiter-terminated string primitive**
-`0xD5CE34`, called from `0xD366B0`: the client reads until the delimiter and advances past it, so
-the body is **variable-length and self-terminating**, not a fixed 886-byte field. 886 is simply
-what makes our padded payload land on the 1023-byte maximum, and no rationale for wanting that
-was ever recorded. Our encoding still parses — a NUL-padded body terminates at its first NUL —
-so this is a documentation error, not a live bug. Unverified: no client has been observed
-rendering a news item.
+**The payload must be trimmed to `137 + len(body) + 1` and never padded.**
+
+### The padding bug, and why "harmless" was wrong
+
+This file used to say the body was NUL-padded to 886 bytes to make the payload total 1023, and
+that this was "a documentation error, not a live bug" because "a NUL-padded body terminates at its
+first NUL". The first half is right and the second half does not follow.
+
+The parser at `0xD365C8` **loops inside a single packet**. Its termination test is `0xD5CEB0`,
+which compares the read cursor against the *payload length* at `packet+4` and returns -1 only when
+the cursor reaches it. So the client keeps parsing records until the packet is drained. The body
+terminating at its first NUL does not consume the remaining padding — it hands the padding to the
+next iteration.
+
+A record with an empty body costs **138 bytes**: 137 fixed plus a lone terminator. Every padded
+item therefore manufactured about six phantom entries with id 0, time 0 and an empty title.
+
+[OBSERVED 2026-07-27] Two rows with bodies of 19 and 134 characters. Records start at cursor 0,
+then every 138 bytes; the fixed-128 title read bounds at `pos <= 896` (`0xD5D03C`), which is what
+ends each run:
+
+| item | real record ends | phantom starts | last one that fits | entries |
+| --- | --- | --- | --- | --- |
+| body 19 | 157 | 157, 295, 433, 571, 709, 847 | 847 (title at 856) | **7** |
+| body 134 | 272 | 272, 410, 548, 686, 824 | 824 (title at 833) | **6** |
+
+13 entries, capped at the client's limit of 10, second real item at position **8**. The client
+showed exactly 10 pages with real items on 1 and 8 — predicted to the page before the fix.
+
+The same arithmetic settles two things this file had only assumed. The **title is genuinely a
+fixed 128-byte field**: were it terminated like the body, a phantom would cost 11 bytes and there
+would have been ~89 of them. And the **terminator is exactly one byte**.
+
+### Two limits that are the client's, not ours
+
+- **At most 10 items.** `cmpwi r3,9; bgt` at `0xD366D0` aborts the *entire reply* with `-71` on the
+  eleventh. An eleventh row does not get dropped; it loses the whole news screen.
+- **Body at most 774 bytes.** Each table entry is 920 bytes with the body at offset 145, so the
+  destination holds 775 including the terminator. `0xD5CE34` bounds only its **source**
+  (`pos+i <= 1023`) and never its destination, so a longer body **overruns a stack temporary in
+  the client**. Our `news.body` column is `varchar(886)`, wider than the client can hold, so the
+  server caps it.
+
+The page total the screen shows is the record counter at `newsTable+4`, copied to the UI at
+`0x93FE4C` (`stw r0,188(r3)`) — the same counter the 10-item cap tests.
 
 ## `0x2006` / `0x2007` — undocumented gate pair
 
