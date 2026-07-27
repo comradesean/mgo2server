@@ -329,14 +329,42 @@ public class ClanService {
 			.execute() > 0);
 	}
 
-	/** The stored emblem block, or empty when the clan has none. */
+	/**
+	 * The emblem block to serve for a clan, or empty when it has none <b>on display</b>.
+	 *
+	 * <p>The mode test is the point of this method. Storage and display are different things: an
+	 * emblem uploaded with mode 2 or 4 is kept but is not on display, and only mode 3 is. This used
+	 * to select on {@code emblem is not null} alone, which made the server contradict itself — the
+	 * flag at {@code profile+6872} said "nothing to show", and then any screen that asked for the
+	 * picture was handed 768 bytes of it regardless.
+	 *
+	 * <p>[OBSERVED 2026-07-27] That is what kept a deleted emblem on Player Details -> More
+	 * Details after a full logout and login, while the clan screen — which believes the flag —
+	 * correctly showed nothing. One source of truth: if we would not set the flag to
+	 * {@link #EMBLEM_ON_DISPLAY}, we do not serve the bytes either.
+	 *
+	 * <p>The bytes are deliberately <b>not</b> deleted with the mode. A non-display mode looks like
+	 * "saved, not shown" — the emblem editor has Save and Load — so discarding the image on a mode
+	 * change would destroy work the player expects to keep.
+	 */
 	public Optional<byte[]> emblemOf(long clanId) {
 		return jdbi.withHandle(handle -> handle
-			.createQuery("select emblem from clan where id = :clan and emblem is not null")
+			.createQuery("""
+				select emblem from clan
+				where id = :clan and emblem is not null and emblem_mode = :displayed
+				""")
 			.bind("clan", clanId)
+			.bind("displayed", EMBLEM_ON_DISPLAY)
 			.mapTo(byte[].class)
 			.findOne());
 	}
+
+	/**
+	 * The upload mode that means "on display". [ELF] The client's own constant: the upload path
+	 * stores it to {@code profile+6872} at {@code 0xAD4724}, and every reader tests it with an
+	 * exact {@code cmpwi r0,3}, so 2 and 4 read identically to 0.
+	 */
+	public static final int EMBLEM_ON_DISPLAY = 3;
 
 	/** Seconds since the clan's emblem last went on display, or -1 if it never has. */
 	public long secondsSinceEmblem(long clanId) {
