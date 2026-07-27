@@ -1,10 +1,15 @@
 meta:
   id: mgo2_cmd_4b76_s2c
-  title: "MGO2 0x4b76 — clan/GHQ reply, single result code (server -> client) — list-triple END"
+  title: "MGO2 0x4b76 — clan applicant list END (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven:
-  everything here is read out of the client parser.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **End of the clan applicant list.** Last packet of the 0x4b74 / 0x4b75 / 0x4b76 triple answering
+  0x4b73.
+
+  **This triple is UNEXERCISED** — the client never sends 0x4b73; clan applications arrive as MAIL
+  (mailbox type 0x10 on 0x4820, versus 0x0f for ordinary mail). See mgo2_cmd_4b74_s2c.ksy.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD54F30**,
   which re-checks the id (`cmpwi r0,19318` = 0x4b76) before reading anything.
@@ -79,8 +84,10 @@ seq:
   - id: result
     type: s4
     doc: |
-      [ELF] Signed 32-bit result/error code. It is typed s4 because the CALLER reloads it with
-      `lwa`, not because of the primitive: 0xD5CC64 is byte-identical to 0xD5CCD8 and is not a
-      signed accessor (see the CORRECTION in the top-level doc). Negative values are meaningful (this family's errors are in the
-      -0x4xx..-0x5xx range elsewhere in the binary). 0 = success by the convention every other
-      traced reply follows. Meaning of non-zero values here: [UNKNOWN].
+      [ELF] Applicant-list-end result. 0 = the list is complete. **A result code, never a count.**
+      Never observed live; this triple is unexercised.
+
+      It is typed s4 because the CALLER reloads it with `lwa`, not because of the primitive:
+      0xD5CC64 is byte-identical to 0xD5CCD8 and is not a signed accessor (see the CORRECTION in
+      the top-level doc). Negative values are the client's own error codes, resolved through its
+      table at 0x106D714.

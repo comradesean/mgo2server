@@ -138,7 +138,7 @@ implementation.
 | `0x3049` | parses | variable | Character list | served |
 | `0x3101` | sends | 43 B | Create character | served |
 | `0x3102` | parses | 4 B | Create-character result | served |
-| `0x3103` | sends | 1 B | Select character | served |
+| `0x3103` | sends | 1 B | Select character — a **slot index**, not a character id *(verified spec)* | served † |
 | `0x3104` | parses | 4 B | Select-character result | served |
 | `0x3105` | sends | 1 B | Delete character | served |
 | `0x3106` | parses | 4 B | Delete-character result | served |
@@ -157,8 +157,8 @@ implementation.
 | `0x4107` | parses | 588 B | Personal scores (reply 4/4 of the 0x4102 burst, terminal) *(verified spec)* | served |
 | `0x4110` | sends | variable | Update gameplay options | served |
 | `0x4111` | parses | 4 B | Options write-back ack | served |
-| `0x4112` | sends | 32 B | [UNKNOWN] Unidentified connect-family write-back | gap |
-| `0x4113` | parses | 4 B | [UNKNOWN] Reply to 0x4112 | unsent |
+| `0x4112` | sends | 32 B | Connect-family write-back, **blocks** (wait slot `0x18`); 32-byte body still [UNKNOWN] | served |
+| `0x4113` | parses | 4 B | Bare `{u32 result}` for `0x4112` — acknowledged, body dropped | served |
 | `0x4114` | sends | variable | Update chat macros | served |
 | `0x4120` | parses | variable | Gameplay and interface settings, packet 2/9 of the connect burst | served |
 | `0x4121` | parses | variable | Chat macros, packets 3/9 and 4/9 of the connect burst | served |
@@ -277,7 +277,7 @@ implementation.
 | `0x4581` | parses | 4 B | Bulk roster fetch, list START | served |
 | `0x4582` | parses | variable | Bulk roster entries | served |
 | `0x4583` | parses | 4 B | Bulk roster fetch, list END | served |
-| `0x4600` | sends | 18 B | Player search | served |
+| `0x4600` | sends | 18 B | Player search; second byte is **ignore case** (1 = ignore) *(verified spec)* | served † |
 | `0x4601` | parses | 4 B | Player search, list START | served |
 | `0x4602` | parses | variable | Player-search result records | served |
 | `0x4603` | parses | 4 B | Player search, list END | served |
@@ -419,61 +419,61 @@ implementation.
 
 | id | client | payload | summary | our status |
 | --- | --- | --- | --- | --- |
-| `0x4B00` | sends | 144 B | [UNKNOWN] Clan/GHQ create | gap |
-| `0x4B01` | parses | 8 B | [UNKNOWN] Unmapped 0x4Bxx (clan/GHQ) reply, two words | unsent |
-| `0x4B04` | sends | empty | [UNKNOWN] Clan/GHQ request with no payload | gap |
-| `0x4B05` | parses | 4 B | [UNKNOWN] Unmapped clan/GHQ-block reply | unsent |
-| `0x4B10` | sends | 6 B | [UNKNOWN] Clan/GHQ value adjust | gap |
-| `0x4B11` | parses | 12 B | [UNKNOWN] Unmapped 0x4Bxx (clan/GHQ) reply, three words | unsent |
-| `0x4B12` | parses | variable | [UNKNOWN] Unmapped 0x4Bxx list reply, 48-byte records | unsent |
-| `0x4B13` | parses | 4 B | [UNKNOWN] Unmapped clan/GHQ-block reply | unsent |
-| `0x4B20` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B21` | parses | 777 B | [UNKNOWN] Clan/GHQ profile block, 777 bytes | unsent |
-| `0x4B30` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B31` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B32` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B33` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B36` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B37` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B40` | sends | empty | [UNKNOWN] Clan/GHQ request with no payload | gap |
-| `0x4B41` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B42` | sends | 4 B | [UNKNOWN] Clan/GHQ join or apply by id | gap |
-| `0x4B43` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B46` | sends | 2 B | [UNKNOWN] Clan/GHQ two-byte probe, non-blocking | gap |
-| `0x4B47` | parses | 28 B | [UNKNOWN] Clan/GHQ reply, 28-byte record | unsent |
-| `0x4B48` | sends | 4 B | [UNKNOWN] Clan/GHQ request scoped by the cached clan id | gap |
-| `0x4B49` | parses | 772 B | [UNKNOWN] Clan/GHQ reply, result + 768-byte block | unsent |
-| `0x4B4A` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B4B` | parses | 772 B | [UNKNOWN] Clan/GHQ reply, result + 768-byte block | unsent |
-| `0x4B4C` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B4D` | parses | 772 B | [UNKNOWN] Clan/GHQ reply, result + 768-byte block | unsent |
-| `0x4B50` | sends | 769 B | [UNKNOWN] Clan/GHQ bulk block write | gap |
-| `0x4B51` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B52` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B53` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple START | unsent |
-| `0x4B54` | parses | variable | [UNKNOWN] Clan/GHQ list ITEMS, 68-byte records | unsent |
-| `0x4B55` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple END | unsent |
-| `0x4B60` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B61` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B62` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B63` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B64` | sends | 128 B | [UNKNOWN] Clan/GHQ 128-byte text write | gap |
-| `0x4B65` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B66` | sends | 512 B | [UNKNOWN] Clan/GHQ 512-byte text write | gap |
-| `0x4B67` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code | unsent |
-| `0x4B70` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B71` | parses | variable | [UNKNOWN] Clan per-mode stat grid, 584 bytes | unsent |
-| `0x4B72` | parses | variable | [UNKNOWN] Clan stat blocks, 580 bytes | unsent |
-| `0x4B73` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B74` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple START | unsent |
-| `0x4B75` | parses | variable | [UNKNOWN] Clan/GHQ list ITEMS, 93-byte records | unsent |
-| `0x4B76` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple END | unsent |
-| `0x4B80` | sends | 4 B | [UNKNOWN] Clan/GHQ request | gap |
-| `0x4B81` | parses | 217 B | [UNKNOWN] Clan/GHQ profile partial update, 217 bytes | unsent |
-| `0x4B90` | sends | 18 B | [UNKNOWN] Clan/GHQ request naming a player | gap |
-| `0x4B91` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple START | unsent |
-| `0x4B92` | parses | variable | [UNKNOWN] Clan/GHQ list ITEMS, 44-byte records | unsent |
-| `0x4B93` | parses | 4 B | [UNKNOWN] Clan/GHQ reply, single result code— list-triple END | unsent |
+| `0x4B00` | sends | 144 B | [CONFIRMED] Create clan: `name[16]` + `description[128]` | served |
+| `0x4B01` | parses | 8 B | [CONFIRMED] Create result `{result, clan_id}`; client sets itself leader | served |
+| `0x4B04` | sends | empty | [CONFIRMED] Disband clan, leader only, no payload | served |
+| `0x4B05` | parses | 4 B | [CONFIRMED] Disband result (`-1205` inside the cooldown) | served |
+| `0x4B10` | sends | 6 B | [CONFIRMED] Clan list `{u8 kind, s32 amount, u8}`; amount is a 1-based entry index | served |
+| `0x4B11` | parses | 12 B | [CONFIRMED] Clan-list header `{result, offset, total}` — offset FIRST | served |
+| `0x4B12` | parses | variable | [CONFIRMED] Clan-list records, 48 B; the 101st fails the packet with `-71` | served |
+| `0x4B13` | parses | 4 B | [CONFIRMED] Clan-list END | served |
+| `0x4B20` | sends | 4 B | [CONFIRMED] Clan profile request, own clan only (id cross-checked) | served |
+| `0x4B21` | parses | 777 B | [CONFIRMED] Clan profile block — see PROTOCOL.md for the slot map | served |
+| `0x4B30` | sends | 4 B | [CONFIRMED] Accept applicant `{u32 chara id}` | served |
+| `0x4B31` | parses | 4 B | [CONFIRMED] Accept-applicant result | served |
+| `0x4B32` | sends | 4 B | [CONFIRMED] Decline applicant `{u32 chara id}` | served |
+| `0x4B33` | parses | 4 B | [CONFIRMED] Decline-applicant result | served |
+| `0x4B36` | sends | 4 B | [CONFIRMED] Banish member `{u32 chara id}` | served |
+| `0x4B37` | parses | 4 B | [CONFIRMED] Banish result | served |
+| `0x4B40` | sends | empty | [CONFIRMED] Cancel join / leave clan, no payload | served |
+| `0x4B41` | parses | 4 B | [CONFIRMED] Cancel-join result | served |
+| `0x4B42` | sends | 4 B | [CONFIRMED] Apply to join `{u32 clan id}`; not sent unless the cached record holds an id | served |
+| `0x4B43` | parses | 4 B | [CONFIRMED] Apply-to-join result | served |
+| `0x4B46` | sends | 2 B | [CONFIRMED] Clan-record probe — **blocks from the clan menu**, not from the connect burst | served |
+| `0x4B47` | parses | 28 B | [CONFIRMED] Clan record `{result, id, state, privileges, emblem flag, name[16]}` | served |
+| `0x4B48` | sends | 4 B | [CONFIRMED] Emblem fetch, own clan; blocks character select | served |
+| `0x4B49` | parses | 772 B | [CONFIRMED] Emblem, result + 768-byte block -> `profile+6873` | served |
+| `0x4B4A` | sends | 4 B | [CONFIRMED] Emblem display fetch `{u32 clan id}` | served |
+| `0x4B4B` | parses | 772 B | [CONFIRMED] Emblem, result + 768-byte block | served |
+| `0x4B4C` | sends | 4 B | [CONFIRMED] Second emblem fetch, sent right after the profile | served |
+| `0x4B4D` | parses | 772 B | [CONFIRMED] Emblem, result + 768-byte block | served |
+| `0x4B50` | sends | 769 B | [CONFIRMED] Emblem UPLOAD `{u8 mode, byte[768]}`; mode 3 = put on display | served |
+| `0x4B51` | parses | 4 B | [CONFIRMED] Emblem-upload result (`-1216` on cooldown) | served |
+| `0x4B52` | sends | 4 B | [CONFIRMED] Roster request `{u32 clan id}` | served |
+| `0x4B53` | parses | 4 B | [CONFIRMED] Roster START — result code, never a count | served |
+| `0x4B54` | parses | variable | [CONFIRMED] Roster ITEMS, 68 B; `isMember` 1 = member, 0 = applicant | served |
+| `0x4B55` | parses | 4 B | [CONFIRMED] Roster END | served |
+| `0x4B60` | sends | 4 B | [CONFIRMED] Transfer leadership `{u32 chara id}` | served |
+| `0x4B61` | parses | 4 B | [CONFIRMED] Transfer-leadership result | served |
+| `0x4B62` | sends | 4 B | [CONFIRMED] Set emblem editor `{u32 chara id}` | served |
+| `0x4B63` | parses | 4 B | [CONFIRMED] Set-emblem-editor result | served |
+| `0x4B64` | sends | 128 B | [CONFIRMED] Set clan COMMENT (the `T+0x67A` field) | served |
+| `0x4B65` | parses | 4 B | [CONFIRMED] Set-comment result | served |
+| `0x4B66` | sends | 512 B | [CONFIRMED] Set clan NOTICE (the `T+0x700` field) | served |
+| `0x4B67` | parses | 4 B | [CONFIRMED] Set-notice result | served |
+| `0x4B70` | sends | 4 B | [CONFIRMED] Clan stats request | served |
+| `0x4B71` | parses | 584 B | [CONFIRMED] Clan per-mode stat grid; second word must be 2 or 3, send exactly ONE | served |
+| `0x4B72` | parses | 580 B | [CONFIRMED] Clan stat blocks, sent after the single 0x4B71 | served |
+| `0x4B73` | sends | 4 B | [ELF] Applicant-list request — **never sent**; applications arrive as mail (`0x4820` type `0x10`) | served |
+| `0x4B74` | parses | 4 B | [ELF] Applicant-list START | unsent |
+| `0x4B75` | parses | variable | [ELF] Applicant-list ITEMS, 93 B | unsent |
+| `0x4B76` | parses | 4 B | [ELF] Applicant-list END | unsent |
+| `0x4B80` | sends | 4 B | [CONFIRMED] Clan Info for a clan you are NOT in `{u32 clan id}` | served |
+| `0x4B81` | parses | 217 B | [CONFIRMED] Partial clan profile; `subject_id` NOT cross-checked | served |
+| `0x4B90` | sends | 18 B | [CONFIRMED] Clan search `{u8 exact_only, u8 ignore_case, name[16]}` | served |
+| `0x4B91` | parses | 4 B | [CONFIRMED] Clan-search START | served |
+| `0x4B92` | parses | variable | [CONFIRMED] Clan-search ITEMS, 44 B (another build writes 48) | served |
+| `0x4B93` | parses | 4 B | [CONFIRMED] Clan-search END; sets block+0x08 = 0, block+0x0C = record count | served |
 
 ### Tail subsystems (`0x4Dxx`–`0x4Exx`)
 
@@ -511,13 +511,17 @@ precisely the problem. Each is our code emitting or binding an id the client has
 
 ## Completely unknown — the countable remainder
 
-**175 of 315 ids** (55 of 112 client → server, 121 of 204 server → client) have no established
-meaning. (`0x4400` and `0x4401` came off the list 2026-07-26. Note the per-direction figures have never summed
-to the totals quoted here — 55 + 122 = 177, and 112 + 204 = 316 — a discrepancy that predates this
-edit and has not been chased down.) Their layouts are largely recovered; their purpose is not. Grouped:
+**120 of 315 ids** have no established meaning, down from 175: **the whole 55-id clan block came
+off this list on 2026-07-27**, identified command by command against a live client. (`0x4400` and
+`0x4401` came off 2026-07-26.) Their layouts are largely recovered; their purpose is not.
+
+The per-direction figures previously quoted here (55 of 112 and 121 of 204) never summed to the
+totals — 55 + 122 = 177 against 112 + 204 = 316 — a discrepancy that predates all of this and has
+still not been chased down, so no per-direction split is given now. Grouped:
 
 - **Gate / account** (4): `0x2006` · `0x2007` · `0x3040` · `0x3041`
-- **Connect family** (2): `0x4112` · `0x4113`
+- **Connect family** (2): `0x4112` · `0x4113` — both answered since 2026-07-27 and `0x4112` is
+  known to block, but the 32 bytes it carries are still unidentified, so it stays on this list.
 - **Player card** (4): `0x4210` · `0x4211` · `0x4212` · `0x4213`
 - **Host / game** (18): `0x4348` · `0x4349` · `0x4394` · `0x4395` · `0x43A4` · `0x43A5` · `0x43A6` · `0x43A7` · `0x43B0` · `0x43B1` · `0x43C4` · `0x43C5` · `0x43F0` · `0x43F1` · `0x43F2` · `0x43F3` · `0x43F4` · `0x43F5`
 - **Team / spectator** (1): `0x4442` — (`0x4400` and `0x4401` both left this list 2026-07-26: the
@@ -525,12 +529,17 @@ edit and has not been chased down.) Their layouts are largely recovered; their p
   consumer, then implemented and confirmed against two clients.)
 - **Game lobby / GHQ** (55): `0x4904` · `0x4905` · `0x4908` · `0x4909` · `0x4910` · `0x4911` · `0x4912` · `0x4913` · `0x4914` · `0x4915` · `0x4918` · `0x4919` · `0x491A` · `0x491B` · `0x491C` · `0x4920` · `0x4921` · `0x4922` · `0x4923` · `0x4924` · `0x4925` · `0x4930` · `0x4931` · `0x4932` · `0x4940` · `0x4941` · `0x4942` · `0x4943` · `0x4950` · `0x4960` · `0x4961` · `0x4964` · `0x4965` · `0x4966` · `0x4967` · `0x4980` · `0x4981` · `0x4982` · `0x4983` · `0x4984` · `0x4985` · `0x4986` · `0x4987` · `0x4992` · `0x4993` · `0x49A0` · `0x49A1` · `0x49A2` · `0x49A8` · `0x49B0` · `0x49B1` · `0x49C0` · `0x49C1` · `0x49C2` · `0x49C3`
 - **Unidentified `0x4Axx`** (28): `0x4A00` · `0x4A01` · `0x4A02` · `0x4A03` · `0x4A10` · `0x4A11` · `0x4A12` · `0x4A13` · `0x4A20` · `0x4A21` · `0x4A22` · `0x4A24` · `0x4A25` · `0x4A26` · `0x4A27` · `0x4A28` · `0x4A29` · `0x4A30` · `0x4A31` · `0x4A32` · `0x4A33` · `0x4A34` · `0x4A40` · `0x4A41` · `0x4A42` · `0x4A43` · `0x4A47` · `0x4A50`
-- **Clan / GHQ** (55): `0x4B00` · `0x4B01` · `0x4B04` · `0x4B05` · `0x4B10` · `0x4B11` · `0x4B12` · `0x4B13` · `0x4B20` · `0x4B21` · `0x4B30` · `0x4B31` · `0x4B32` · `0x4B33` · `0x4B36` · `0x4B37` · `0x4B40` · `0x4B41` · `0x4B42` · `0x4B43` · `0x4B46` · `0x4B47` · `0x4B48` · `0x4B49` · `0x4B4A` · `0x4B4B` · `0x4B4C` · `0x4B4D` · `0x4B50` · `0x4B51` · `0x4B52` · `0x4B53` · `0x4B54` · `0x4B55` · `0x4B60` · `0x4B61` · `0x4B62` · `0x4B63` · `0x4B64` · `0x4B65` · `0x4B66` · `0x4B67` · `0x4B70` · `0x4B71` · `0x4B72` · `0x4B73` · `0x4B74` · `0x4B75` · `0x4B76` · `0x4B80` · `0x4B81` · `0x4B90` · `0x4B91` · `0x4B92` · `0x4B93`
+- ~~**Clan / GHQ** (55)~~ — **all 55 identified 2026-07-27.** Every id in the block has a meaning
+  and a handler; see the clan section of `PROTOCOL.md` and the `mgo2_cmd_4b*` specs. The three
+  applicant-list replies (`0x4B74`/`0x4B75`/`0x4B76`) are understood but unexercised, because the
+  client never sends `0x4B73` — clan applications arrive as mail.
 - **Tail** (8): `0x4D00` · `0x4E00` · `0x4E10` · `0x4E11` · `0x4E12` · `0x4E20` · `0x4E22` · `0x4E23`
 
-Two blocks dominate: `0x49xx` (game lobby / GHQ) and `0x4Bxx` (clan / GHQ) are wired end to end in
-the client — request builders and reply parsers both — and neither `PROTOCOL.md` nor `OBSERVED.md`
-says a word about either. `0x4Axx` is worse: no subsystem identification at all, only parser
+`0x49xx` (game lobby / GHQ) now dominates alone. It is wired end to end in the client — request
+builders and reply parsers both — and neither `PROTOCOL.md` nor `OBSERVED.md` says a word about it.
+`0x4Bxx` was its twin in that description until 2026-07-27, and the way it fell is the lesson: not
+by disassembly, but by answering all 23 requests at once, watching which screens came alive, and
+letting each newly-truthful field unlock the next dormant branch. `0x4Axx` is worse: no subsystem identification at all, only parser
 shapes. Several `0x4Axx` and `0x49xx` parsers read byte-for-byte identical layouts to each other
 (`0x4A11`/`0x4A33`, and the seven `0x49xx` "one 4-byte word" notifications); that is a matching
 shape, not a proven duplicate, and no divergence test has been run.

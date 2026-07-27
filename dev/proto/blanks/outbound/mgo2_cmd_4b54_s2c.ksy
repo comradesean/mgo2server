@@ -1,10 +1,25 @@
 meta:
   id: mgo2_cmd_4b54_s2c
-  title: "MGO2 0x4b54 — clan/GHQ list ITEMS, 68-byte records (server -> client)"
+  title: "MGO2 0x4b54 — clan ROSTER rows, 68-byte records (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **The clan roster.** Middle packet of the 0x4b53 / 0x4b54 / 0x4b55 triple answering 0x4b52.
+  [CONFIRMED LIVE 2026-07-27] for the head of the record; the trailing game-location fields are
+  still [UNKNOWN] and go out as zeros.
+
+  **Members and applicants are ONE batch, flagged per row.** Two live experiments settled this, and
+  both are worth keeping because each one looks like the obvious answer:
+
+    * Sending them as **two separate 0x4b54 packets** — members then applicants, which is how the
+      list is built upstream — put both on the wire and the client rendered only the FIRST. The
+      applicant simply vanished. The client appends into one array, but the screen consumes one
+      packet's worth.
+    * Mixing applicants into the members query but setting `is_member` **per batch** rather than
+      per row made the applicants appear as full members.
+
+  One packet, with `is_member` set honestly per row, is the combination that works.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD57E10**, which re-checks the id (`cmpwi r0,19284`) before reading anything.
@@ -78,41 +93,51 @@ seq:
     doc: "[ELF] Size-driven; see the top-level doc. No leading count."
 types:
   record:
-    doc: "68 wire bytes -> 76-byte client struct."
+    doc: |
+      68 wire bytes -> 76-byte client struct. One clan member, or one pending applicant, told apart
+      by `is_member`.
     seq:
-      - id: unknown_00
+      - id: chara_id
         type: u4
-        doc: "[ELF] struct+0x00. [UNKNOWN]"
+        doc: "[CONFIRMED 2026-07-27] struct+0x00, the member's CHARACTER id — what 0x4b30 / 0x4b32 / 0x4b36 / 0x4b60 / 0x4b62 name them by."
       - id: name
         size: 16
         type: str
         encoding: ASCII
-        doc: "[ELF] struct+0x04, 16 bytes fixed. [UNKNOWN] whose name."
-      - id: unknown_15
+        doc: "[CONFIRMED 2026-07-27] struct+0x04, the member's character name, 16 bytes fixed. Renders in roster order."
+      - id: is_member
         type: u1
-        doc: "[ELF] struct+0x15. [UNKNOWN]"
+        doc: |
+          [CONFIRMED 2026-07-27] struct+0x15. **1 for a joined member, 0 for a pending applicant.**
+
+          Set it per ROW, not per batch, and put both kinds in one packet — see the top-level doc
+          for the two ways of getting this wrong and what each looked like on screen.
       - id: unknown_18
         type: u4
-        doc: "[ELF] struct+0x18. [UNKNOWN]"
+        doc: "[UNKNOWN] struct+0x18. Sent as zero; nothing on screen has moved with it."
       - id: unknown_30
         type: u4
-        doc: "[ELF] struct+0x30 — read here, out of struct order. [UNKNOWN]"
+        doc: "[UNKNOWN] struct+0x30 — read here, out of struct order."
       - id: unknown_1c
         type: u2
-        doc: "[ELF] struct+0x1c. [UNKNOWN]"
-      - id: name_2
+        doc: |
+          [UNKNOWN] struct+0x1c. First of the five trailing slots that between them look like
+          "where this member is playing" — [INFERRED] a lobby id, a lobby name, a game id, a host
+          name and a subtype, from their widths and their order. None is populated, none has been
+          confirmed, and the roster renders correctly without them.
+      - id: unknown_1e
         size: 16
         type: str
         encoding: ASCII
-        doc: "[ELF] struct+0x1e, 16 bytes fixed. [UNKNOWN]"
+        doc: "[UNKNOWN] struct+0x1e, 16 bytes fixed. Second of the trailing game-location slots; unpopulated."
       - id: unknown_34
         type: u4
-        doc: "[ELF] struct+0x34. [UNKNOWN]"
-      - id: name_3
+        doc: "[UNKNOWN] struct+0x34. Third of the trailing game-location slots; unpopulated."
+      - id: unknown_38
         size: 16
         type: str
         encoding: ASCII
-        doc: "[ELF] struct+0x38, 16 bytes fixed. [UNKNOWN]"
+        doc: "[UNKNOWN] struct+0x38, 16 bytes fixed. Fourth of the trailing game-location slots; unpopulated."
       - id: unknown_49
         type: u1
-        doc: "[ELF] struct+0x49, last byte of the record. [UNKNOWN]"
+        doc: "[UNKNOWN] struct+0x49, last byte of the record. Fifth of the trailing game-location slots; unpopulated."

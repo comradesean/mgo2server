@@ -553,12 +553,20 @@ the phase-1 migration: character deletion must not cascade into `round_report` (
 or preserve rows, else deleted players vanish from every history), and history depth equals
 `round_report` retention — which is "keep indefinitely", since stats want it anyway.
 
-**Phase 3 — `0x4221` player details from real data.** Name and comment from the chara row,
-play time from phase 1, id echo as implemented. LEVEL is client-derived from an exp-like u32
-(candidates: wire 0x18 vs 0x1E — the next fingerprint round varies one at a time to split
-them, then we send experience in the winning slot). CLAN stays honestly empty until clans are
-modelled (the card already renders "---"; whether the 16B string or a gating id drives it is
-the same fingerprint round's second question).
+**Phase 3 — `0x4221` player details from real data. Mostly done 2026-07-27.** Name, comment,
+play time and the id echo all serve real values, and the play-time definition is settled (the
+sum across game modes, because the client totals the per-mode column itself).
+
+The CLAN question is **answered**: it is the `{u32 id, char name[16], u8 state}` triple at wire
+`0xa7`/`0xab`/`0xbb`, and **the gating id is what drives it** — the 16-byte string alone renders
+`----`. That was the round's second question and it resolved the way the "every reader checks the
+id first" pattern predicted.
+
+**Still open: LEVEL renders as 0.** Client-derived from an exp-like field, and the candidate set
+is wider than the two guessed here — wire `0x18` (u32), `0x1c` (u8), `0x1d` (u8), `0x1e` (u32). A
+probe is live carrying 1450 / 250 / 130 / 500, chosen so each maps to a *distinct* level (10 / 2 /
+1 / 4) through the client's own experience table, so one round splits all four rather than one
+pair. Read the rendered level, then send experience in the winning slot.
 
 **Phase 4 — deferred: `0x4684` match details.** Layout traced (93-byte records,
 `mgo2_cmd_4686.ksy`) but no UI path has ever been observed to send it. If it surfaces, the

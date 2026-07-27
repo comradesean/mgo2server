@@ -1,10 +1,12 @@
 meta:
   id: mgo2_cmd_4b55_s2c
-  title: "MGO2 0x4b55 — clan/GHQ reply, single result code (server -> client) — list-triple END"
+  title: "MGO2 0x4b55 — clan roster END (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven:
-  everything here is read out of the client parser.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **End of the clan roster.** Last packet of the 0x4b53 / 0x4b54 / 0x4b55 triple answering 0x4b52.
+  [CONFIRMED LIVE 2026-07-27].
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD553A8**,
   which re-checks the id (`cmpwi r0,19285` = 0x4b55) before reading anything.
@@ -79,8 +81,10 @@ seq:
   - id: result
     type: s4
     doc: |
-      [ELF] Signed 32-bit result/error code. It is typed s4 because the CALLER reloads it with
-      `lwa`, not because of the primitive: 0xD5CC64 is byte-identical to 0xD5CCD8 and is not a
-      signed accessor (see the CORRECTION in the top-level doc). Negative values are meaningful (this family's errors are in the
-      -0x4xx..-0x5xx range elsewhere in the binary). 0 = success by the convention every other
-      traced reply follows. Meaning of non-zero values here: [UNKNOWN].
+      [CONFIRMED 2026-07-27] Roster-end result. 0 = the roster is complete. **A result code, never
+      a count** — see the top-level doc.
+
+      It is typed s4 because the CALLER reloads it with `lwa`, not because of the primitive:
+      0xD5CC64 is byte-identical to 0xD5CCD8 and is not a signed accessor (see the CORRECTION in
+      the top-level doc). Negative values are the client's own error codes, resolved through its
+      table at 0x106D714.

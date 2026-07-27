@@ -1,10 +1,28 @@
 meta:
   id: mgo2_cmd_4b81_s2c
-  title: "MGO2 0x4b81 — clan/GHQ profile partial update, 217 bytes (server -> client)"
+  title: "MGO2 0x4b81 — Clan Info for a clan you are NOT in, 217 bytes (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). Seven slots are
+  [CONFIRMED LIVE 2026-07-27]; the rest of the 217 bytes is still unmapped and goes out as zeros.
+
+  **Clan Info for a clan the player is NOT in.** The reply to 0x4b80, a u32 clan id, sent when a
+  row is picked out of the clan list (0x4b12) or the search results (0x4b92).
+
+  This is the counterpart to 0x4b20 / 0x4b21, which **cannot** serve a non-member: that reply's id
+  is cross-checked against the client's own clan id and the packet is dropped on a mismatch. This
+  one's `subject_id` is explicitly **NOT** cross-checked, which is exactly what makes it the "look
+  at someone else's clan" path.
+
+  **It also unblocks joining.** 0x4b42's sender refuses to transmit unless the session clan record
+  at session_ctx+0x1AA0 holds a non-zero id, returning -24 (0xFFFFFFE8) having sent nothing at all.
+  That record comes from this reply, so answering 0x4b80 with 217 zero bytes makes Apply to join
+  fail with -24 and no packet on the wire — which is precisely what was observed before this reply
+  carried a real id.
+
+  Slot meanings are shared with 0x4b21 (mgo2_cmd_4b21_s2c.ksy), which writes the same struct:
+  T+0x00 id, T+0x04 clan name, T+0x18 founding date, T+0x1c leader name, T+0x58 member count,
+  T+0x378 emblem-present flag, T+0x67A clan comment.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD58C74**, which re-checks the id (`cmpwi r0,19329`) before reading anything.
@@ -70,36 +88,54 @@ seq:
   - id: result
     type: s4
     doc: "[ELF] 0 = success, body follows. Published to request slot 113."
-  - id: subject_id
+  - id: clan_id
     type: u4
-    doc: "[ELF] T+0x00 — same slot as 0x4b21's subject_id, but NOT cross-checked here. [UNKNOWN]"
-  - id: name_a
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x00, the viewed clan's id — same slot as 0x4b21's, but **NOT
+      cross-checked here**, which is what lets this reply describe a clan the client has never
+      heard of.
+
+      It must be non-zero and real: this is the value that lands in the session clan record, and
+      0x4b42 (Apply to join) refuses to transmit at all without it. See the top-level doc.
+  - id: clan_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x04, 16 bytes. Same slot as 0x4b21 name_a. [UNKNOWN]"
-  - id: unknown_18
+    doc: "[CONFIRMED 2026-07-27] T+0x04, the clan's name, 16 bytes. Same slot as 0x4b21's clan_name."
+  - id: founding_date
     type: u4
-    doc: "[ELF] T+0x18. [UNKNOWN]"
-  - id: name_b
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x18, the clan's FOUNDING date in Unix seconds — and **not** the
+      member count. With this and `member_count` the other way round the Clan Info screen reported
+      **1785129141 members**, i.e. the epoch seconds rendered verbatim. That is the observation that
+      fixes both slots at once.
+  - id: leader_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x1c, 16 bytes. Same slot as 0x4b21 name_b. [UNKNOWN]"
-  - id: unknown_378
+    doc: "[CONFIRMED 2026-07-27] T+0x1c, the clan LEADER's name, 16 bytes. Same slot as 0x4b21's leader_name."
+  - id: emblem_flag
     type: u1
-    doc: "[ELF] T+0x378. [UNKNOWN]"
-  - id: text_67a
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x378 — **3 when the clan has a published emblem**, 0 when it does
+      not. Same slot and meaning as 0x4b21's.
+
+      The client will not fetch an emblem (0x4b4a) while this is 0, so a clan reached from search or
+      the clan list rendered with an empty emblem even when the server had one stored.
+  - id: clan_comment
     size: 128
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x67A, 128 bytes. Same slot as 0x4b21 text_67a. [UNKNOWN]"
+    doc: "[CONFIRMED 2026-07-27] T+0x67A, the clan comment / description, 128 bytes. Same slot as 0x4b21's clan_comment, and the same field 0x4b64 writes."
   - id: unknown_1b34
     type: u4
-    doc: "[ELF] T+0x1B34. [UNKNOWN]"
-  - id: unknown_58
+    doc: "[UNKNOWN] T+0x1B34. Sent as zero."
+  - id: member_count
     type: u4
-    doc: "[ELF] T+0x58. [UNKNOWN]"
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x58, how many members the clan has. Same slot as 0x4b21's. Note it
+      comes AFTER the comment on the wire even though it sits far earlier in the struct — see
+      `founding_date` for what swapping the two looks like on screen.
   - id: unknown_1328
     type: u4
     doc: "[ELF] T+0x1328 — outside anything 0x4b21 writes. [UNKNOWN]"

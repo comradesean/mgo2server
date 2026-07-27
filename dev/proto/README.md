@@ -36,6 +36,24 @@ per-player stat report, 167 B long form / ~51 B short form; what `round_report` 
 decoded). Server→client: `mgo2_cmd_4902.ksy` (game-lobby list entries, **99 B each**, from the
 parser at `0xD47E18` — both reference servers write 35 B and lose every lobby after the first).
 
+**Promoted 2026-07-27 — 35 specs**, all mapped field by field and confirmed against a live
+client:
+
+- `mgo2_cmd_3103_c2s.ksy` (select character — a one-byte **slot index**, not a character id) and
+  `mgo2_cmd_4600_c2s.ksy` (player search — whose second byte means **ignore case**, `1` = ignore,
+  the opposite of what it was called).
+- **33 of the clan family**: `0x4b00`/`0x4b01` create, `0x4b04`/`0x4b05` disband,
+  `0x4b20` profile request, `0x4b30`–`0x4b37` accept/decline/banish, `0x4b40`/`0x4b41` cancel
+  join, `0x4b42`/`0x4b43` apply, `0x4b47` record refresh, `0x4b48`/`0x4b4a` emblem fetches,
+  `0x4b51` emblem-upload result, `0x4b52` roster request, `0x4b60`–`0x4b63` leadership and emblem
+  editor, `0x4b64`–`0x4b67` the two text writes, `0x4b80` foreign clan info, and the whole search
+  family `0x4b90`–`0x4b93`.
+
+Still in `blanks/` and why, for the same family: `0x4b21` and `0x4b81` have large unmapped
+regions; `0x4b10`, `0x4b46`, `0x4b4c`, `0x4b50`, `0x4b70` and `0x4b73` each keep at least one
+genuinely unknown field; and `0x4b11`/`0x4b13`, `0x4b53`/`0x4b55` were held back to keep each
+list triple in one place. See `blanks/README.md`.
+
 List-triple start/end packets (`0x4601`/`0x4603`, `0x4681`/`0x4683`, `0x4685`/`0x4687`)
 are not specced separately: each is a single u32 **result code**, 0 for success in both
 start and end — never a count; the client counts item records itself. Sending a count

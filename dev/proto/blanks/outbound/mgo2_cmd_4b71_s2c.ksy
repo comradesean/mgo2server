@@ -3,8 +3,17 @@ meta:
   title: "MGO2 0x4b71 — clan per-mode stat grid, 584 bytes (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). The column semantics
+  are still [ELF]/[INFERRED]; the packet's shape and its two hard rules are [CONFIRMED LIVE
+  2026-07-27].
+
+  **Send EXACTLY ONE 0x4b71, then one 0x4b72.** Not two pages. Sending 0x4b71 twice completed the
+  request slot on the first reply, so the second arrived unexpected — that is the
+  "unable to acquire clan information (1931:FFFFFF60)" stall on Clan Affiliation. The reply to
+  0x4b70 is the pair {one 0x4b71, one 0x4b72} and nothing more.
+
+  **The second word must be 2 or 3.** Any other value fails the whole packet with -71 and discards
+  the grid (0xD599C8), which the screen then reports as "no records" rather than as zeroed stats.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD5992C**, which re-checks the id (`cmpwi r0,19313`) before reading anything.
@@ -80,10 +89,14 @@ seq:
   - id: page
     type: u4
     doc: |
-      [ELF] MUST be 2 or 3; anything else fails the whole packet with -71 and discards the grid
-      (0xD599C8). Receipt of page 2 zeroes all four 864-byte page slots. [UNKNOWN] what 2 and 3
-      mean semantically — by analogy with 0x4105's cumulative/weekly they are plausibly the same
-      pair for clan totals, but that is [INFERRED], not read.
+      [CONFIRMED 2026-07-27] **MUST be 2 or 3.** Anything else — including 0 — fails the whole
+      packet with -71 and discards the grid (0xD599C8), which the screen reports as "no records".
+      A zero here does NOT render as zeroed stats; it renders as no stats at all.
+
+      Receipt of page 2 zeroes all four 864-byte page slots, so if both pages are ever sent, page 2
+      must go first. [UNKNOWN] what 2 and 3 mean semantically — by analogy with 0x4105's
+      cumulative/weekly they are plausibly the same pair for clan totals, but that is [INFERRED],
+      not read.
   - id: modes
     type: mode_stats
     repeat: expr

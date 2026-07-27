@@ -14,6 +14,13 @@ doc: |
   [INFERRED]  = offset-mirror of the 0x4101 record or structural reasoning,
   [UNKNOWN]   = position exact, meaning unestablished; fingerprint value & outcome noted.
   "T+0x..." is the client-side struct destination (T = *(obj+0x11904)).
+
+  2026-07-27: the block at the head of the tail — T+0x1AA0 / T+0x1AA4 / T+0x1AB5, previously
+  three separate unknowns carrying fingerprint values — is the **clan record**, the same
+  `{u32 id, char name[16], u8 state}` triple this protocol uses for a clan in the session record
+  at +0x1AA0, in `0x4122`'s block, in `0x4b47`, in `0x4b21`'s head and in `0x4221` at wire 0xa7.
+  It is followed by the twelve u16s of the clan privilege/notification word. See those fields for
+  why the earlier "NOT the clan field" elimination did not hold.
 doc-ref: dev/docs/PROTOCOL.md "0x4102 — get personal stats"
 seq:
   - id: status
@@ -70,21 +77,64 @@ types:
       - id: unk_u8_a
         type: u1
         doc: "wire 301, T+0x3329. [UNKNOWN] (fp v5: 42, never surfaced)"
-      - id: unk_u32_a
+      - id: clan_id
         type: u4
-        doc: "wire 302, T+0x1AA0. [UNKNOWN] (fp 4001, never surfaced)"
-      - id: unk_str_a
+        doc: |
+          wire 302, T+0x1AA0. **The clan id**, first member of the `{u32 id, char name[16],
+          u8 state}` clan record. [CONFIRMED 2026-07-27.] It is the gate: readers check the id
+          first and treat 0 as "no clan" whatever the name says. (fp 4001 — see the elimination
+          note on `clan_name`.)
+      - id: clan_name
         type: str
         size: 16
-        doc: "wire 306, T+0x1AA4. String field. [UNKNOWN] (fp \"FP-STR-A\", never surfaced; NOT the clan field — clan stayed blank)"
-      - id: unk_u8_b
+        doc: |
+          wire 306, T+0x1AA4. **The clan name**, second member of the clan record.
+          [CONFIRMED 2026-07-27.]
+
+          CORRECTS A FALSE ELIMINATION. This field previously read: `[UNKNOWN] (fp "FP-STR-A",
+          never surfaced; NOT the clan field — clan stayed blank)`. The observation was real and
+          the conclusion was invalid. The fingerprint pass put a string here with **fp 4001 — a
+          made-up number, not a real clan — in `clan_id` before it**, and a zero-or-nonsense id
+          means the client renders no clan no matter what the name holds. So "clan stayed blank"
+          was the expected outcome under BOTH hypotheses and could not distinguish them.
+
+          Per CLAUDE.md: an elimination is only valid if you can state the observation that would
+          have confirmed it and check the experiment actually produced that observation. This one
+          could not have. Nothing had ever put a real clan — a non-zero id with a matching name
+          and state — into these three fields until 2026-07-27, and when something did, the clan
+          rendered. Same triple, same failure mode, as `0x4221` wire 0xa7/0xab/0xbb.
+      - id: clan_state
         type: u1
-        doc: "wire 322, T+0x1AB5. [UNKNOWN] (fp 43)"
-      - id: unk_u16_block
+        doc: |
+          wire 322, T+0x1AB5. **Clan membership state**, third member of the clan record.
+          [CONFIRMED 2026-07-27.] Constants the client writes for itself: 0 affiliation pending
+          (0xD58740), 1 member (0xD56B68), 2 leader (0xD56B84), 99 not in a clan (0xD56B44 /
+          0xD56C7C / 0xD56D68). Readers test membership as `state - 1 <= 1`. (fp 43.)
+      - id: clan_privilege_block
         type: u2
         repeat: expr
         repeat-expr: 12
-        doc: "wire 323, T+0x1AB6..0x1ACC. [UNKNOWN] (fp 5101-5112, never surfaced)"
+        doc: |
+          wire 323, T+0x1AB6..0x1ACC. **The clan privilege/notification word and its eleven unread
+          siblings.** [CONFIRMED 2026-07-27] for element 0; elements 1-11 [UNKNOWN] and have no
+          reader anywhere in the binary. Previously logged as an undifferentiated unknown block
+          (fp 5101-5112, "never surfaced") — for the same reason as `clan_name` above: with no
+          real clan in the record before it, there was nothing for a privilege word to apply to.
+
+          **Element 0 must be sent as ZERO.** Two experiments, both live 2026-07-27:
+            * All 16 bits set produced a saluting-soldier "!" badge and a hard poll loop at
+              roughly 73 ms — the clan screen coroutine at `0xAB0074` ands the word with `-1`, or
+              with `-257` when the player is the leader (`0xAB004C`), and returns without
+              advancing its state machine if anything survives, so the screen re-entered and
+              re-sent its request forever.
+            * Bit 8 alone (`-257` = `~0x0100`, the one bit a leader may hold without stalling)
+              did not stall, but produced only the "!" badge and no new menu row anywhere; emblem
+              loading worked with and without it. So bit 8 is a **pending-notification** bit and
+              gates nothing.
+
+          The whole word is therefore a notification mask the client drains to zero, not a
+          permission mask. No privilege bit gates applying an emblem: the commit gate at
+          `0xAD409C` reads membership state 2 (`clan_state` above) and nothing else.
       - id: unk_u32_b
         type: u4
         doc: "wire 347, T+0x1AD0. [UNKNOWN] (fp 4002)"

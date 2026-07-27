@@ -108,10 +108,13 @@ Potential `FFFFFF60` stalls *if the triggering menu is reached*; grouped by reac
   The byte is bounds-checked `<= 7` by the client, the same bound `0x3103`/`0x3105` use on the
   character-slot index [ELF, 2026-07-26].
 
-**Reachable in ordinary flow (priority):** `0x4112`, `0x4210`, `0x4220`
+**Reachable in ordinary flow (priority):** ~~`0x4112`~~, `0x4210`, `0x4220`
 (connect-family write-backs / card) · `0x4348`, `0x4394`, `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
-`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2` (in-match / host family). None has surfaced as a
-stall yet — each is gated on an action not exercised. (`0x4102` and `0x4132` were here until
+`0x43c8`, `0x43d0`, `0x43e0`, `0x43e2` (in-match / host family). ~~None has surfaced as a
+stall yet~~ — **`0x4112` did, 2026-07-27**: it fired after a player search, and unanswered it
+stalled the screen exactly as its wait slot predicted. It is answered now with a bare `0x4113`
+result; the 32-byte body is still [UNKNOWN]. The rest are gated on actions not exercised.
+(`0x4102` and `0x4132` were here until
 2026-07-23, when both stalled live, were traced, and moved to handled — the prediction model of
 this list works. `0x4400` left 2026-07-26: it surfaced live as the in-game chat send and was
 decoded from four captures — the first entry to surface *unhandled but without stalling*, so this
@@ -124,9 +127,10 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 > `0x43a7`, `0x43d1`, `0x43e1`) have handlers in `src/main/java/mgo2server/game/controller/`.
 > They are listed as gaps here but are served; `PACKETS.md` marks them `served †`.
 >
-> *Shapes now known:* `0x4112` is a 32-byte opaque blob that registers **wait slot `0x18`** — it
-> therefore **blocks**, making it a genuine `FFFFFF60` candidate rather than a shapeless entry
-> (reply `0x4113` is a bare u32 ack, parser `0xd3b148`, slot 24). `0x4394` is 203 bytes from 45
+> *Shapes now known:* `0x4112` is a 32-byte opaque blob that registers **wait slot `0x18`**
+> (`li r4,24` at `0xD3BEDC`) — it therefore **blocks**, which was borne out live on 2026-07-27
+> when it stalled a player-search screen; the prediction from the wait slot was right (reply
+> `0x4113` is a bare u32 ack, parser `0xd3b148`, slot 24). `0x4394` is 203 bytes from 45
 > straight-line writes. `0x43a4` puts its record count **on the wire** (cap 127) whereas `0x4398`
 > carries **no count** at all — opposite conventions inside one family. `0x43c4` only ever sends
 > the values 1–5 (`0xD40E44` aborts otherwise), which rules out the character-id reading the rest
@@ -136,10 +140,10 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 
 | block | ids | subsystem |
 | --- | --- | --- |
-| `0x4bxx` | 23 (`0x4b00`–`0x4b90`) | clans / GHQ |
+| ~~`0x4bxx`~~ | ~~23 (`0x4b00`–`0x4b90`)~~ | **clans — all 23 answered as of 2026-07-27; see PROTOCOL.md** |
 | `0x49xx`+ | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
 | `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified — **not rankings**, see below |
-| mailbox | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail |
+| mailbox | `0x4840`, `0x4860` | read / file mail (`0x4800` send and `0x4880` delete are served) |
 | misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
 
 **The `0x4Axx` block is not the ranking subsystem [ELF, 2026-07-27].** The id looks inviting and

@@ -1,11 +1,38 @@
 meta:
   id: mgo2_cmd_4b11_s2c
-  title: "MGO2 0x4B11 - unmapped 0x4Bxx (clan/GHQ) reply, three words (server -> client)"
+  title: "MGO2 0x4b11 — clan list HEADER, {result, offset, total} (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4B11; COMMANDS.md lists it only as "parsed but never sent". Everything below is read out of
-  the client parser - field ORDER and WIDTH are solid, MEANINGS are not.
+  **Header of the clan list.** First packet of the 0x4b11 / 0x4b12 / 0x4b13 triple answering the
+  paged clan list request 0x4b10 `{u8 kind, s32 amount, u8}` (builder 0xD58164). `kind` selects
+  the arm — 1 steps back 100, 2 forward 100, 4 is absolute, 0 and 3 are the first page — and the
+  client's own array holds 100 entries (`cmpwi r4,99` at 0xD561E4), so **100 is the page size**.
+  `amount` is a 1-BASED ENTRY INDEX, not a page number: after being shown one entry the client
+  asked for 101.
+
+  **CORRECTION — the two words after the result are {OFFSET, TOTAL}, IN THAT ORDER.**
+  [CONFIRMED LIVE 2026-07-27]. An earlier revision of this spec recorded both as [UNKNOWN] and the
+  server sent them as {total, offset}; that swap is the whole of the "2 out of 1" bug. The client
+  stores them at block+0x08 and block+0x0C and renders a "%d/%d" page indicator (format string at
+  0xE11518, drawn at 0xAC11A4 and at 0xAC2958) as:
+
+      left  = A <= 0 ? 1 : (A - 1) / 100 + 2        A = block+0x08 = offset
+      right = (B - 1) / 100 + 1                     B = block+0x0C = total
+
+  Sending A = 1 puts it in the 1..100 bucket and renders page 2 — of 1. **The record count never
+  enters that text at all**, which is why changing the number of 0x4b12 rows changed nothing; only
+  these two words move the indicator.
+
+  Corroborated by the sibling clan-search triple, which fills the same two slots itself rather than
+  from the wire: 0x4b93 sets block+0x08 = 0 and block+0x0C = the record count (0xD54D64,
+  0xD54D78). Same two slots, same meaning, one page.
+
+  The client also pages **optimistically** — it asks for the next 100 without knowing whether they
+  exist — so a server that honours `amount` literally will be asked to describe a page past the
+  end. Clamping to the last populated page is the fix; answering "0 clans, starting at 101, out of
+  a total of 1" is self-contradictory and the screen renders it as "2 out of 1" and then corrupts
+  the list on the next scroll. That clamp is **operator policy** — the protocol does not say it —
+  but the contradiction it avoids is the client's own arithmetic above.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39B4C,
   parser 0xD557A0.
@@ -36,10 +63,23 @@ doc: |
 seq:
   - id: result
     type: u4
-    doc: "[ELF] read at 0xD5582C. [UNKNOWN] meaning."
-  - id: unknown_0x04
+    doc: "[CONFIRMED 2026-07-27] Clan-list result, read at 0xD5582C. 0 = the header and the rows follow."
+  - id: offset
     type: u4
-    doc: "[UNKNOWN] read at 0xD55854. Position exact, meaning unestablished."
-  - id: unknown_0x08
+    doc: |
+      [CONFIRMED 2026-07-27] The **0-based row offset of this page**, read at 0xD55854 and stored
+      at block+0x08. This is the FIRST of the two words, not the second — see the CORRECTION in the
+      top-level doc.
+
+      It is the only input to the left half of the "%d/%d" page indicator:
+      `left = offset <= 0 ? 1 : (offset - 1) / 100 + 2`. Send 0 for the first page; sending 1
+      renders "page 2".
+  - id: total
     type: u4
-    doc: "[UNKNOWN] read at 0xD5586C. Position exact, meaning unestablished."
+    doc: |
+      [CONFIRMED 2026-07-27] The **total number of clans across all pages**, read at 0xD5586C and
+      stored at block+0x0C. Second of the two words. Drives the right half of the page indicator:
+      `right = (total - 1) / 100 + 1`.
+
+      Not a count of the rows in this reply — the 0x4b12 records are size-driven and the client
+      counts them itself.

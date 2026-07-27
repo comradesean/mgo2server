@@ -430,25 +430,64 @@ What we actually write:
 | `0x00` | 4 | s32 | result, `00000000` |
 | `0x04` | 1 | u8 | character slots the account owns |
 | `0x05` | 1 | u8 | number of characters that follow |
-| `0x06` | 1 | u8 | zero — the client reads this as `selectedSlot` |
-| `0x07` | 16 | ISO-8859-1 | first character's name, **written twice**; this copy lands in the client's header `name[16]` |
-| `0x17` | 1 | u8 | zero — becomes entry 0's `slot` byte |
-| `0x18` | 4 | u32 | entry 0 character id |
-| `0x1c` | 16 | ISO-8859-1 | entry 0 name |
-| `0x2c` | 28 | — | entry 0 appearance block (below) |
-| `0x48` | 4 | u32 | entry 1 index (`1`) — top three bytes complete entry 0's trailing u32, low byte is entry 1's slot |
-| … | 52 | — | entries 1..7, each `u32 index, u32 charaId, name[16], appearance[28]` |
-| `0x1b4` | 35 | — | fixed trailer |
+| `0x06` | 1 | u8 | **`selectedSlot`** — the slot of `account.current_chara_id` |
+| `0x07` | 16 | ISO-8859-1 | the **selected** character's name; lands in the client's header `name[16]` |
+| `0x17` | 52 | — | entry 0 (below) |
+| `0x4b` | 52 | — | entry 1 — **uniform**, same shape as entry 0 |
+| … | 52 | — | entries 2..7 |
+| `0x1b7` | 32 | — | fixed tail |
 
-The two shapes reconcile exactly: because an index is `00 00 00 nn`, its three leading zeros
-complete the previous entry's final u32 and its low byte lands where the client expects the slot.
-That is why the writer looks inconsistent (name for the first entry, index for the rest) and is
-nevertheless right.
+Each entry is **uniform, 52 bytes**, with no per-entry variation:
 
-Eight full entries end at exactly `0x1b4`, so with a full account no padding is written at all;
-with fewer, the gap is zero-filled.
+| offset | size | type | meaning |
+| --- | --- | --- | --- |
+| +0 | 1 | u8 | slot index |
+| +1 | 4 | u32 | character id |
+| +5 | 16 | ISO-8859-1 | name |
+| +21 | 27 | — | appearance region (below) |
+| +48 (`+0x30`) | 4 | u32 | **delete cooldown in seconds** |
 
-### Appearance block as written here — 28 bytes
+**Corrected 2026-07-27 — two errors that cancelled.** This section previously described the writer
+as introducing the first entry with its name and every later one with a 4-byte index, reconciling
+the two shapes on the observation that an index `00 00 00 nn` has three leading zeros that complete
+the previous entry's trailing u32. That reading was wrong, and it survived because a second error
+compensated for it: the appearance block was written as 28 bytes where the layout has 31 (27
+appearance bytes plus the 4-byte cooldown, of which the old block wrote one pad byte). The two
+cancelled to exactly 52 bytes **for a single-character account** and stopped cancelling the moment
+a second character existed, at which point every entry after the first ran three bytes long and the
+character-select screen was corrupt. The entries are uniform; there is no index form.
+
+**`selectedSlot` is load-bearing** (live 2026-07-27). It was hardcoded to 0 with the first
+character's name beside it. The client sends `0x3103` with the slot it picked, we record it, and
+then the client **re-fetches this list and takes its selection back from this header** — so a zero
+here quietly undid every choice, and picking the second character entered the lobby as the first.
+This is the same shape of bug as the entry-size error above: every field in a single-entry list
+looks right whether or not it means what we think it means.
+
+### The trailing `u32` at `+0x30` — the delete cooldown
+
+**Not part of the appearance block** (corrected 2026-07-27; this file previously filed it there,
+and the `0x3049` spec had it as "read but never identified; we send zero"). It is the
+**per-character delete cooldown in seconds**: how long until this character may be deleted.
+
+The client reads it at wire `+0x30` of each entry (parser `0xD372F8`, stored to
+`sess+0x55D4 + 60*slot + 56`) and the character-management screen formats it itself at `0x9510B4` —
+non-zero rounds up to whole minutes and produces *"Characters cannot be deleted for a fixed amount
+of time after being registered. You must wait %d hours %d minutes"* (lobby strings 11848 / 11854);
+zero lets the deletion proceed.
+
+It is the **one cooldown of the three** this build can actually display. The clan-disband and
+emblem-re-display countdowns are orphaned strings the client cannot reach (see the clan section and
+`ERRORS.md`).
+
+### Character slots — operator policy, not protocol
+
+The `slots` byte defaults to **1**, bounded 1..4 by a database constraint. The packet has room for
+8 and would carry more without complaint, so nothing here is fixed by the game; retail sold the
+extra slots, and three was an inherited default from another server. Grant per account with an
+`UPDATE`; it is read on every list fetch.
+
+### Appearance region as written here — 27 bytes
 
 | offset | size | field |
 | --- | --- | --- |
@@ -476,12 +515,13 @@ with fewer, the gap is zero-filled.
 | +24 | 1 | feet colour |
 | +25 | 1 | accessory 1 colour |
 | +26 | 1 | accessory 2 colour |
-| +27 | 1 | zero — first byte of the client's trailing u32 |
+
+The delete cooldown `u32` follows immediately, at entry `+48`.
 
 The main character is listed first and its name is prefixed with `*`. Ordering is
 `CharacterService.listForAccount`: by id, with the main character moved to the front.
 
-### The 35-byte trailer
+### The 32-byte tail (written as a 35-byte trailer)
 
 **It is not a 35-byte read** (ELF 2026-07-26, single-source trace). The client's parser takes a
 **32-byte block plus three separate u8 fields**; 35 is the number of bytes *we write* after the
@@ -494,12 +534,21 @@ goes looking for a 35-byte field — there isn't one.
 00 00 00
 ```
 
-**Unknown.** The `07` and `03` at offsets +4 and +6 are non-zero and nobody knows why; both Nomad
-upstreams and mgo2-server send these exact bytes. The first three bytes complete the eighth entry's
-trailing u32 and the remaining 32 are the client's `tail[32]`. This was 32 bytes here until
-recently, making the payload 468 — the client would have read its last three tail bytes out of
-stale buffer contents, because its read primitives bound-check only the 0x400 receive buffer and
-never compare consumed bytes against the payload length.
+**Unknown.** The `07` and `03` are non-zero and nobody knows why; both Nomad upstreams and
+mgo2-server send these exact bytes, which per `CLAUDE.md` makes them tier 4 — a thing we copy, not
+a thing we understand. The client's `tail[32]` begins at `0x1b7`, so within that block they sit at
+`+1` and `+3`.
+
+This was 32 bytes here until recently, making the payload 468 — the client would have read its last
+three tail bytes out of stale buffer contents, because its read primitives bound-check only the
+`0x400` receive buffer and never compare consumed bytes against the payload length.
+
+**Loose end (2026-07-27).** The writer still zero-fills to `0x1b4` and then emits 35 bytes, which
+is a leftover from the misaligned-entry era. Now that entries are uniform, eight of them end at
+`0x1b7` and the tail is 32 bytes. The two forms produce byte-identical output only because the
+first three trailer bytes are zero, and only while an account holds **fewer than eight**
+characters — at eight the zero-fill length goes negative. Slots are capped at 4, so it cannot fire
+today; it is still the wrong framing and should become `0x1b7` + 32.
 
 ## `0x3101` — create character
 
@@ -581,11 +630,24 @@ pre-check more lenient than the create behind it would only move the failure one
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
-| `0x00` | 1 | u8 | index into the list last sent by `0x3049` |
+| `0x00` | 1 | u8 | **slot index** into the list last sent by `0x3049` — *not* a character id |
 
-The client bounds-checks the index ≤ 7 before sending (confirmed from the binary). We clamp an
-out-of-range index to **0**. Reply `0x3104` is 4 bytes: `00000000`, `C0FFEE02` (no session) or
-`C0FFEE20` (the account has no characters).
+**It is a slot, one byte** (confirmed live 2026-07-27). The client bounds-checks the index ≤ 7
+before sending (confirmed from the binary). We clamp an out-of-range index to **0**. Reply `0x3104`
+is 4 bytes: `00000000`, `C0FFEE02` (no session) or `C0FFEE20` (the account has no characters).
+
+The selection this records is then read back **through `0x3049`'s `selectedSlot` header field**, not
+held only on the server — see `0x3048` above. The two commands are one loop, and a server that
+records the slot but reports 0 in the next list is indistinguishable from one that ignored the
+selection entirely.
+
+**Check-in validates ownership, not equality** (live 2026-07-27). Creating a character and then
+entering the lobby as a *different* one failed with `0925:C0FFEE02` — our own `INVALID_SESSION`,
+masked — because creation points `account.current_chara_id` at the new character and check-in
+demanded the client's claim equal that pointer. The client is what decides which character is
+entering; the server's job is to confirm it **exists, belongs to this account, and is active**, and
+then adopt it as the current selection. A leaked token is no more useful than before: it still
+cannot name a character it does not own.
 
 ## `0x3105` — delete character
 
@@ -751,10 +813,10 @@ documented anywhere we have.
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
-| `0x00` | 4 | u32 | clan id — 0 here; clans are not modelled |
-| `0x04` | 16 | ISO-8859-1 | clan name — always empty |
-| `0x14` | 1 | u8 | **clan membership state** -> `profile+6837`: 0 pending, 1 member, 2 leader, **99 not in a clan**. The client writes these itself (`li r0,99; stb r0,6837` at `0xD56B44`/`0xD56C7C`/`0xD56D68`); readers test `state-1 <= 1`. We send 99 |
-| `0x15` | 24 | u16 × 12 | element 0 = **clan privilege mask** -> `profile+6838` (bit 0 tested at `0x8F9944`, bit 8 at `0xAB3480`). Elements 1–11 have no reader in the binary. All zero here |
+| `0x00` | 4 | u32 | **clan id** — the character's real clan since 2026-07-27, 0 when they are in none |
+| `0x04` | 16 | ISO-8859-1 | **clan name** |
+| `0x14` | 1 | u8 | **clan membership state** -> `profile+6837`: 0 pending, 1 member, 2 leader, **99 not in a clan**. The client writes these itself (`li r0,99; stb r0,6837` at `0xD56B44`/`0xD56C7C`/`0xD56D68`); readers test `state-1 <= 1`. We send the character's real state |
+| `0x15` | 24 | u16 × 12 | element 0 = the **clan privilege / notification word** -> `profile+6838` (bit 0 tested at `0x8F9944`, bit 8 at `0xAB3480`). Elements 1–11 have no reader in the binary. **All zero, and it must stay that way** — see the clan section |
 | `0x2d` | 4 | u32 | current time, Unix seconds |
 | `0x31` | 9 | — | appearance bytes 0–8 (gender … pitch), same order as `0x3049` |
 | `0x3a` | 4 | u32 | appearance struct +12. Written by `0x4103`/`0x4122`, **read by nothing**, and omitted from `0x4130`/`0x4131`. Meaning unknown; inert. Send 0 |
@@ -766,7 +828,7 @@ documented anywhere we have.
 | `0x6b` | 4 | u32 | character id again — "the original sends the character id here; its purpose is not documented" |
 | `0x6f` | 128 | ISO-8859-1 | comment |
 | `0xef` | 1 | u8 | rank |
-| `0xf0` | 1 | u8 | emblem flag — 3 when the clan has one; always 0 here |
+| `0xf0` | 1 | u8 | emblem flag — 3 when the clan has one. **Still hardcoded 0 here**, which is now wrong: emblems are modelled and `0x4b47` reports the flag correctly, so a character whose clan has an emblem is told so on refresh but not in the connect burst |
 | `0xf1` | 4 | u32 | **saved instructor** marker; 0 = none. Nonzero suppresses the post-graduation recognition prompt on every peer (see below). Was wrongly reproduced as a fixed `00 A7 00 0D` |
 
 **There are five skill slots, not four** (ELF 2026-07-26, single-source trace). The parser's three
@@ -937,6 +999,25 @@ waiting between them.
 flush. It is fire-and-forget by construction, so `0x4115` has nothing to answer and no timeout to
 trip. "The client observably does not stall on it" was an observation about one session; this is
 the reason.
+
+## `0x4112` — connect-family write-back, contents unknown
+
+**Client → server.** 32 opaque bytes, and — unlike its neighbour `0x4114` — **the client blocks on
+it**: it registers wait slot `0x18` (`li r4,24` at `0xD3BEDC`). Observed live 2026-07-27 right
+after a player search; unanswered, the screen stalls in the usual way.
+
+Reply `0x4113` is a bare `{u32 result}`, so the command is acknowledged and the body dropped.
+
+The 32-byte payload observed live was:
+
+```
+0000 1000 0000 0000 1110 0000 0000 0000 0000
+```
+
+**Contents [UNKNOWN].** Whatever setting those bytes carry will not persist until someone works out
+what they are; answering it only stops the stall. It sits in the connect family beside `0x4110`
+(gameplay options) and `0x4114` (chat macros), both of which are write-backs of a burst packet, so
+a third write-back is the obvious reading — but nothing has been traced to say which one.
 
 ## `0x4102` — get personal stats
 
@@ -1953,9 +2034,20 @@ A missing session gets an empty success list, not an error.
 ### `0x4600` — player search (sender `0xD46128`, replies `0x4601`/`0x4602`/`0x4603`)
 
 Request, 18 bytes: `u8` match criteria (0 = partial, 1 = full — the builder rejects other values),
-`u8` match case (both toggles are packed nibbles of one UI control byte), then a 16-byte name.
+`u8` **ignore case**, then a 16-byte name.
 The client does no matching of its own — **all four semantics combinations are server policy**;
-ours is substring for partial, SQL-escaped. Result records (`0x4602`, parser `0xd45f38`,
+ours is substring for partial, SQL-escaped.
+
+**The second byte means IGNORE CASE, and `1` is the ignoring one** (live 2026-07-27; this file and
+the spec previously called it "case sensitive", which is the opposite). Searching for `bob` with
+**Case Insensitive** selected on screen arrived as `{0, 1}` and matched nothing against a character
+named `Bob`; the client reported *"Unable to locate that character"* — correctly, because we ran a
+case-sensitive query. The polarity is **the client's, not a per-screen quirk**: the clan-search
+screen (`0x4b90`) sends the same `{0, 1}` from its own toggles, so both searches read `1` as
+ignore-case and a case-sensitive search is still reachable with `0`.
+
+An integration test had asserted the old reading. Its only authority was the field's own name — no
+capture, no disassembly — which per `CLAUDE.md` is a regression guard, not a correctness check. Result records (`0x4602`, parser `0xd45f38`,
 59 bytes each, client table caps at **100**): u32 id, 16-byte name, u16, 16 bytes (likely clan
 name), u32, 16 bytes, u8 — tail fields inferred only from width; we send zeros there. The
 SaveMGO Nomad dev-era test payload (`search-player.bin`, tier 4, decoded 2026-07-23 —
@@ -2013,13 +2105,32 @@ Reply `0x4221` is a **single packet, not a triple** (the dispatcher has no `0x42
 transaction as failed, and the open screen's poll raises the error dialog — no fixed screen
 constant in this path) followed by 197 bytes of fields, parser `0xD3D874`: u32 id echo,
 16B **name** (confirmed), u32, u8, u8, u32, u32, u8, 128B **comment** (confirmed), u32,
-16B string (clan? sent but rendered "---"), u8, u32, u32, u8, u32 — with the u32 at wire
-0x22 confirmed as **play time in seconds** (fingerprint 9503 → "02:38:23"). The card also
-renders a LEVEL never sent literally (likely table-derived from an exp-like u32; candidates
-at wire 0x18/0x1E). Its square button ("more details") sends `0x4102` for the card's
-character. Byte-exact layout with client struct destinations and per-field fingerprint
-results: `dev/proto/mgo2_cmd_4221.ksy`. TEMPORARY fingerprint markers are served (id echoed,
-u32s 95xx, u8s 61–65, `FP-DTL-*` strings).
+16B **clan name**, u8 **membership state**, u32, u32, u8, u32 — with the u32 at wire
+0x22 confirmed as **play time in seconds** (fingerprint 9503 → "02:38:23"). Its square button
+("more details") sends `0x4102` for the card's character. Byte-exact layout with client struct
+destinations: `dev/proto/mgo2_cmd_4221.ksy`.
+
+**It carries real data since 2026-07-27.** This was still the fingerprint payload — `FP-DTL-NAME`,
+`FP-DTL-CLAN` and numbered constants, sent to find out which offset drove which label. It did its
+job and then nobody filled it in, which is why the clan read `----` until the player opened More
+Details (which fetches `0x4103`, and *that* does carry a clan) and the value looked like it was
+arriving late when this packet simply never had it.
+
+- **The clan is a triple, not a name.** Wire `0xa7`/`0xab`/`0xbb` are `{u32 id, char name[16],
+  u8 state}` — the same shape a clan takes in the session record at `session_ctx+0x1AA0`, in
+  `0x4122`'s block, in `0x4b47`, in `0x4b21`'s head and in `0x4103`'s tail. **Sending only the name
+  is not enough:** every reader traced so far checks the **id first** and treats 0 as "no clan"
+  whatever the name says. That is what the `---` was.
+- **Play time is the sum across game modes**, i.e. the same figure the personal-stats screen shows,
+  because the client totals the per-mode column itself. Sending the raw stored aggregate read
+  **six times short**. Separately, and still open: that total is inflated at all because the server
+  stores one number and writes it into every mode row — there is no per-mode accounting.
+- **`comment` renders correctly.**
+- **LEVEL renders as 0 and is an open question.** Four candidate fields sit between the name and the
+  play time — wire `0x18` (u32), `0x1c` (u8), `0x1d` (u8), `0x1e` (u32) — and are currently carrying
+  a **live probe**: the values 1450 / 250 / 130 / 500, chosen so each maps to a *distinct* level
+  (10 / 2 / 1 / 4) through the client's own experience table. Whichever level the card renders names
+  the field. This is the probe design, **not an answer**; nothing here has been confirmed yet.
 
 Sibling, **not yet observed**: `0x4210` (sender `0xD3A7D4`, no payload, subsystem `0x20`)
 expects a reply triple `0x4211`/`0x4212`/`0x4213` (parsers `0xD3B01C`/`0xD3B2D0`/`0xD3AF24`,
@@ -2072,10 +2183,12 @@ joins a game lobby. Blocks on the reply — **`092E:FFFFFF60`** without one.
 are two builders, each writing a compile-time literal — `0xD53414` writes `0x10`, `0xD53518`
 writes `0x0F`. So `0x0f` and `0x10` are exactly the values the client sends, and the previous
 note that they are "named after the reference servers and are unverified" was too pessimistic
-about the numbers. **What remains unverified is the naming** — which builder is the mailbox and
-which is clan applications comes from the references alone, and nothing in the binary has been
-traced to settle it. Treating them as opaque selectors is safe; treating `0x0f` as "mail" is
-still tier 4.
+about the numbers. **The naming is settled since 2026-07-27** and it was right: `0x10` really is
+clan applications and `0x0f` really is ordinary mail. It was settled the informative way round —
+by implementing clans and finding that **a clan application IS a mail**, delivered into the `0x10`
+mailbox rather than appearing as a roster entry. That also explains a hole in the clan family:
+**there is no applicant-list command**, which is why the client never sent one no matter what we
+answered. See the clan section below.
 
 | command | payload |
 | --- | --- |
@@ -2099,8 +2212,8 @@ player with no mail is the ordinary case — and it is also all either reference
 selector (`0x0f`): Nomad never stores mail and never emits a `0x4822` for it, mgo2-server
 likewise. So an empty mailbox was reference parity, not a gap.
 
-For the record (transcribed from Nomad 2026-07-22, used only for **clan applications**, selector
-`0x10`, which we do not model), a `0x4822` entry is 266 bytes: `u8 mtype(0), u8 index, u8 1,
+For the record (transcribed from Nomad 2026-07-22, used for **clan applications**, selector
+`0x10`), a `0x4822` entry is 266 bytes: `u8 mtype(0), u8 index, u8 1,
 name[128], comment[128], u32 time, u8 0, u8 important, u8 read`. Reference-derived and never sent
 by us. **The ELF confirms this transcription** (2026-07-26, single-source trace): the `0x4822`
 record's widths and field order match the parser exactly, 266 bytes. So does `0x4801`'s. That is
@@ -2124,6 +2237,282 @@ get-contents replies with **command `0x4341`, empty** — almost certainly a Nom
   possible failure shape, since nothing errors. Answer `0x4840` with **712 bytes**, or with a
   **nonzero result**. We do not answer it at all today, which is safe; the trap is for whoever
   implements it. The 708-byte body's layout has not been decoded.
+
+---
+
+# Clans — the `0x4bxx` family
+
+The client sends **23 commands** in this range and we answered none of them until 2026-07-27, so
+every clan screen stalled with `1933:FFFFFF60`. All 23 are answered now. Byte-exact layouts live in
+`dev/proto/blanks/{inbound,outbound}/mgo2_cmd_4b*.ksy`; this section is the map and the rules that
+are not derivable from any one packet.
+
+## The clan record — one struct, five commands
+
+A clan is `{u32 id, char name[16], u8 state}` and that triple appears in five places, always in the
+same order and always read the same way:
+
+| where | note |
+| --- | --- |
+| `session_ctx+0x1AA0` | the client's own cached record |
+| `0x4122` wire `0x00` | inside the connect burst |
+| `0x4b47` | the on-demand refresh |
+| `0x4b21` head | the clan profile |
+| `0x4103` tail | personal stats |
+| `0x4221` wire `0xa7` | the player-details card |
+
+**Every reader traced so far checks the id first and treats 0 as "no clan" whatever the name
+says.** Sending a name with a zero id renders as `----`. That single fact accounts for two separate
+"the clan is blank" bugs.
+
+Membership states: **0 pending, 1 member, 2 leader, 99 not in a clan.** The client writes these
+itself; readers test `state - 1 <= 1`. "No clan" is a *record*, not a failure — `0x4b47` must send
+it with `result = 0` and state 99, because a nonzero result ends the payload after four bytes and
+leaves whatever record the client already had in place.
+
+## The privilege word must be ZERO
+
+`profile+6838`, the first of the twelve u16s in `0x4122`/`0x4103`. Two experiments, both live
+2026-07-27:
+
+- **All sixteen bits, for a leader.** Put a saluting-soldier "!" badge on the clan and sent the
+  client into a hard poll loop, re-sending `0x4b46` every ~73 ms. `0xAB0074` ands the word with
+  `-1`, or with `-257` when the player is the leader (`0xAB004C`), and **returns without advancing
+  its state machine if anything survives**. `-257` is `~0x0100`, so bit 8 is the only bit a leader
+  may hold at all; every other bit stalls, and a non-leader tolerates nothing.
+- **Bit 8 alone.** No stall and no poll loop, as the tolerance mask predicts — but it produced
+  *only* the "!" badge and no new menu row anywhere, and emblem loading worked with or without it.
+
+So bit 8 is a **pending-notification** bit, the whole word is a notification mask the client drains
+to zero rather than a permission mask, and **no privilege bit gates applying an emblem**. That is
+keyed off membership state 2 alone (`0xAD409C` tests `ctx+788 & 4`, which is set purely from the
+state). The narrow lesson is not "leave the mask alone" — it is **do not turn on unknown bits in
+bulk**.
+
+## Command map
+
+| in | out | meaning |
+| --- | --- | --- |
+| `0x4b00` `{name[16], description[128]}` | `0x4b01` `{u32 result, u32 clan_id}` | create |
+| `0x4b04` no payload | `0x4b05` | disband (leader) |
+| `0x4b10` `{u8 kind, s32 amount, u8}` | `0x4b11` header, `0x4b12` records, `0x4b13` end | clan list |
+| `0x4b20` `{u32 clan id}` | `0x4b21`, 777 bytes | clan profile (**your own clan only**) |
+| `0x4b30` / `0x4b32` `{u32 chara id}` | `0x4b31` / `0x4b33` | accept / decline applicant |
+| `0x4b36` `{u32 chara id}` | `0x4b37` | banish |
+| `0x4b40` **no payload** | `0x4b41` | **cancel join / leave** |
+| `0x4b42` `{u32 clan id}` | `0x4b43` | apply to join |
+| `0x4b46` `{u16}` | `0x4b47`, 28 bytes | clan record refresh |
+| `0x4b48` `{u32 clan id}` | `0x4b49` `{s4, byte[768]}` | emblem, own clan |
+| `0x4b4a` `{u32 clan id}` | `0x4b4b` `{s4, byte[768]}` | emblem, display fetch |
+| `0x4b4c` | `0x4b4d` `{s4, byte[768]}` | emblem, second fetch |
+| `0x4b50` `{u8 mode, byte[768]}` | `0x4b51` | **emblem upload** |
+| `0x4b52` `{u32 clan id}` | `0x4b53` / `0x4b54` / `0x4b55` | roster |
+| `0x4b60` / `0x4b62` `{u32 chara id}` | `0x4b61` / `0x4b63` | transfer leadership / set emblem editor |
+| `0x4b64` `text[128]` | `0x4b65` | set clan comment |
+| `0x4b66` `text[512]` | `0x4b67` | set clan notice |
+| `0x4b70` | **one** `0x4b71` (584) then `0x4b72` (580) | clan stats |
+| `0x4b73` `{u32 clan id}` | `0x4b74` / `0x4b75` / `0x4b76` | applicant list — **never sent by the client** |
+| `0x4b80` `{u32 clan id}` | `0x4b81`, 217 bytes | **Clan Info for a clan you are not in** |
+| `0x4b90` `{u8 exact_only, u8 ignore_case, name[16]}` | `0x4b91` / `0x4b92` / `0x4b93` | clan search |
+
+On `0x4b01` with `result == 0` the client stores the second word as its clan id and **makes itself
+leader**: `0xD56E84` (`lwz r9,116(r1)` / `stw r9,6816`) and `0xD56E90` (`li r0,2; stb r0,6837`).
+
+## `0x4b46` blocks — the correction
+
+`dev/proto/blanks/inbound/mgo2_cmd_4b46_c2s.ksy` said *"the live trace proves the client does not
+wait for one"* and warned against replying speculatively. **That is true of the connect burst,
+where it fires unprompted and the player walks on, and false from the clan menu, where it stalls
+and fails with `Unable to update clan information (1933:FFFFFF60)`** (live 2026-07-27). One
+command, two contexts, and only one of them had ever been tested. The sender `0xD58510` advances
+flow state via `0xD32E08(session, 98, 1)` either way, so the difference is in what the screen does
+next, not in the request.
+
+`0x4b48` is the same shape of trap in reverse: it appears **only once a character has a clan**, and
+it blocks character select. Every field we start populating truthfully unlocks a branch that was
+previously dormant.
+
+## The clan list and its "%d/%d"
+
+`0x4b11` is `{u32 result, u32 offset, u32 total}` — **offset first, total second.** They were
+swapped, which is the whole "2 out of 1" bug. The client stores them at `block+0x08` and
+`block+0x0C` and renders its page indicator (format string `0xE11518`, drawn at `0xAC11A4` and
+`0xAC2958`) as:
+
+```
+left  = A <= 0 ? 1 : (A - 1) / 100 + 2
+right = (B - 1) / 100 + 1
+```
+
+**The record count never enters that text**, which is why changing the rows changed nothing.
+Corroborated by the sibling clan-search triple, which fills the same two slots itself: `0x4b93`
+sets `block+0x08 = 0` and `block+0x0C =` the record count (`0xD54D64`, `0xD54D78`).
+
+`0x4b10`'s `kind` selects an arm stepping ±100 (1 back, 2 forward, 4 absolute, 0 and 3 the first
+page) and **`amount` is a 1-based entry index, not a page number** — after being shown one entry the
+client asked for 101. It pages optimistically, without knowing whether the next 100 exist, so the
+server must **clamp** rather than honour it literally: answering "0 clans, starting at 101, out of a
+total of 1" is self-contradictory and corrupts the list on the next scroll. Page size is 100
+(`cmpwi r4,99` at `0xD561E4`).
+
+`0x4b12` records are **48 bytes**: `{u32 clan id, char name[16], u32 member count,
+char leader_name[16], u32 pad, u32 founded_at}`, size-driven with no count (`0xD5CEB0` at
+`0xD560BC`). **The 101st record makes the parser fail with `-71`** — it is *not* silently dropped,
+which is what the spec used to say.
+
+## `0x4b21` — the clan profile, 777 bytes
+
+4 bytes on failure (`0xD58C04` jumps straight to end-read). Offsets are into the client's clan
+struct `T`:
+
+| offset | meaning |
+| --- | --- |
+| `T+0x00` | clan id — **cross-checked against the id the client holds; packet dropped on mismatch** |
+| `T+0x04` | clan name[16] |
+| `T+0x15` | membership state |
+| `T+0x18` | **founding date** |
+| `T+0x1c` | leader name[16] |
+| `T+0x48` | **[ELIMINATED]** — see below |
+| `T+0x58` | member count |
+| `T+0x76` | **2 when a work-in-progress emblem exists** |
+| `T+0x378` | **3 when a published emblem exists** — the client will not fetch or offer an emblem while this is 0 |
+| `T+0x67A` | clan comment, 128 bytes — the same offset `0x4b00`'s create request reads *its* description from, and what `0x4b64` writes |
+| `T+0x6FC` | **the emblem editor's character id** — compared against the client's own to decide whether to offer "set as the clan's emblem" |
+| `T+0x700` | the clan **notice**, 512 bytes — what `0x4b66` writes |
+| `T+0x904` | the **notice's timestamp** |
+| `T+0x908` | the notice's **author name**[16] |
+
+**Two corrections to earlier readings here.**
+
+- `T+0x904` was documented as the **founding date**. That was a guess about meaning layered on a
+  real observation — the field was found by sending every candidate slot the date offset by a
+  different number of days and reading which one the screen showed, so *the field is right and the
+  label was wrong*. It is the notice's date. The founding date is `T+0x18`.
+- `T+0x700` was recorded as an unknown "long text block or packed table". It is the notice,
+  confirmed live by typing into **Clan Notice** and watching `0x4b66` carry 512 bytes to the same
+  offset. Likewise `0x4b64`'s 128 bytes and **Clan Comment**.
+
+**`T+0x48` is not the emblem cooldown. [ELIMINATED live 2026-07-27.]** It is the only
+timestamp-shaped slot we send that the client never renders (a u32 read stored with `std` as 64
+bits at `0xD5899C`), so it was the obvious candidate for the countdown behind lobby string 17247.
+Sending the real display time changed nothing — the emblem could still be re-displayed immediately
+with a fresh `0x4b21` in hand. The confirming observation would have been the countdown appearing,
+and it did not.
+
+**Never send a zero timestamp.** The renderer `0xAAB2D8` has no conditionals at all — it always
+draws the date, the author and the notice body, so the line cannot be suppressed. But the formatter
+`0x8843CC` tests the value at `0x884420` and takes a fallback branch when it is **negative**,
+printing the literal `XXXX-XX-XX XX:XX:XX`. Zero is not special-cased: `localtime(0)` succeeds and
+yields 12-31-1969. Send **-1**, which is this binary's own convention for an absent timestamp
+(`0x91E4C0` tests another one the same way).
+
+## `0x4b80`/`0x4b81` — the clan you are *not* in
+
+217 bytes, and it is the counterpart to `0x4b20`, which **cannot** serve a non-member: that reply's
+id is cross-checked against the client's own clan id and the packet is dropped on a mismatch. This
+one's `subject_id` is explicitly **not** cross-checked. Same slot meanings as `0x4b21` for id, name,
+`T+0x18` founding date, `T+0x1c` leader name, `T+0x58` member count, `T+0x378` emblem flag and
+`T+0x67A` comment. `T+0x18` is the founding date and `T+0x58` the member count and **not** the
+other way round: swapped, the info screen showed *1785129141 members* — the epoch seconds,
+verbatim.
+
+It also unblocks joining. `0x4b42`'s sender refuses to transmit unless the session clan record at
+`session_ctx+0x1AA0` holds a non-zero id, returning `-24` (`FFFFFFE8`) **without sending
+anything** — which is exactly the error Apply produced while this reply was 217 zero bytes.
+
+## Emblems — `0x4b48`/`0x4b4a`/`0x4b4c` and `0x4b50`
+
+All three fetches return `{s4 result, byte[768]}` and **the 768-byte block is the clan emblem**, not
+an opaque blob. `0x4b49`'s copy lands at `profile+6873` (parser `0xD56F24`, `addi r0,r27,57` off the
+clan record at `0xD56EDC`); `0x4b4a`/`0x4b4b` is the display fetch. Neither parser looks inside —
+both NUL-terminate at `+768` into a 769-byte buffer — so the bytes are opaque *to the parser* while
+being semantically the emblem, and the server stores and returns them verbatim.
+
+**Falsified:** the block was briefly filled with pending applicant names on the theory that
+768 = 48 × 16 made it a name table. It is not; that was writing text into the client's emblem
+buffer.
+
+`0x4b50` is the **upload**: `{u8 mode, byte[768]}`, sender `0xD5804C`, reached from the emblem
+screen through task kind 25. **Mode 3 = "put on display"** and is the only mode the client
+post-processes; 2 and 4 also occur and are [UNKNOWN]. On success the client copies the block to
+`profile+6873` and sets `profile+6872` to the mode.
+
+Refusal codes on `0x4b51` (routing `0xAD3E20`): `-1216` *"A fixed amount of time must pass in order
+for the emblem to be updated"* (what we send on cooldown), `-1202` *"Unable to update clan
+emblem"*, `-1207` *"Unable to locate designated clan"*, `-1215` *"Use of the clan emblem is
+currently forbidden"*, `-1218` *"You do not have emblem editing rights"*.
+
+**An unresolved disagreement, left on the record deliberately.** An earlier trace concluded that
+only `-1207` and `-1202` reach a dialog and that **every other non-zero value memsets the client's
+768-byte emblem buffer**, destroying a work-in-progress emblem. A later, deeper trace could not
+reproduce that: every branch of that dispatcher raises a dialog, and neither it nor the `0x4b51`
+handler (`0xD555D4`) contains a memset — so the wipe, if it happens, lives in the emblem screen's
+event-104 consumer, which nobody has located. If a refusal is ever seen clearing a work-in-progress
+emblem, `-1202` is the fallback.
+
+The re-display cooldown itself is **operator policy, not protocol**: nothing client-side enforces it
+on this build, and the countdown string (17247) is orphaned. Either the retail servers refused the
+upload themselves, or the countdown is fed by something not yet found.
+
+## The roster — `0x4b52`/`0x4b53`/`0x4b54`/`0x4b55`
+
+Start and end carry a **result code, never a count** — a count there produced the live
+`1032:00000005` error on the sibling social path, and the client counts the item records itself.
+
+The `0x4b54` record is **68 wire bytes**: `{u32 chara id, char name[16], u8 isMember, u32, u32,
+then game-location fields}`. **`isMember` is 1 for joined members and 0 for pending applicants**,
+and members and applicants go out as **one batch with the flag set per row**. Two other
+combinations were tried and both failed visibly: two separate `0x4b54` packets put both groups on
+the wire but the client rendered only the first, so the applicant vanished; and mixing applicants
+into the members query with the flag set per *batch* made them appear as full members. The trailing
+game-location fields (lobby id, lobby name, game id, host name, subtype) are unpopulated.
+
+## Clan stats — one `0x4b71`, then `0x4b72`
+
+`0x4b71` is 584 bytes (`4 + 4 + 8*18*4`) and its **second word must be 2 or 3**; any other value
+fails the whole packet with `-71` and discards the grid (`0xD599C8`), which the screen reports as
+"no records". Then `0x4b72`, 580 bytes (`4 + 2*72*4`).
+
+**Send exactly one `0x4b71`.** Sending two — by analogy with `0x4105`'s cumulative/weekly pair —
+completes the request slot on the first reply, and the second arrives unexpected: that is the
+`unable to acquire clan information (1931:FFFFFF60)` stall on Clan Affiliation.
+
+## Search, applications, and the two rules that are the game's
+
+**`0x4b90`'s second byte is IGNORE CASE**, `1` = ignore. Same polarity as `0x4600`; see that
+section for how it was falsified. Records are **44 bytes**: `{u32 id, char name[16], u32 leader
+chara id, char leader_name[16], u32 founded_at}`. Another server writes 48 — adding a flag byte and
+three pad bytes before the trailing u32 — which is a **different client build**, and per `CLAUDE.md`
+another implementation is tier 4 and not a specification. Our parser reads 44.
+
+**A clan application is a mail.** It arrives in mailbox type `0x10` on `0x4820` (`0x0f` is ordinary
+mail), not as a roster entry, and **there is no applicant-list command** — which is why the client
+never sent one. `0x4b73`'s triple is unexercised.
+
+**Clan founding requires 20 hours of play time and level 3, and that is the game's rule, not ours.**
+The client carries the text (lobby string 17193, *"You must have 20 hours of playing time and a
+Level of at least 3 to create a clan"*) and never gets to show it, because the refusal comes back
+as a result code. Note that string 17199 beside it states 5 hours and level 2 — two tiers shipped
+and only one can be live. But the *enforcement* is entirely ours: `0xD579AC` validates only the name
+and the comment before sending `0x4b00`, with no play-time or level read anywhere, and 17193 is not
+reachable from the error table. We refuse with `-1206`, *"Conditions to create clan have not been
+met."*
+
+Disband inside its cooldown refuses with `-1205`, *"A fixed amount of time must pass in order to
+disband the clan."* The countdown strings beside it (17312/17318) are orphaned exactly as the
+emblem's are; this says the same thing without the number.
+
+## What was removed, and must not come back
+
+There was an **acknowledge-only table** here: a dozen ids answered with a bare success while doing
+nothing. It stopped the screens hanging, which was worth having, but it turned "unimplemented" into
+"silently reports success" — disband, banish, transfer leadership and set-emblem-editor all
+reported working while doing nothing at all. Every id is implemented now. A command with no
+implementation should **stall visibly, or return an error**; it must not lie.
+
+---
+
+# GAME lobby, continued
 
 ## `0x4900` — get game lobby info
 
@@ -2385,11 +2774,11 @@ taught once:
 
 | block | ids | subsystem |
 | --- | --- | --- |
-| `0x4bxx` | 23 consecutive (`0x4b00`–`0x4b90`) | clans / GHQ — nothing clan-related is modelled |
+| ~~`0x4bxx`~~ | ~~23 consecutive (`0x4b00`–`0x4b90`)~~ | **Superseded 2026-07-27 — all 23 are answered. See the clan section.** |
 | `0x49xx` extended | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
 | `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified |
-| mailbox rest | `0x4800`, `0x4840`, `0x4860`, `0x4880` | send / read / file / manage mail (we do only `0x4820` get) |
-| social | `0x4600`, `0x4680`, `0x4684`, `0x4220` | player search, met-players history, player details |
+| mailbox rest | `0x4840`, `0x4860` | read / file mail (`0x4800` send and `0x4880` delete are implemented) |
+| ~~social~~ | ~~`0x4600`, `0x4680`, `0x4684`, `0x4220`~~ | **Superseded — player search, met-players history and player details are all served** |
 | misc | `0x2006`, `0x4e00` | lobby-layer / isolated. `0x2006`'s presumed reply `0x2007` is traced — see the GATE section |
 
 Builder addresses and best-effort payload shapes for every gap id are recorded in the enumeration
@@ -2502,12 +2891,11 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 
 19. **`0x4121`'s two macro types.** Both references also just call them "type".
 
-20. **`0x4820`'s mailbox selector *names*** are reference-derived; the **values** `0x0f` and
-    `0x10` are tier-1 confirmed as of 2026-07-26 (two builders, each writing a literal —
-    `0xD53414` → `0x10`, `0xD53518` → `0x0F`). Which one is mail and which is clan applications
-    is the part still resting on the references. We still never send a
-    `0x4822`; Nomad's clan-application entry layout is transcribed in the `0x4820` section as
-    reference material, but no *mail* entry layout exists anywhere — Nomad never sends one either.
+20. ~~**`0x4820`'s mailbox selector *names*** are reference-derived~~ — **closed 2026-07-27.** The
+    values `0x0f`/`0x10` were tier-1 confirmed on 2026-07-26 (two builders, each writing a
+    literal — `0xD53414` → `0x10`, `0xD53518` → `0x0F`), and the *naming* is now settled too:
+    implementing clans showed that a clan application arrives as a **mail in the `0x10` mailbox**.
+    The reference-derived names were right. Mail itself has been served since 2026-07-26.
 
 21. **`0x4300`'s filter type is read and discarded.** Clan rooms are distinguished by a name prefix
     in the original; unmodelled here.

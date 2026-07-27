@@ -1,10 +1,15 @@
 meta:
   id: mgo2_cmd_4b21_s2c
-  title: "MGO2 0x4b21 — clan/GHQ profile block, 777 bytes (server -> client)"
+  title: "MGO2 0x4b21 — clan profile for YOUR OWN clan, 777 bytes (server -> client)"
   endian: be
 doc: |
-  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
-  every field below comes from the client parser only, so tags are [ELF] at best.
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **The clan profile.** The reply to 0x4b20, one u32 clan id (builder 0xD567F0), sent from Clan
+  Affiliation. Several slots are [CONFIRMED LIVE 2026-07-27]; the rest of the 777 bytes is still
+  unmapped and stays zero. This is the "your own clan" path — the id is cross-checked against the
+  one the client already holds, so it CANNOT serve a clan the player is not in. That is what
+  0x4b80 / 0x4b81 is for (mgo2_cmd_4b81_s2c.ksy), and the two share this destination struct.
 
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD587AC**, which re-checks the id (`cmpwi r0,19233`) before reading anything.
@@ -75,25 +80,43 @@ seq:
   - id: result
     type: s4
     doc: "[ELF] 0 = success and the body follows; non-zero = 4-byte reply, body absent. Published to request slot 99."
-  - id: subject_id
+  - id: clan_id
     type: u4
-    doc: "[ELF] T+0x00. Cross-checked against the session's stored clan id; mismatch drops the packet. [UNKNOWN] whether this is a clan id or a member id."
-  - id: name_a
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x00, the clan's id, and it MUST echo the id the request asked for:
+      the client cross-checks it against the id it already holds and **drops the packet with no
+      error** on a mismatch. A clan the client does not already know about cannot be delivered
+      here at all — that is 0x4b81's job, and 0x4b81's copy of this slot is explicitly not
+      cross-checked.
+  - id: clan_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x04, 16 bytes fixed, client NUL-terminates at T+0x14. [UNKNOWN] which name."
-  - id: unknown_15
+    doc: "[CONFIRMED 2026-07-27] T+0x04, the clan's name, 16 bytes fixed; the client NUL-terminates at T+0x14."
+  - id: membership_state
     type: u1
-    doc: "[ELF] T+0x15. [UNKNOWN]"
-  - id: unknown_18
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x15, the viewer's membership state in this clan:
+      **0 pending, 1 member, 2 leader, 99 none** — the same encoding as the session clan record at
+      session_ctx+0x1AA0 and as 0x4b47's state byte.
+
+      This is the only thing that gates committing an emblem: 0xAD409C tests ctx+788 & 4, which is
+      set purely from state == 2. No privilege bit is involved — see mgo2_cmd_4b47_s2c.ksy.
+  - id: founding_date
     type: u4
-    doc: "[ELF] T+0x18. [UNKNOWN]"
-  - id: name_b
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x18, the clan's FOUNDING date, Unix seconds. Same slot, same
+      meaning, as 0x4b81's T+0x18, where sending it and the member count the other way round made
+      the Clan Info screen report **1785129141 members** — the epoch seconds rendered verbatim.
+
+      **Supersedes an earlier reading.** A probe run had this slot rendering as 1969-12-31 and
+      concluded it was "not the date", which is what led to T+0x904 being labelled the founding
+      date instead. T+0x904 is the NOTICE's timestamp — see `notice_at` below.
+  - id: leader_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x1c, 16 bytes fixed. [UNKNOWN] which name."
+    doc: "[CONFIRMED 2026-07-27] T+0x1c, the clan LEADER's name, 16 bytes fixed."
   - id: unknown_30
     type: u4
     doc: "[ELF] T+0x30. [UNKNOWN]"
@@ -104,10 +127,25 @@ seq:
     doc: "[ELF] T+0x34, 16 bytes fixed. [UNKNOWN] which name."
   - id: unknown_48
     type: u4
-    doc: "[ELF] Read as u4 into a stack slot then stored with `std` into T+0x48 as a 64-bit word (0xD5899C). Only 4 bytes are on the wire. [UNKNOWN]"
-  - id: unknown_58
+    doc: |
+      [ELF] Read as u4 into a stack slot then stored with `std` into T+0x48 as a 64-bit word
+      (0xD5899C). Only 4 bytes are on the wire. Meaning still [UNKNOWN].
+
+      **[ELIMINATED LIVE 2026-07-27] It is NOT the emblem re-display cooldown.** It was the obvious
+      candidate — the only timestamp-shaped slot the server sends that the client never renders,
+      and the plausible feed for the countdown behind lobby string 17247 ("You must wait another %d
+      hours %d minutes"). The experiment sent the real emblem display time here and fetched a fresh
+      0x4b21. The confirming observation would have been the countdown appearing; it did not, and
+      the emblem could still be re-displayed immediately. Back to zero.
+
+      The emblem cooldown is therefore **operator policy**, enforced by refusing 0x4b50 with -1216,
+      not by any field in this packet.
+  - id: member_count
     type: u4
-    doc: "[ELF] T+0x58. [UNKNOWN]"
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x58, how many members the clan has. Same slot and meaning as
+      0x4b81's T+0x58; swapping it with the founding date there produced the 1785129141-members
+      rendering.
   - id: unknown_5c
     type: u4
     doc: "[ELF] T+0x5c. [UNKNOWN]"
@@ -135,38 +173,76 @@ seq:
       [ELF] Read as a 1-byte block (0xD58A80), then three bits are OR-ed into the 64-bit word at
       T+0x70 (0xD58A90-0xD58AD8): bit0 -> 0x00800000, bit1 -> 0x00400000, bit2 -> 0x00010000.
       Bits 3..7 are read and discarded. [UNKNOWN] meanings.
-  - id: unknown_76
+  - id: emblem_wip_flag
     type: u1
-    doc: "[ELF] T+0x76. [UNKNOWN]"
-  - id: unknown_378
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x76 — **2 when a WORK-IN-PROGRESS emblem exists** for this clan,
+      i.e. one uploaded but not put on display. The published counterpart is `emblem_flag` below.
+  - id: emblem_flag
     type: u1
-    doc: "[ELF] T+0x378 — a long way from its neighbours, so this lands in a different sub-struct. [UNKNOWN]"
-  - id: text_67a
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x378 — **3 when a PUBLISHED emblem exists**, 0 when none does.
+      (Structurally a long way from its neighbours, so it lands in a different sub-struct.)
+
+      The client **will not fetch or offer an emblem while this is 0**. That is why Emblem Edit had
+      nothing to apply for a clan whose emblem the server had stored: the flag, not the emblem
+      bytes, is what makes the client ask for it (0x4b4a) at all. Same slot and meaning as 0x4b81's
+      T+0x378, so a clan viewed from search or the clan list needs it too.
+  - id: clan_comment
     size: 128
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x67A, 128 bytes fixed. Size and position fit a motto/announcement string. [UNKNOWN]"
-  - id: unknown_6fc
-    type: u4
-    doc: "[ELF] T+0x6FC. [UNKNOWN]"
-  - id: blob_700
-    size: 512
-    doc: "[ELF] T+0x700, 512 bytes fixed, read with 0xD5D018 so the client NUL-terminates at T+0x900. Largest single field in the packet. [UNKNOWN] — could be a long text block or a packed table; nothing in the parser interprets it."
-  - id: founded_at
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x67A, the clan comment / description, 128 bytes fixed.
+
+      Settled three ways and they agree: it is the offset 0x4b00's create request reads its own
+      description from (arg+0x67A, the identical offset — the client keeps the clan in one struct
+      and both commands address the same field); it is what the 128-byte write 0x4b64 sets; and
+      setting **Clan Comment** to "bench" on the client put exactly that on the wire.
+  - id: emblem_editor_chara_id
     type: u4
     doc: |
-      [CONFIRMED 2026-07-27] The clan's founding date, Unix seconds. Read to a stack slot then
-      `stw` to T+0x904 (0xD58B9C), and rendered as the date on the Clan Affiliation screen.
+      [CONFIRMED 2026-07-27] T+0x6FC, the character id of the member who holds **emblem-editing
+      rights** — assigned by 0x4b62. The client compares it against its own character id to decide
+      whether to offer "set as the clan's emblem".
 
-      Identified by probe rather than by disassembly: every remaining u32 candidate in this packet
-      was sent the founding date offset by a different number of days, and the screen displayed the
-      +9-day value, which is this field. T+0x18 and T+0x48 had each been tried first and rendered
-      as 1969-12-31 — epoch zero — because they are not the date.
-  - id: name_d
+      Note it is a character id, not a bit: no privilege bit gates applying an emblem. See
+      mgo2_cmd_4b47_s2c.ksy for the experiment that eliminated the privilege word.
+  - id: notice
+    size: 512
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x700, **the clan NOTICE**, 512 bytes fixed, read with 0xD5D018 so
+      the client NUL-terminates at T+0x900. Largest single field in the packet.
+
+      **CORRECTION.** An earlier revision of this spec called this an [UNKNOWN] blob that "could be
+      a long text block or a packed table". It is the notice: setting **Clan Notice** to
+      "watching you" on the client sent 0x4b66 carrying exactly 512 bytes, the same size and the
+      same struct offset. Its timestamp and author follow immediately below, which is also how the
+      screen draws it.
+  - id: notice_at
+    type: u4
+    doc: |
+      [CONFIRMED 2026-07-27] T+0x904, the **NOTICE's timestamp**, Unix seconds. Read to a stack
+      slot then `stw` to T+0x904 (0xD58B9C).
+
+      **IMPORTANT CORRECTION.** This field was previously documented here as the clan's FOUNDING
+      date. That was a guess about meaning layered on a real observation: the probe that found it
+      sent each candidate slot the date offset by a different number of days and watched which one
+      Clan Affiliation displayed, so the FIELD was right and the LABEL was wrong — the date the
+      screen draws here is the date the notice was set, and the 16 bytes after it are the name of
+      whoever set it. The founding date is T+0x18.
+
+      **When unset, send -1, NEVER 0.** The renderer 0xAAB2D8 has no conditionals at all — it
+      always draws the date line, the author and the notice body, so the line cannot be suppressed.
+      But the formatter 0x8843CC tests the value at 0x884420 and takes a fallback branch when it is
+      NEGATIVE, printing the literal "XXXX-XX-XX XX:XX:XX". Zero is not special-cased: localtime(0)
+      succeeds and yields 12-31-1969. -1 is this binary's own convention for an absent timestamp;
+      0x91E4C0 tests another one the same way.
+  - id: notice_author
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x908, 16 bytes fixed. [UNKNOWN]"
+    doc: "[CONFIRMED 2026-07-27] T+0x908, 16 bytes fixed: the name of whoever last set the notice. Drawn under the notice beside `notice_at`."
   - id: unknown_1b2c
     type: u4
     doc: "[ELF] T+0x1B2C. [UNKNOWN]"

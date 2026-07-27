@@ -61,6 +61,9 @@ not an elimination if the thing varied could not have mattered.
   two lists the client keeps, what the port check dials, and the deployment rules that follow.
 - `dev/docs/STUN.md` — the UDP port check.
 - `dev/docs/CRYPTO.md` — every cipher, key and hash, and where each is applied.
+- `dev/docs/ERRORS.md` — the client's own error table: 556 codes with the sentence each produces,
+  generated from the binary by `dev/tools/dump_error_table.py`. Check here before inventing a code.
+- `dev/docs/HELP.md` — the TIPS panel: an HTTP document per topic, not a lobby command.
 - `dev/docs/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.
 
 ## Distinguishing spec from policy
