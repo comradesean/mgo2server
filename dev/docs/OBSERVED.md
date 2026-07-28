@@ -3657,3 +3657,58 @@ located (base-register indirection defeats a grep; it would only be a fourth cor
 whether the Snake/Mk.II machinery is rule-4-only or a "Snake can join" host option overlaid on
 other rules is unresolved. Bonus: `0x6A9488` is `clamp(x, 0, 3)`, not a settings getter, which
 makes the branch at `0x71C8FC` dead.
+
+## Community research on the post-launch modes — 2026-07-27 (TIER 3-4, not read from the binary)
+
+Everything in this section is community and patch-note knowledge — wikis, day-of press coverage,
+Konami's own archived pages. It ranks BELOW the binary and below observed client bytes, and it is
+recorded here because it explains *why* certain content is unreachable, not because it settles
+anything about behaviour. Nothing in it contradicts the binary. Same standard LOBBIES.md already
+applies to the "Survival in Ver. 1.10, Tournament in Ver. 1.20" claim.
+
+**Team Sneaking was enabled server-side, three weeks after launch, free.** 2008-07-04, against a
+2008-06-12 launch. Engadget and Gematsu day-of coverage and the 2ch MGO2 wiki
+(「7/4のメンテナンスで追加された」) all describe a *maintenance*, not a client patch; Konami's archived
+VERSION UPDATE page lists no client version adding it, and the first mention is 1.11 (07/25)
+tuning a rule that already exists. **A mode switched on server-side must already be on the disc**,
+which is exactly what `Rule_Eng_TSNE`, `TSneAlertSec` and the rule-7 coefficient row show. This is
+now a backlog item: the gate may be on our side of the wire.
+
+**No documented player minimum for Team Sneaking.** Konami's rules page, Konami's patch notes,
+Wikipedia, Fandom and two Japanese player wikis were checked. The 2ch wiki says the target count
+scales with participants and that briefing auto-balances lopsided teams — both suggest the mode is
+designed to flex. That is a well-supported *absence*, not a positive finding; treat the question as
+one for the ELF.
+
+**The Mk.II "11 players" figure is corroborated, and the source disagreement mirrors our
+off-by-one.** Both Japanese wikis say 11+ (「参加PCが11人以上で」), as does TV Tropes; Wikipedia and
+Fandom say 12+. Konami ducks the number entirely ("If many players join"). Our binary requires
+`> 11`, i.e. **12**, while the disc's own English rule string says "11 or more" — so the split in
+the sources reproduces the split in the game's own materials. The code is the authority: plan for
+12.
+
+**"Random" was the wrong word, and the distinction matters.** No source describes the Mk.II's
+*appearance* as randomised — it is a headcount threshold. What IS random, per the binary, is *which
+player* gets the role once the threshold clears (the LCG at `0x71CBD8`). Community and binary agree
+once the two are separated.
+
+Also from the community side, none of it load-bearing but useful context: the Mk.II is controlled
+by a human player allied to Snake (Sneaking is a three-way Red/Blue/Snake fight, and Snake and the
+Mk.II notably cannot SOP-link); it can be destroyed by either team for 4 points against 3 for a
+normal kill, but never permanently — it self-repairs, and the 2ch wiki explicitly warns that
+destroying it does not affect the round result. **Timeline caveat worth keeping**: dogtag-carrying,
+Display Magazine and the camera were all added to the Mk.II in 1.20 (2008-11-25), so its
+June-2008 on-disc kit is smaller than every wiki describes.
+
+**BOMB Mission was real and free**, roughly 2009-01-27, with full mechanics on Konami's own rules
+page. Whether it was server-side or shipped quietly in the 1.21 client a week earlier could not be
+determined.
+
+**No MGO2 rule was ever paywalled.** TSNE, Bomb, Interval, Stealth DM, Solo Capture and Race were
+all free; the clincher is Konami's producer on PlayStation.Blog announcing Race Mission for "all
+players, not just those who have purchased SCENE". Expansions sold maps, characters and *lobby
+entry*. That independently supports this project's existing position that Survival and Tournament
+are LOBBY TYPES rather than rules: 1.20's "new game mode Tournament" sits under "For MEME EXPANSION
+only" as a lobby, and 1.30 refers to public Survival and Tournament matches "using RES/TSNE" — a
+lobby running a rule. Wikipedia calling GENE's Survival "a new game mode" is the sloppy phrasing;
+Konami's own text is not. (Expansions were GENE / MEME / SCENE — there was no "ARSENAL".)
