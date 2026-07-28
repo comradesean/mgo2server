@@ -369,9 +369,8 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		TestDatabase.get().jdbi().useHandle(handle -> handle
 			.createUpdate("""
 					insert into chara_training_time
-						(chara_id, training_mode_seconds, instructor_seconds, student_seconds,
-						 total_seconds)
-					values (:chara, 600, 300, 120, 1020)
+						(chara_id, training_mode_seconds, instructor_seconds, student_seconds)
+					values (:chara, 600, 300, 120)
 					""")
 			.bind("chara", charaId)
 			.execute());
