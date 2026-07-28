@@ -19,7 +19,9 @@ doc: |
   dev/docs/WEAPONS.md (anchors: ST KNIFE 1, RUGER 2, GSR 7, Vz.83/SKORPION 23, AK102 25,
   MOSIN N 43). Builder caps entries at 0x7f, caller at 50.
 
-  The server acks and currently stores nothing (BACKLOG, "Store 0x43a2 per-weapon round
+  The server acks and STORES these since 2026-07-28 (round_weapon_tally); they feed 0x4107
+  slot 64 Knife Kills, which struct B cannot carry. Was: "acks and currently stores nothing"
+  (BACKLOG, "Store 0x43a2 per-weapon round
   tallies" — now attributable per player, which that entry wondered about).
 doc-ref: dev/docs/PROTOCOL.md "0x43a2 — per-player weapon tallies"
 seq:

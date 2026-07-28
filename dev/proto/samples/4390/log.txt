@@ -4058,3 +4058,82 @@
   seconds_in_game           = 251
   experience_total          = 428
   detail_present            = 1
+=== #539  2026-07-28 02:40:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 539_024021_ch1.bin
+  chara_id                  = 1
+  flag_0x04                 = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 49225
+  detail_present            = 1
+  B12 rolls                 = 1
+  B56 rounds_as_snake       = 1
+=== #540  2026-07-28 02:40:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 540_024021_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 500
+  detail_present            = 1
+=== #541  2026-07-28 02:40:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 541_024021_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 428
+  detail_present            = 1
+=== #542  2026-07-28 02:48:50  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 542_024850_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 49225
+  detail_present            = 1
+=== #543  2026-07-28 02:48:50  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 543_024850_ch3.bin
+  chara_id                  = 3
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 500
+  detail_present            = 1
+=== #544  2026-07-28 02:48:50  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 544_024850_ch2.bin
+  chara_id                  = 2
+  flag_0x04                 = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 428
+  detail_present            = 1
+  B56 rounds_as_snake       = 1
+=== #545  2026-07-28 02:57:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 545_025721_ch1.bin
+  chara_id                  = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 49225
+  detail_present            = 1
+=== #546  2026-07-28 02:57:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 546_025721_ch3.bin
+  chara_id                  = 3
+  flag_0x04                 = 1
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 500
+  detail_present            = 1
+  B56 rounds_as_snake       = 1
+=== #547  2026-07-28 02:57:21  0x4390  167 bytes  [mgo2server-gamelobby-1]  -> 547_025721_ch2.bin
+  chara_id                  = 2
+  score                     = 0
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 510
+  experience_total          = 428
+  detail_present            = 1

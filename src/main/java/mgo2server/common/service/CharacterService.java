@@ -242,14 +242,31 @@ public class CharacterService {
 	 * The play time the client displays: the sum across game modes, which is what both the personal
 	 * stats screen and player details show.
 	 * <p>
-	 * The client totals the per-mode column itself, so this is the same figure {@code 0x4105}
-	 * produces — not an independent calculation. It reads high for the wrong reason: we have one
-	 * aggregate and no per-mode breakdown, so the same number goes into every row and the total
-	 * counts it {@value #PLAYABLE_MODES} times. Real per-mode accounting is the fix; until then this
-	 * at least keeps every screen telling the same story.
+	 * <b>The {@value #PLAYABLE_MODES}× multiplication is gone (2026-07-28).</b> It existed because
+	 * {@code 0x4105} had no per-mode breakdown and wrote one aggregate into every mode row, so the
+	 * client's own total — which sums the column over rows 0..6 — counted it six times; multiplying
+	 * here kept the player card telling the same (inflated) story. {@link StatsService} now derives
+	 * real per-mode play time from {@code round_report}, so the client's sum is correct on its own
+	 * and this must not pre-multiply.
+	 * <p>
+	 * Note the source change that comes with it: this is now {@code sum(seconds_in_game)} over the
+	 * playable modes, the same figure the stats grid sums, rather than the presence total. The
+	 * presence total is the <em>more complete</em> number — it covers sessions where the host quit
+	 * first and reported nobody — but two screens showing different play times for one character is
+	 * a defect a player notices and we cannot explain, while one consistent slightly-low number is
+	 * explainable. Consistency wins; the coverage hole is documented where the query lives.
 	 */
 	public long displayedPlaySeconds(long charaId) {
-		return trainingSeconds(charaId).total() * PLAYABLE_MODES;
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select coalesce(sum(r.seconds_in_game), 0)
+					from round_report r
+					where r.chara_id = :chara and r.rule between 0 and :lastMode
+					""")
+			.bind("chara", charaId)
+			.bind("lastMode", PLAYABLE_MODES - 1)
+			.mapTo(Long.class)
+			.one());
 	}
 
 	/**
@@ -516,6 +533,18 @@ public class CharacterService {
 				join account a on a.id = c.account_id
 				left join chara_training_time t on t.chara_id = c.id
 				where c.id = :chara
+				  -- FLAGGED, deliberately unchanged 2026-07-28. This multiplies presence seconds
+				  -- by PLAYABLE_MODES, so the real gate is CLAN_MIN_SECONDS / 6 -- about 3h20m of
+				  -- play, not the 20 hours the requirement text claims. It was an artefact of the
+				  -- old display hack, where every screen showed play time six times over, and it
+				  -- kept the gate agreeing with the number on screen. That hack is now gone
+				  -- (displayedPlaySeconds), so this no longer agrees with anything.
+				  --
+				  -- Not fixed here on purpose: dropping the multiplier is a POLICY change -- it
+				  -- raises the bar for founding a clan sixfold -- and it belongs in a commit that
+				  -- says so, not smuggled into a stats change. Note awardPendingInstructorSkill
+				  -- gates on the same column WITHOUT the multiplier, so the two disagree by six
+				  -- today. See BACKLOG.
 				  and coalesce(t.total_seconds, 0) * :modes >= :seconds
 				  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
 					  >= :experience

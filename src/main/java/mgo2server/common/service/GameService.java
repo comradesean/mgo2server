@@ -328,6 +328,47 @@ public class GameService {
 		});
 	}
 
+	/**
+	 * One weapon's terminal-event tally for one player in one round, from {@code 0x43a2}.
+	 * {@code headshots} counts headshot terminal BLOWS, not hits — a wounding headshot tallies
+	 * nothing — and {@code faints} counts faints caused, excluding melee, which lives in the
+	 * {@code 0x4390} stun pair instead.
+	 */
+	public record WeaponTally(int weaponId, int kills, int headshots, int faints) {
+	}
+
+	/**
+	 * Stores one player's per-weapon round tallies ({@code 0x43a2}), sent by the host immediately
+	 * after that player's {@code 0x4390}. Feeds the weapon-specific lines of the Personal Stats
+	 * screen — {@code 0x4107} slot 64 Knife Kills at minimum, which cannot come from struct B
+	 * because struct B has only 58 slots and that slot is beyond them.
+	 * <p>
+	 * Players with no tally entries are skipped by the client, so an empty list is normal and
+	 * writes nothing.
+	 */
+	public void insertWeaponTallies(long gameId, long charaId, List<WeaponTally> tallies) {
+		if (tallies.isEmpty()) {
+			return;
+		}
+		jdbi.useHandle(handle -> {
+			var batch = handle.prepareBatch("""
+					insert into round_weapon_tally
+						(game_id, chara_id, weapon_id, kills, headshots, faints)
+					values (:game, :chara, :weapon, :kills, :headshots, :faints)
+					""");
+			for (var tally : tallies) {
+				batch.bind("game", gameId)
+					.bind("chara", charaId)
+					.bind("weapon", tally.weaponId())
+					.bind("kills", tally.kills())
+					.bind("headshots", tally.headshots())
+					.bind("faints", tally.faints())
+					.add();
+			}
+			batch.execute();
+		});
+	}
+
 	/** One row of the met-players history: a player encountered, and when last. */
 	public record MetPlayer(long charaId, String name, long lastMetEpochSeconds) {
 	}
