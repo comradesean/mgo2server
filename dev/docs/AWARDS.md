@@ -26,8 +26,10 @@ Resource names live inline at `0xE14EB0`, 66 × 16 bytes, three forms per title:
 (`0x942948`). The text resolves through the 24-bit rotate-5-add hash at `0xD25D0` against the
 disc's string resources — verified by `hash("mgo2_res_myscore") == 0x1AB3B6`.
 
-**The `Doc` form is the requirement.** These are play-style titles, so each one names the statistic
-it reflects:
+**The `Doc` form names the statistic, NOT the threshold.** "High kill count" does not say how high.
+No title threshold table has been found in the binary, and none is known to exist — so the
+right-hand column below is *our reading* of each description, and every number a granting rule
+eventually uses is invented by us. Read the last column as a hypothesis, not a mapping:
 
 | bit | name | short | the game's description | our source |
 | --- | --- | --- | --- | --- |
@@ -73,10 +75,13 @@ Notes that matter for granting:
 
 ## Medals
 
-The threshold table at `0xE139C0` is 39 rows of `{u32 id, u32 nameHash, u32 threshold}`,
-terminated by `0xFFFFFFFF` — 13 families × 3 tiers. **The thresholds are display text, not
-conditions**: the client loads them *after* the gate and prints them into the description as `%d`.
-Whether a medal is drawn depends only on our bit.
+The table at `0xE139C0` is 39 rows of `{u32 id, u32 nameHash, u32 threshold}`, terminated by
+`0xFFFFFFFF` — 13 families × 3 tiers.
+
+**Be careful what "threshold" means here.** The client loads that word *after* the gate and prints
+it into the description as the `%d`. It is **display text, never a condition**. So the table tells
+us what each medal *claims* to require, and nothing about what the original server actually
+demanded — that is unobservable. The numbers below are labels.
 
 | ids | tiers | award text | statistic |
 | --- | --- | --- | --- |
@@ -99,9 +104,12 @@ mysterious: Mk.II destructions need 12+ players (`GATES.md` §4), and consecutiv
 read from `0x4107` slots 1–3, which we serve as zero until stage boundaries are stored
 (BACKLOG). `%d targets captured` has no mapped statistic at all.
 
-> **Medal thresholds are believed to have been reworked at some point in MGO2's life**, so the
-> numbers above are what *this disc* ships, not necessarily what the live service used. Operator
-> input pending.
+> **Medal requirements are not known.** The numbers above are the strings this disc ships, which
+> may or may not be what the live service required, and are believed to have been reworked at some
+> point. Nothing in the binary states a condition. External documentation — patch notes, the
+> official site, community records — would be tier 3–4 under CLAUDE.md's hierarchy but is the only
+> plausible source, since the server side is unobservable. **Operator has offered to find the
+> original requirements; nothing here should be built until they arrive.**
 
 ---
 
