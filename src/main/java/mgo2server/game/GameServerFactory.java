@@ -47,8 +47,18 @@ public class GameServerFactory {
 		// The queue lives here rather than behind Services: it holds channels and per-lobby state,
 		// while Services is lobby-agnostic and shared across a process.
 		var automatch = new Automatch(automatchPolicy, lobbyId, lobbySubtype,
-			(lobby, host) -> services.getGameService().getHostedGame(lobby, host)
-				.map(mgo2server.common.model.Game::getId).orElse(0L));
+			new Automatch.GameLookup() {
+				@Override
+				public long hostedGameId(long lobby, long host) {
+					return services.getGameService().getHostedGame(lobby, host)
+						.map(mgo2server.common.model.Game::getId).orElse(0L);
+				}
+
+				@Override
+				public void renameAndUnlock(long gameId, String name) {
+					services.getGameService().renameAndUnlock(gameId, name);
+				}
+			});
 
 		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
 		// the character-id to channel map current. Anything that has to reach a client other than the

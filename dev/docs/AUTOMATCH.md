@@ -153,12 +153,27 @@ Bar height for column *i* is `A[i] + B[i]`, clamped to 15 (960 px / 64 px per un
 clamped 0–22; the lit window is `[centre − band, centre + band]`. The 23 is confirmed four ways: the
 loop bound at `0x93C790` and four 23-entry sprite-hash tables at `0xE14BA0 + 128/220/312/404`.
 
-**The level table is not in the binary and cannot be extracted from it** (investigated 2026-07-28).
+**The level table is not in the binary — it is on the disc, and has been recovered** (2026-07-28).
 `0x6F9260` walks a 128-entry u32 array in `.bss` at `0x1659D24` — pointer at `0xFDE280`, zero at
 load — filled at runtime by the GCX native `0x6F9370` (option letter `-r`) from a stage script. It
 sits `0x200` bytes below the `ComputeScore` table `ADDRESSES.md` already records as script-fed: same
-allocation, same lifecycle. Getting the numbers means extracting the script per `ASSETS.md`, or
-bisecting experience against the rendered level on a live client.
+allocation, same lifecycle.
+
+**The numbers, read from six stage scripts byte-identically** (`lobby`, `n002a`, `n003a`, `n004a`,
+`n007a`, `n012a`), the sole call site of that native in each:
+
+```
+125 250 375 500 650 800 950 1100 1275 1450
+1625 1800 2000 2200 2400 2600 2850 3100 3350 3600 4100 4600
+```
+
+Twenty-two entries, so the cap is **level 22 at 4,600 experience** — which is exactly why the gauge
+is 23 columns. All twelve recorded live readings reproduce, with `T[3] = 500` bracketed to a single
+experience point. Now in `mgo2server.common.Level`.
+
+The native was identified through the GCX registration table rather than the shape of the data:
+hash `0x00D3656D` at `0x1031584` → OPD `0x1014CF0` → `0x6F9370`. The same walk reproduces the
+sibling `ComputeScore` native that `ADDRESSES.md` already records, which is what validates it.
 
 The algorithm *is* readable, and it corrects a claim in `CharacterService`: the level is the **count
 of thresholds `<=` experience**, not one more than that count (signed `ble` at `0x6F9278`; the
