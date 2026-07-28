@@ -432,8 +432,8 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(((Number) rows.get(1).get("kills")).intValue()).isEqualTo(3);
 		assertThat(((Number) rows.get(1).get("score")).intValue()).isEqualTo(-3);
 
-		// Wire 0x23 is {u16 team slot, u16 seconds}; zeros in this frame land as 0/0.
-		assertThat(((Number) rows.get(0).get("team_slot")).intValue()).isEqualTo(0);
+		// Wire 0x23 is {u16 team-win flag, u16 seconds}; zeros in this frame land as 0/0.
+		assertThat(((Number) rows.get(0).get("team_win")).intValue()).isEqualTo(0);
 		assertThat(((Number) rows.get(0).get("seconds_in_game")).intValue()).isEqualTo(0);
 
 		// The 167-byte long form carries the 58-slot struct-B block (zeros in this frame).
