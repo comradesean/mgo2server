@@ -1,5 +1,9 @@
 # Lobbies
 
+> Rule selection, feature bits and player-count gates are indexed in `GATES.md`.
+> Note the axis difference: **Survival and Tournament are lobby types, not game
+> modes** — they are where you play, while the rule byte is what you play.
+
 ## What a lobby is
 
 MGO2 does not connect a player to one server. It walks a chain: a bootstrap server that hands out
