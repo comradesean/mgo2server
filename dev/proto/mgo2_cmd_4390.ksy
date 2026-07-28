@@ -346,9 +346,9 @@ seq:
   - id: lockon_stuns_dealt
     type: s2
     doc: |
-      [CONFIRMED-1] LOCK-ON STUNS DEALT — non-lethal knockouts scored with a lock-on.
-      Storage n10, blob key `0x2e`. 0/517 archived frames, because no archived round combined
-      a lock-on with a stun weapon.
+      [CONFIRMED] LOCK-ON STUNS DEALT — non-lethal knockouts scored with a lock-on.
+      Storage n10, blob key `0x2e`. It was 0/517 across the entire archive until 2026-07-27,
+      simply because no archived round had combined a lock-on with a stun weapon.
 
       **LIVE-CONFIRMED 2026-07-27** (Sneaking game 231): a player landed three lock-on stuns on
       one victim and wired exactly `3` here, with the victim wiring `3` in lockon_stuns_received
@@ -654,7 +654,7 @@ types:
       - id: unknown_b14
         type: s2
         doc: |
-          slot 15. [UNKNOWN] never observed nonzero (0/360 archived frames), including the
+          slot 15. [UNKNOWN] never observed nonzero (0/517 archived frames), including the
           ENVG round where the neighbouring b13/b15/b16 all ticked.
 
           NOT dedicated-host time — FALSIFIED, by the test the label's own doc specified.
@@ -1123,7 +1123,7 @@ types:
           rounds are what prove it (1+3=4, 3+7=10, 1+1=2, 1+3=4, ...): in 1v1 the relation
           is a trivial identity, which is exactly why the earlier kills-of-Snake reading
           survived — it was degenerate with b51 whenever only one spotter existed.
-          Structural: b53 and b54 are never both nonzero in one frame (0/360).
+          Structural: b53 and b54 are never both nonzero in one frame (0/517).
 
           WHAT A "SPOT" IS: shooting/hitting Snake, not passively sighting him — the alert
           symbol is the reveal that a hit causes. This is the key to the whole b51/b53/b55
@@ -1158,7 +1158,7 @@ types:
           the Snake's death count in 22/22 rounds (and equals 1 in the four rounds where he
           never died but was spotted — his one surviving life). So b55 counts LIVES, not
           spots, which is what separates it from b53: round 091106 wired sum(b53)=10 spots
-          against sum(b55)=5, with the Snake dead 5 times. b55 <= b53 in 360/360 frames.
+          against sum(b55)=5, with the Snake dead 5 times. b55 <= b53 in 517/517 frames.
 
           Why it looked degenerate with b51 (snake kills) for so long: a spot is triggered
           by SHOOTING Snake, so a one-shot kill produces exactly one spot, one kill and one
