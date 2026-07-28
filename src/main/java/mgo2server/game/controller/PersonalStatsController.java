@@ -72,6 +72,9 @@ public class PersonalStatsController implements IGameController {
 	/** The one signed column of the matrix — a round score can be negative. */
 	private static final int SCORE_COLUMN = 3;
 
+	/** Friend and blocked id arrays, 32 slots each, matching 0x4101. */
+	private static final int RELATION_LIST_IDS = 32;
+
 	private static final int NAME_LENGTH = 16;
 
 	/** The 128-byte comment field at wire offset 413, confirmed live via fingerprint v3. */
@@ -132,14 +135,15 @@ public class PersonalStatsController implements IGameController {
 		// 0x4101 layout, never observed — and after v2/v3 they are the only bytes of this packet
 		// that have been zero in every round while the per-mode grids also stayed zero. So they
 		// are fingerprinted too: logins 9001/9002, the 64 u32s as 8001–8032 and 8501–8532.
-		info.writeInt(9001).writeInt(9002);
+		// Login times: we do not record them. Zero rather than 9001/9002 — an invented epoch
+		// renders as a real date, and "never" is the honest answer.
+		info.writeInt(0).writeInt(0);
 		info.writeByte(1); // the lone u8 — 1 rather than 0 in case it gates display
-		for (var i = 0; i < 32; i++) {
-			info.writeInt(8001 + i);
-		}
-		for (var i = 0; i < 32; i++) {
-			info.writeInt(8501 + i);
-		}
+		// The friend and blocked lists are REAL ids, from chara_relation, the same source
+		// 0x4101 uses. They used to be fingerprints (8001+i / 8501+i), which fed the client 64
+		// character ids that do not exist.
+		writeRelationIds(info, charaId, CharacterService.RELATION_FRIEND);
+		writeRelationIds(info, charaId, CharacterService.RELATION_BLOCKED);
 
 		// TEMPORARY fingerprint v5 of the 0x4103 tail, now on the byte-exact layout read from
 		// the parser (0xd3e9ac, traced 2026-07-23): u32s carry 4001+, u16s 5101+, u8s distinct
@@ -158,11 +162,11 @@ public class PersonalStatsController implements IGameController {
 		for (var i = 0; i < 12; i++) {
 			info.writeShort(0);        // 12×u16 → T+0x1AB6.. — the privilege word must stay 0
 		}
-		info.writeInt(4002);           // u32 → T+0x1AD0
+		info.writeInt(0);              // u32 → T+0x1AD0 [UNKNOWN]
 		for (var i = 0; i < 9; i++) {
 			info.writeByte(61 + i);    // 9×u8 → T+0x1DE0..
 		}
-		info.writeInt(4003);           // u32 → T+0x1DEC
+		info.writeInt(0);              // u32 → T+0x1DEC [UNKNOWN]
 		for (var i = 0; i < 14; i++) {
 			info.writeByte(71 + i);    // 14×u8 → T+0x1DF0..
 		}
@@ -170,10 +174,10 @@ public class PersonalStatsController implements IGameController {
 			info.writeByte(91 + i);    // 5×u8 + 5×u8 → T+0x1DFE..
 		}
 		for (var i = 0; i < 5; i++) {
-			info.writeInt(4011 + i);   // 5×u32 → T+0x1E08..
+			info.writeInt(0);          // 5×u32 → T+0x1E08.. [UNKNOWN]
 		}
 		info.writeByte(44);            // u8 → T+0x1E1C
-		info.writeInt(4016);           // u32 → T+0x1E20
+		info.writeInt(0);              // u32 → T+0x1E20 [UNKNOWN]
 		BufferUtil.writeString(info, chara.get().getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);           // the confirmed 128-byte comment → T+0x1E24
 		info.writeByte(45);            // u8 → T+0x1EA5
@@ -181,9 +185,11 @@ public class PersonalStatsController implements IGameController {
 			info.writeByte(101 + i);   // 9×u8 → T+0x32B8..
 		}
 		for (var i = 0; i < 9; i++) {
-			info.writeInt(4021 + i);   // 9×u32 → T+0x32C4.. (the UI reads T+0x32D0 = 4024)
+			info.writeInt(0);          // 9×u32 → T+0x32C4.. — entry 7 is the HOST RATING
+			                           // denominator and rendered as "/ 4027 votes"; we measure no
+			                           // host rating, so 0 is the honest denominator
 		}
-		info.writeInt(4030);           // u32 → obj+0x30, not T
+		info.writeInt(0);              // u32 → obj+0x30, not T [UNKNOWN]
 
 		// The instructor block, real data as of V25. It was fingerprinted ("FP-STR-B" in the name,
 		// 4031 in the generation candidate), which told every character that they already had an
@@ -197,7 +203,7 @@ public class PersonalStatsController implements IGameController {
 		// either it is not the generation or the line needs more than this field. Sending the real
 		// value makes the next look at that screen a test rather than another fingerprint.
 		info.writeInt(instructor != null ? instructor.generation() : 0);
-		info.writeInt(4032);
+		info.writeInt(0);              // [UNKNOWN]
 		BufferUtil.writeString(info, "FP-STR-C", StandardCharsets.ISO_8859_1, NAME_LENGTH);
 		// [ELF] The clan emblem flag, not a spare byte. T+0x1AD8 is 6816 + 56, and the 0x4103
 		// parser writes this u8 with `addi r4,r24,56` off `r24 = profile+6816` (0xD3F3FC), so it
@@ -212,8 +218,11 @@ public class PersonalStatsController implements IGameController {
 		info.writeByte(clan.id() != 0
 			&& clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
 			? ClanService.EMBLEM_ON_DISPLAY : 0);    // u8 → T+0x1AD8 = profile+6872
-		info.writeInt(4033).writeInt(4034).writeInt(4035); // → T+0x32F0/F4/F8
-		info.writeInt(4036);           // trailing u32 → T+0x124
+		info.writeInt(0)               // → T+0x32F0
+			.writeInt(0)               // → T+0x32F4: the INSTRUCTOR SCORE denominator, rendered as
+			                           // "/ 4034 votes" until now. Same reasoning as host rating.
+			.writeInt(0);              // → T+0x32F8
+		info.writeInt(0);              // trailing u32 → T+0x124 [UNKNOWN]
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 
 		// Both stats surfaces, both periods, all derived from round_report at query time.
@@ -269,6 +278,17 @@ public class PersonalStatsController implements IGameController {
 	private void writeScoreRecord(ByteBuf tail, long[] slots) {
 		for (var slot = 1; slot <= TAIL_RECORD_INTS; slot++) {
 			tail.writeInt((int) Math.clamp(slots[slot], 0, 0xFFFFFFFFL));
+		}
+	}
+
+	/** The character's real friend or blocked ids, zero-padded to the fixed 32-slot array. */
+	private void writeRelationIds(ByteBuf info, long charaId, int relation) {
+		var ids = characterService.relationIds(charaId, relation, RELATION_LIST_IDS);
+		for (var id : ids) {
+			info.writeInt(id.intValue());
+		}
+		for (var i = ids.size(); i < RELATION_LIST_IDS; i++) {
+			info.writeInt(0);
 		}
 	}
 
