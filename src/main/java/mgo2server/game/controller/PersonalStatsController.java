@@ -262,8 +262,16 @@ public class PersonalStatsController implements IGameController {
 		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, weekly));
 
 		// Real values where we have them, fingerprints everywhere else. The three training slots
-		// are CONFIRMED labels (mgo2_cmd_4107.ksy) and we hold the data: round_report stores the
-		// host's own measurement of each player's presence, which is what these totals are.
+		// are CONFIRMED labels (mgo2_cmd_4107.ksy) and we hold the data — from chara_training_time,
+		// accumulated from presence, NOT from round_report (see CharacterService.trainingSeconds:
+		// the host only reports when a player leaves early, so a host who quit first reported
+		// nobody and lost whole sessions).
+		//
+		// Note the 0x4390 side has nothing to offer here and never did: its struct-B slot 46 was
+		// long labelled "training mode time" by the B-index = slot − 1 rule, and 2026-07-27 traced
+		// its writer to a Team Sneaking goal counter. The label on THIS slot (0x4107 slot 46) is
+		// still "Training Mode Time" and still correct — it was the wire-report source that was
+		// wrong, not the destination. Presence remains the right feed.
 		// Record 1 is lifetime and record 2 weekly; we have no period model, so weekly repeats the
 		// lifetime total rather than inventing a reset cadence.
 		var training = characterService.trainingSeconds(charaId);
