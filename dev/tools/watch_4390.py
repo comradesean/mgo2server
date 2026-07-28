@@ -84,13 +84,13 @@ B_NAMES = {
     28: "gako_defended", 29: "gako_pickups", 30: "fully_defended_matches",
     31: "rescue_solo_team_wipe", 32: "tsne_spots_made", 33: "tsne_times_spotted",
     34: "capture_goals", 35: "wakes", 36: "combo",
-    37: "assists", 39: "kill_1st_place", 40: "base_capture_time_points",
-    41: "rescue_carry_marker", 42: "rescue_carry_magnitude", 43: "tsne_first_pickup",
-    44: "tsne_carry_time", 45: "tsne_goals", 46: "capture_put_count",
-    47: "sne_bodysearches", 48: "sne_dogtags_collected", 49: "wins_as_snake",
-    50: "holdup_count", 51: "snake_kills", 52: "mk2_kills",
-    53: "times_spotted_snake", 54: "times_spotted_as_snake", 55: "first_to_spot_snake_per_life",
-    56: "rounds_as_snake", 57: "mk2_knockouts_dealt",
+    37: "assists", 38: "headshot_only_penalty_deaths", 39: "kill_1st_place",
+    40: "base_capture_time_points", 41: "rescue_carry_marker", 42: "rescue_carry_magnitude",
+    43: "tsne_first_pickup", 44: "tsne_carry_time", 45: "tsne_goals",
+    46: "capture_put_count", 47: "sne_bodysearches", 48: "sne_dogtags_collected",
+    49: "wins_as_snake", 50: "holdup_count", 51: "snake_kills",
+    52: "mk2_kills", 53: "times_spotted_snake", 54: "times_spotted_as_snake",
+    55: "first_to_spot_snake_per_life", 56: "rounds_as_snake", 57: "mk2_knockouts_dealt",
 }
 
 # Slots whose label is still [PREDICTED] in the ksy — printed with a trailing '?' so the

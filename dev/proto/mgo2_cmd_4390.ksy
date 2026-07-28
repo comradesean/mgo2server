@@ -919,47 +919,51 @@ types:
       - id: assists
         type: s2
         doc: "slot 38 (unmapped on screen). [CONFIRMED] assists; scores *3. Earned by stun-setups before a teammate's kill AND by each successful scan (3 in a 1v1 hack round). Damage-only setups earn nothing."
-      - id: unknown_b38
+      - id: headshot_only_penalty_deaths
         type: s2
         doc: |
-          slot 39. [UNKNOWN what to call it] never observed nonzero (0/517). Storage index n44,
-          blob key `0x72`. Scores nothing (score-table column 11 is zero in all 11 rules) and
-          renders on no stats page.
+          slot 39. [CONFIRMED-1] deaths caused by the **HEADSHOTS ONLY penalty**. Storage index
+          n44, blob key `0x72`. Scores nothing (score-table column 11 is zero in all 11 rules) and
+          renders on no stats page. 0/551 archived frames, for a checkable reason: **every archived
+          round carried `flags = 0`**, and this needs the flag set.
 
-          PRECISELY CHARACTERISED, DELIBERATELY UNNAMED (2026-07-27, after two false starts).
+          NAMED 2026-07-28, after two earlier readings that were wrong (a "script-bound listener"
+          that turned out to be dead code, and a mis-attributed key). The chain, end to end:
 
-          It is **host-side**, and it fires on a **self-inflicted death in player state 191**,
-          in a round whose flags byte has **bit `0x4`** set. The chain:
-          - Written at `0x6ED784` (`li r4,114` = key `0x72` at `0x6EDA00`) as **event 8** of a
-            host-only numbered player-event dispatcher `0x6ED650`, `f(eventId, playerSlot)` —
-            31 callers, jump table at `0x6ED6E0`.
-          - Event 8 has exactly one raiser in the binary: `bl 0x6ED650` at `0x778D20`, preceded
-            at `0x778D0C` by `0x6EF930(slot, slot, 0, 0)` — a kill whose victim IS the killer.
-          - It sits in `0x778380`, the death-cause classifier (the same function raises event 6
-            on damage-cause 141 and event 7 on causes 65/67), on the branch
-            `player->[0x90] == 191`, after a `[this+0x200]` countdown expires with flag bit 56
-            of `[this+0x368]` set. State 191 is written in one place only: `li r9,191;
-            stw r9,0x90(r29)` at `0x3A841C`, under `mode == 1` of the virtual method `0x3A81B8`.
-          - The mode guard `0x6A9948` reads the third byte of the `[rule, map, flags]` round
-            triple the host pushes in `0x4310` at `0xA3 + 3*round`. Only bits `0x2` and `0x4`
-            are ever tested binary-wide; this slot is on bit `0x4`, alongside the kill/melee/CQC
-            announcement paths.
+          - **Round-flags bit `0x4` is "Headshots Only"**, a per-round host toggle in Create Game.
+            The game's own English tooltip: *"When enabled, if a player is not taken down by a
+            headshot, a penalty will be handed to the shooter."* Bit `0x2` is **"Drebin Points
+            Enabled"**. The two are a THREE-WAY RADIO, not independent bits — 0 Normal, 2 Drebin
+            Points, 4 Headshots Only — which is why only those two values are ever tested.
+            Recovered from the labelled lobby menu table at `0xFE7084/88/8C` (neighbours
+            `obj_4_select_others`, `icon_drebin_point`, `icon_HSonly`), rows built at
+            `0x8AD6B4`..`0x8AD838`, label ordinals 400/402/403 and tooltips 409/411/412.
+          - **Player state 191 is the Headshots-Only penalty state.** One entry point in the whole
+            binary: `li r4,191` at `0x77B0DC` / `bl 0x3A5620` at `0x77B0E0`, reachable only when
+            bit 63 of `[chara+0x368]` is set — written only at `0x76C27C` inside `0x76C1D0`, whose
+            only caller is `0x77864C`, itself gated on `roundFlags & 0x4` at `0x778610`. Nothing
+            else can put a player in state 191.
+          - The death itself is a self-kill: `0x6EF930(slot, slot, 0, 0)` at `0x778D0C`, then
+            `li r3,8; bl 0x6ED650` at `0x778D18`/`0x778D20` — event 8 of the host-only player-event
+            dispatcher, whose arm stores key `0x72` at `0x6ED784`.
 
-          State 191 and flags bit `0x4` are unnamed — no string, resource hash, error code or
-          script token touches either. So the mechanism is known to the instruction and the
-          NAME is still absent, which is the honest place to stop.
+          TO MOVE IT: host a round with the third "others" row selected; `checkHostSettings` should
+          log `flags=4`. Free visual tell — the round list draws Headshots-Only rounds **light blue**
+          (`0x3BCFFF`) and Drebin-Points rounds **pink** (`0xE12682`); those two constants are RGB
+          colours, not resource hashes.
 
-          FALSIFIABLE PREDICTION, for whoever gets a round that moves it: because the raiser is
-          a self-kill, **b38 and b03 (suicides) must move together on the same player in the
-          same report.** If b38 ever ticks without b03, this whole chain is wrong.
+          PREDICTIONS that would confirm it, and falsify it if wrong: b38 and b03 (suicides) must
+          move together, since the raiser is `kill(slot, slot, 0, 0)`; `deaths` also increments; the
+          death names **no killer and no weapon** (damage cause 0 = `NONE`); and b38 must stay 0 in
+          Normal and Drebin rounds.
 
-          TWO EARLIER READINGS OF THIS SLOT WERE WRONG, both recorded here as a warning.
-          A "script-bound listener with no caller" was identified as the sole writer; that block
-          (`0x6EC250`..`0x6ECA98`) is **dead code** — its descriptor `0x1014868` is absent from
-          the native-command registry, the byte pattern occurs nowhere in the 17 MB binary at
-          any alignment, and no branch targets it. And the "one writer" claim was an artefact of
-          recovering keys by scanning backwards for the nearest `li r4` across a dispatcher whose
-          arms share one increment tail.
+          HONEST GAP, stated rather than smoothed: the arming site tests only the victim's
+          down-state, **not** whether the takedown was a headshot. So either those down-states are
+          themselves headshot-specific, or the penalty is broader than the tooltip claims. One live
+          headshot kill in a Headshots-Only round settles it. Also unresolved: which rules ALLOW
+          bit `0x4` lives in runtime `.bss` (read it off the greyed-out row live), and who sets
+          bit 56 of `[controller+0x368]` is a virtual slot-`0xC4` method whose callers do not
+          resolve statically.
       - id: kill_1st_place
         type: s2
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
