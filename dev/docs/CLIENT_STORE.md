@@ -60,6 +60,10 @@ The other ~37 fields are unidentified because nothing has needed them.
 
 ## 3a. Records 1–24: the scoreboard row, and the keys that build it
 
+**Confirmed live 2026-07-28.** Sending the worn title at `0x4122` wire `0xef` made the animal-rank
+badge appear on the scorecard, which validates this whole publishing path — a server byte reaching a
+P2P-replicated per-slot record and being drawn from it.
+
 The per-slot player blobs are what the in-game scorecard draws each row from. Identified
 2026-07-28 while chasing a missing animal-rank badge:
 
