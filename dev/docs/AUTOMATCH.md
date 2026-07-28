@@ -328,6 +328,47 @@ Known real automatch values so far, **two of the six rules we serve**:
 
 Still needed: DM, RES, CAP, BASE. Each is one observed automatch game of that rule.
 
+### The decoded timer array, and the client's defaults
+
+`0x4310` wire `0xFC`, block offset 100: **seventeen u32s**, eight rules. `PROTOCOL.md` carried this
+as a single line reading "per-rule timers/rounds/tickets" until 2026-07-28.
+
+| index | rule | field | client default |
+| --- | --- | --- | --- |
+| 0 / 1 | **SNE** (4) | time / rounds | 8 / 4 |
+| 2 / 3 | **CAP** (3) | time / rounds | 4 / 4 |
+| 4 / 5 | **RES** (2) | time / rounds | 4 / 4 |
+| 6 / 7 / 8 | **TDM** (1) | time / rounds / tickets | 3 / 4 / 15 |
+| 9 / 10 | **DM** (0) | time / tickets | 5 / 30 |
+| 11 / 12 | **BASE** (5) | time / rounds | 5 / 4 |
+| 13 / 14 | **BOMB** (6) | time / rounds | 30 / 4 |
+| 15 / 16 | **TSNE** (7) | time / rounds | 10 / 4 |
+
+Plus **SNAKE at block 189** (`0x4310` wire `0x14a`), default 3 — Sneaking's third on-screen setting,
+which is not in this array. Times are minutes; the client multiplies exactly the eight time indices
+by 60 at `0x8CA470`, which is what fixes the 2/2/2/3/2/2/2/2 shape.
+
+Deathmatch is the one rule with no rounds slot.
+
+### What the server sends today
+
+`AutomatchSettingsBlock` starts from a captured **client-default block** and overrides only what has
+been observed. Everything not in the observed table is a **placeholder that is known to be wrong** —
+the retail service authored its own values, and we have two of the six rows.
+
+The defaults are used rather than something invented because they are a real, fixed, self-consistent
+table from the game itself; swapping in a real row is one line in `AUTOMATCH_TIMERS` per rule.
+
+Also fixed by the server, and these parts are *not* placeholders:
+
+| | value | why |
+| --- | --- | --- |
+| rotation | one entry per distinct requested rule, contiguous from 0 | observed |
+| rotation index | 0 | client copies entry `idx` to 0 without clearing `idx` |
+| `flags[]` | 0 | the only rule-option value legal for every rule |
+| map | one of `{2,3,4,7,12}` | the disc's `map_bit`, and the five stage dirs |
+| max players | 16 | client default |
+
 ### The map pool, and why the masks do not constrain us (2026-07-28)
 
 The lobby stage script's `-rule_bit 191 -map_bit 4252 ×9 -ruleopt_bit 6 6 6 6 4 6 0` is consumed by
