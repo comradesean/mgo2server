@@ -363,14 +363,31 @@ public class Automatch {
 	}
 
 	/**
-	 * How many more players this searcher is waiting for, for the client's "Players Needed" figure.
-	 * <p>
-	 * Zero is not "nobody else needed" — the client renders zero as the placeholder string rather
-	 * than a number (disc strings 916/917 and 48), which is the right thing to show when the answer
-	 * is not meaningful yet.
+	 * How many more players <b>this searcher</b> needs before a match can form — counted among the
+	 * searchers they can actually reach, not the queue as a whole.
+	 *
+	 * <p>Per-recipient for the same reason the band is: a match needs {@code minPlayers} people whose
+	 * level windows overlap, so a global count can say "nobody else needed" while the matchmaker
+	 * refuses to match anyone. That is not a hypothetical — it was observed live with two searchers
+	 * whose windows had not yet met: the queue held two, the figure went to zero, and the client
+	 * rendered <b>"????"</b>, which is disc string 48, the placeholder it shows for a zero. Nonzero
+	 * prints through string 917 as a number.
+	 *
+	 * <p>So zero now means what the client takes it to mean — the answer is not meaningful — and any
+	 * real shortfall is a real number.
 	 */
-	public int playersNeeded() {
-		return Math.max(0, policy.minPlayers() - searchers.size());
+	public int playersNeeded(Searcher searcher) {
+		var reachable = searchers.values().stream()
+			.filter(other -> other.state() == State.SEARCHING)
+			.filter(other -> other.channel().isActive())
+			.filter(other -> windowsOverlap(searcher, other))
+			.count();
+		return (int) Math.max(0, policy.minPlayers() - reachable);
+	}
+
+	/** The figure for a searcher who has only just arrived, before they are in the queue. */
+	public int playersNeededOnArrival() {
+		return Math.max(0, policy.minPlayers() - 1);
 	}
 
 	/**
@@ -409,14 +426,14 @@ public class Automatch {
 			return;
 		}
 
-		// The longest-waiting searcher anchors the group, and everyone whose window TOUCHES theirs
-		// joins it. Touching, not containment: each searcher carries their own window that widens
-		// with their own wait, so a player who has waited ten minutes reaches out to a newcomer
-		// rather than both having to fit inside one shared band. That is also exactly what each
-		// client draws for itself.
+		// The longest-waiting searcher anchors the group, and everyone whose window OVERLAPS theirs
+		// joins it — sharing a level, not merely sitting adjacent. Each searcher carries their own
+		// window that widens with their own wait, so a player who has waited ten minutes reaches out
+		// to a newcomer rather than both having to fit inside one shared band. That is also exactly
+		// what each client draws for itself.
 		var anchor = queued.get(0);
 		var waiting = queued.stream()
-			.filter(searcher -> windowsTouch(anchor, searcher))
+			.filter(searcher -> windowsOverlap(anchor, searcher))
 			.toList();
 		if (waiting.size() < policy.minPlayers()) {
 			logger.debug("{} searching but only {} within reach of level {} (band {}); waiting.",
@@ -577,10 +594,19 @@ public class Automatch {
 	}
 
 	/**
-	 * Whether two searchers can see each other: the gap between their levels is no wider than the
-	 * sum of the two half-widths.
+	 * Whether two searchers can see each other: their level windows <b>share at least one level</b>.
+	 *
+	 * <p>A window is {@code [level - band, level + band]}, so they overlap exactly when the gap
+	 * between the levels is no wider than the sum of the two half-widths. The {@code <=} is the
+	 * boundary case and it is deliberate: at equality the windows overlap in precisely one level —
+	 * the higher player accepts down to it and the lower accepts up to it — which is a match. One
+	 * further apart and there is no shared level, so it is not, however close it looks on a gauge.
+	 *
+	 * <p>Note the bands widen on the same schedule, so the <em>sum</em> grows by two at each step.
+	 * A pair four levels apart goes from unreachable to sharing a level in a single tick, with
+	 * nothing in between — which on one client's gauge can look like an early match and is not.
 	 */
-	private boolean windowsTouch(Searcher a, Searcher b) {
+	private boolean windowsOverlap(Searcher a, Searcher b) {
 		return Math.abs(a.level() - b.level()) <= band(a) + band(b);
 	}
 
@@ -639,8 +665,6 @@ public class Automatch {
 			var level = Math.min(Math.max(searcher.level(), 0), AutomatchPackets.COLUMNS - 1);
 			matching[level]++;
 		}
-		var needed = playersNeeded();
-
 		for (var searcher : searchers.values()) {
 			// Only clients still searching. Once a match has been announced the client has left state
 			// 6 for state 12 or 18, and while event 42 is documented as repainting in place, nothing
@@ -655,7 +679,8 @@ public class Automatch {
 			var buffer = channel.alloc().buffer(AutomatchPackets.SEARCH_PANEL_SIZE);
 			// The band is per recipient: it is that searcher's own window, so the lit range on their
 			// gauge widens visibly the longer they wait.
-			AutomatchPackets.writeSearchPanel(buffer, matching, inGame, band(searcher), needed);
+			AutomatchPackets.writeSearchPanel(buffer, matching, inGame, band(searcher),
+				playersNeeded(searcher));
 			channel.writeAndFlush(new GamePacket(AutomatchPackets.SEARCH_PANEL, buffer));
 		}
 	}

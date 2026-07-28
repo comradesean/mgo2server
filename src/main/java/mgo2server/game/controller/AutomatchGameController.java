@@ -152,7 +152,10 @@ public class AutomatchGameController implements IGameController {
 			// re-sent on every 0x43e4. The client lights [myLevel - band, myLevel + band] around a
 			// centre it computes itself, so this is the literal truth about their search.
 			.writeByte(policy.bandAfter(java.time.Duration.ZERO))
-			.writeByte(automatch.playersNeeded());
+			// This searcher has just been enqueued and can always reach themselves, so the shortfall
+			// is minPlayers - 1. The per-recipient figure that accounts for who they can actually
+			// reach follows on the next 0x43e4.
+			.writeByte(automatch.playersNeededOnArrival());
 		ctx.write(new GamePacket(START_AUTOMATCH_RESULT, buffer));
 	}
 
