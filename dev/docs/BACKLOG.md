@@ -614,3 +614,32 @@ attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at).
 **Deferral rationale ended 2026-07-24**: the Personal Stats screen's weapon-specific lines
 (Knife Kills at minimum) derive from these tallies, not struct B — the knife round put its 4
 kills in 0x43a2 (weapon id 1) and nowhere else. Build the table at the next natural deploy.
+
+## Team Sneaking may be OURS to enable — the mode shipped on the disc and was switched on server-side
+
+*Pinned 2026-07-27.* Rule 7 (Team Sneaking) is fully present on the retail BLUS30109 disc: the
+`Rule_Eng_TSNE` string, the `TSNE01`/`TSNE02` stat row labels, the TSNE-only `TSneAlertSec` timer,
+five struct-B slots with mode-guarded writers, and a complete 37-column score row emitted by all
+five real stage scripts. The client's mode selector nevertheless does not offer it.
+
+Community research (tier 3-4, labelled as such in OBSERVED.md) says TSNE went live **2008-07-04,
+three weeks after the 2008-06-12 launch, free, via a SERVER-SIDE maintenance rather than a client
+patch** — Engadget and Gematsu day-of coverage plus the 2ch MGO2 wiki agree, and Konami's own
+archived VERSION UPDATE page lists no client version that adds it (the first mention is 1.11 on
+07/25 *tuning* a rule that already exists). A mode switched on server-side must already be on the
+disc, which is exactly what the binary shows.
+
+**So "the client doesn't offer TSNE" is probably a gating question, not missing content — and the
+gate may be on our side of the wire.** That would move five slots (b32, b33, b43, b44, b45) from
+"structurally unreachable" to "testable", and would make rule 7's score row exercisable.
+
+Where to look: whatever the client consults when populating the rule selector during game
+creation. Candidates are the lobby list entries (`0x4902`), the lobby/hub capability or settings
+exchange, and the host-settings validation path — the `0x4310` handler already logs the chosen
+rule, so the question is what makes rule 7 selectable *before* that point. No community source
+documents a minimum player count for TSNE, and the 2ch wiki notes the target count scales with
+participants and that briefing auto-balances lopsided teams, so a small-lobby test is plausible
+if the mode can be surfaced at all.
+
+Worth doing because it is cheap to investigate and would unlock the largest remaining block of
+unexercised slots in `0x4390`. Not urgent: nothing is broken without it.
