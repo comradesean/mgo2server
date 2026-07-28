@@ -297,8 +297,36 @@ RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r` was a tier
 corroborated by the client scaling exactly the eight *time* indices by 60 (`0x8CA470`) and by TDM's
 observed 5/4/25 landing on indices 6, 7, 8 in order.
 
-**Open:** SNE showed a third figure ("kill Snake 3") and this ordering gives SNE two slots. Either
-that value lives outside the block or the three-field rule is not TDM alone.
+**Resolved the same day.** SNE's third figure is not in the array at all — it is the byte at
+`0x4310` wire `0x14a` (block 189), which our docs labelled "sneaking Snake side". It reads 3 in every
+stored blob, which is the client's default SNAKE setting. So all eight rules are `{time, rounds}`
+here and TDM alone carries the third slot.
+
+The ordering is now **confirmed, not inferred**: four stored blobs from characters who had never
+edited a timer read `[0]=8 [1]=4` and `[6]=3 [7]=4 [8]=15`, matching the client's own defaults for
+Sneaking (8/4) and Team Deathmatch (3/4/15) at exactly the predicted indices.
+
+### The original server authored these values — proof
+
+| | client default | observed in a real automatch game |
+| --- | --- | --- |
+| TDM | 3 / 4 / **15** | 5 / 4 / **25** |
+| SNE | **8** / 4 / 3 | **7** / 4 / 3 |
+
+Both differ from the defaults, so the automatch server set its own timers rather than letting any
+host's saved settings through. **This retires the "maybe it just used the host's settings" reading
+as an explanation of the retail behaviour** — it is now known not to be what Konami did, and the
+fallback in `AutomatchSettingsBlock` is a stand-in with a known-wrong provenance rather than an
+untested one.
+
+Known real automatch values so far, **two of the six rules we serve**:
+
+| rule | time | rounds | extra |
+| --- | --- | --- | --- |
+| TDM (1) | 5 | 4 | tickets 25 |
+| SNE (4) | 7 | 4 | SNAKE 3 |
+
+Still needed: DM, RES, CAP, BASE. Each is one observed automatch game of that rule.
 
 ### The map pool, and why the masks do not constrain us (2026-07-28)
 
@@ -364,7 +392,7 @@ and the three capture-proven `0x4310` anchors land where they should.
 | 168 | 2 | unique characters red/blue | `0x140` |
 | 177 / 178 | 1 / 1 | commonA / commonB | `0x142` / `0x143` |
 | 180 / 182 | 2 / 2 | idle kick u16 / team-kill kick u16 | `0x145` / `0x147` |
-| 188 / 189 | 1 / 1 | capture extra time / sneaking Snake side | `0x149` / `0x14A` |
+| 188 / 189 | 1 / 1 | capture extra time / **sneaking SNAKE count** | `0x149` / `0x14A` |
 | 190–203 | 14 | byte timers, extra-time flags | `0x14B` |
 
 **One off-by-one to re-check, not resolved here:** `PROTOCOL.md` puts non-stat at `0x4310` wire
