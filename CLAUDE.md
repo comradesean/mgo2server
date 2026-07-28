@@ -57,6 +57,9 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/ADDRESSES.md` — **the address index**: where every load-bearing finding lives in
   `MGO2.elf`, by subsystem, plus the PPC64/OPD gotchas and the methodology notes that survived
   three wrong readings. Start here before opening a disassembler.
+- `dev/docs/AWARDS.md` — titles and medals: all 22 titles with the game's own descriptions (which
+  are the requirements), the 13 medal families and their tiers, and the granting policy. Both are
+  **server-driven**, so every threshold here is operator policy we chose.
 - `dev/docs/GATES.md` — **the switches**, on one page: feature bits we send that hold client
   features closed (Team Sneaking is ours to open), the per-round Headshots-Only / Drebin-Points
   flag, player-count thresholds, what the client computes for itself and must never be sent, and
