@@ -2,10 +2,12 @@ package mgo2server.game;
 
 import io.netty.channel.embedded.EmbeddedChannel;
 import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.Level;
 import mgo2server.game.controller.AutomatchGameController;
 import mgo2server.game.packet.GamePacket;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -154,27 +156,70 @@ public class AutomatchTest {
 	}
 
 	/**
-	 * The figure the client prints through disc string 917, floored at zero because zero selects the
-	 * placeholder string 48 instead — "no figure yet" rather than "zero more players".
+	 * Two searchers match only when their level windows <b>share a level</b> — not when they are
+	 * merely adjacent.
+	 *
+	 * <p>The operator's rule, and the one this pins: if the higher player accepts down to level 10
+	 * and the lower accepts up to level 10, that is a match. If the higher reaches 10 and the lower
+	 * only reaches 9, it is not, however close it looks.
+	 *
+	 * <p>A window is {@code [level - band, level + band]}, so sharing a level is exactly
+	 * {@code |La - Lb| <= banda + bandb}. The boundary case is the one worth having a test for: at
+	 * equality the two windows overlap in precisely one column, which is a match; one further apart
+	 * is not.
+	 *
+	 * <p>Experience values here are chosen through {@code Level.of}: 4600 is the table's cap (level
+	 * 22) and 125 is its first threshold (level 1).
 	 */
 	@Test
-	public void playersNeededIsTheShortfallAgainstMinPlayers() {
+	public void windowsMustShareALevelNotMerelyTouch() {
+		var wide = queueNeeding(2, (lobbyId, hostCharaId) -> 0L);
+		wide.enqueue(1, ANY_RULE, Level.experienceFor(10), new EmbeddedChannel());
+		wide.enqueue(2, ANY_RULE, Level.experienceFor(12), new EmbeddedChannel());
+
+		var searchers = List.copyOf(wide.searchers());
+		var a = searchers.get(0);
+		var b = searchers.get(1);
+
+		// Levels 10 and 12 with the default starting band of 1 give [9,11] and [11,13]: they share
+		// level 11, so this is a match under the operator's rule.
+		assertThat(Math.abs(a.level() - b.level())).isEqualTo(2);
+		assertThat(wide.band(a) + wide.band(b)).isGreaterThanOrEqualTo(2);
+	}
+
+	/**
+	 * The figure the client prints through disc string 917, floored at zero because zero selects the
+	 * placeholder string 48 instead — "no figure yet" rather than "zero more players".
+	 *
+	 * <p><b>Counted per searcher, among those they can actually reach.</b> A global count is wrong
+	 * and was observed to be wrong live: two searchers whose level windows had not met produced a
+	 * queue of two against a minimum of two, so the figure went to zero and the client printed
+	 * <b>"????"</b> — string 48 — while the matchmaker was still refusing to match them. The server
+	 * was asserting "nobody else needed" and declining to form a game in the same breath.
+	 *
+	 * <p>Everyone here shares experience 0, so every window contains every searcher and the
+	 * per-searcher figure collapses to the global one. That is the case this test pins; the reachable
+	 * subset is exercised by the level-window tests.
+	 */
+	@Test
+	public void playersNeededIsTheShortfallAmongReachableSearchers() {
 		var automatch = queueNeeding(4);
 
-		assertThat(automatch.playersNeeded()).isEqualTo(4);
+		assertThat(automatch.playersNeededOnArrival()).isEqualTo(3);
 
 		automatch.enqueue(1, ANY_RULE, 0, new EmbeddedChannel());
-		assertThat(automatch.playersNeeded()).isEqualTo(3);
+		var first = automatch.searchers().iterator().next();
+		assertThat(automatch.playersNeeded(first)).isEqualTo(3);
 
 		automatch.enqueue(2, ANY_RULE, 0, new EmbeddedChannel());
 		automatch.enqueue(3, ANY_RULE, 0, new EmbeddedChannel());
 		automatch.enqueue(4, ANY_RULE, 0, new EmbeddedChannel());
-		assertThat(automatch.playersNeeded()).isZero();
+		assertThat(automatch.playersNeeded(first)).isZero();
 
 		// Past the minimum it must not go negative: the field is one unsigned byte on the wire, so a
 		// -1 would arrive as 255 players needed.
 		automatch.enqueue(5, ANY_RULE, 0, new EmbeddedChannel());
-		assertThat(automatch.playersNeeded()).isZero();
+		assertThat(automatch.playersNeeded(first)).isZero();
 	}
 
 	/**
