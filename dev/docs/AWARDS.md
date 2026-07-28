@@ -228,6 +228,34 @@ never be earned in v1. And several thresholds are per-round averages that will b
 over a handful of rounds — a minimum play time is part of the original design ("certain sets of
 ranks require a certain amount of play time") and the guide never pins it.
 
+
+### Medals — IMPLEMENTED 2026-07-28 (operator policy)
+
+**A medal is earned when the career statistic reaches the number the client prints in that medal's
+own description.**
+
+That is the whole rule, and the justification is narrow but solid: the `0xE139C0` "threshold" is
+display text the client sprintf's into the caption *after* the gate, never a condition. So awarding
+at exactly that number is the one choice that makes the screen truthful — a medal captioned
+"500 Mk.II destructions" is granted at 500 Mk.II destructions. Any other number leaves the client
+stating a requirement we did not apply. The original server's rule is unobservable, so this is
+policy, not recovery.
+
+**No award state is stored.** Every source is a career sum or a career maximum, so it only grows
+and a medal cannot un-earn itself. "Medals latch" therefore needs no table — `medalBits()` derives
+the 16-byte field at query time, like everything else on these screens.
+
+**Twelve families are implemented, not thirteen.** Ids 80/81/82 ("%d targets captured") are in the
+threshold table but the client's accessor (`0xD5C2A8`) has **no arm for those ids**, so no bit can
+draw them. That also disposes of the one family with no mapped statistic — it was unreachable
+either way.
+
+Families that cannot light yet, for reasons already documented:
+
+- **consecutive kills / headshots / deaths** read `0x4107` slots 1-3, served as zero until stage
+  boundaries are stored (BACKLOG). They are implemented and will start working that day.
+- **Mk.II destructions** needs a 12-player Sneaking round (`GATES.md` §4).
+
 ### Still undecided
 
 Whether to implement **release-day behaviour** (one title, career stats, recomputed on change) or

@@ -386,6 +386,84 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		assertThat(slot(tail, 1, 48)).isZero();
 	}
 
+	// --- Medals: the 16-byte bitfield at 0x4103 wire 615 ------------------------------------
+
+	/** The medal bitfield, 16 bytes at wire 615 of the 0x4103 payload. */
+	private static byte[] medalField(GamePacket info) {
+		var field = new byte[16];
+		info.getPayload().getBytes(615, field);
+		return field;
+	}
+
+	/**
+	 * The regression this whole area exists for. We sent the literal string "FP-STR-C" into the
+	 * medal bitfield; its byte 4 is 'T' = 0x54, whose bit 6 is medal id 65 — "500 Mk.II
+	 * destructions" — and the whole word lit 17 medals on every character alive. A player with no
+	 * rounds must earn nothing.
+	 */
+	@Test
+	public void aCharacterWithNoRoundsEarnsNoMedals() {
+		givenSelectedCharacter("Snake");
+
+		var field = medalField(statsBurst().get(0));
+
+		assertThat(field).containsOnly((byte) 0);
+		// The specific bit that produced the reported phantom, named so a regression is obvious.
+		assertThat(field[4] & (1 << 6)).as("medal id 65, 500 Mk.II destructions").isZero();
+	}
+
+	/**
+	 * Thresholds are the numbers the client PRINTS in each medal's description, so awarding at
+	 * exactly those numbers is what makes the screen truthful. 500 total kills earns tier 1
+	 * (id 30, byte 1 bit 4) and nothing above it.
+	 */
+	@Test
+	public void totalKillsEarnsExactlyTheTiersItReaches() {
+		givenSelectedCharacter("Snake");
+		givenReport(0, "kills", "499");
+
+		var justUnder = medalField(statsBurst().get(0));
+		assertThat(justUnder[1] & (1 << 4)).as("499 kills is not 500").isZero();
+
+		givenReport(0, "kills", "1");
+
+		var atThreshold = medalField(statsBurst().get(0));
+		assertThat(atThreshold[1] & (1 << 4)).as("id 30, 500 total kills").isNotZero();
+		assertThat(atThreshold[1] & (1 << 5)).as("id 31 needs 2000").isZero();
+		assertThat(atThreshold[1] & (1 << 6)).as("id 32 needs 10000").isZero();
+	}
+
+	/**
+	 * Consecutive TDM survivals is the one max-family medal we can serve: slot 25 comes from b24,
+	 * an absolute per-stage snapshot, so the career value is a max and needs no stage boundary.
+	 */
+	@Test
+	public void consecutiveSurvivalsEarnsItsMedalFromAMaxNotASum() {
+		givenSelectedCharacter("Snake");
+		givenReport(1, "detail_counters", detail(25, 2));
+		givenReport(1, "detail_counters", detail(25, 2));
+
+		// Two rounds of 2 is still a best of 2 — the 4-tier must not light from a sum.
+		var field = medalField(statsBurst().get(0));
+		assertThat(field[3] & (1 << 0)).as("id 50, 2 consecutive survivals").isNotZero();
+		assertThat(field[3] & (1 << 1)).as("id 51 needs 4, and 2+2 is not 4").isZero();
+	}
+
+	/**
+	 * The families whose source is served as zero must stay dark, and say so — these are the
+	 * medals that will start working the day stage boundaries are stored.
+	 */
+	@Test
+	public void theStreakMedalsStayDarkWhileTheirSlotsAreZeroed() {
+		givenSelectedCharacter("Snake");
+		givenReport(0, "detail_counters", detail(1, 99, 2, 99, 3, 99));
+
+		var field = medalField(statsBurst().get(0));
+
+		assertThat(field[0]).as("consecutive kills, headshots and deaths all read zeroed slots")
+			.isZero();
+	}
+
 	/** A bad id gets 0x4103 alone with a nonzero status; the client error-completes on it. */
 	@Test
 	public void unknownCharacterGetsAnErrorStatus() {
