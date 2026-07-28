@@ -251,17 +251,17 @@ announce itself as a `No handler for command …` line once players have collect
 | `0x43C9` | parses | 8 B | Start-round reply (reply to 0x43c8) | served |
 | `0x43D0` | sends | 1 B | Training parameter fetch | served † |
 | `0x43D1` | parses | variable | Training parameters (reply to 0x43d0) | served † |
-| `0x43E0` | sends | 1 B | Automatch status fetch — spec calls it automatch (PROTOCOL.md-backed via 0x43e1); COMMANDS.md still files 0x43e0/0x43e2 as "an in-match subsystem" and as a gap | served † |
-| `0x43E1` | parses | 6 B | Automatch status (reply to 0x43e0) | served † |
-| `0x43E2` | sends | empty | Automatch subsystem command — spec calls it automatch; COMMANDS.md files it as an unidentified in-match subsystem and a gap | gap |
-| `0x43E3` | parses | 4 B | Automatch ack (reply to 0x43e2) | unsent |
-| `0x43E4` | parses | 36 B | Automatch state push (UNSOLICITED, no result field) | unsent |
-| `0x43F0` | parses | variable | [UNKNOWN] In-match subsystem push (UNSOLICITED, no result field) | unsent |
-| `0x43F1` | parses | variable | [UNKNOWN] In-match game-settings push (UNSOLICITED, no result field) | unsent |
-| `0x43F2` | parses | 4 B | [UNKNOWN] Unidentified in-match notification | unsent |
-| `0x43F3` | parses | 4 B | [UNKNOWN] Unidentified in-match notification | unsent |
-| `0x43F4` | parses | unread | [UNKNOWN] Unidentified in-match notification, EMPTY payload | unsent |
-| `0x43F5` | parses | unread | [UNKNOWN] Unidentified in-match notification, EMPTY payload | unsent |
+| `0x43E0` | sends | 1 B | **START automatching**, u8 = rule filter (11 = any). Renamed 2026-07-28 — see [AUTOMATCH.md](AUTOMATCH.md) | served |
+| `0x43E1` | parses | 6 B | Start reply: u32 result, then (result 0 only) u8 level band, u8 players-needed | served |
+| `0x43E2` | sends | empty | **CANCEL automatching** | served |
+| `0x43E3` | parses | 4 B | Cancel reply, u32 result. **Must send** — unanswered gives 4933 | **gap** |
+| `0x43E4` | parses | 36 B | Search panel push: 23-column level histogram + band + players-needed. Cosmetic; cannot stall | unsent |
+| `0x43F0` | parses | 78 B | Automatch push, event 43 — **the automatch screen ignores it** | unsent |
+| `0x43F1` | parses | 223 B | **THE MATCH.** u32 host chara id + 204-byte settings block. Without it a search can only time out | **gap** |
+| `0x43F2` | parses | 4 B | **u32 game id** — releases the joiners. Without it every joiner parks silently forever | **gap** |
+| `0x43F3` | parses | 4 B | Automatch failure push ⇒ error 4945 | unsent |
+| `0x43F4` | parses | unread | Automatch closed push ⇒ error 4929 | unsent |
+| `0x43F5` | parses | unread | Raises event 55 — **not** handled by the automatch screen; consumer unknown | unsent |
 
 ### Team and spectator (`0x44xx`)
 

@@ -2854,18 +2854,40 @@ unanswered `0x43d0` leaves behind.
 Answering it did **not** make the training Graduate action work; that is gated on player state
 elsewhere (see below).
 
-## `0x43e0` — automatch status fetch
+## `0x43e0` — start automatching
 
-**Client → server**, `HubGameController.getAutomatchStatus`. Sent on entry to the automatching
-lobby with a **single u8 argument** (observed 11). Neither reference server implements it.
+**Renamed 2026-07-28.** This was documented as a "status fetch sent on entry to the automatching
+lobby"; both halves were wrong. The full flow, the nine failure modes, the four commands we still
+do not send, and the disc's own UI strings are in **[AUTOMATCH.md](AUTOMATCH.md)** — read that
+rather than this section, which is kept only for the `0x43e1` byte layout.
+
+**Client → server**, `HubGameController.getAutomatchStatus`. Sent **on confirm** from state 4 of
+the automatch screen (`0x93CD58`), not on entry — the screen constructor `0x93B4D0` makes no
+network call at all. The **single u8 argument** (observed 11) is a **rule filter**: 0–5 are rule
+ids, 7 is Team Sneaking behind its feature bit, and **11 is the "Do not specify rules" sentinel**,
+deliberately outside the 0–10 range the label mapper accepts.
+
+That it is *start* rather than *status* is settled by the client's own error table: a timeout on
+this command's request slot raises 4931 *"…Unable to **start** automatching"* (`0x93CDD4`).
 
 ### Reply `0x43e1` — 6 bytes
 
-Parser `0xD5BFC0`: a u32 result, and **only if that result is zero**, two u8s — stored at
-`+0x14A1`/`+0x14A2` behind a "loaded" flag set at `+0x14A0`. Request-status 50 is signalled either
-way, so a nonzero result is a legitimate "nothing to report" rather than something the client
-chokes on. We send result 0 and two zero bytes; the two bytes are unidentified and there are no
-borrowed values to lean on.
+Parser **`0xD5BF98`** (the `0xD5BFC0` cited here before is an address *inside* that
+function): a u32 result, and **only if that result is zero**, two u8s — stored at
+`+0x114A1`/`+0x114A2` behind a "loaded" flag set at `+0x114A0`. Request-status 50 is signalled
+either way.
+
+**A nonzero result is not "nothing to report" — it is an error dialog.** −970 prints "Automatching
+is currently not open", −950 "Unable to start automatching", −541 "You are currently banned from
+creating and joining games", and every other nonzero value also lands on "Unable to start" with our
+number printed in it. Result 0 is also the *only* thing that registers the push channel, so nothing
+in the `0x43f*` family reaches the client until we send it.
+
+The two bytes are now identified, by crossing the ELF's reads against the disc's string table:
+**byte 1 is a level band half-width** (clamped 0–22, lighting a window on the 23-column "Entry
+Status" gauge centred on the player's own level) and **byte 2 is "Players Needed"**, printed
+through string 917 `%d` when nonzero and replaced by string 48 when zero. We send result 0 and two
+zero bytes, which is harmless but renders an empty panel.
 
 ## `0x4990` — get game entry info
 

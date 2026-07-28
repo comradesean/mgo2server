@@ -74,6 +74,10 @@ not an elimination if the thing varied could not have mattered.
   two lists the client keeps, what the port check dials, and the deployment rules that follow.
 - `dev/docs/STUN.md` — the UDP port check.
 - `dev/docs/CRYPTO.md` — every cipher, key and hash, and where each is applied.
+- `dev/docs/AUTOMATCH.md` — **automatching**, end to end: the 18-state client machine, the four
+  packets we still do not send, the discriminated result codes and the sentence each prints, the
+  three failures that are completely silent, and the disc string ids. Also the method for reading
+  disc string resources, which is what turned `LOBBIES.md`'s ids from guesses into evidence.
 - `dev/docs/ERRORS.md` — the client's own error table: 556 codes with the sentence each produces,
   generated from the binary by `dev/tools/dump_error_table.py`. Check here before inventing a code.
 - `dev/docs/HELP.md` — the TIPS panel: an HTTP document per topic, not a lobby command.
