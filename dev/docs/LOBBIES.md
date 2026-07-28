@@ -449,6 +449,27 @@ matters: the `ip` column is what the client dials next, so a wrong value breaks 
 most one row per subtype, so there is a single "Free Battle" category; the sub-list at `0x89147C`
 splits by lobby id, which is the same mechanism that already made two subtype-7 rows both appear.
 
+**The newbie/beginner lobby marking is UNSOLVED, and two candidates are eliminated.**
+Tested live 2026-07-28 against three clients, with every byte verified on the wire before the
+result was believed — an earlier round of this was a false negative because the value never left
+the database.
+
+| candidate | tested | result |
+| --- | --- | --- |
+| gate list `0x2003` entry `0x2d` bit 0 | `01` confirmed on the wire | no icon; a level 23 character entered freely |
+| hub list `0x4902` entry `0x07`, all bits | `ff` confirmed on the wire | no icon, no change of any kind |
+
+The second is the stronger result. Setting **every** bit of the flags byte at once means no single
+bit of it, and no combination, is *sufficient* to mark a lobby — the observation that would have
+confirmed one is an icon appearing on that row, the experiment could have produced it, and it did
+not. It does **not** eliminate `0x07` mattering in combination with hub entry bytes `0x05` or
+`0x06`, which we still send as zero and have never varied.
+
+What this leaves: the marking may be driven by a hub field we have never populated, computed
+client-side from the player rather than the lobby, or absent from this build. An ELF investigation
+is open. Do not add a third "restriction" field on the strength of a name until something is
+actually observed to change.
+
 **Lobby 8's beginners-only bit is set and currently rejects everyone.** See the restriction-bit
 section below: the client gates entry on its own `profile+13097`, nothing sets that byte yet, and
 the refusal is dialog 2355, *"You cannot login to this lobby."* Set
@@ -496,6 +517,11 @@ it, not the ordering itself.
   caller at `0x892220` then reads the *local* profile (`0xD3A094`, i.e. `session+22488`) at
   `profile+13097` and, if that byte is zero, raises dialog **2355** with code **-404**: *"You
   cannot login to this lobby."*
+
+  **Superseded in part, 2026-07-28.** That chain is real but is not what marks a newbie lobby: with
+  bit 0 confirmed on the wire, the icon did not appear and a level 23 character entered without an
+  error. So `0x884300`/`0x892220` exist and do what is described, and are simply not the mechanism
+  we were looking for — filing them as though they were is the mistake this note exists to record.
 
   So the lobby half works and the player half does not: **nothing sets `profile+13097`**. The only
   place we touch that offset is `0x4103` wire 301, which is the *remote* profile slot and is sent
