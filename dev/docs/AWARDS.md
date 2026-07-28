@@ -169,65 +169,87 @@ That also resolves what looked like a contradiction: the wire has both a 22-bit 
 equipped field, which reads like a collection plus a choice — but at launch the mask would carry a
 single bit and 541 would name that same title. The multi-bit collection is what 1.30 turned on.
 
-### Requirements, as reported
+### Requirements — two sources, both post-launch, and they disagree
 
-**The soldier ranks are the reliable ones**: the 1.30 notes say explicitly that "the requirements
-to obtain high ranking Titles remains the same", and that high ranking means HOUND and above. So
-these four should be release-day accurate:
+**Source A** — a community guide (GameFAQs, HeathclifFlowen), written pre-1.30 and annotated after
+it. Its own author says everything is "subject to MASSIVE scrutiny".
 
-| title | K/D (TDM + DM) | win % (Rescue, Capture, TSNE) | bases conquered / base rounds |
-| --- | --- | --- | --- |
-| FOXHOUND | >= 1.5 | >= 65% | > 1.2 |
-| FOX | >= 1.45 | >= 62.5% | > 1.1 |
-| DOBERMAN | >= 1.4 | >= 60% | > 1.0 |
-| HOUND | >= 1.3 | >= 55% | > 0.9 |
+**Source B** — a structured requirements list supplied by the operator, clearly from a *late*
+version: it covers RACE, BOMB and Stealth Deathmatch, and carries explicit **weekly** activity
+requirements.
 
-**Everything below HOUND was explicitly changed by 1.30**, and the guide's base numbers are its
-pre-1.30 findings with 1.30 notes appended — which makes the base numbers the closer ones for us:
+Both are **tier 3-4**. Neither describes release day. They disagree materially — Foxhound is
+`K/D >= 1.5` and 65% win in A, `(K+S)/(D+SR) >= 1.45` and 52.5% win in B — so at most one is right
+for any given patch, and possibly neither is right for ours.
 
-| title | requirement as reported |
+**What they do agree on is the boundary of our title set.** Source B lists ~35 titles; every one
+absent from our 22 belongs to a mode added after launch (Fighting Fish/DM, Killer Whale/TDM, Komodo
+Dragon/Stealth DM, Elephant/Base, Cuckoo/Bomb, Hog/Race) or is a later specialty (Octopus, Panda,
+Puma, Scorpion, Mantis, Ocelot). Source A says the same thing in its own words. Three artefacts —
+the disc, and two independent community records — agreeing on which titles are launch-era is worth
+more than any of them alone.
+
+#### Source B, restricted to our 22
+
+Modes we do not serve are struck from each rule; **TSNE never counts for us** (`GATES.md` §1).
+
+| title | rule |
 | --- | --- |
-| EAGLE | K+s/D+s >= 1.3 overall, AND (headshot kills + stun headshots) / (all kills + all stuns) > 0.3 |
-| CROCODILE | K+s/D+s >= 1.5 overall, AND headshot ratio < 0.3 — otherwise EAGLE overrides |
-| JAWS | K+s/D+s >= 1.25 overall, AND knife kills / total kills > 0.075 |
-| FLYING SQUIRREL | rolls / rounds >= 15 |
-| TORTOISE | box uses / rounds > 15 |
-| BEAR | >= 10 melee hits per round AND >= 10 CQC attacks per round |
-| SLOTH | K+s/D+s <= 0.85, AND headshot deaths / total deaths >= 0.60 |
-| NIGHT OWL | ENVG seconds / total play seconds > 0.05 |
-| mode preference | that mode's seconds / total seconds > 0.70 (SNAKE, KEROTAN, GA-KO, CHAMELEON) |
-| TSUCHINOKO | do not log in for several game weeks; overrides everything |
-| BEE, CHICKEN, PIGEON, RAT, WATER BEAR | **no numbers** — the guide never pinned them |
+| FOXHOUND | `(K+S)/(D+SR) >= 1.45` over DM/TDM/SNE · win >= 52.5% over CAP/BASE/RES · bases per BASE round > 1.60 · withdrawal <= 2% · >= 100 rounds in each required mode |
+| FOX | `>= 1.40` · `>= 47.5%` · `> 1.40` · `<= 2%` · >= 50 rounds |
+| DOBERMAN | `>= 1.35` · `>= 45%` · `> 1.20` · `<= 4%` · >= 25 rounds |
+| HOUND | `>= 1.30` · `>= 42.5%` · `> 1.00` · `<= 4%` · >= 5 rounds |
+| CROCODILE | `(K+S)/(D+SR) >= 1.50` |
+| EAGLE | `>= 1.30` AND `(HS kills + HS stuns)/(kills + stuns) >= 0.50` |
+| JAWS | `>= 1.25` AND `knife kills / total kills >= 0.075` |
+| WATER BEAR | `deaths / rounds <= 0.50` over RES (+TSNE) |
+| SLOTH | `kills/deaths <= 0.85` AND `HS deaths/deaths >= 0.60` AND `stuns/stuns received <= 0.85` |
+| FLYING SQUIRREL | `rolls / rounds >= 15` |
+| PIGEON | `stuns/kills >= 1.20` AND `stuns/stuns received >= 1.20` |
+| NIGHT OWL | `ENVG seconds / play seconds >= 0.05` |
+| TSUCHINOKO | last login >= 30 days |
+| SNAKE / KEROTAN / GA-KO / CHAMELEON | `mode rounds / overall rounds >= 0.60` AND `weekly mode rounds >= 30` |
+| CHICKEN | `kills/rounds <= 0.30` AND `stuns/rounds <= 0.30` AND `stuns received/rounds <= 0.50` AND `deaths/rounds <= 0.50` |
+| BEAR | `CQC attacks / rounds >= 5` |
+| TORTOISE | `box uses / rounds >= 15` |
+| BEE | `scans / rounds >= 0.30` |
+| RAT | `stuck in trap / rounds >= 0.30` |
 
-Ratio definitions the guide uses: `K/D` is kills / deaths; `K+s/D+s` is
-(kills + stuns) / (deaths + stuns received); win % is (rounds won / rounds played) x 100.
+#### What we can compute, and the one thing we cannot
 
-### Override order
+Every input exists in `round_report` or `round_weapon_tally` **except last-login**:
 
-Best to worst, so a higher one suppresses everything below it. TSUCHINOKO sits above everything.
+| input | source |
+| --- | --- |
+| kills, deaths, stuns, stuns received | struct A: `kills`, `deaths`, `stuns`, `counter_0x0f` |
+| headshot kills / stuns / deaths | `headshots`, `counter_0x15`, `headshot_deaths` |
+| knife kills | `round_weapon_tally`, weapon id 1 |
+| rounds, per mode | `count(*)` grouped by `rule` |
+| wins | `team_win` |
+| **withdrawal rate** | `counter_0x1f` (round_completed) — 1 minus its mean |
+| bases conquered | struct B b25 |
+| rolls, CQC, box uses, scans, traps, ENVG | b12, b10, b21, b19, b18, b13 |
+| weekly anything | the `Period.WEEKLY` window already built |
+| **last login** | **NOT TRACKED.** Needed for TSUCHINOKO alone |
 
-    TSUCHINOKO > FOXHOUND > FOX > DOBERMAN > HOUND > EAGLE > CROCODILE > JAWS >
-    FLYING SQUIRREL > [mode preference] > SLOTH > NIGHT OWL > [untested: BEAR, BEE,
-    CHICKEN, PIGEON, RAT, TORTOISE, WATER BEAR]
+Note `withdrawal rate` is a genuinely new use for a column nothing has read: `counter_0x1f` has sat
+in `round_report` unread since V16.
 
-The CROCODILE/EAGLE pair is the instructive one: CROCODILE needs a *higher* K+s/D+s than EAGLE, yet
-ranks below it, so a player who qualifies for both gets EAGLE. Any implementation has to apply the
-order rather than picking the "hardest" match.
+### The decision this forces
 
-### What we can actually compute today
+**Source B bakes the weekly model in** — "Weekly SNE Rounds >= 30" is not a threshold we can drop
+without inventing a replacement. Adopting it therefore means adopting **1.30-and-later behaviour**:
+weekly evaluation, multiple simultaneous titles, history.
 
-Every input above exists in `round_report` or `round_weapon_tally` except two:
+That sits against CLAUDE.md's release-day target. The argument for taking it anyway is that **we
+have real requirements for the weekly system and none at all for the launch one** — implementing
+release-day behaviour would mean inventing every number, which is precisely the failure mode that
+produced the phantom medals. Better a documented later system than an invented earlier one.
 
-- **Rounds won** — `team_win` gives it per round, so win % is available.
-- **Knife kills** — `round_weapon_tally`, weapon id 1. Only since 2026-07-28, so history is thin.
-- **Stuns received** — struct A `counter_0x0f`.
-- **Melee hits and CQC given** — struct B b22 and b10.
+The argument against is that it is a knowing departure from the stated target, and those are
+supposed to be explicit rather than convenient.
 
-Two gaps: **CHAMELEON needs Team Sneaking**, which release-day scope keeps switched off, so it can
-never be earned in v1. And several thresholds are per-round averages that will be wildly unstable
-over a handful of rounds — a minimum play time is part of the original design ("certain sets of
-ranks require a certain amount of play time") and the guide never pins it.
-
+**Unresolved. Operator's call.** Nothing is implemented either way.
 
 ### Medals — IMPLEMENTED 2026-07-28 (operator policy)
 
