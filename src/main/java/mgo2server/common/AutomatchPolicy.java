@@ -48,7 +48,10 @@ public record AutomatchPolicy(
 	Mode mode,
 	int minPlayers,
 	Duration tick,
-	Set<Long> slotInLobbies
+	Set<Long> slotInLobbies,
+	int bandStart,
+	Duration bandStep,
+	int bandMax
 ) {
 
 	/**
@@ -138,6 +141,35 @@ public record AutomatchPolicy(
 	 */
 	public static final Duration DEFAULT_TICK = Duration.ofSeconds(5);
 
+	/** A search starts looking at its own level and one either side. */
+	public static final int DEFAULT_BAND_START = 1;
+
+	/**
+	 * How long before a search widens by a level.
+	 * <p>
+	 * Thirty seconds reaches the full 22-level span in about eleven minutes, comfortably inside the
+	 * client's own ~20-minute search timeout — so a patient player ends up matched with anyone rather
+	 * than timing out inside a narrow band.
+	 */
+	public static final Duration DEFAULT_BAND_STEP = Duration.ofSeconds(30);
+
+	/** Every level. The client clamps the gauge to 0..22, so this is "anyone". */
+	public static final int DEFAULT_BAND_MAX = 22;
+
+	/**
+	 * How wide a searcher's level window is after waiting this long.
+	 * <p>
+	 * <b>Each searcher carries their own window, and two match when the windows touch.</b> That is
+	 * symmetric — a player who has waited ten minutes reaches out to a newcomer rather than the pair
+	 * having to satisfy one shared band — and it is exactly what the client draws, since it lights
+	 * columns {@code [myLevel - band, myLevel + band]} around a centre it computes itself. So the
+	 * number we send is the truth about that player's search, not a decoration.
+	 */
+	public int bandAfter(Duration waited) {
+		var steps = bandStep.isZero() ? 0 : waited.toSeconds() / bandStep.toSeconds();
+		return (int) Math.min(bandMax, bandStart + steps);
+	}
+
 	public static AutomatchPolicy from(UnaryOperator<String> env) {
 		var policy = new AutomatchPolicy(
 			bool(env, "MGO2SERVER_AUTOMATCH_ENABLED", false),
@@ -146,7 +178,10 @@ public record AutomatchPolicy(
 			mode(env, "MGO2SERVER_AUTOMATCH_MODE"),
 			positive(env, "MGO2SERVER_AUTOMATCH_MIN_PLAYERS", DEFAULT_MIN_PLAYERS),
 			seconds(env, "MGO2SERVER_AUTOMATCH_TICK_SECONDS", DEFAULT_TICK),
-			lobbyIds(env, "MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES"));
+			lobbyIds(env, "MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES"),
+			level(env, "MGO2SERVER_AUTOMATCH_BAND_START", DEFAULT_BAND_START),
+			seconds(env, "MGO2SERVER_AUTOMATCH_BAND_STEP_SECONDS", DEFAULT_BAND_STEP),
+			level(env, "MGO2SERVER_AUTOMATCH_BAND_MAX", DEFAULT_BAND_MAX));
 		policy.validate();
 		return policy;
 	}
@@ -283,6 +318,26 @@ public record AutomatchPolicy(
 			return false;
 		}
 		throw new IllegalArgumentException(name + " must be true or false, got: " + value);
+	}
+
+	/** A level count, 0..22 — the range the client's own gauge clamps to. */
+	private static int level(UnaryOperator<String> env, String name, int fallback) {
+		var value = env.apply(name);
+		if (value == null || value.isBlank()) {
+			return fallback;
+		}
+		int parsed;
+		try {
+			parsed = Integer.parseInt(value.trim());
+		} catch (NumberFormatException e) {
+			throw new IllegalArgumentException(name + " must be a whole number of levels, got: "
+				+ value, e);
+		}
+		if (parsed < 0 || parsed > DEFAULT_BAND_MAX) {
+			throw new IllegalArgumentException(name + " must be 0.." + DEFAULT_BAND_MAX
+				+ " levels, got: " + value);
+		}
+		return parsed;
 	}
 
 	private static int positive(UnaryOperator<String> env, String name, int fallback) {

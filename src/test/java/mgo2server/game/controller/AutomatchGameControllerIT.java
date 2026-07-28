@@ -82,7 +82,11 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 	 */
 	private static final AutomatchPolicy ALWAYS_OPEN = new AutomatchPolicy(true,
 		List.of(new AutomatchPolicy.Window(LocalTime.MIN, LocalTime.MAX)), ZoneId.of("UTC"),
-		AutomatchPolicy.Mode.BOTH, 2, TICK, Set.of());
+		AutomatchPolicy.Mode.BOTH, 2, TICK, Set.of(),
+		// The widest band from the outset, so level never decides whether these tests match. Level
+		// windowing has its own coverage; here it would only make the outcome depend on whatever
+		// experience the fixtures happen to give a character.
+		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX);
 
 	/**
 	 * What an operator who has configured nothing gets, and therefore the default deployment — with
@@ -396,9 +400,13 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 		assertThat(reply.getCommand()).isEqualTo(AutomatchGameController.START_AUTOMATCH_RESULT);
 		assertThat(reply.getPayload().readableBytes()).isEqualTo(SUCCESS_SIZE);
 		assertThat(reply.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
-		// The band is still zero: nothing groups searchers by level yet, and lighting only the
-		// player's own column is honest about a search that does not span any.
-		assertThat(reply.getPayload().getUnsignedByte(4)).isEqualTo((short) 0);
+		// The band is this searcher's own level window at the moment they started — the client lights
+		// [myLevel - band, myLevel + band] around a centre it computes itself, and the same byte is
+		// re-sent widened on every 0x43e4. Asserted against the policy rather than a literal so it
+		// keeps testing the relationship if the default changes; ALWAYS_OPEN deliberately starts at
+		// maximum so level never decides whether these tests match.
+		assertThat(reply.getPayload().getUnsignedByte(4))
+			.isEqualTo((short) ALWAYS_OPEN.bandAfter(Duration.ZERO));
 		// Players-needed was zero while there was no queue to count. There is one now, and this
 		// caller is in it — two wanted, one searching — so the honest answer is 1, which the client
 		// prints through disc string 917. Zero would select the placeholder 48 instead and say
