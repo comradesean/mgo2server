@@ -254,12 +254,12 @@ announce itself as a `No handler for command …` line once players have collect
 | `0x43E0` | sends | 1 B | **START automatching**, u8 = rule filter (11 = any). `AutomatchGameController`; validates the filter and refuses outside the window | served |
 | `0x43E1` | parses | 6 B | Start reply: u32 result, then (result 0 only) u8 level band, u8 players-needed. **4 bytes on refusal** | served |
 | `0x43E2` | sends | empty | **CANCEL automatching** | served |
-| `0x43E3` | parses | 4 B | Cancel reply, u32 result. **Must send** — unanswered gives 4933 | **gap** |
-| `0x43E4` | parses | 36 B | Search panel push: 23-column level histogram + band + players-needed. Cosmetic; cannot stall | unsent |
+| `0x43E3` | parses | 4 B | Cancel reply, u32 result; −953 parks a late cancel silently | served |
+| `0x43E4` | parses | 36 B | Search panel push: 23-column level histogram + band + players-needed. Cosmetic; cannot stall | served |
 | `0x43F0` | parses | 78 B | Automatch push, event 43 — **the automatch screen ignores it** | unsent |
-| `0x43F1` | parses | 223 B | **THE MATCH.** u32 host chara id + 204-byte settings block. Without it a search can only time out | **gap** |
-| `0x43F2` | parses | 4 B | **u32 game id** — releases the joiners. Without it every joiner parks silently forever | **gap** |
-| `0x43F3` | parses | 4 B | Automatch failure push ⇒ error 4945 | unsent |
+| `0x43F1` | parses | 223 B | **THE MATCH.** u32 host chara id + 204-byte settings block | served |
+| `0x43F2` | parses | 4 B | **u32 game id** — releases the joiners | served |
+| `0x43F3` | parses | 4 B | Automatch failure push ⇒ error 4945; sent on host-create timeout or a lost host | served |
 | `0x43F4` | parses | unread | Automatch closed push ⇒ error 4929 | unsent |
 | `0x43F5` | parses | unread | Raises event 55 — **not** handled by the automatch screen; consumer unknown | unsent |
 

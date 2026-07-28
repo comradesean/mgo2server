@@ -34,6 +34,10 @@ only ours refuses. The menu builder special-cases rule 7 against this bit at `0x
 further sites enforce it (`0x8996DC`, `0x89ADB8`, `0x8AD794`, `0x8ADC78`), so it is a real feature
 flag rather than menu cosmetics.
 
+**A sixth consumer, server-side:** `AutomatchGameController` refuses rule filter 7 in `0x43e0`
+because we clear this bit — so a client that somehow offered the Team Sneaking row would be turned
+away rather than queued for a rule the lobby cannot run.
+
 **Five more enforcement sites, in the automatching screen** (found 2026-07-28, see
 [AUTOMATCH.md](AUTOMATCH.md) §5): `0x93B7D8` drops the Team Sneaking row from the automatch rule
 list, `0x93B894` swaps the panel art, and `0x93C9C4`/`0x93CB30`/`0x93CC30` choose between two
