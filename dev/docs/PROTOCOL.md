@@ -1688,6 +1688,11 @@ current-membership check, which drops reports for players who already left (obse
 crashed joiner's straggler report was rejected). See BACKLOG, "The round snapshot never
 populates". Reply `0x43cb`, result 0, if it ever arrives.
 
+> **Switches and refusals live in `GATES.md`** — the feature bits we send, the per-round
+> Headshots-Only / Drebin-Points flag, the player-count thresholds, and the values that make
+> the client discard a packet or stall. This section is the byte layout; that one is the
+> index of what turns things on and off.
+
 ## `0x4390` — update stats
 
 **The reporting model — two established truths (2026-07-23, per-connection verified across 14

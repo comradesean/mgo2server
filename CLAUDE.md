@@ -54,6 +54,11 @@ not an elimination if the thing varied could not have mattered.
 
 ## Documentation
 
+- `dev/docs/GATES.md` — **the switches**, on one page: feature bits we send that hold client
+  features closed (Team Sneaking is ours to open), the per-round Headshots-Only / Drebin-Points
+  flag, player-count thresholds, what the client computes for itself and must never be sent, and
+  the values it refuses outright. Read this before wondering why a feature is missing or a screen
+  is stalling.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
