@@ -69,6 +69,15 @@ public class PersonalStatsController implements IGameController {
 	/** Page selector for the weekly grid. */
 	private static final int PERIOD_WEEKLY = 1;
 
+	/** Rating-block entry 3 (wire 563): the 22-bit title unlock mask. */
+	private static final int TITLE_MASK_ENTRY = 3;
+
+	/** Rating-block entry 5 (wire 571): host rating star numerator. */
+	private static final int HOST_RATING_NUMERATOR_ENTRY = 5;
+
+	/** Rating-block entry 6 (wire 575): host rating star denominator, the vote count. */
+	private static final int HOST_RATING_DENOMINATOR_ENTRY = 6;
+
 	/** The one signed column of the matrix — a round score can be negative. */
 	private static final int SCORE_COLUMN = 3;
 
@@ -191,10 +200,23 @@ public class PersonalStatsController implements IGameController {
 		for (var i = 0; i < 9; i++) {
 			info.writeByte(0);         // 9×u8 → T+0x32B8.. [UNKNOWN]
 		}
+		// The rating block, wire 551..583, nine u32s. Three are now identified (2026-07-28):
+		//   e3 @563 — the TITLE unlock bitmask, 22 bits LSB-first. This is what made every
+		//             character wear eight titles: the fingerprint 4024 set bits 3..11.
+		//             NEVER set bit 22 or above — the client's popcount loop runs 23 times for
+		//             22 titles and reads past the table.
+		//   e5 @571 — the HOST RATING star numerator
+		//   e6 @575 — the HOST RATING star denominator (the "/ N votes" on screen)
+		// The gauge is clamp(ceil(2 * num / den), 0, 10) half-stars (0x94258C), so sending the
+		// rating SUM over the vote COUNT puts the average on the gauge.
+		var hostScore = characterService.hostScore(charaId);
 		for (var i = 0; i < 9; i++) {
-			info.writeInt(0);          // 9×u32 → T+0x32C4.. — entry 7 is the HOST RATING
-			                           // denominator and rendered as "/ 4027 votes"; we measure no
-			                           // host rating, so 0 is the honest denominator
+			info.writeInt(switch (i) {
+				case TITLE_MASK_ENTRY -> 0;                 // no title is server-granted yet
+				case HOST_RATING_NUMERATOR_ENTRY -> hostScore.ratingSum();
+				case HOST_RATING_DENOMINATOR_ENTRY -> hostScore.votes();
+				default -> 0;                               // [UNKNOWN]
+			});
 		}
 		info.writeInt(0);              // u32 → obj+0x30, not T [UNKNOWN]
 
@@ -225,16 +247,15 @@ public class PersonalStatsController implements IGameController {
 		info.writeByte(clan.id() != 0
 			&& clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
 			? ClanService.EMBLEM_ON_DISPLAY : 0);    // u8 → T+0x1AD8 = profile+6872
-		// T+0x32F4 is the INSTRUCTOR SCORE denominator — the "/ N votes" on the screen. We DO
-		// measure this: instructor_review holds one row per graduation review. It read "/ 4034
-		// votes" until now purely because that was the fingerprint value.
-		//
-		// The star NUMERATOR's wire slot has not been located (the 0x4103 spec records the
-		// rating-block numerators as unlocated), so the count is served and the stars are not yet.
+		// The INSTRUCTOR SCORE gauge, both halves. Wire 632 is the star numerator and 636 the
+		// denominator (located 2026-07-28); the client draws
+		// clamp(ceil(2 * num / den), 0, 10) half-stars at 0x94258C. Sending the rating SUM over
+		// the vote COUNT makes the ratio the average, so four reviews averaging 3.00 send 12/4
+		// and draw three stars. Both read fingerprints until now — "/ 4034 votes" was 4034.
 		var instructorScore = characterService.instructorScore(charaId);
-		info.writeInt(0)                          // → T+0x32F0 [UNKNOWN]
-			.writeInt(instructorScore.votes())    // → T+0x32F4 instructor score denominator
-			.writeInt(0);                         // → T+0x32F8 [UNKNOWN]
+		info.writeInt(instructorScore.ratingSum())  // wire 632 → instructor star numerator
+			.writeInt(instructorScore.votes())      // wire 636 → instructor star denominator
+			.writeInt(0);                           // wire 640 [UNKNOWN] — reads the LOCAL record
 		info.writeInt(0);              // trailing u32 → T+0x124 [UNKNOWN]
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 

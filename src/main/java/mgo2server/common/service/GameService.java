@@ -369,6 +369,33 @@ public class GameService {
 		});
 	}
 
+	/**
+	 * Records one host-rating vote ({@code 0x43c4}). Returns whether it was stored.
+	 * <p>
+	 * A player rates the host of the game they are leaving, 1..5 stars. One vote per player per
+	 * game — the client offers the prompt once, so a repeat is a retry rather than a second
+	 * opinion, and the unique constraint absorbs it silently.
+	 * <p>
+	 * A host cannot vote for themselves; the client is not observed to offer it, and allowing it
+	 * would make the rating trivially self-serving.
+	 */
+	public boolean recordHostVote(long gameId, long hostCharaId, long voterCharaId, int rating) {
+		if (hostCharaId == voterCharaId) {
+			return false;
+		}
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("""
+					insert into host_review (game_id, host_chara_id, voter_chara_id, rating)
+					values (:game, :host, :voter, :rating)
+					on conflict (game_id, voter_chara_id) do nothing
+					""")
+			.bind("game", gameId)
+			.bind("host", hostCharaId)
+			.bind("voter", voterCharaId)
+			.bind("rating", rating)
+			.execute() > 0);
+	}
+
 	/** One row of the met-players history: a player encountered, and when last. */
 	public record MetPlayer(long charaId, String name, long lastMetEpochSeconds) {
 	}
