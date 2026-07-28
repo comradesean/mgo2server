@@ -173,10 +173,34 @@ doc: |
   STRUCT B <-> 0x4107: B-index = personal-stats slot − 1, exact for 25+ tested pairs across
   all six modes. 0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed
   elsewhere (weapon lines from the 0x43a2 tallies; snake stats from flag_0x04 + A-block +
-  b49). Known exceptions where the rule's fingerprint names proved wrong: b35 (wakes, not
-  Soldiers Trained), b46 (Capture put count, not training time), b47/b48 (body searches
-  that yielded items / dogtags collected from the ground, not the two training-time slots)
-  — remaining [PREDICTED] labels are hypotheses, not facts.
+  b49). **The exceptions are not random and the rule does not "break" — RESOLVED 2026-07-27.**
+  Line the four documented exceptions up against what the 0x4107 slot they land on is called:
+
+      b35 wakes              -> slot 36  Number of Soldiers Trained
+      b45 tsne_goals         -> slot 46  Training Mode Time
+      b46 capture_put_count  -> slot 47  Combat Training Time (Instructor)
+      b47 sne_bodysearches   -> slot 48  Combat Training Time (Student)
+
+  Those four are the ONLY training statistics in the whole 73-slot record, and they are the ONLY
+  exceptions. Their neighbours on both sides (slots 35, 37, 45, 49, 50) are unlabelled, so there
+  is nothing there to conflict with — which is also why b48 -> slot 49, once listed as a fifth
+  exception, is not one.
+
+  The reason is a CATEGORY difference, not a mapping error. Training statistics cannot come from
+  a host's per-round report at all: "Soldiers Trained", "Training Mode Time" and the two Combat
+  Training times are cross-session bookkeeping about who instructed whom and for how long. They
+  are server-side accounting. This server already treats them that way — `CharacterService`
+  feeds them from `chara_training_time`, accumulated from lobby presence, and its own docs record
+  that this REPLACED a derivation from `round_report` because the host only reports when a player
+  leaves early, so a host who quit first reported nobody and lost whole sessions.
+
+  So the rule, stated correctly: **B-index = personal-stats slot − 1, among those career slots
+  that are fed by round reports at all.** Four slots in that range are fed by server-side
+  accounting instead, and the arithmetic simply collides with them. Nothing is unexplained.
+
+  The practical consequence is unchanged and still matters: a [PREDICTED] label inferred from the
+  rule is a hypothesis, not a fact — b45 is the cautionary case, where "Training Mode Time" was
+  inferred, was wrong, and was one of these very collisions.
 
   SOME 0x4107 SLOTS ARE NOT FED BY THIS COMMAND AT ALL — established 2026-07-27 by decoding
   the DETAIL page's display list (a 36-entry resource-hash array at `0xE13BDC` in MGO2.elf,
