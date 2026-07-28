@@ -138,18 +138,25 @@ public class PersonalStatsController implements IGameController {
 		// Login times: we do not record them. Zero rather than 9001/9002 — an invented epoch
 		// renders as a real date, and "never" is the honest answer.
 		info.writeInt(0).writeInt(0);
-		info.writeByte(1); // the lone u8 — 1 rather than 0 in case it gates display
+		info.writeByte(0); // the lone u8 [UNKNOWN] — was 1 "in case it gates display", now 0 with
+		                   // the rest, so no byte of this packet carries an invented value
 		// The friend and blocked lists are REAL ids, from chara_relation, the same source
 		// 0x4101 uses. They used to be fingerprints (8001+i / 8501+i), which fed the client 64
 		// character ids that do not exist.
 		writeRelationIds(info, charaId, CharacterService.RELATION_FRIEND);
 		writeRelationIds(info, charaId, CharacterService.RELATION_BLOCKED);
 
-		// TEMPORARY fingerprint v5 of the 0x4103 tail, now on the byte-exact layout read from
-		// the parser (0xd3e9ac, traced 2026-07-23): u32s carry 4001+, u16s 5101+, u8s distinct
-		// small values, and each string field an ASCII marker, so every on-screen value or text
-		// names its wire field. The comment slot carries the character's real comment.
-		info.writeByte(42);            // u8 @301 → T+0x3329
+		// The 0x4103 tail, on the byte-exact layout read from the parser (0xd3e9ac, traced
+		// 2026-07-23). It used to carry a fingerprint in every field — u32s 4001+, u8s as small
+		// distinct values, strings as ASCII markers — so that whatever appeared on screen named
+		// its wire field. That served its purpose and is now actively harmful: the screen quoted
+		// invented vote counts, and a medal bitmask is parsed out of this packet
+		// (0xD3F3A4/0xD3F3C0/0xD3F3DC), so nonzero filler here can mint awards nobody earned.
+		//
+		// Every remaining unknown field is therefore ZERO. Real values: the clan record, the
+		// comment, the instructor name and generation, the emblem flag, and the instructor vote
+		// count. If a future fingerprint round is needed, do it behind a flag, not in production.
+		info.writeByte(0);             // u8 @301 → T+0x3329 [UNKNOWN]
 		// The clan record — why Personal Data showed no clan. T+0x1AA0/0x1AA4/0x1AB5 are the same
 		// {u32 id, name[16], u8 status} shape as the session clan record at session_ctx+0x1AA0 and
 		// as 0x4122's clan block, and the 12 u16s after it are that block's privilege word and its
@@ -164,25 +171,25 @@ public class PersonalStatsController implements IGameController {
 		}
 		info.writeInt(0);              // u32 → T+0x1AD0 [UNKNOWN]
 		for (var i = 0; i < 9; i++) {
-			info.writeByte(61 + i);    // 9×u8 → T+0x1DE0..
+			info.writeByte(0);         // 9×u8 → T+0x1DE0.. [UNKNOWN]
 		}
 		info.writeInt(0);              // u32 → T+0x1DEC [UNKNOWN]
 		for (var i = 0; i < 14; i++) {
-			info.writeByte(71 + i);    // 14×u8 → T+0x1DF0..
+			info.writeByte(0);         // 14×u8 → T+0x1DF0.. [UNKNOWN]
 		}
 		for (var i = 0; i < 10; i++) {
-			info.writeByte(91 + i);    // 5×u8 + 5×u8 → T+0x1DFE..
+			info.writeByte(0);         // 5×u8 + 5×u8 → T+0x1DFE.. [UNKNOWN]
 		}
 		for (var i = 0; i < 5; i++) {
 			info.writeInt(0);          // 5×u32 → T+0x1E08.. [UNKNOWN]
 		}
-		info.writeByte(44);            // u8 → T+0x1E1C
+		info.writeByte(0);             // u8 → T+0x1E1C [UNKNOWN]
 		info.writeInt(0);              // u32 → T+0x1E20 [UNKNOWN]
 		BufferUtil.writeString(info, chara.get().getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);           // the confirmed 128-byte comment → T+0x1E24
-		info.writeByte(45);            // u8 → T+0x1EA5
+		info.writeByte(0);             // u8 → T+0x1EA5 [UNKNOWN]
 		for (var i = 0; i < 9; i++) {
-			info.writeByte(101 + i);   // 9×u8 → T+0x32B8..
+			info.writeByte(0);         // 9×u8 → T+0x32B8.. [UNKNOWN]
 		}
 		for (var i = 0; i < 9; i++) {
 			info.writeInt(0);          // 9×u32 → T+0x32C4.. — entry 7 is the HOST RATING
@@ -204,7 +211,7 @@ public class PersonalStatsController implements IGameController {
 		// value makes the next look at that screen a test rather than another fingerprint.
 		info.writeInt(instructor != null ? instructor.generation() : 0);
 		info.writeInt(0);              // [UNKNOWN]
-		BufferUtil.writeString(info, "FP-STR-C", StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		BufferUtil.writeString(info, "", StandardCharsets.ISO_8859_1, NAME_LENGTH);
 		// [ELF] The clan emblem flag, not a spare byte. T+0x1AD8 is 6816 + 56, and the 0x4103
 		// parser writes this u8 with `addi r4,r24,56` off `r24 = profile+6816` (0xD3F3FC), so it
 		// lands in profile+6872 — the same slot 0x4122 fills for the local player. It sat here
