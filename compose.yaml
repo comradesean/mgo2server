@@ -206,6 +206,16 @@ services:
       # "You cannot login to this lobby." (dialog 2355). Set to false to make it an
       # ordinary Free Battle lobby until the profile byte is wired.
       MGO2SERVER_LOBBY_BEGINNERS_ONLY: "true"
+      # The hub entry's flags byte (0x4902 wire 0x07) -- what the MENU reads, as opposed to
+      # beginners_only above, which rides in the gate list and the menu ignores. Which bit means
+      # "beginners" is unknown, so this is a decimal byte to SWEEP:
+      #
+      #   FREEBATTLE3_HUB_FLAGS=128 docker compose up -d --force-recreate freebattle3
+      #
+      # Try one bit at a time: 1, 2, 4, 8, 16, 32, 64, 128. Note the parser REVERSES the byte
+      # (0xD47F40): wire bit 0 becomes the client's internal 0x80 and wire bit 7 its 0x01, so both
+      # ends are worth trying before concluding a bit does nothing.
+      MGO2SERVER_LOBBY_HUB_FLAGS: ${FREEBATTLE3_HUB_FLAGS:-0}
       MGO2SERVER_GAME_PORT: "15735"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:

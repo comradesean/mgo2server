@@ -15,6 +15,14 @@ public class Lobby {
 
 	private boolean beginnersOnly;
 
+	/**
+	 * The hub entry's flags byte, {@code 0x4902} wire offset {@code 0x07}. A raw byte, not a set of
+	 * named booleans: the parser at {@code 0xD47F40} expands it one bit per struct field and
+	 * reverses it (wire bit 0 becomes internal {@code 0x80}), and which bit means "beginners" is
+	 * not known. Sweep it rather than trusting a guess.
+	 */
+	private int hubFlags;
+
 	private boolean expansionRequired;
 
 	private boolean noHeadshots;
@@ -73,6 +81,14 @@ public class Lobby {
 
 	public void setBeginnersOnly(boolean beginnersOnly) {
 		this.beginnersOnly = beginnersOnly;
+	}
+
+	public int getHubFlags() {
+		return hubFlags;
+	}
+
+	public void setHubFlags(int hubFlags) {
+		this.hubFlags = hubFlags;
 	}
 
 	public boolean isExpansionRequired() {
