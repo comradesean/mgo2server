@@ -125,14 +125,15 @@ public class CharacterService {
 					select count(*) from chara c
 					join account a on a.id = c.account_id
 					join chara_instructor i on i.chara_id = c.id
-					left join chara_training_time t on t.chara_id = c.id
 					where c.id = :student
-					  and coalesce(t.total_seconds, 0) >= :seconds
+					  and (select coalesce(sum(r.seconds_in_game), 0) from round_report r
+						   where r.chara_id = c.id and r.rule between 0 and :lastMode) >= :seconds
 					  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
 						  >= :experience
 					""")
 				.bind("student", charaId)
 				.bind("seconds", INSTRUCTOR_MIN_SECONDS)
+				.bind("lastMode", PLAYABLE_MODES - 1)
 				.bind("experience", LEVEL_3_EXPERIENCE)
 				.mapTo(Integer.class)
 				.one() > 0;
@@ -171,45 +172,45 @@ public class CharacterService {
 					select
 						coalesce(max(training_mode_seconds), 0) as training,
 						coalesce(max(instructor_seconds), 0) as instructor,
-						coalesce(max(student_seconds), 0) as student,
-						coalesce(max(total_seconds), 0) as total
+						coalesce(max(student_seconds), 0) as student
 					from chara_training_time
 					where chara_id = :chara
 					""")
 			.bind("chara", charaId)
 			.map((rs, c) -> new TrainingSeconds(
-				rs.getLong("training"), rs.getLong("instructor"), rs.getLong("student"),
-				rs.getLong("total")))
+				rs.getLong("training"), rs.getLong("instructor"), rs.getLong("student")))
 			.one());
 	}
 
 	/**
-	 * Seconds from {@code chara_training_time}.
+	 * Seconds spent in the training lobbies, for {@code 0x4107} slots 46, 47 and 48.
 	 *
-	 * <p><b>{@code total} is not the sum of the other three, and the table's name is misleading.</b>
-	 * The three named fields only accrue in the training lobbies — subtype 7 for
-	 * {@code trainingMode}, subtype 8 split by whether you hosted for {@code instructor} and
-	 * {@code student}. {@code total} accrues on <em>every</em> game in <em>every</em> lobby, Free
-	 * Battle included, so it is strictly larger for anyone who plays normally and <b>cannot be
-	 * reconstructed</b> from the other three.
+	 * <p><b>These are presence figures — {@code now() - joined_at} at teardown — and that is not a
+	 * shortcut, it is the only signal that exists.</b> Verified live on 2026-07-28 across two Solo
+	 * Training sessions: the client's entire inbound vocabulary in that lobby is
+	 * {@code 0003, 0005, 4128, 4150, 4310, 4316, 4344, 4380, 4398, 43d0, 4440, 4820}, it sends
+	 * <b>no {@code 0x4390} at all</b>, no round-report row appears for any rule, and nothing goes
+	 * unhandled. The mode simply does not report what happened in it.
 	 *
-	 * <p>That distinction is the whole point of the field: Konami's instructor requirement is "20 or
-	 * more hours of gameplay", not twenty hours sitting in a training lobby.
-	 * {@link #awardPendingInstructorSkill} therefore gates on {@code total}, and it is right to.
-	 *
-	 * <p>{@code trainingMode}, {@code instructor} and {@code student} are what {@code 0x4107} slots
-	 * 46, 47 and 48 display. <b>{@code total} feeds no screen</b> — an earlier version of this
-	 * comment said it fed the play-time line at {@code 0x4105} column 17, which is wrong: that
-	 * column is per-mode {@code play_seconds} derived from {@code round_report}, and the client sums
-	 * rows 0..6 into the header total itself.
+	 * <p>That is why this table survives while its {@code total_seconds} column did not: total play
+	 * time <em>is</em> derivable from {@code round_report} and now is, but training time is not
+	 * derivable from anything.
 	 */
-	public record TrainingSeconds(long trainingMode, long instructor, long student, long total) {
+	public record TrainingSeconds(long trainingMode, long instructor, long student) {
 	}
 
 	/**
 	 * Play time a character must have accumulated before the instructor skill is awarded — Konami's
-	 * documented "20 or more hours of gameplay". Measured against the same total that feeds the
-	 * play-time line on the personal-stats screen ({@code 0x4105} column 17).
+	 * documented "20 or more hours of gameplay".
+	 * <p>
+	 * Measured against {@code sum(round_report.seconds_in_game)} over the playable modes, which is
+	 * <b>exactly the number the personal-stats screen shows</b>. That equality is the point: a gate
+	 * the player can see themselves approaching is one we can explain, and until 2026-07-28 this read
+	 * a hidden presence counter that disagreed with the screen.
+	 * <p>
+	 * It also means training time no longer counts toward it. Only the six playable modes do — which
+	 * matches the requirement's wording, since twenty hours of sitting in a training lobby is not
+	 * twenty hours of gameplay.
 	 */
 	public static final long INSTRUCTOR_MIN_SECONDS = 20 * 60 * 60;
 
@@ -337,6 +338,31 @@ public class CharacterService {
 			.one());
 	}
 
+	/**
+	 * Play time across the six playable modes: {@code sum(round_report.seconds_in_game)}.
+	 *
+	 * <h2>Why this and not presence</h2>
+	 * A presence counter — {@code now() - joined_at} at teardown — is the more <em>complete</em>
+	 * measurement, since it also covers sessions where the host quit first and reported nobody. It is
+	 * nevertheless the wrong one here, for three reasons:
+	 *
+	 * <ul>
+	 * <li><b>Presence cannot be attributed to a mode.</b> A game rotates: one session can play Team
+	 * Deathmatch, then Sneaking, then Base under a single {@code joined_at}. There is no way to split
+	 * that. A round report carries {@code seconds_in_game} <em>with its rule</em>, which is exactly
+	 * what {@code 0x4105} column 17 needs, since the client renders a figure per mode row and sums
+	 * them for the header.</li>
+	 * <li><b>Presence counts time nobody was playing</b> — briefing, the pre-round wait, the results
+	 * screen. {@code seconds_in_game} is the host's measurement of the round itself.</li>
+	 * <li><b>Two measures would diverge.</b> {@code RankingService} already sums
+	 * {@code seconds_in_game} for its play-time boards, and the gates now read this. One number,
+	 * everywhere, is worth more than a better number in one place.</li>
+	 * </ul>
+	 *
+	 * <p>The training lobbies are the mirror image and that is why they keep a presence counter: a
+	 * training lobby is one mode for its whole life, so session time and mode time are the same
+	 * number — and those modes send no round report at all, verified live 2026-07-28.
+	 */
 	public long displayedPlaySeconds(long charaId) {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""
@@ -612,26 +638,19 @@ public class CharacterService {
 			.createQuery("""
 				select count(*) from chara c
 				join account a on a.id = c.account_id
-				left join chara_training_time t on t.chara_id = c.id
 				where c.id = :chara
-				  -- FLAGGED, deliberately unchanged 2026-07-28. This multiplies presence seconds
-				  -- by PLAYABLE_MODES, so the real gate is CLAN_MIN_SECONDS / 6 -- about 3h20m of
-				  -- play, not the 20 hours the requirement text claims. It was an artefact of the
-				  -- old display hack, where every screen showed play time six times over, and it
-				  -- kept the gate agreeing with the number on screen. That hack is now gone
-				  -- (displayedPlaySeconds), so this no longer agrees with anything.
-				  --
-				  -- Not fixed here on purpose: dropping the multiplier is a POLICY change -- it
-				  -- raises the bar for founding a clan sixfold -- and it belongs in a commit that
-				  -- says so, not smuggled into a stats change. Note awardPendingInstructorSkill
-				  -- gates on the same column WITHOUT the multiplier, so the two disagree by six
-				  -- today. See BACKLOG.
-				  and coalesce(t.total_seconds, 0) * :modes >= :seconds
+				  -- Play time from round_report, the same sum the stats screen shows. Was
+				  -- chara_training_time.total_seconds x PLAYABLE_MODES, which made the real bar
+				  -- about 3h20m rather than the 20 hours the requirement claims -- an artefact of
+				  -- an old display hack that multiplied play time six times over. Both the hack
+				  -- and the column are gone; see V50 and the commit that dropped them.
+				  and (select coalesce(sum(r.seconds_in_game), 0) from round_report r
+					   where r.chara_id = c.id and r.rule between 0 and :lastMode) >= :seconds
 				  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
 					  >= :experience
 				""")
 			.bind("chara", charaId)
-			.bind("modes", PLAYABLE_MODES)
+			.bind("lastMode", PLAYABLE_MODES - 1)
 			.bind("seconds", CLAN_MIN_SECONDS)
 			.bind("experience", LEVEL_3_EXPERIENCE)
 			.mapTo(Long.class)

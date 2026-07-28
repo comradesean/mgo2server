@@ -791,29 +791,26 @@ public class GameService {
 	 * subtype and by whether they hosted: subtype 7 is training mode, subtype 8 is combat training
 	 * as instructor when they are the host and as student otherwise.
 	 * <p>
-	 * Only the three training columns are subtype-dependent; {@code total_seconds} accrues for
-	 * every game, because the graduation award is gated on total play time.
+	 * All three columns are subtype-dependent: subtype 7 is Basic Training, and subtype 8 splits by
+	 * whether you hosted. A game in any other lobby credits nothing here.
 	 * <p>
-	 * <b>So the table's name undersells it.</b> {@code chara_training_time} holds one column that is
-	 * not training time at all: {@code total_seconds} is total play time across every lobby. Reading
-	 * the name and assuming {@code total_seconds} is the sum of the three training columns is an easy
-	 * mistake and a wrong one — it is strictly larger for anyone who plays outside the training
-	 * lobbies, and the 20-hour instructor gate depends on that. Deliberately a no-op
+	 * <b>That column is gone (V50).</b> Total play time is derived from {@code round_report} now, so
+	 * this credits only the three training buckets and the table finally holds only what its name
+	 * says. Presence is the right measurement for these and the only one available: Solo Training
+	 * sends no round report at all, verified live. Deliberately a no-op
 	 * for a character with no row, so callers do not have to check first. Runs on the caller's
 	 * handle so it shares their transaction: the credit and the delete must not come apart.
 	 */
 	private static void creditTrainingTime(Handle handle, long gameId, long charaId) {
 		handle.createUpdate("""
 					insert into chara_training_time as t
-						(chara_id, training_mode_seconds, instructor_seconds, student_seconds,
-						 total_seconds)
+						(chara_id, training_mode_seconds, instructor_seconds, student_seconds)
 					select gp.chara_id,
 						case when l.subtype = 7 then s.seconds else 0 end,
 						case when l.subtype = 8 and g.host_chara_id = gp.chara_id
 							then s.seconds else 0 end,
 						case when l.subtype = 8 and g.host_chara_id != gp.chara_id
-							then s.seconds else 0 end,
-						s.seconds
+							then s.seconds else 0 end
 					from game_player gp
 					join game g on g.id = gp.game_id
 					join lobby l on l.id = g.lobby_id
@@ -826,8 +823,7 @@ public class GameService {
 						training_mode_seconds =
 							t.training_mode_seconds + excluded.training_mode_seconds,
 						instructor_seconds = t.instructor_seconds + excluded.instructor_seconds,
-						student_seconds = t.student_seconds + excluded.student_seconds,
-						total_seconds = t.total_seconds + excluded.total_seconds
+						student_seconds = t.student_seconds + excluded.student_seconds
 					""")
 			.bind("game", gameId)
 			.bind("chara", charaId)

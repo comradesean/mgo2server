@@ -745,10 +745,13 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	/** Konami's documented instructor rule: "Level 3 or above and 20 or more hours of gameplay". */
 	private static void givenInstructorEligible(long charaId) {
 		TestDatabase.get().jdbi().useHandle(handle -> {
+			// Play time comes from round_report now, not from a stored counter — the gate reads the
+			// same sum the stats screen shows. One round carrying the whole requirement is enough;
+			// the rule must be a playable mode (0..5) because training time deliberately does not
+			// count toward "20 or more hours of gameplay".
 			handle.createUpdate("""
-					insert into chara_training_time (chara_id, total_seconds)
-					values (:id, :seconds)
-					on conflict (chara_id) do update set total_seconds = excluded.total_seconds
+					insert into round_report (game_id, host_chara_id, chara_id, rule, seconds_in_game)
+					values (777, :id, :id, 0, :seconds)
 					""")
 				.bind("id", charaId)
 				.bind("seconds", CharacterService.INSTRUCTOR_MIN_SECONDS)
