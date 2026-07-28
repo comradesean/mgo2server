@@ -186,6 +186,15 @@ public class HostGameController implements IGameController {
 	/** End-of-round report (meaning unconfirmed). Answered {@code result(0)}. */
 	public static final int ROUND_END = 0x43a2;
 
+	/**
+	 * One 0x43a2 weapon entry: {@code {u8 weapon, u16 kills, u16 headshots, u16 faints}}.
+	 * The builder caps entries at 0x7f and the caller at 50.
+	 */
+	private static final int WEAPON_TALLY_BYTES = 7;
+
+	/** The caller-side cap on weapon entries; more than this is a mis-parse, not data. */
+	private static final int MAX_WEAPON_TALLIES = 50;
+
 	public static final int ROUND_END_RESULT = 0x43a3;
 
 	/** Host hands hosting to another player. Answered {@code result(0)}. */
@@ -410,7 +419,7 @@ public class HostGameController implements IGameController {
 		handlers.put(START_ROUND, this::startRound);
 		handlers.put(SET_GAME, this::setGame);
 		handlers.put(UPDATE_STATS, this::updateStats);
-		handlers.put(ROUND_END, this::acknowledgeResult);
+		handlers.put(ROUND_END, this::roundEnd);
 		handlers.put(PASS_HOST, this::passHost);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
@@ -757,10 +766,76 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
+	 * Stores one player's per-weapon round tallies ({@code 0x43a2}) and acknowledges.
+	 * <p>
+	 * Layout is {@code {u32 chara_id, u32 count, count × {u8 weapon, u16 kills, u16 headshots,
+	 * u16 faints}}} (dev/proto/mgo2_cmd_43a2.ksy). The host sends one of these per scoring player,
+	 * immediately after that player's {@code 0x4390}; players with no entries are skipped
+	 * entirely, so a zero count is normal.
+	 * <p>
+	 * <b>The ack is unconditional.</b> An unanswered command stalls the client into
+	 * {@code FFFFFF60}, so a malformed payload is logged and still acknowledged — losing a weapon
+	 * tally is a stat gap, losing the ack is a hung screen.
+	 */
+	private void roundEnd(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+
+		// Same reporting-model tripwire as 0x4390: 0x43a2 rides immediately behind it from the
+		// same host connection, so a non-host one is the same deviation and wants the same noise.
+		if (game == null) {
+			logger.warn("0x43a2 from a NON-HOST connection — reporting-model deviation. Payload: {}",
+				ByteBufUtil.hexDump(payload));
+		}
+
+		try {
+			if (game != null && payload.readableBytes() >= 2 * Integer.BYTES) {
+				var charaId = payload.readUnsignedInt();
+				var count = payload.readUnsignedInt();
+
+				// The ELF's caller caps entries at 50. A larger count is a mis-parse rather than
+				// data, so drop the frame instead of storing whatever the loop happens to read.
+				if (count > MAX_WEAPON_TALLIES) {
+					logger.warn("Game {}: 0x43a2 for character {} declared {} weapon entries, past "
+						+ "the client's own cap of {}; dropped as a mis-parse.",
+						game.getId(), charaId, count, MAX_WEAPON_TALLIES);
+				} else if (payload.readableBytes() < count * WEAPON_TALLY_BYTES) {
+					logger.warn("Game {}: 0x43a2 for character {} declared {} weapon entries but "
+						+ "carries {} bytes; dropped rather than stored in part.",
+						game.getId(), charaId, count, payload.readableBytes());
+				} else if (!playedThisRound(game, charaId)) {
+					// Mirrors the 0x4390 participation check. Without it a host could attribute
+					// weapon tallies to any character id it liked.
+					logger.warn("Game {}: weapon tallies for character {} who neither is in the "
+						+ "game nor played the round; dropped.", game.getId(), charaId);
+				} else {
+					var tallies = new java.util.ArrayList<GameService.WeaponTally>();
+					for (var i = 0; i < count; i++) {
+						tallies.add(new GameService.WeaponTally(payload.readUnsignedByte(),
+							payload.readUnsignedShort(), payload.readUnsignedShort(),
+							payload.readUnsignedShort()));
+					}
+					gameService.insertWeaponTallies(game.getId(), charaId, tallies);
+				}
+			}
+		}
+		catch (RuntimeException e) {
+			logger.warn("0x43a2 weapon tallies could not be stored; acknowledging anyway.", e);
+		}
+		acknowledgeResult(ctx);
+	}
+
+	/** The 0x4390 participation test, reused: in the game now, or named in the round snapshot. */
+	private boolean playedThisRound(mgo2server.common.model.Game game, long charaId) {
+		var inGame = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
+			.anyMatch(player -> player.charaId() == charaId);
+		return inGame || gameService.playedLastRound(game.getId(), charaId);
+	}
+
+	/**
 	 * Acknowledges a host-admin command with a {@code result(0)} word, the four-byte "OK" both
 	 * references send for the round-lifecycle commands. Their parsers read a result and block on
-	 * it. Still used for {@code 0x43a2} (round end), whose payload no reference parses — its
-	 * meaning is unconfirmed everywhere, so the data is dropped knowingly.
+	 * it.
 	 */
 	private void acknowledgeResult(GameControllerContext ctx) {
 		var buffer = ctx.buffer(Integer.BYTES);

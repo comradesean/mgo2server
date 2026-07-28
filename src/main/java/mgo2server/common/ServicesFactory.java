@@ -7,6 +7,7 @@ import mgo2server.common.service.GameService;
 import mgo2server.common.service.LobbyService;
 import mgo2server.common.service.NewsService;
 import mgo2server.common.service.RankingService;
+import mgo2server.common.service.StatsService;
 import org.jdbi.v3.core.Jdbi;
 
 public class ServicesFactory {
@@ -18,7 +19,8 @@ public class ServicesFactory {
 		var lobbyService = new LobbyService(jdbi);
 		var newsService = new NewsService(jdbi);
 		var rankingService = new RankingService(jdbi);
+		var statsService = new StatsService(jdbi, characterService);
 		return new Services(accountService, characterService, clanService, gameService, lobbyService,
-			newsService, rankingService);
+			newsService, rankingService, statsService);
 	}
 }

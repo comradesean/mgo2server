@@ -469,7 +469,8 @@ standing rule against guessing layouts/ids.
 family"). Struct A is now labelled end to end — the knockout dealt/received pairs (`0x0d`/`0x0f`,
 `0x15`/`0x17`), assists (B37, screen-confirmed ×3), the OTHER category (B36 = kills·(kills−1)/2),
 mode-specific stun multipliers (×2 TDM / ×3 DM), and the clamped-store score model are all in
-PROTOCOL.md. The B-block's running-max family (B0/B1/B2/B12) is understood as per-stage
+PROTOCOL.md. The B-block's running-max family (B0/B1/B2, plus B24 as an absolute snapshot --
+**not B12**, which `mgo2_cmd_4390.ksy` confirms is `rolls`, a plain count) is understood as per-stage
 best-round records wired as store-if-greater deltas.
 
 Closed later the same day (see OBSERVED): the headshot category (= `0x11`+`0x15`·2, body-dart
@@ -613,7 +614,12 @@ per weapon (names in WEAPONS.md). Currently acked-and-dropped. Storage is now tr
 attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at).
 **Deferral rationale ended 2026-07-24**: the Personal Stats screen's weapon-specific lines
 (Knife Kills at minimum) derive from these tallies, not struct B — the knife round put its 4
-kills in 0x43a2 (weapon id 1) and nowhere else. Build the table at the next natural deploy.
+kills in 0x43a2 (weapon id 1) and nowhere else.
+
+**DONE 2026-07-28.** `round_weapon_tally` ships in V42; `HostGameController.roundEnd` parses the
+frame, applies the same non-host tripwire and participation check `0x4390` uses, caps entries at
+the client's own 50, drops a short or over-long frame rather than storing it in part, and acks
+unconditionally. `0x4107` slot 64 Knife Kills is served from it.
 
 ## Team Sneaking: research the gate, do NOT enable it (release-day scope)
 
@@ -650,3 +656,63 @@ if the mode can be surfaced at all.
 
 Worth doing because it is cheap to investigate and would unlock the largest remaining block of
 unexercised slots in `0x4390`. Not urgent: nothing is broken without it.
+
+
+## Stamp a stage boundary on round_report so slots 1/2/3 become servable
+
+*Pinned 2026-07-28, while serving the stats screens.* `0x4107` slots 1/2/3 (Consecutive Kills,
+Deaths, Headshots) are served as **zero** because they cannot be derived correctly today, and that
+is the one place the stats screen deliberately under-reports.
+
+Struct-B b00/b01/b02 are *deltas of a per-stage record* (store-if-greater, zeroed on stage
+rotation). Within one stage the deltas telescope exactly — the record starts at 0 and only grows —
+so a stage's final record is `sum` over that stage's reports and the career best is `max` over
+stages. **The blocker is purely the grouping**, and `round_report` stores no stage boundary.
+
+Two tempting substitutes both fail, the second dangerously:
+
+- `max(b00)` over single reports is a strict *lower* bound. It never over-awards, but it answers
+  "largest streak growth in one report", which is not the label.
+- `max(sum(b00) group by game_id)` **over-counts**, because a game contains several stages (DM
+  rotates every round, TDM every two). Two 5-streak stages in one game would report 10 and mint the
+  10-kill medal — exactly the failure the honest-zeros rule exists to prevent.
+
+The cheap hook is *not* `markRoundPlayers`: that fires per round, and a stage is 1 round in DM and 2
+in TDM. Order of questions:
+
+1. **Does `0x4392` (`SET_GAME`) fire between rounds during a live rotation?** Its handler already
+   logs. If it does, `game.current_game` at report time is the stage index, and stamping a monotone
+   `stage_seq` onto `round_report` at insert makes slots 1/2/3 exact in every mode.
+2. Otherwise stamp a round ordinal and combine it with the per-mode stage length.
+
+**DM is exact for free either way**: a DM stage is one round, so
+`max(detail_counters[1]) filter (where rule = 0)` is already the exact DM career best with no schema
+change — a defensible partial ship if the medal ever matters.
+
+Falsifiable consequence of shipping zeros, worth checking live: **the consecutive-kills medals
+(5/10/25) and consecutive-headshots medals (3/10/30) must not appear on any character.** If one
+does, something other than these slots feeds it, and that is a finding.
+
+## The instructor and clan gates disagree by six on the same column
+
+*Pinned 2026-07-28.* `CharacterService.awardPendingInstructorSkill` gates on raw
+`total_seconds >= 72000`; `meetsClanRequirements` gates on `total_seconds * PLAYABLE_MODES`, making
+the real clan bar about 3h20m rather than the 20 hours `CLAN_MIN_SECONDS` and the requirement text
+both claim. The multiplier was an artefact of the old ×6 display hack, which kept the gate agreeing
+with the inflated number on screen; that hack is gone as of the stats work, so it now agrees with
+nothing.
+
+Left in place deliberately — dropping it raises the clan bar sixfold, which is a **policy** change
+and belongs in a commit that says so. Decide whether 20 hours or 3h20m is the intended rule, then
+make both gates say it. No test asserts the current threshold, so either direction is a one-line
+change plus a test.
+
+## Weekly training time needs per-session presence rows
+
+*Pinned 2026-07-28.* `0x4107` slots 46/47/48 are served from `chara_training_time`, a running total
+with no time dimension, so the **weekly** record carries zero for them rather than repeating the
+lifetime figure (which would assert a week of training we cannot know). Windowing them properly
+needs presence stored per session — a `chara_presence(chara_id, game_id, subtype, joined_at,
+left_at)` row written where `creditTrainingTime` currently upserts — after which the weekly figure
+is a window over `left_at` and the lifetime figure stays a sum. Not urgent: the slots are correct
+cumulatively today.

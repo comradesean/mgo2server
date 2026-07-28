@@ -4,9 +4,11 @@ import mgo2server.common.BufferUtil;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.ClanService;
+import mgo2server.common.service.StatsService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
+import io.netty.buffer.ByteBuf;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,10 +28,19 @@ import java.util.function.Consumer;
  * {@code 0x4105} and {@code 0x4107} carry no status the client acts on.
  * <p>
  * Only the head of {@code 0x4103} is understood (id, name, the {@code 0x4101} constant block,
- * experience, login times, friend/blocked ids); the rest of its grid, the 8×18 stat matrix in
- * {@code 0x4105} and the two 292-byte records in {@code 0x4107} are sent as zeros until a live
- * capture of the original data maps them. The totals are what the parsers consume
+ * experience, login times, friend/blocked ids), and the rest of that packet still carries
+ * fingerprint values. The totals are what the parsers consume
  * ({@code 0xd3e9ac}/{@code 0xd3e53c}/{@code 0xd3db1c}) and must not change.
+ * <p>
+ * <b>{@code 0x4105} and {@code 0x4107} carry real data as of 2026-07-28</b>, derived from
+ * {@code round_report} by {@link mgo2server.common.service.StatsService} — both periods of each.
+ * Anything not honestly derivable is <b>zero</b>, never a placeholder: the client mints medals and
+ * titles itself from these values, so the {@code 1000 + slot} fingerprints this screen used to send
+ * cleared every threshold in its table and handed a fresh character the full medal set.
+ * <p>
+ * Two ordering rules in the burst are load-bearing. {@code 0x4105} page 0 must precede page 1,
+ * because receipt of page 0 zeroes the whole grid region including page 1; and {@code 0x4107} must
+ * be last, because its parser unconditionally completes the wait slot.
  */
 public class PersonalStatsController implements IGameController {
 	private static final Logger logger = LogManager.getLogger();
@@ -49,34 +60,17 @@ public class PersonalStatsController implements IGameController {
 
 	private static final int TAIL_SIZE = 0x24C;
 
-	/**
-	 * Column 17 of the {@code 0x4105} matrix: play time in seconds. The screen's play-time line is
-	 * this column summed over mode rows 0..6 — rows 7 and up are excluded, which is why the
-	 * fingerprint total matched the display exactly.
-	 */
-	private static final int PLAY_SECONDS_COLUMN = 17;
-
-	/**
-	 * The last mode row with a page of its own: 0 Deathmatch, 1 Team Deathmatch, 2 Rescue,
-	 * 3 Capture, 4 Sneaking, 5 Base. Row 6 is hidden — it has no page but is still summed into the
-	 * header and every Total — and row 7 is excluded from all sums. Both are served as zeros.
-	 */
-	private static final int LAST_PLAYABLE_MODE = CharacterService.PLAYABLE_MODES - 1;
-
-	/** The 8×18 u32 matrix in {@code 0x4105}. */
-	private static final int MATRIX_CELLS = 144;
-
 	/** Each {@code 0x4107} record is 292 bytes = 73 u32s. */
 	private static final int TAIL_RECORD_INTS = 73;
 
-	/** "Training Mode Time", seconds. 1-based wire slot; CONFIRMED in {@code mgo2_cmd_4107.ksy}. */
-	private static final int TRAINING_MODE_SECONDS_SLOT = 46;
+	/** Page selector for the cumulative grid. Must be sent BEFORE the weekly one. */
+	private static final int PERIOD_CUMULATIVE = 0;
 
-	/** "Combat Training Time (Instructor)", seconds. */
-	private static final int INSTRUCTOR_SECONDS_SLOT = 47;
+	/** Page selector for the weekly grid. */
+	private static final int PERIOD_WEEKLY = 1;
 
-	/** "Combat Training Time (Student)", seconds. */
-	private static final int STUDENT_SECONDS_SLOT = 48;
+	/** The one signed column of the matrix — a round score can be negative. */
+	private static final int SCORE_COLUMN = 3;
 
 	private static final int NAME_LENGTH = 16;
 
@@ -92,11 +86,14 @@ public class PersonalStatsController implements IGameController {
 
 	private final AccountService accountService;
 
+	private final StatsService statsService;
+
 	public PersonalStatsController(CharacterService characterService, ClanService clanService,
-			AccountService accountService) {
+			AccountService accountService, StatsService statsService) {
 		this.characterService = characterService;
 		this.clanService = clanService;
 		this.accountService = accountService;
+		this.statsService = statsService;
 	}
 
 	@Override
@@ -219,88 +216,60 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(4036);           // trailing u32 → T+0x124
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 
-		// TEMPORARY fingerprint payload, 2026-07-23: the matrix and tail semantics are unmapped,
-		// so every u32 carries its own wire position as its value — whatever number a stat shows
-		// on screen names the slot it came from. Matrix cells are 1–144 in wire order (the parser
-		// reads 18 groups of 8, so value v sits in group (v-1)/8, index (v-1)%8); the two tail
-		// records are 1001–1073 and 2001–2073. Replace with real data as slots get labelled.
-		var matrix = ctx.buffer(MATRIX_SIZE);
-		matrix.writeInt(0); // status
-		// The second u32 is a PAGE SELECTOR and must be 0 or 1 (parser bails on anything
-		// greater — which is what v1's 7 and v2–v4's 8 did, silently skipping the matrix).
-		// Wire order is 8 modes × 18 stats, mode-major.
-		matrix.writeInt(0);
-		// v8: is the ALL row client-computed (like the Total page) or shown from the wire?
-		// Columns 0/1/4/5 are deliberately too small to be sums: ALL = 3/4/5/6 means the wire
-		// value renders directly; ALL = 15/26/37/48 means the client sums the displayed rows.
-		var deathmatch = new int[] {
-			3, 4, 5, 3004, 5, 6, 10, 20, 30, 40, 7, 6, 8, 52300, 3015, 52500, 3017, 3018,
-		};
-		// Column 17 is play_seconds (CONFIRMED, mgo2_cmd_4105.ksy), and the play-time line on the
-		// stats screen is the sum of it over mode rows 0..6 — the fingerprint values summed to
-		// exactly the 5:58:24 that was on screen, which is how the column was identified.
+		// Both stats surfaces, both periods, all derived from round_report at query time.
 		//
-		// We measure total play time, not per-mode: the presence accumulator knows how long a
-		// character spent in games, not which mode each one was. Every playable mode row therefore
-		// carries the same total, which means the header — the sum over rows 0..6 — reports six
-		// times it. That is deliberate while the graduation gate is being tested: the client checks
-		// 20 hours somewhere, and until we know whether it reads the header or a mode row, having
-		// every row satisfy it independently removes the question. Rows 6 and 7 stay zero as the
-		// spec requires (row 6 is hidden but summed; row 7 is excluded entirely).
+		// ORDER MATTERS AND IS NOT NEGOTIABLE. Page 0 must precede page 1 — the parser zeroes the
+		// whole grid region (both pages) when it receives page 0, so a page-1-first burst loses
+		// the weekly grid. And 0x4107 must be LAST: its parser unconditionally completes wait slot
+		// 0x16 (0xd3e4b0), so anything sent after it arrives unexpected and anything missing
+		// stalls the screen into FFFFFF60.
 		//
-		// When per-mode play time exists, this becomes one value per row and the header becomes
-		// true. Until then the number on screen is an over-report by construction, not a bug.
-		var playSeconds = (int) characterService.trainingSeconds(charaId).total();
-
-		for (var cell = 0; cell < MATRIX_CELLS; cell++) {
-			var mode = cell / 18;
-			var column = cell % 18;
-			if (column == PLAY_SECONDS_COLUMN) {
-				matrix.writeInt(mode <= LAST_PLAYABLE_MODE ? playSeconds : 0);
-				continue;
-			}
-			matrix.writeInt(mode == 0 ? deathmatch[column] : 3001 + cell);
-		}
-		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, matrix));
-
-		// v9: a second matrix on page 1 (6001–6144), to confirm the live-discovered
-		// cumulative/weekly toggle maps to the page selector.
-		var weekly = ctx.buffer(MATRIX_SIZE);
-		weekly.writeInt(0);
-		weekly.writeInt(1);
-		for (var cell = 0; cell < MATRIX_CELLS; cell++) {
-			weekly.writeInt(6001 + cell);
-		}
-		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, weekly));
-
-		// Real values where we have them, fingerprints everywhere else. The three training slots
-		// are CONFIRMED labels (mgo2_cmd_4107.ksy) and we hold the data — from chara_training_time,
-		// accumulated from presence, NOT from round_report (see CharacterService.trainingSeconds:
-		// the host only reports when a player leaves early, so a host who quit first reported
-		// nobody and lost whole sessions).
-		//
-		// Note the 0x4390 side has nothing to offer here and never did: its struct-B slot 46 was
-		// long labelled "training mode time" by the B-index = slot − 1 rule, and 2026-07-27 traced
-		// its writer to a Team Sneaking goal counter. The label on THIS slot (0x4107 slot 46) is
-		// still "Training Mode Time" and still correct — it was the wire-report source that was
-		// wrong, not the destination. Presence remains the right feed.
-		// Record 1 is lifetime and record 2 weekly; we have no period model, so weekly repeats the
-		// lifetime total rather than inventing a reset cadence.
-		var training = characterService.trainingSeconds(charaId);
+		// Nothing here is a fingerprint any more. The client mints medals and titles itself from
+		// these values, so an invented number awards an unearned medal; every slot we cannot
+		// derive honestly is served as zero. See StatsService.
+		writeMatrix(ctx, charaId, StatsService.Period.CUMULATIVE, PERIOD_CUMULATIVE);
+		writeMatrix(ctx, charaId, StatsService.Period.WEEKLY, PERIOD_WEEKLY);
 
 		var tail = ctx.buffer(TAIL_SIZE);
 		tail.writeInt(0); // status
-		for (var record = 0; record < 2; record++) {
-			for (var i = 1; i <= TAIL_RECORD_INTS; i++) {
-				tail.writeInt(switch (i) {
-					case TRAINING_MODE_SECONDS_SLOT -> (int) training.trainingMode();
-					case INSTRUCTOR_SECONDS_SLOT -> (int) training.instructor();
-					case STUDENT_SECONDS_SLOT -> (int) training.student();
-					default -> (record + 1) * 1000 + i;
-				});
+		writeScoreRecord(tail, statsService.personalScores(charaId, StatsService.Period.CUMULATIVE));
+		writeScoreRecord(tail, statsService.personalScores(charaId, StatsService.Period.WEEKLY));
+		ctx.write(new GamePacket(PERSONAL_STATS_TAIL, tail));
+	}
+
+	/**
+	 * One {@code 0x4105} matrix: status, the page selector, then 8 mode rows of 18 u32 columns,
+	 * mode-major.
+	 * <p>
+	 * The page selector MUST be 0 or 1 — the parser bails with {@code -0x47} on anything larger
+	 * and silently discards the whole matrix, which is what the v1–v4 fingerprint rounds did by
+	 * sending 7 and 8.
+	 * <p>
+	 * Column 3 (score) is the one signed column; everything else is an unsigned count. Values are
+	 * clamped into u32 range because the wire has no room to say "more than this" — saturating is
+	 * closer to the truth than wrapping, and it matches how the client's own counters saturate.
+	 */
+	private void writeMatrix(GameControllerContext ctx, long charaId, StatsService.Period period,
+			int pageSelector) {
+		var grid = statsService.modeGrid(charaId, period);
+		var matrix = ctx.buffer(MATRIX_SIZE);
+		matrix.writeInt(0); // status
+		matrix.writeInt(pageSelector);
+		for (var mode = 0; mode < StatsService.MODE_ROWS; mode++) {
+			for (var column = 0; column < StatsService.STAT_COLUMNS; column++) {
+				matrix.writeInt(column == SCORE_COLUMN
+					? (int) Math.clamp(grid[mode][column], Integer.MIN_VALUE, Integer.MAX_VALUE)
+					: (int) Math.clamp(grid[mode][column], 0, 0xFFFFFFFFL));
 			}
 		}
-		ctx.write(new GamePacket(PERSONAL_STATS_TAIL, tail));
+		ctx.write(new GamePacket(PERSONAL_STATS_MATRIX, matrix));
+	}
+
+	/** One 73-slot {@code 0x4107} record; the slot array is 1-based, so index 0 is skipped. */
+	private void writeScoreRecord(ByteBuf tail, long[] slots) {
+		for (var slot = 1; slot <= TAIL_RECORD_INTS; slot++) {
+			tail.writeInt((int) Math.clamp(slots[slot], 0, 0xFFFFFFFFL));
+		}
 	}
 
 	private void writeError(GameControllerContext ctx) {

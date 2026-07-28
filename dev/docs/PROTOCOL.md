@@ -2067,7 +2067,9 @@ alongside: entries require a terminal event (wounding shots tally nothing) and m
 events never appear (they live in the `0x4390` stun pair). Weapon names: the ELF's
 141-entry master table, `dev/docs/WEAPONS.md`. It carries **no token, no game/room id, and
 no round counter** (the caller references none of the token storage; see the
-reporting-model note under `0x4390`). We ack and store nothing; storing per-player
+reporting-model note under `0x4390`). **Stored since 2026-07-28** in `round_weapon_tally`
+(one row per weapon per report, `rule` copied at write time like `round_report`), which is
+what feeds `0x4107` slot 64 Knife Kills and every future weapon line; storing per-player
 per-weapon tallies is backlogged.
 
 ## `0x43c0` — edit game name / comment / password
