@@ -174,6 +174,14 @@ implementation.
 | `0x4150` | sends | 1 B | Lobby disconnect | served |
 | `0x4151` | parses | 4 B | Lobby-disconnect ack | served |
 
+**No set-title command exists, as far as this table can tell.** All 24 ids in the family are
+accounted for above and every one is served, so there is no unclaimed id in the family that owns
+every other personal-data write. The **worn title** (`0x4103` wire 541) is therefore **computed by
+the server** — the best unlocked title by rank — not chosen by the player; the mask at wire 563 is
+the collection it is chosen from. See [`AWARDS.md`](AWARDS.md) for the rest of the evidence. This is
+an argument from a complete id list, not a proof: an equip command living outside `0x41xx` would
+announce itself as a `No handler for command …` line once players have collections to choose from.
+
 ### Player card / overview (`0x42xx`)
 
 | id | client | payload | summary | our status |

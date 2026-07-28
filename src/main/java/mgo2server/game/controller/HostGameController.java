@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBufUtil;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.model.CharaSkill;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.AwardService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
@@ -406,15 +407,18 @@ public class HostGameController implements IGameController {
 
 	private final ClanService clanService;
 
+	private final AwardService awardService;
+
 	private final long lobbyId;
 
 	private final int lobbySubtype;
 
 	public HostGameController(GameService gameService, CharacterService characterService,
-			ClanService clanService, long lobbyId, int lobbySubtype) {
+			ClanService clanService, AwardService awardService, long lobbyId, int lobbySubtype) {
 		this.clanService = clanService;
 		this.gameService = gameService;
 		this.characterService = characterService;
+		this.awardService = awardService;
 		this.lobbyId = lobbyId;
 		this.lobbySubtype = lobbySubtype;
 	}

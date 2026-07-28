@@ -52,7 +52,8 @@ public class GameServerFactory {
 				controllers.add(new AccountGameController(services.getAccountService(),
 					services.getCharacterService(), lobbyType));
 				controllers.add(new CharacterConnectController(services.getCharacterService(),
-					services.getClanService(), services.getGameService()));
+					services.getClanService(), services.getGameService(),
+					services.getAwardService()));
 				controllers.add(new GameListGameController(services.getGameService(),
 					services.getCharacterService(), lobbyId, lobbySubtype));
 				controllers.add(new ChatGameController(services.getGameService()));
@@ -63,10 +64,11 @@ public class GameServerFactory {
 					services.getClanService(), services.getGameService()));
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
 					services.getClanService(), services.getAccountService(),
-					services.getStatsService()));
+					services.getStatsService(), services.getAwardService()));
 				controllers.add(new ClanGameController(services.getClanService(), services.getCharacterService()));
 				controllers.add(new HostGameController(services.getGameService(),
-					services.getCharacterService(), services.getClanService(), lobbyId, lobbySubtype));
+					services.getCharacterService(), services.getClanService(),
+					services.getAwardService(), lobbyId, lobbySubtype));
 			}
 		}
 

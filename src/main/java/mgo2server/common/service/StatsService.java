@@ -1,5 +1,6 @@
 package mgo2server.common.service;
 
+import mgo2server.common.AwardsConfig;
 import org.jdbi.v3.core.Jdbi;
 
 /**
@@ -240,96 +241,13 @@ public class StatsService {
 	}
 
 	/**
-	 * One medal tier: the id the client tests, where its bit lives in the 16-byte field, the count
-	 * that earns it, and which statistic supplies that count.
+	 * The medal bitfield for {@code 0x4103} wire 615: 16 bytes, medal-id-keyed.
+	 * <p>
+	 * The table lives in {@code awards.json} rather than here. Medal thresholds are not really a
+	 * free choice — the value is the number the client prints in that medal's own caption, so
+	 * awarding at exactly that number is what makes the screen truthful — but keeping them beside
+	 * the title requirements means one file to read and one file to edit.
 	 */
-	private record Medal(int id, int byteIndex, int bit, long threshold, Source source) {
-	}
-
-	/** Where a medal's count comes from. */
-	private enum Source {
-		/** A 1-based {@code 0x4107} slot. */
-		SLOT,
-		/** Career kills, summed over every mode. */
-		TOTAL_KILLS,
-		/** Career deaths, summed over every mode. */
-		TOTAL_DEATHS,
-	}
-
-	/**
-	 * The medal table: 12 families of 3 tiers, from {@code 0xE139C0}.
-	 * <p>
-	 * <b>The threshold is the number the client PRINTS in the medal's own description</b>, not a
-	 * condition it checks — it loads that word after the gate and sprintf's it in as a {@code %d}.
-	 * Awarding at exactly that number is therefore the one choice that makes the screen tell the
-	 * truth: a medal captioned "500 Mk.II destructions" is granted at 500 Mk.II destructions. Any
-	 * other threshold would leave the client stating a requirement we did not apply. That reasoning
-	 * is the whole justification, because the original server's rule is unobservable — see
-	 * AWARDS.md, where this is recorded as operator policy.
-	 * <p>
-	 * The 13th family in the table, ids 80/81/82 "%d targets captured", is deliberately absent:
-	 * the client's accessor ({@code 0xD5C2A8}) has no arm for those ids, so no bit can ever draw
-	 * them. It also has arms for ids that {@code 0xE139C0} never mentions (93, 110, 120-162), which
-	 * this screen never queries.
-	 * <p>
-	 * {@code byteIndex}/{@code bit} are into the 16 bytes at {@code 0x4103} wire 615. Bits 3 and 7
-	 * of every byte are unused, as are bytes 13-15.
-	 */
-	private static final Medal[] MEDALS = {
-		// %d consecutive kills — 0x4107 slot 1, served as 0 until stage boundaries exist.
-		new Medal(1, 0, 0, 5, Source.SLOT), new Medal(2, 0, 1, 10, Source.SLOT),
-		new Medal(3, 0, 2, 25, Source.SLOT),
-		// %d consecutive headshots — slot 3, likewise 0 for now.
-		new Medal(10, 0, 4, 3, Source.SLOT), new Medal(11, 0, 5, 10, Source.SLOT),
-		new Medal(12, 0, 6, 30, Source.SLOT),
-		// %d consecutive deaths — slot 2, likewise 0 for now.
-		new Medal(20, 1, 0, 5, Source.SLOT), new Medal(21, 1, 1, 10, Source.SLOT),
-		new Medal(22, 1, 2, 25, Source.SLOT),
-		// %d total kills
-		new Medal(30, 1, 4, 500, Source.TOTAL_KILLS),
-		new Medal(31, 1, 5, 2000, Source.TOTAL_KILLS),
-		new Medal(32, 1, 6, 10000, Source.TOTAL_KILLS),
-		// %d total deaths
-		new Medal(40, 2, 0, 500, Source.TOTAL_DEATHS),
-		new Medal(41, 2, 1, 2000, Source.TOTAL_DEATHS),
-		new Medal(42, 2, 2, 10000, Source.TOTAL_DEATHS),
-		// %d consecutive survivals in TDM — slot 25, a max over b24 snapshots, so exact.
-		new Medal(50, 3, 0, 2, Source.SLOT), new Medal(51, 3, 1, 4, Source.SLOT),
-		new Medal(52, 3, 2, 6, Source.SLOT),
-		// %d times spotted Snake first — slot 56.
-		new Medal(60, 4, 0, 50, Source.SLOT), new Medal(61, 4, 1, 100, Source.SLOT),
-		new Medal(62, 4, 2, 500, Source.SLOT),
-		// %d Mk.II destructions — slot 53. Needs 12+ players in Sneaking (GATES.md).
-		new Medal(63, 4, 4, 50, Source.SLOT), new Medal(64, 4, 5, 100, Source.SLOT),
-		new Medal(65, 4, 6, 500, Source.SLOT),
-		// %d hold ups performed as Snake — slot 51.
-		new Medal(66, 9, 0, 50, Source.SLOT), new Medal(67, 9, 1, 100, Source.SLOT),
-		new Medal(68, 9, 2, 500, Source.SLOT),
-		// %d SOP destabilizer uses — slot 27.
-		new Medal(70, 5, 0, 50, Source.SLOT), new Medal(71, 5, 1, 100, Source.SLOT),
-		new Medal(72, 5, 2, 200, Source.SLOT),
-		// %d matches without a scratch — slot 31.
-		new Medal(90, 7, 0, 50, Source.SLOT), new Medal(91, 7, 1, 100, Source.SLOT),
-		new Medal(92, 7, 2, 500, Source.SLOT),
-		// %d people finished training — slot 36.
-		new Medal(100, 8, 0, 10, Source.SLOT), new Medal(101, 8, 1, 100, Source.SLOT),
-		new Medal(102, 8, 2, 300, Source.SLOT),
-	};
-
-	/** The 0x4107 slot each SLOT-sourced medal family reads, keyed by the family's lowest id. */
-	private static final java.util.Map<Integer, Integer> MEDAL_SLOTS = java.util.Map.of(
-		1, 1,      // consecutive kills
-		10, 3,     // consecutive headshots
-		20, 2,     // consecutive deaths
-		50, 25,    // consecutive survivals in TDM
-		60, 56,    // times spotted Snake first
-		63, 53,    // Mk.II destructions
-		66, 51,    // hold ups performed as Snake
-		70, 27,    // SOP destabilizer uses
-		90, 31,    // matches without a scratch
-		100, 36);  // people finished training
-
-	/** The medal bitfield for {@code 0x4103} wire 615: 16 bytes, medal-id-keyed. */
 	public static final int MEDAL_FIELD_BYTES = 16;
 
 	/**
@@ -355,23 +273,23 @@ public class StatsService {
 		}
 
 		var field = new byte[MEDAL_FIELD_BYTES];
-		for (var medal : MEDALS) {
-			var earned = switch (medal.source()) {
+		for (var medal : AwardsConfig.current().medals()) {
+			var earned = switch (medal.metric()) {
 				case TOTAL_KILLS -> totalKills;
 				case TOTAL_DEATHS -> totalDeaths;
-				case SLOT -> slots[MEDAL_SLOTS.get(familyOf(medal.id()))];
+				case SLOT -> medal.slot() >= 1 && medal.slot() < slots.length
+					? slots[medal.slot()] : 0L;
+				// A medal configured with a metric that needs a mode filter or a live ratio has no
+				// meaning here; awards.json only ships the three above.
+				default -> 0L;
 			};
-			if (earned >= medal.threshold()) {
+			if (earned >= medal.value()) {
 				field[medal.byteIndex()] |= (byte) (1 << medal.bit());
 			}
 		}
 		return field;
 	}
 
-	/** A family is keyed by its lowest id: 1/2/3 -> 1, 63/64/65 -> 63, 100/101/102 -> 100. */
-	private static int familyOf(int medalId) {
-		return MEDAL_SLOTS.containsKey(medalId) ? medalId : familyOf(medalId - 1);
-	}
 
 	/**
 	 * The {@code 0x4105} grid for one character and period: 8 mode rows of 18 u32 columns.

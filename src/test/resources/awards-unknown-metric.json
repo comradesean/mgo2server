@@ -1,0 +1,12 @@
+{
+  "_comment": "A metric that AwardMetric does not define. The startup must name it.",
+  "titles": [
+    {
+      "name": "TYPO", "bit": 0, "rank": 1, "description": "",
+      "requires": [
+        { "metric": "kd_ration", "op": ">=", "value": 1.5 }
+      ]
+    }
+  ],
+  "medals": []
+}

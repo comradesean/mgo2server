@@ -19,6 +19,7 @@
         <!-- Runtime -->
         <netty.version>4.2.0.Final</netty.version>
         <jooby.version>3.7.0</jooby.version>
+        <jackson.version>2.15.2</jackson.version>
         <jdbi.version>3.49.0</jdbi.version>
         <flyway.version>11.7.2</flyway.version>
         <hikari.version>6.3.0</hikari.version>
@@ -85,6 +86,17 @@
             <groupId>io.jooby</groupId>
             <artifactId>jooby-netty</artifactId>
             <version>${jooby.version}</version>
+        </dependency>
+
+        <!--
+            Jackson arrives transitively through jooby and is already in the fat jar, but the award
+            requirements in src/main/resources/awards.json are parsed by our own code. Declaring it
+            explicitly keeps that parse from breaking silently the day jooby moves its version.
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
         </dependency>
 
         <!-- Persistence -->

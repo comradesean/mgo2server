@@ -8,6 +8,7 @@ import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.ChatMacro;
 import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.AwardService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
@@ -134,13 +135,16 @@ public class CharacterConnectController implements IGameController {
 
 	private final ClanService clanService;
 
+	private final AwardService awardService;
+
 	private final GameService gameService;
 
 	public CharacterConnectController(CharacterService characterService, ClanService clanService,
-			GameService gameService) {
+			GameService gameService, AwardService awardService) {
 		this.clanService = clanService;
 		this.characterService = characterService;
 		this.gameService = gameService;
+		this.awardService = awardService;
 	}
 
 	@Override
@@ -276,6 +280,14 @@ public class CharacterConnectController implements IGameController {
 				account.getId(), charaId);
 			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
 			return;
+		}
+
+		// Stamping the visit also re-tests the titles, and does so BEFORE the stamp lands so an
+		// absence-based requirement can still see the gap it is measuring. Doing it here as well as
+		// at round end means a character who qualifies purely by staying away can still be told.
+		var titles = awardService.seen(charaId);
+		if (!titles.isEmpty()) {
+			logger.info("Character {} unlocked title bits {} on entering the lobby.", charaId, titles);
 		}
 
 		// Order matches the original's burst.

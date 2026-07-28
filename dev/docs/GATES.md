@@ -156,9 +156,19 @@ id, LSB-first; bits 3 and 7 of each byte and bytes 13–15 are unused.
 **Client bug to avoid: never set title bit 22 or above.** The popcount loop runs 23 iterations for
 22 titles and reads past the table.
 
-**Consequence.** We currently send zeros, so no character can hold a medal or title at all. Serving
-them means *deciding when to set each bit server-side* — the thresholds in `0xE139C0` are
-transcribed in OBSERVED.md and can drive it, but nothing implements that yet.
+**Consequence — now acted on (2026-07-28).** Because the client gates on nothing but these bits,
+*we* decide when each one is set. Both fields are served from real requirements as of V45:
+
+- **Medals** derive at query time (`StatsService.medalBits`) — a medal is earned when the career
+  statistic reaches the number the client prints in that medal's own caption, which is the one
+  choice that leaves the screen truthful.
+- **Titles latch** in `chara_title`, because their requirements are ratios and a ratio falls.
+  Wire 563 is the mask of unlocked rows; **wire 541 is computed by us** as the best unlocked title
+  by rank — the client has no set-title command, so nothing else could choose it.
+
+Requirements live in `src/main/resources/awards.json`; the reasoning, the sources and the guessed
+numbers are in [`AWARDS.md`](AWARDS.md). This page still holds the two client limits that constrain
+whatever we set: **never title bit 22+**, and the medal layout is id-keyed, not row-indexed.
 
 ---
 

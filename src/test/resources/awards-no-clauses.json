@@ -1,0 +1,9 @@
+{
+  "_comment": "A title with an empty requires list, which every character alive would satisfy.",
+  "titles": [
+    {
+      "name": "FREEBIE", "bit": 3, "rank": 1, "description": "", "requires": []
+    }
+  ],
+  "medals": []
+}

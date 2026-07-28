@@ -5,6 +5,10 @@
 protocol: the original server's rules are unobservable, so ours are a choice we have to make and
 label as one (CLAUDE.md, "Distinguishing spec from policy").
 
+**The choices we made are in `src/main/resources/awards.json`**, hand-editable, applied by a rebuild
+and redeploy — see [Granting policy](#granting-policy) for what a clause looks like and why the
+title numbers should be assumed wrong until somebody tunes them.
+
 Two wire fields carry them, both in `0x4103`:
 
 | wire | what | notes |
@@ -26,16 +30,25 @@ Operator account, 2026-07-28: *"you unlock the animal rank and it goes into your
 | --- | --- | --- |
 | **Collection** | wire 563 mask | every title this character has unlocked |
 | **Worn** | wire 541, 1-based | the ONE title on display; 0 = none |
-| **History** | — | not fed by any command we know (see Granting policy) |
+| **History** | — | not fed by any command we know; a 1.30 feature (see Granting policy) |
 
 The worn title is not private: its readers are the title tab, **the name plate**, and two clan
 surfaces (`0x916AFC`, `0x915D3C`, `0x906270`, `0x906320`, `0x8842A4`). Other players see it.
 
-**Which implies a command we have never seen.** Choosing which title to wear must send something,
-and no unhandled command has ever appeared in a live log — for the simple reason that no character
-has ever had a title unlocked, so the selection UI has never been reachable. Granting even one
-title makes that command discoverable the first time somebody equips it. Storing the choice is then
-a per-character column, and 541 serves it back.
+**There is probably no command for choosing it.** This paragraph used to say the opposite — that an
+equip command must exist and would appear as an unhandled id the first time a character had a title
+to equip. Two things now point the other way:
+
+- **All 24 `0x41xx` ids are accounted for and served** (`PACKETS.md`, connect-burst table). A
+  set-title command would have to live somewhere, and there is no unclaimed id in the family that
+  owns every other personal-data write.
+- The operator's requirements source describes the highest rank you qualify for as **"still listed
+  as your main as per the old override rule"** — an automatic override, not a player's selection.
+
+So wire 541 is **computed by the server**, exactly as the clan emblem flag is: the best unlocked
+title by `rank`. Nothing is stored for it. If an equip command does exist, it will announce itself
+the usual way — a `No handler for command …` line once players have collections to choose from —
+and this note should be revisited then.
 
 ---
 
@@ -82,15 +95,16 @@ Notes that matter for granting:
   statistic named. They want a single overall measure and should be **mutually exclusive** — a
   player is a FOXHOUND *or* a FOX, not both.
 - **Bit 16 (CHAMELEON) is unreachable in v1.** It rewards Team Sneaking, which release-day scope
-  keeps switched off (`GATES.md` §1). Serving it would require rule 7 to be playable.
+  keeps switched off (`GATES.md` §1). Serving it would require rule 7 to be playable. Its clause is
+  shipped anyway, so it starts working the day rule 7 is enabled and nobody has to remember it.
 - **Several titles are unflattering** — SLOTH, PIGEON, CHICKEN, TSUCHINOKO, RAT. They are not
   achievements and should not be treated as a ladder; the set is a personality read, and a player
   who rarely plays is *supposed* to get TSUCHINOKO.
-- **Ratio-versus-total is now the open design question, not a settled one.** If titles latch (see
-  Granting policy), then "everybody qualifies eventually" is not a bug — it is how an unlockable
-  works, and a career total is the natural measure. If they are a live read of current style, rates
-  are right. The operator's observation points at latching; the earlier note here assumed the
-  opposite and was written before that was known.
+- **Ratio-versus-total is settled: ratios, and titles latch.** The shipped requirements are almost
+  all rates (`kd_ratio`, `mode_round_share`, `deaths_per_round`), guarded by a minimum round count
+  so three lucky rounds cannot mint a FOXHOUND. Because a rate falls as well as rises, the unlock
+  has to be *stored* rather than derived — see "Titles — IMPLEMENTED" below. This replaces both
+  earlier readings of this question.
 
 ---
 
@@ -129,8 +143,8 @@ read from `0x4107` slots 1–3, which we serve as zero until stage boundaries ar
 > may or may not be what the live service required, and are believed to have been reworked at some
 > point. Nothing in the binary states a condition. External documentation — patch notes, the
 > official site, community records — would be tier 3–4 under CLAUDE.md's hierarchy but is the only
-> plausible source, since the server side is unobservable. **Operator has offered to find the
-> original requirements; nothing here should be built until they arrive.**
+> plausible source, since the server side is unobservable. **We award at the printed number** — see
+> "Medals — IMPLEMENTED" below for why that is the one defensible choice given the above.
 
 ---
 
@@ -249,7 +263,12 @@ produced the phantom medals. Better a documented later system than an invented e
 The argument against is that it is a knowing departure from the stated target, and those are
 supposed to be explicit rather than convenient.
 
-**Unresolved. Operator's call.** Nothing is implemented either way.
+**Resolved 2026-07-28: Source B's numbers taken, its cadence not.** The requirement *values* are
+Source B's, adapted to our 22 titles; the *evaluation* is not a weekly maintenance sweep but a
+recompute whenever a character's statistics change. Only one clause is genuinely weekly —
+`weekly_mode_rounds`, which the four mode-preference titles keep because dropping it would mean
+inventing a replacement. Everything else reads career totals. This is the knowing departure, stated
+here rather than left implicit.
 
 ### Medals — IMPLEMENTED 2026-07-28 (operator policy)
 
@@ -272,14 +291,92 @@ threshold table but the client's accessor (`0xD5C2A8`) has **no arm for those id
 draw them. That also disposes of the one family with no mapped statistic — it was unreachable
 either way.
 
-Families that cannot light yet, for reasons already documented:
+The medal rows live in the same `src/main/resources/awards.json` as the titles, but **their values
+are not a free choice**: each is the number the client prints in that caption, so changing one makes
+the screen state a requirement we did not apply. They are in the file only so both kinds of award
+live together.
 
-- **consecutive kills / headshots / deaths** read `0x4107` slots 1-3, served as zero until stage
-  boundaries are stored (BACKLOG). They are implemented and will start working that day.
-- **Mk.II destructions** needs a 12-player Sneaking round (`GATES.md` §4).
+Families that cannot light yet are listed with the titles' blockers under "What still cannot be
+earned" below.
 
-### Still undecided
+### Titles — IMPLEMENTED 2026-07-28 (operator policy)
 
-Whether to implement **release-day behaviour** (one title, career stats, recomputed on change) or
-the **1.30 behaviour** most people remember (weekly, multiple, with history). CLAUDE.md's target
-says the former. Nothing is built either way.
+#### Where the requirements live, and how to change them
+
+**`src/main/resources/awards.json`.** It is meant to be hand-edited; a rebuild and redeploy applies
+it. Its own `_comment` block states the policy, so the file explains itself to whoever opens it
+without this page.
+
+A clause is `{metric, op, value}` plus an optional `modes` filter, and **every** clause of a title
+must pass:
+
+```json
+{ "name": "JAWS", "bit": 6, "rank": 12, "description": "Knife master",
+  "requires": [
+    { "metric": "kd_ratio",    "op": ">=", "value": 1.25  },
+    { "metric": "knife_ratio", "op": ">=", "value": 0.075 },
+    { "metric": "rounds",      "op": ">=", "value": 5     } ] }
+```
+
+- `metric` is a **closed set**, defined in `AwardMetric.java`. The file chooses among metrics; it
+  cannot define a computation. A typo names itself at startup instead of quietly evaluating to zero
+  — every parse problem in `AwardsConfig` is fatal and names the offending entry.
+- `op` is one of `>=`, `>`, `<=`, `<`. `modes` is drawn from `DM TDM RES CAP SNE BASE` — `TSNE`
+  is accepted and maps to rule 7, but no round is ever played under it here, so any clause naming
+  it evaluates to zero. Omitting `modes` means every mode.
+- `bit` is the position in the 22-bit mask (wire 563) and is validated `0..21`, because bit 22 and
+  above corrupt the client's scrollbar. Duplicate bits are rejected too.
+- `rank` orders titles for display: **lowest rank wins**. It is not a threshold and has nothing to
+  do with the FOXHOUND/FOX/DOBERMAN/HOUND ladder beyond happening to sort it first.
+- **Ratios over an empty denominator evaluate to zero, not infinity.** A character with no deaths
+  has not earned an unbeatable K/D; they have not played. The `rounds` clause paired with almost
+  every ratio is the second guard on the same failure.
+
+> **The numbers are guesses and are expected to be wrong.** They are Source B — a community list for
+> a *late* version — restricted to our 22 titles, with the gaps filled by our own judgement. Tier
+> 3–4 at best, and tier "we made it up" where a title had no entry. That is precisely why they live
+> in an editable file rather than in constants: retuning them is anticipated, not a failure.
+
+#### Titles latch; medals do not
+
+`chara_title` (V45) holds **one row per unlocked title**, inserted `on conflict do nothing` and
+never deleted. The database does the latching, so no code has to remember to.
+
+The asymmetry with medals is worth stating because it looks like an inconsistency and is not:
+
+| | source | consequence |
+| --- | --- | --- |
+| **medals** | every source is a career **sum or maximum** | it only grows, so a medal cannot un-earn itself; `StatsService.medalBits` derives the whole 16-byte field at query time with **no stored state** |
+| **titles** | requirements are **ratios** | a ratio **falls**. A derived title would vanish after one bad week, so the unlock is stored |
+
+`AwardService.evaluate(charaId)` re-tests the whole file for one character and inserts what is newly
+qualified. It is idempotent, so calling it whenever a character's statistics change is safe; that is
+where it is wired (round-report handling on the host path). Wire 563 is then
+`sum(1 << title_bit)` over that character's rows.
+
+#### Which title is worn
+
+**The server picks it — the best unlocked title by `rank`, lowest wins**, served 1-based at wire
+541, `0` when nothing is unlocked. No player choice is stored and none is accepted; see "There is
+probably no command for choosing it" above for the evidence, and note the parallel with the clan
+emblem flag, which is computed the same way.
+
+#### One metric that no gameplay row could express
+
+`chara.last_seen_at` (V45) is stamped at login. **TSUCHINOKO ("rarely plays") needs it and nothing
+else could supply it**, because not playing writes nothing — there is no round report to read.
+`days_since_login` reads it; `NULL` (never seen since the column existed) counts as **zero days**,
+not infinity, so missing data cannot award the title. The column also makes `0x4103`'s two
+login-time fields servable, which have been zero because nothing recorded a login.
+
+#### What still cannot be earned, and why
+
+Everything below is implemented and starts working the day its input does. None of it is a gap in
+the granting code.
+
+| award | blocked by |
+| --- | --- |
+| **CHAMELEON** (title bit 16) | needs Team Sneaking (`rule = 7`), which release-day scope keeps switched off (`GATES.md` §1). `mode_round_share` over TSNE is permanently zero until it is enabled |
+| **consecutive kills / headshots / deaths** (ids 1-3, 10-12, 20-22) | read `0x4107` slots 1, 3 and 2, which we serve as **zero** until stage boundaries are stored (BACKLOG) |
+| **Mk.II destructions** (ids 63-65) | needs a **12+ player** Sneaking round for the Mk.II to exist at all (`GATES.md` §4) |
+| **`%d targets captured`** (ids 80-82) | not in `awards.json` at all: the client's own accessor (`0xD5C2A8`) has **no arm for those ids**, so no bit can draw them. Twelve families are implemented, not thirteen |
