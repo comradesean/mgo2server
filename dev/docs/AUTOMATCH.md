@@ -2,8 +2,9 @@
 
 Everything the client needs to complete an automatch connection, read from `MGO2.elf` and the disc
 on 2026-07-28 by four parallel investigations. Three names in `PROTOCOL.md`/`PACKETS.md` were wrong
-and are corrected here. **Implementation status is in §7a** — currently: the two client→server
-commands are validated and refused outside a configured window; none of the four pushes exist yet.
+and are corrected here. **Implementation status is in §7a** — currently: the search, the queue, the
+panel push and match forming all work and are confirmed live, but an automatch game **hangs on the
+loading screen**, and slot-in is not built.
 
 The short version: automatch is **not a separate connection path**. The server picks a host, tells
 everyone, and the clients re-enter the ordinary create-game and join-game handshakes we already
@@ -661,7 +662,33 @@ That run is the first server→client push this project has made: until now ever
 was a reply to something. It also settles, by observation rather than argument, that pushing to a
 client that has been answered result 0 works at all.
 
-Still unimplemented: matching itself — `0x43f1`, `0x43f2`, `0x43f3` and `0x43f4`.
+**Step 5: matching — built, and partly confirmed live.** A two-client search formed a match, elected
+a host, pushed a 223-byte `0x43f1` to both, saw the host create the game, and released both with
+`0x43f2`. Server-side the flow is complete and its packet was verified byte by byte on the wire.
+
+**But an automatch game hangs on the loading screen, and that is unresolved.** The `0x43f1` is
+structurally correct — right size, right scalars, rotation entry 0 populated, sane timers — so the
+suspicion has moved to the **22 block bytes `0x4310` cannot carry**. Our default block was derived
+from a captured `0x4310` blob, which structurally cannot contain them, so all six of the offsets the
+game's getter bank reads (67, 82, 88, 170, 172, 184) currently go out as **zero**. For the host those
+bytes become the live game object verbatim. Block 67 is suspected to be a live player count; a game
+created with zero players is a plausible way to hang a load. **Under investigation from the ELF**
+rather than by copying a real `0x4313`, so that we learn what each field is rather than inheriting
+values nobody can justify.
+
+**Level matching, built to the operator's design.** Each searcher carries a window of their level
+±band, where the band widens with *their own* wait, and two players match when the windows **touch**
+— so a long-waiting searcher reaches out to a newcomer rather than both needing to fit one shared
+range. The same band is sent to each client, so the lit range on the gauge is the literal truth about
+that player's search rather than a decoration, and it widens visibly as they wait. The histogram's
+two nibble arrays are filled from real per-level counts using the threshold table recovered from the
+disc, so searchers appear in their own columns.
+
+Defaults: start ±1, widen one level every 30 s, cap 22 — reaching "anyone" in about eleven minutes,
+inside the client's own ~20-minute search timeout. `MGO2SERVER_AUTOMATCH_BAND_*` in `server.env`.
+
+**Still unimplemented:** slot-in to existing games (`MODE=SLOT_IN_ONLY`/`BOTH`'s first pass),
+`0x43f4` on window close, and `0x43f0`/`0x43f5`, which the automatch screen ignores anyway.
 
 ## 8. Release-day scope
 
