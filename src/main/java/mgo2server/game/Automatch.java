@@ -447,8 +447,7 @@ public class Automatch {
 
 			var expired = match.electedAt.isBefore(Instant.now().minus(HOST_CREATE_TIMEOUT));
 			if (match.hostLost || expired) {
-				logger.warn("Automatch host {} {}; telling {} players it failed.", match.hostCharaId,
-					match.hostLost ? "disconnected" : "never created a game", match.members.size());
+				var told = 0;
 				// 0x43f3 only reaches a client that has NOT yet had 0x43f2 — that packet unregisters
 				// the push channel. Everyone here is by definition still waiting, so this is the last
 				// moment they are reachable at all.
@@ -458,8 +457,14 @@ public class Automatch {
 						push(searcher.channel(), AutomatchPackets.MATCH_FAILED, 4,
 							buffer -> AutomatchPackets.writeMatchFailed(buffer, 0));
 						forget(charaId);
+						told++;
 					}
 				}
+				// Counted as pushed, not as elected: the host is usually the one who left, so the
+				// group size would overstate who was actually told.
+				logger.warn("Automatch host {} {}; told {} of {} players it failed.",
+					match.hostCharaId, match.hostLost ? "disconnected" : "never created a game",
+					told, match.members.size());
 				pending.remove(match);
 			}
 		}
@@ -512,6 +517,15 @@ public class Automatch {
 			var removed = searchers.remove(charaId);
 			if (removed != null) {
 				removed.detach();
+				// The closeFuture listener normally does this, but it and this loop race: a tick can
+				// see isActive() == false in the window before the listener runs, and then nothing
+				// would mark the match. The group would sit out the full HOST_CREATE_TIMEOUT waiting
+				// for a host we already know is gone. Microseconds wide, but it is a real
+				// interleaving, so both paths set the flag.
+				var match = removed.match;
+				if (match != null && match.hostCharaId == charaId && match.gameId == 0) {
+					match.hostLost = true;
+				}
 			}
 		}
 		if (!dropped.isEmpty()) {
@@ -540,6 +554,12 @@ public class Automatch {
 		var needed = playersNeeded();
 
 		for (var searcher : searchers.values()) {
+			// Only clients still searching. Once a match has been announced the client has left state
+			// 6 for state 12 or 18, and while event 42 is documented as repainting in place, nothing
+			// establishes that it is harmless off that screen — so we stop rather than assume.
+			if (searcher.state() != State.SEARCHING) {
+				continue;
+			}
 			var channel = searcher.channel();
 			if (!channel.isActive()) {
 				continue;
