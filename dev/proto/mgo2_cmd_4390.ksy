@@ -716,15 +716,27 @@ types:
       - id: gako_pickups
         type: s2
         doc: |
-          slot 30, unmapped on the stats screen. [CONFIRMED, RES] GA-KO pickups AFTER the
-          round's first — the "subsequent grabs" counter. Scores **x2 in Rescue** (score-table
-          column 18, nonzero in rule 2 only).
+          slot 30, unmapped on the stats screen. [CONFIRMED, RES] GA-KO pickups — **every
+          pickup, including the round's first**. Scores **x2 in Rescue** (score-table column
+          18, nonzero in rule 2 only).
 
-          Mechanism: the "objective picked up" method `0x706BB8` keeps a per-round latch (bit
-          `0x100` of `[this+0x668]`). The FIRST grab of the round takes the unlatched path and
-          bumps b41; once latched, the mode-2 path falls to `0x706D7C` and bumps this slot
-          (key `0x82`) instead at `0x706DD0`. So b41 and b29 partition pickups into "first"
-          and "the rest" — they are not two views of the same event.
+          THE "SUBSEQUENT GRABS ONLY" READING IS REFUTED (live, 2026-07-27). It was published
+          the same morning off an ELF trace of the latch in `0x706BB8` — the first grab takes
+          the unlatched path and bumps b41, later grabs fall to `0x706D7C` and bump this slot —
+          and read as a partition: b41 = first grab, b29 = the rest. Two live Rescue rounds
+          with **exactly one pickup each** wired `b41 = 1` AND `b29 = 1` both times. A partition
+          predicts `b29 = 0` there. It is not a partition.
+
+          The reading that fits is a FALL-THROUGH: the first grab bumps both, later grabs bump
+          only b29. That predicts 1 grab -> (1, 1) and 2 grabs -> (1, 2), and it restores the
+          original capture-era note ("1 on the picking-up attacker in both pickup rounds").
+          The exact control flow has NOT been re-read to confirm the fall-through, so treat the
+          mechanism as open and the COUNTS as the established fact.
+
+          Worth noting the failure mode, because it has now happened twice in one day from the
+          same source: an ELF trace read two arms of a branch as mutually exclusive when they
+          share a continuation. The other instance was the `0x6ED650` dispatcher's shared
+          increment tail, which is what put b14's "no writer" claim under re-audit.
       - id: fully_defended_matches
         type: s2
         doc: "slot 31. [CONFIRMED-1] fully defended: 1 on the defender of a round where the GA-KO was never taken (engineered idle round); fires per ROUND despite the stat name Fully Defended Matches; absent when the GA-KO was picked up. Defender scored exactly 5 that round with zero activity — B30*5 score-category candidate."
@@ -847,14 +859,18 @@ types:
       - id: rescue_carry_marker
         type: s2
         doc: |
-          slot 42. [CONFIRMED-1, RES] the round's FIRST GA-KO pickup — one per round, not per
+          slot 42. [CONFIRMED, RES] the round's FIRST GA-KO pickup — one per round, not per
           carry. Scores **x3 in Rescue** (score-table column 19, nonzero in rule 2 only).
           Unlabelled on any stats page.
 
-          The "per-carry-run marker candidate" this file used to guess is now a mechanism: the
-          writer at `0x706E30` (key `0x88`) sits on the unlatched path of `0x706BB8`, gated by
-          a per-round latch that then diverts every later pickup to b29. Its Team Sneaking
-          twin is slot 44 (key `0x90`, same function, `cmpwi 7` arm).
+          Writer `0x706E30` (key `0x88`) on the unlatched path of `0x706BB8`, gated by a
+          per-round latch (bit `0x100` of `[this+0x668]`, tested `0x706CA8`, set `0x706D08`).
+          Its Team Sneaking twin is slot 44 (key `0x90`, same function, `cmpwi 7` arm).
+
+          The once-per-round part is live-confirmed — two Rescue rounds with one pickup each
+          wired 1 both times. What was WRONG was the claim that the latch makes b41 and b29
+          mutually exclusive: b29 wired 1 in those same rounds, so the first pickup feeds both.
+          See b29.
       - id: rescue_carry_magnitude
         type: s2
         doc: |
