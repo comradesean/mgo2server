@@ -350,15 +350,22 @@ seq:
       Storage n10, blob key `0x2e`. 0/517 archived frames, because no archived round combined
       a lock-on with a stun weapon.
 
-      ONE LIVE ATTEMPT, INCONCLUSIVE (2026-07-27). A Sneaking round was played to move this
-      pair: one player stunned another in a lobby with `auto_aim` ENABLED, and both this field
-      and lockon_stuns_received wired **0** while the plain knockout pair (`0x0d`/`0x0f`) wired
-      1/1. The same round's three kills also produced `lockon_kills = 0`, so nothing in it used
-      lock-on at all — which is why this does NOT refute the label. Two live possibilities
-      remain open: the lock simply was not engaged, or **lock-on does not apply to stun weapons
-      at all**, in which case this pair is structurally unreachable like b38. Settling it needs
-      a round with a confirmed lock (reticle) on a stun weapon, and a control kill that ticks
-      `lockon_kills` in the same round to prove lock-on was working.
+      **LIVE-CONFIRMED 2026-07-27** (Sneaking game 231): a player landed three lock-on stuns on
+      one victim and wired exactly `3` here, with the victim wiring `3` in lockon_stuns_received
+      — a clean cross-player pair with known counts, on a field that had been 0/517 until then.
+
+      It also **scores nothing**: those three stuns contributed 0 to a score that decomposed
+      exactly without them (`3*3 + 3*2 + 1*5 + 3*1 + 3*6 = 41`, wire 41). n10 is not a column
+      in the score table, so this pair is counted but never paid — consistent with the table
+      and worth knowing before anyone tries to reconcile a Sneaking score with it.
+
+      An earlier attempt the same night wired 0/0 and was recorded as inconclusive rather than
+      negative; that was right. The operator had not yet enabled lock-on, and the tell was in
+      the same frame — the round's three kills wired `lockon_kills = 0`, so nothing in it used
+      lock-on at all. **A zero here means nothing without a control that proves the mechanic
+      was live in the same round.** In the confirming round a fourth stun on a second victim
+      also failed to register, and that victim wired 0 received, so the lock evidently was not
+      held for it — the wire is the authority on which stuns were locked, not the recollection.
 
       Named from the binary 2026-07-27, and the derivation is tight. The stun/knockout handler
       `0x6EDC90` takes `(ctx, dealerSlot, victimSlot, weaponId, hitClass, ...)`. Its dealer and
@@ -382,9 +389,13 @@ seq:
   - id: lockon_stuns_received
     type: s2
     doc: |
-      [CONFIRMED-1] LOCK-ON STUNS RECEIVED — the received side of lockon_stuns_dealt, written
-      on the victim by the same handler `0x6EDC90` under `hitClass == 2`. Storage n12, blob
-      key `0x32`. 0/517.
+      [CONFIRMED] LOCK-ON STUNS RECEIVED — the received side of lockon_stuns_dealt, written on
+      the victim by the same handler `0x6EDC90` under `hitClass == 2`. Storage n12, blob key
+      `0x32`.
+
+      Live-confirmed 2026-07-27 (Sneaking game 231): the victim of three lock-on stuns wired
+      exactly 3 here against the dealer's 3, while a third player in the same round wired 0.
+      Scores nothing, like its dealt-side partner.
 
       **This retires the capture-era "rounds played" label**, which was already independently
       implausible: under delta semantics a counter incremented once per round would wire 1 in

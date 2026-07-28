@@ -3580,3 +3580,37 @@ open: the lock simply was not acquired, or **lock-on does not apply to stun weap
 make this pair structurally unreachable in the same way b38 is. Settling it needs a round with a
 confirmed reticle lock on a stun weapon AND a control lock-on kill in the same round to prove the
 mechanic was working.
+
+## Lock-on stuns confirmed, and a zero that meant nothing — 2026-07-27
+
+Sneaking game 231, three players, poop as Snake. Sean landed three lock-on stuns on poop and wired
+`lockon_stuns_dealt = 3` (wire `0x19`); poop wired `lockon_stuns_received = 3` (wire `0x1d`); the
+third player wired 0. A clean cross-player pair with known counts, on a field that had been 0/517
+for the entire archive. **Both labels — derived from the binary earlier the same day off the
+`hitClass == 2` arm of the stun handler `0x6EDC90` — are now live-confirmed.**
+
+The round's score decomposes exactly and independently, which also re-confirms the Sneaking row and
+`snake_kills` at ×6:
+
+    kills 3*3 + knockouts_dealt 3*2 + team_win 1*5 + combo(b36) 3*1 + snake_kills(b51) 3*6 = 41,
+    wire 41
+
+**Lock-on stuns score nothing.** Three of them contributed zero to that total — n10 is not a column
+in the score table. Counted but never paid, which is worth knowing before anyone tries to reconcile
+a Sneaking score against them.
+
+**The methodological point is the earlier attempt.** A round hours before wired 0/0 for this pair
+after a stun with `auto_aim` enabled, and it was recorded as *inconclusive rather than negative*.
+That call was correct: the operator had not yet worked out how to engage lock-on, and the tell was
+already in the same frame — the round's three kills wired `lockon_kills = 0`, so nothing in it used
+lock-on at all. **A zero in a "does X tick this?" test means nothing unless the same round contains
+a control proving the mechanic was live.** Had that null been written up as a refutation, two
+correct labels would have been discarded on the strength of a round where the feature was switched
+off.
+
+The confirming round makes the same point from the other side: a fourth stun on a second victim
+also failed to register, and that victim wired 0 received. The wire, not the recollection, is the
+authority on which stuns carried a lock.
+
+Snake conservation laws held again with three players: sean's b53 (spots) 4 against poop's b54
+(times spotted as Snake) 4, and b55 (first-to-spot per life) 3 against the Snake's 3 deaths.
