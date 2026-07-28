@@ -3712,3 +3712,41 @@ are LOBBY TYPES rather than rules: 1.20's "new game mode Tournament" sits under 
 only" as a lobby, and 1.30 refers to public Survival and Tournament matches "using RES/TSNE" — a
 lobby running a rule. Wikipedia calling GENE's Survival "a new game mode" is the sloppy phrasing;
 Konami's own text is not. (Expansions were GENE / MEME / SCENE — there was no "ARSENAL".)
+
+## The slot-rule "breaks" are all training statistics — 2026-07-27
+
+The "B-index = 0x4107 slot − 1" rule has carried four documented exceptions for weeks, treated as
+an unexplained defect in the mapping and as the reason to distrust any label inferred from it. The
+exceptions are not random. Line each one up against what the career slot it lands on is actually
+called:
+
+    b35 wakes              -> slot 36  Number of Soldiers Trained
+    b45 tsne_goals         -> slot 46  Training Mode Time
+    b46 capture_put_count  -> slot 47  Combat Training Time (Instructor)
+    b47 sne_bodysearches   -> slot 48  Combat Training Time (Student)
+
+**Those four are the only training statistics in the 73-slot record, and they are the only
+exceptions.** The slots immediately around them — 35, 37, 45, 49, 50 — are all unlabelled, so
+there is nothing there for a struct-B counter to conflict with. That also retires the supposed
+fifth exception: b48 lands on slot 49, which is `unknown_49`, so it never conflicted with anything.
+
+**The cause is a category difference, not a broken mapping.** Training statistics cannot be
+sourced from a host's per-round report. "Soldiers Trained" is a count of students instructed;
+"Training Mode Time" and the two Combat Training times are durations accumulated across sessions
+against an instructor/student relationship. None of that is a round event, so no struct-B slot
+feeds them — they are server-side accounting, and the index arithmetic merely collides with them.
+
+This server already implements exactly that split, which is the corroboration:
+`CharacterService.trainingSeconds` reads `chara_training_time`, accumulated from
+`game_player.joined_at` presence, and its own documentation records that this **replaced** a
+derivation from `round_report.seconds_in_game` because the host only reports when a player leaves
+early — a host who quit first reported nobody and lost a whole session.
+
+So the rule restated: **B-index = personal-stats slot − 1, among those career slots that are fed by
+round reports at all.** Nothing about it is unexplained, and the last "real mystery" in the 0x4390
+write-up closes.
+
+The practical warning it generated stays valid, and b45 is the case that proves it: "Training Mode
+Time" was inferred from the rule, sat in the field NAME for weeks, and was wrong — it is a Team
+Sneaking goal counter. An inferred label is a hypothesis. The difference now is that we know
+*where* the rule mislands rather than merely that it sometimes does.
