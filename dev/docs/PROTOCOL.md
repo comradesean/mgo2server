@@ -1116,13 +1116,28 @@ computed client-side. Page 0 is cumulative and page 1 is weekly — the stats sc
 cumulative/weekly toggle switches page, paired with `0x4107` record 1 (cumulative) / record 2
 (weekly), which share one slot layout (capture-proven). Send both pages and both records.
 
-Title history and award ("medal") history on the same screen are **not** fed by this burst, by
-any command, or by the record tables earlier suspected (`T+0x26d14` and `T+0x3330` turned out
-to be match-history list storage for `0x4682`/`0x4212` records) — they are **computed
-client-side from the stat values**, against a 22-title resource table (VA `0xe14eb0`) and a
-39-row medal threshold table (VA `0xe139c0`, `{u32 id, u32 name-hash, u32 threshold}`,
-13 medals × 3 tiers). The thresholds are transcribed in OBSERVED.md; the server's only job is
-honest stats.
+Title *history* and award *history* on the same screen are **not** fed by this burst, by any
+command, or by the record tables earlier suspected (`T+0x26d14` and `T+0x3330` turned out to be
+match-history list storage for `0x4682`/`0x4212` records).
+
+> **CORRECTED 2026-07-28: the medals and titles THEMSELVES are server-driven, and this section
+> previously said the opposite.** It claimed they were "computed client-side from the stat values …
+> the server's only job is honest stats". That is false and it cost real confusion — a live
+> character showed "500 Mk.II destructions" against zero Mk.II kills and kept the award after every
+> stat was zeroed.
+>
+> **Medals are gated ONLY by a 16-byte bitfield at `0x4103` wire 615.** `0x916E20` reads the row
+> id, tests the bit via `0xD5C2A8`, and skips the row when clear; there is no stat load in
+> `0x916E20`..`0x916FD0`. The `threshold` word in `0xE139C0` is loaded *after* the gate and
+> `sprintf`'d into the description as its `%d` — it is display text, not a condition. The bitfield
+> is medal-id-keyed, not row-indexed, LSB-first, with bits 3 and 7 of each byte and bytes 13–15
+> unused.
+>
+> **Titles are gated by a 22-bit mask at wire 563** (rating-block entry 3). Never set bit 22 or
+> above: the client's popcount loop runs 23 times for 22 titles.
+>
+> The 22-title table `0xE14EB0` is 66 strings (22 titles × 3 forms) and `0xE152D0` is the *title*
+> sprite table; medals have no sprite. See `GATES.md` §5a.
 
 ## `0x4132` — outfit commit
 

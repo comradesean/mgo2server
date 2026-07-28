@@ -179,9 +179,12 @@ types:
           wire 413, T+0x1E24. The 128-byte player comment. [CONFIRMED] — located by the v3
           fingerprint leak ({|}~ from misaligned u16s) and verified end-to-end in v5 with the
           real database comment.
-      - id: unk_u8_d
+      - id: equipped_title
         type: u1
-        doc: "wire 541, T+0x1EA5. [UNKNOWN] (fp 45)"
+        doc: |
+          [CONFIRMED 2026-07-28] The title the character is wearing, **1-based** — 0 for none.
+          Previously `unk_u8_d`, sent as the fingerprint 45, which is out of range for the
+          22-title table.
       - id: unk_u8_block_e
         type: u1
         repeat: expr
@@ -192,11 +195,23 @@ types:
         repeat: expr
         repeat-expr: 9
         doc: |
-          wire 551, T+0x32C4..0x32E4. Entry 7 (T+0x32DC) [CONFIRMED] = Host Rating
-          denominator (fp 4027 rendered as "1 star / 4027"). Entry 4 (T+0x32D0) is read by
-          the stats screen (trace 0x91b338) but what it renders is [UNKNOWN] (fp 4024 never
-          visibly surfaced). Other entries [UNKNOWN] (fp 4021-4029); the star-count
-          numerators are NOT located yet.
+          wire 551, T+0x32C4..0x32E4. Nine u32s, **three of them identified 2026-07-28**:
+
+          - **entry 3 (wire 563) — the TITLE unlock bitmask, 22 bits, LSB-first.** This is what
+            made every character wear eight titles: the fingerprint 4024 set bits 3..11, which is
+            exactly the "titles 3-11" OBSERVED recorded and attributed to the stats changing.
+            **NEVER set bit 22 or above** — the client's popcount loop runs 23 iterations over a
+            22-entry table and reads past the end.
+          - **entry 5 (wire 571) — Host Rating star NUMERATOR.**
+          - **entry 6 (wire 575) — Host Rating star DENOMINATOR**, the "/ N votes" on screen.
+
+          The gauge is `clamp(ceil(2 * num / den), 0, 10)` half-stars (`0x94258C`), so the rating
+          SUM over the vote COUNT renders the average. Both halves are fed from `host_review`,
+          filled by `0x43c4` — before that command was identified nothing stored a host vote and
+          this gauge could only read zero.
+
+          Entries 0, 1, 2, 4, 7, 8 remain [UNKNOWN]. Entry 4 is read by the stats screen
+          (`0x91b338`) but what it renders was never established.
       - id: unk_u32_session
         type: u4
         doc: "wire 587. Stored to obj+0x30, not the character struct. [UNKNOWN] (fp 4030)"
@@ -207,19 +222,43 @@ types:
       - id: unk_u32_e
         type: u4
         doc: "wire 607, T+0x3310. [UNKNOWN] (fp 4031; candidate for the v2 'generation' u32)"
-      - id: unk_u32_f
+      - id: beta_award_bits
         type: u4
-        doc: "wire 611, T+0x3314. [UNKNOWN] (fp 4032)"
-      - id: unk_str_c
+        doc: |
+          [CONFIRMED 2026-07-28] Award bits outside the main bitfield; **bit 0 is the "Beta test
+          participant" award**. Previously `unk_u32_f`. Higher bits unexamined.
+      - id: medal_bitfield
         type: str
         size: 16
-        doc: "wire 615, T+0x3318. String field. [UNKNOWN] (fp \"FP-STR-C\", never surfaced)"
+        doc: |
+          [CONFIRMED 2026-07-28] **The medal bitfield — 16 bytes, and the ONLY thing that decides
+          which awards the player has.** Not a string; the ksy called it `unk_str_c` and this
+          server sent the literal text "FP-STR-C" into it for weeks.
+
+          The gate at `0x916E20` reads a medal row's id, tests the matching bit through
+          `0xD5C2A8`, and skips the row when it is clear. **No stat is loaded anywhere in
+          `0x916E20`..`0x916FD0`** — which is what proves medals are server-driven. The
+          `threshold` word in the 39-row table at `0xE139C0` is loaded *after* the gate and
+          sprintf'd into the description as its `%d`, so "500 Mk.II destructions" is display text,
+          not a condition the player met.
+
+          Layout is **medal-id-keyed, not row-indexed**: a hand-written switch with a byte and bit
+          per id, LSB-first. Bits 3 and 7 of each byte and bytes 13-15 are unused.
+
+          How it was caught: a live character showed "500 Mk.II destructions" against zero Mk.II
+          kills, and kept the award after every stat was zeroed. "FP-STR-C" byte 4 is 'T' = 0x54,
+          bit 6 set = medal id 65 = that award. The whole string lit 17 medals.
       - id: unk_u8_e
         type: u1
         doc: "wire 631, T+0x1AD8. [UNKNOWN] (fp 46)"
-      - id: unk_u32_g
+      - id: instructor_score_numerator
         type: u4
-        doc: "wire 632, T+0x32F0. [UNKNOWN] (fp 4033)"
+        doc: |
+          [CONFIRMED 2026-07-28] The **Instructor Score star numerator**, paired with the
+          denominator that follows. The client draws
+          `clamp(ceil(2 * numerator / denominator), 0, 10)` half-stars (`0x94258C`, 11-entry icon
+          table), so sending the rating SUM over the vote COUNT puts the true average on the gauge.
+          Previously `unk_u32_g`.
       - id: instructor_score_denominator
         type: u4
         doc: "wire 636, T+0x32F4. [CONFIRMED] (fp 4034 rendered as \"1 star / 4034\"); numerator not located."
