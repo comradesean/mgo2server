@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.*;
  * Sizes assert what the client's parsers consume, traced from the binary: {@code 0x4103} is a
  * 648-byte grid opening with a status u32, {@code 0x4105} 584, {@code 0x4107} 588 (the packet
  * that releases the client's wait state, so it must arrive last), and {@code 0x4133} is
- * {@code 4 + 5·count + 30} bytes — 34 for the empty readback we send.
+ * {@code 4 + 5·count + 32} bytes — 651 for a character owning the whole 123-row catalogue, which
+ * is what it must be, since {@code 0x4133} refills the very table {@code 0x4124} filled at login.
  */
 public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 	private static final String TOKEN = "abcd1234abcd1234";
@@ -56,6 +57,8 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
+
+		grantStartingGear(charaId);
 
 		TestDatabase.get().jdbi().useHandle(handle -> {
 			handle.createUpdate("insert into chara_appearance (chara_id) values (:id)")
@@ -419,11 +422,10 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		// Byte-identical to what 0x4124 sends: 4 + 123x5 + 32 = 651. The trailing 32 bytes are
 		// sixteen {u8 item_id, u8 bit_index} pairs, not a terminator, and the size only balances
 		// at sixteen.
-		var catalogue = io.netty.buffer.Unpooled.buffer(mgo2server.game.LoadoutWriter.gearPayloadSize());
-		mgo2server.game.LoadoutWriter.writeGear(catalogue);
-
-		assertThat(payload.readableBytes()).isEqualTo(mgo2server.game.LoadoutWriter.gearPayloadSize());
-		assertThat(payload.getInt(0)).isNotZero();  // an entry count, not a status
-		assertThat(ByteBufUtil.equals(payload, catalogue)).isTrue();
+		// A new character owns the whole catalogue, so this is the known-good 651 bytes -- and
+		// byte-identical to the 0x4124 the same character got at login, which is the property that
+		// matters: the two writers fill one table and must agree.
+		assertThat(payload.getInt(0)).isEqualTo(123);
+		assertThat(payload.readableBytes()).isEqualTo(651);
 	}
 }

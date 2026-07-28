@@ -954,6 +954,45 @@ public class CharacterService {
 	}
 
 	/**
+	 * One gear record as {@code 0x4124} and {@code 0x4133} carry it: an item id and its colour
+	 * mask. Emitted once per <em>catalogue row</em>, so the duplicated {@code 0x86} yields two.
+	 */
+	public record OwnedGear(int itemId, long colours) {
+	}
+
+	/**
+	 * The gear a character owns, in the catalogue's wire order — exactly what the table holds.
+	 * <p>
+	 * The join is against {@code gear_item} rather than a constant, so the order and the record
+	 * count come from the catalogue and ownership comes from {@code chara_gear}. An item the
+	 * character does not own is <em>omitted</em>, not sent with a zero mask: the client memsets
+	 * the whole loadout table before applying records, so an absent record is the only way "does
+	 * not have this" can be expressed. Same mechanism as {@link #getSkills}.
+	 * <p>
+	 * Both writers must use this. {@code 0x4124} fills the table at login and {@code 0x4133}
+	 * refills it after the outfit screen zeroes it, and if the two ever disagree the client keeps
+	 * whichever spoke last — which is exactly the bug that made a character lose everything by
+	 * opening the outfit screen.
+	 * <p>
+	 * Which items a character starts with is <em>policy</em>, not protocol. V44 backfilled
+	 * everyone with everything, preserving the behaviour that predates the table; a server that
+	 * wanted gear earned would grant a starter set at creation and insert on whatever unlocks one.
+	 */
+	public List<OwnedGear> ownedGear(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery("""
+					select g.item_id, cg.colours
+					from gear_item g
+					join chara_gear cg
+						on cg.item_id = g.item_id and cg.chara_id = :id
+					order by g.ordinal
+					""")
+				.bind("id", charaId)
+				.map((rs, sctx) -> new OwnedGear(rs.getInt("item_id"), rs.getLong("colours")))
+				.list());
+	}
+
+	/**
 	 * Stored experience per skill id, for the packets that report it alongside an equipped level.
 	 * <p>
 	 * Returns a lookup rather than the list because the callers need it keyed by skill id and a
@@ -1055,6 +1094,25 @@ public class CharacterService {
 
 			appearance.setCharaId(charaId);
 			insertAppearance(handle, appearance);
+
+			// The starting gear: every catalogue item, in every colour.
+			//
+			// This is POLICY, and it is the permissive one — it matches what every character had
+			// before V44, so creating a character is unchanged by the table existing. Granting a
+			// real starter set means narrowing this insert (and the V44 backfill); nothing in the
+			// binary says which items a character should begin with, because the client never
+			// checks — it renders whatever the two gear writers agree on.
+			//
+			// DISTINCT because the catalogue holds 0x86 twice: ownership is per item, and the
+			// duplicate is a quirk of the wire order that the writer reproduces from gear_item.
+			handle.createUpdate("""
+					insert into chara_gear (chara_id, item_id)
+					select :charaId, distinct_items.item_id
+					from (select distinct item_id from gear_item) distinct_items
+					on conflict (chara_id, item_id) do nothing
+					""")
+				.bind("charaId", charaId)
+				.execute();
 
 			// The starting skill set: ids 1..16 at level 1, and no skill 17.
 			//

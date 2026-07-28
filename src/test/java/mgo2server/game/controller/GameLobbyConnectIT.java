@@ -70,6 +70,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 				.one());
 
 		grantStartingSkills(charaId);
+		grantStartingGear(charaId);
 
 		assertThat(charaId).isNotEqualTo(accountId);
 
@@ -440,14 +441,22 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(skillSets).isEqualTo(3);
 	}
 
+	/** Rows in gear_item, seeded by V44. 0x86 appears twice, so 123 rows and 122 distinct ids. */
+	private static final int GEAR_CATALOGUE_ROWS = 123;
+
 	@Test
 	public void gearAndSkillCataloguesAreAdvertised() {
 		givenSelectedCharacter("Snake");
 
 		var replies = connect(charaId, BURST_REPLIES);
 
-		assertThat(replies.get(6).getPayload().readableBytes())
-			.isEqualTo(LoadoutWriter.gearPayloadSize());
+		// 123 catalogue rows for a new character, which is the known-good 651 bytes. The count is
+		// the character's row count now, not a constant: gear comes from chara_gear as of V44, and
+		// creation grants the whole catalogue.
+		var gear = replies.get(6).getPayload();
+		assertThat(gear.getInt(0)).isEqualTo(GEAR_CATALOGUE_ROWS);
+		assertThat(gear.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize(GEAR_CATALOGUE_ROWS));
+		assertThat(gear.readableBytes()).isEqualTo(651);
 		// The count is the character's row count now, not a constant in the writer. A new character
 		// is granted 1..16; skill 17 is withheld to be earned.
 		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.STARTING_MAX_ID);

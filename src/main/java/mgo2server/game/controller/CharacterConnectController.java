@@ -283,15 +283,16 @@ public class CharacterConnectController implements IGameController {
 		writeGameplaySettings(ctx, charaId);
 		writeChatMacros(ctx, charaId);
 		writePersonalInfo(ctx, chara);
-		writeGear(ctx);
+		writeGear(ctx, charaId);
 		writeSkills(ctx, charaId);
 		writeSkillSets(ctx, charaId);
 		writeGearSets(ctx, charaId);
 	}
 
-	private void writeGear(GameControllerContext ctx) {
-		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
+	private void writeGear(GameControllerContext ctx, long charaId) {
+		var gear = characterService.ownedGear(charaId);
+		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize(gear.size()));
+		LoadoutWriter.writeGear(buffer, gear);
 		ctx.write(new GamePacket(GEAR, buffer));
 	}
 
