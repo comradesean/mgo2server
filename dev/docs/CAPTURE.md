@@ -14,7 +14,7 @@ Deploy the game servers with DEBUG logging; the decoder hex-dumps every payload 
 (`GamePacketDecoder`, gated on `logger.isDebugEnabled()`):
 
 ```
-MGO2SERVER_LOG_LEVEL=DEBUG docker compose up -d --build gamelobby
+MGO2SERVER_LOG_LEVEL=DEBUG docker compose up -d --build freebattle1
 ```
 
 Every inbound command then logs `In  - command XXXX - N bytes` followed by the payload hex.
