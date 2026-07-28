@@ -1038,7 +1038,9 @@ public class HostGameController implements IGameController {
 				gameService.insertRoundReport(new GameService.RoundReport(
 					game.getId(), game.getHostCharaId(), targetId,
 					payload.getByte(base + 0x04) & 0xFF, structA,
-					// Wire 0x23 is {u16 team slot, u16 seconds}, not a u32 (OBSERVED.md).
+					// Wire 0x23 is {u16 team-win flag, u16 seconds}, not a u32. The split is from
+					// OBSERVED.md; the high half's meaning was corrected 2026-07-27 (V41) — it is
+					// a TEAM WIN flag, not the team slot index it was read as for four days.
 					payload.getUnsignedShort(base + 0x23), payload.getUnsignedShort(base + 0x25),
 					experience & 0xFFFFFFFFL,
 					detailPresent & 0xFFFFFFFFL, detail, trailing, aborted,

@@ -259,12 +259,17 @@ public class GameService {
 
 	/**
 	 * One decoded {@code 0x4390} report. {@code structA} is the 15 s16 counters at wire
-	 * {@code 0x05}–{@code 0x22} in wire order (confirmed labels live at fixed indices — kills 0,
-	 * deaths 1, score 3, stuns 4, headshots 6, headshot-deaths 7, rounds-played 12);
-	 * {@code detail} is the 58 s16 struct-B block, empty in the short report form.
+	 * {@code 0x05}–{@code 0x22} in wire order (kills 0, deaths 1, lock-on kills 2, score 3,
+	 * knockouts dealt 4, knockouts received 5, headshots 6, headshot-deaths 7, stun headshots 8
+	 * and 9, lock-on stuns dealt 10, lock-on deaths 11, lock-on stuns received 12, round-completed
+	 * 13, flawless-win 14); {@code detail} is the 58 s16 struct-B block, empty in the short form.
+	 * <p>
+	 * {@code teamWin} is wire {@code 0x23} — a TEAM WIN flag, <em>not</em> the team slot index it
+	 * was called until 2026-07-27 (V41). {@code trailingWord} is a hardcoded zero on this client
+	 * and can never be anything else; the WARN on it is a mis-parse guard, not a real tripwire.
 	 */
 	public record RoundReport(long gameId, long hostCharaId, long charaId, int flag,
-			short[] structA, int teamSlot, int seconds, long experienceTotal,
+			short[] structA, int teamWin, int seconds, long experienceTotal,
 			long detailPresent, short[] detail, long trailingWord, boolean aborted,
 			int lobbySubtype) {
 	}
@@ -293,8 +298,9 @@ public class GameService {
 						(game_id, host_chara_id, chara_id, flag_0x04,
 						 kills, deaths, lockon_kills, score, stuns, counter_0x0f,
 						 headshots, headshot_deaths, counter_0x15, counter_0x17,
-						 counter_0x19, lockon_deaths, rounds_played, counter_0x1f, counter_0x21,
-						 team_slot, seconds_in_game, experience_total, detail_present,
+						 lockon_stuns_dealt, lockon_deaths, lockon_stuns_received,
+						 counter_0x1f, counter_0x21,
+						 team_win, seconds_in_game, experience_total, detail_present,
 						 detail_counters, trailing_word, aborted, lobby_subtype, rule)
 					values (:game, :host, :chara, :flag,
 						 :a0, :a1, :a2, :a3, :a4, :a5, :a6, :a7, :a8, :a9,
@@ -307,7 +313,7 @@ public class GameService {
 				.bind("host", report.hostCharaId())
 				.bind("chara", report.charaId())
 				.bind("flag", report.flag())
-				.bind("team", report.teamSlot())
+				.bind("team", report.teamWin())
 				.bind("seconds", report.seconds())
 				.bind("exp", report.experienceTotal())
 				.bind("detailPresent", report.detailPresent())
