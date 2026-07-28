@@ -30,6 +30,11 @@ import java.util.Set;
  * confirmed against stored captures. Not a placeholder; this part is known.</li>
  * </ol>
  *
+ * <p>One field is neither: {@link #CURRENT_PLAYERS} at block 67 is <b>required to be nonzero</b> by
+ * a client-side validator, so it is set deliberately rather than inherited. The other five bytes
+ * {@code 0x4310} cannot carry (82, 88, 170, 172, 184) have <b>no reader anywhere in the client</b>
+ * and stay zero — a full-width scan found no live consumer of any of them.</p>
+ *
  * <b>We know the placeholders are wrong.</b> Observed automatch ran TDM at 5/4/25 where the client
  * default is 3/4/15, and SNE at 7/4/3 where the default is 8/4/3. Neither could have come from a
  * host's saved settings or from the defaults, so the original server authored its own table — we
@@ -53,6 +58,28 @@ public final class AutomatchSettingsBlock {
 
 	/** The seventeen timer/count u32s. */
 	private static final int TIMERS = 100;
+
+	/**
+	 * Current player count — and <b>zero is invalid</b>, which is the one thing in this block that is
+	 * not a matter of taste.
+	 * <p>
+	 * The client validates its game object at {@code 0x883FB4} and fails if <em>any</em> of game id
+	 * ({@code +0}), game name ({@code +4}), roster[0] character id ({@code +176}), roster[0] name
+	 * ({@code +180}), {@code maps[0]} ({@code +768}) or this byte ({@code +819}) is zero. Failure
+	 * raises message <b>2831, "Unable to acquire host information."</b>
+	 * <p>
+	 * The byte has <b>no writer anywhere in the client</b> — it is purely server-supplied — and our
+	 * default block came from a captured {@code 0x4310}, which structurally cannot carry it. So it
+	 * was going out as zero.
+	 * <p>
+	 * We send <b>1</b>: at the moment the elected host creates the game, the host is the only player
+	 * in it. The joiners arrive afterwards through the ordinary join path, which maintains the real
+	 * roster.
+	 */
+	private static final int CURRENT_PLAYERS = 67;
+
+	/** The host, and only the host, is in the game when it is created. */
+	private static final int PLAYERS_AT_CREATE = 1;
 
 	/**
 	 * The SNAKE count for Sneaking: how many times Snake must be killed.
@@ -166,6 +193,7 @@ public final class AutomatchSettingsBlock {
 		}
 
 		var block = DEFAULT_BLOCK.clone();
+		block[CURRENT_PLAYERS] = (byte) PLAYERS_AT_CREATE;
 
 		// Wipe the captured rotation before writing ours: the client's own blob-save loop stops at the
 		// first zero map, so a leftover entry beyond ours would still be part of the cycle.

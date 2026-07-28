@@ -64,9 +64,11 @@ public record AutomatchPolicy(
 	 */
 	public enum Mode {
 		/**
-		 * Try to slot a searcher into an existing game; if none fits, queue them and form one. The
-		 * useful default on a small server, because forming needs several people at once and
-		 * slotting in needs only one.
+		 * Form a game from the queue, and — <b>once slot-in is built</b> — try an existing game
+		 * first.
+		 * <p>
+		 * <b>Today this behaves exactly like {@link #FORM_ONLY}</b>, because the slot-in pass is not
+		 * implemented. See {@link #SLOT_IN_ONLY} for why it is parked rather than missing.
 		 */
 		BOTH,
 
@@ -78,12 +80,30 @@ public record AutomatchPolicy(
 
 		/**
 		 * Only ever slot searchers into games that already exist; never form one.
-		 * <p>
-		 * <b>This is a no-op unless {@link #slotInLobbies} is set.</b> Candidate games are scoped to
-		 * the automatching lobby by default, and that lobby can only contain games a previous cohort
-		 * <em>formed</em> — its screen has no Create Game and no browser. So slot-in-only with the
-		 * default scope waits forever on an empty set. {@link #validate} says so at startup rather
-		 * than letting it look like a bug.
+		 *
+		 * <p><b>NOT IMPLEMENTED — parked as a future project, and the server refuses to start with
+		 * it.</b> Selecting it would leave the matchmaker completely inert, which is a worse failure
+		 * than refusing.
+		 *
+		 * <h2>Why it is parked rather than missing</h2>
+		 * The evidence for slot-in was always the weaker half of the feature. It rests on three disc
+		 * strings that imply joining a game already running — 912 <em>"Searching for joinable games in
+		 * progress"</em> and 913 <em>"Searching for open games"</em>, against 911 <em>"Searching for
+		 * opponents… until the required number of players are found"</em>, which is forming.
+		 *
+		 * <p>Against that, the only <b>observed</b> automatch behaviour we have is forming: a real
+		 * session assembled its rotation from the union of what its searchers had requested, which is
+		 * a game built for that group rather than one they were dropped into. The operator's reading,
+		 * and the one this server follows, is that forming is how the original worked.
+		 *
+		 * <p>It is also the harder half to justify on this deployment: the automatching lobby only
+		 * ever contains games automatching itself formed — its screen has no Create Game and no
+		 * browser — so slot-in is dormant unless it reaches into other lobbies, and pulling searchers
+		 * into Free Battle games is a policy invention with nothing behind it.
+		 *
+		 * <p>If it is ever built: the client path is believed to be {@code 0x43f2} alone with an
+		 * existing game's id and no preceding {@code 0x43f1}, which is a <em>reading</em> of the state
+		 * machine and not an observation. Confirm that before relying on it.
 		 */
 		SLOT_IN_ONLY;
 
@@ -227,11 +247,11 @@ public record AutomatchPolicy(
 				+ "MGO2SERVER_AUTOMATCH_WINDOWS is empty, so automatching would be open never. "
 				+ "Give it a window such as 20:00-23:00, or leave it disabled.");
 		}
-		if (mode == Mode.SLOT_IN_ONLY && slotInLobbies.isEmpty()) {
-			throw new IllegalArgumentException("MGO2SERVER_AUTOMATCH_MODE=SLOT_IN_ONLY needs "
-				+ "MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES, because the automatching lobby only ever "
-				+ "contains games automatching itself formed — and this mode never forms one. "
-				+ "Name the lobby ids whose games searchers may join, or use BOTH.");
+		if (mode == Mode.SLOT_IN_ONLY) {
+			throw new IllegalArgumentException("MGO2SERVER_AUTOMATCH_MODE=SLOT_IN_ONLY is not "
+				+ "implemented — slot-in is parked as a future project, so this mode would leave the "
+				+ "matchmaker inert rather than doing anything. Use BOTH or FORM_ONLY, which both "
+				+ "form a game from the queue. See AutomatchPolicy.Mode.SLOT_IN_ONLY for why.");
 		}
 	}
 

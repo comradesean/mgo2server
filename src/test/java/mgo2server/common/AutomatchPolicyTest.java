@@ -202,25 +202,37 @@ public class AutomatchPolicyTest {
 	}
 
 	/**
-	 * Slot-in-only scoped to the automatching lobby alone can never match anybody: that lobby holds
-	 * only games automatching itself formed, and this mode never forms one. It has to be a startup
-	 * failure rather than a queue that silently waits forever.
+	 * Slot-in is parked as a future project, so the mode that does nothing else must refuse to start.
+	 * <p>
+	 * The tick only runs its passes when {@code forms()} is true and no slot-in pass exists, so
+	 * accepting this mode would produce a server that queues searchers and never matches anyone, with
+	 * nothing in the log to explain it. Refusing at startup is the loud version of the same fact —
+	 * and unlike the earlier "you also need SLOT_IN_LOBBIES" rule, no configuration rescues it.
 	 */
 	@Test
-	public void rejectsSlotInOnlyWithNoLobbiesToSlotInTo() {
+	public void refusesSlotInOnlyBecauseItIsNotImplemented() {
 		assertThatThrownBy(() -> of(Map.of(
 			"MGO2SERVER_AUTOMATCH_ENABLED", "true",
 			"MGO2SERVER_AUTOMATCH_WINDOWS", "20:00-23:00",
 			"MGO2SERVER_AUTOMATCH_MODE", "SLOT_IN_ONLY")))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES");
+			.hasMessageContaining("not implemented");
 
-		var configured = of(Map.of(
+		// Naming lobbies does not rescue it — the pass itself is missing, not its input.
+		assertThatThrownBy(() -> of(Map.of(
 			"MGO2SERVER_AUTOMATCH_ENABLED", "true",
 			"MGO2SERVER_AUTOMATCH_WINDOWS", "20:00-23:00",
 			"MGO2SERVER_AUTOMATCH_MODE", "SLOT_IN_ONLY",
+			"MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES", "2, 3")))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("not implemented");
+
+		// The setting still parses, so reviving slot-in needs no config work.
+		var parsed = of(Map.of(
+			"MGO2SERVER_AUTOMATCH_ENABLED", "true",
+			"MGO2SERVER_AUTOMATCH_WINDOWS", "20:00-23:00",
 			"MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES", "2, 3"));
-		assertThat(configured.slotInLobbies()).containsExactlyInAnyOrder(2L, 3L);
+		assertThat(parsed.slotInLobbies()).containsExactlyInAnyOrder(2L, 3L);
 	}
 
 	/**

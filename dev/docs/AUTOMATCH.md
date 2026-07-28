@@ -666,7 +666,38 @@ client that has been answered result 0 works at all.
 a host, pushed a 223-byte `0x43f1` to both, saw the host create the game, and released both with
 `0x43f2`. Server-side the flow is complete and its packet was verified byte by byte on the wire.
 
-**But an automatch game hangs on the loading screen, and that is unresolved.** The `0x43f1` is
+**Block 67 must be nonzero, and was going out as zero (fixed 2026-07-28).** The client validates its
+game object at `0x883FB4` and fails if *any* of game id (`+0`), game name (`+4`), roster[0] character
+id (`+176`), roster[0] name (`+180`), `maps[0]` (`+768`) or **current player count (`+819`, block
+67)** is zero — raising message **2831, "Unable to acquire host information."** That byte has **no
+writer anywhere in the client**; it is purely server-supplied, and our default block came from a
+captured `0x4310`, which structurally cannot carry it. We now send 1: at create time the host is the
+only player in the game.
+
+**The other five omitted bytes have no reader at all.** Full-width scans for blocks 82, 88, 170, 172
+and 184 found no live consumer — the only genuine hit, block 184 at `0xD4954C`, feeds a 60-byte
+history record whose list accessor `0xD3F6E0` is never called. Leave them zero; no value can change
+client behaviour. In particular, do not adopt a reference server's `0x2E` at wire `0x160` — it is
+tier 4 with no ELF support.
+
+**A correction worth recording:** the earlier claim that these six were "read by the getter bank" at
+`0x907030`–`0x907A70` was wrong. **That bank is dead code** — only three of its ~70 functions are
+ever called (`0x907948` roster-entry pointer, `0x907A0C` comment pointer, `0x907A64` name pointer),
+and the rest have no pointer reference anywhere in the file. Being in that bank is not evidence of a
+runtime read, and an investigation built on it would have been chasing nothing.
+
+**The loading hang is still unresolved**, and none of the six is on the loading or round-start path —
+the post-create cache at `0x8CA3A0`–`0x8CA620` skips all of them, and the map-load parameter builder
+reads record 25 and the character block, never the game struct. Block 67 also produces a *visible
+dialog* rather than a silent stall, so it is unlikely to be the cause even though it was wrong.
+
+**One lead the same trace turned up:** that validator also demands a non-empty roster at `+176`/
+`+180`. On the host path `0x8CAAC8` copies all 968 bytes from the screen struct, preserving only the
+game id — so the roster the host ends up with is whatever the automatch screen left behind, and the
+roster lives *outside* the 204-byte block, where `0x43f1` cannot reach it. Worth chasing if the hang
+survives this fix.
+
+**The original hang report:** The `0x43f1` is
 structurally correct — right size, right scalars, rotation entry 0 populated, sane timers — so the
 suspicion has moved to the **22 block bytes `0x4310` cannot carry**. Our default block was derived
 from a captured `0x4310` blob, which structurally cannot contain them, so all six of the offsets the
@@ -687,8 +718,28 @@ disc, so searchers appear in their own columns.
 Defaults: start ±1, widen one level every 30 s, cap 22 — reaching "anyone" in about eleven minutes,
 inside the client's own ~20-minute search timeout. `MGO2SERVER_AUTOMATCH_BAND_*` in `server.env`.
 
-**Still unimplemented:** slot-in to existing games (`MODE=SLOT_IN_ONLY`/`BOTH`'s first pass),
-`0x43f4` on window close, and `0x43f0`/`0x43f5`, which the automatch screen ignores anyway.
+### Slot-in: parked as a future project (2026-07-28)
+
+Dropping a searcher into a game **already running** is deliberately not built, and
+`MODE=SLOT_IN_ONLY` now refuses to start rather than leaving the matchmaker inert.
+
+The case *for* it is three disc strings: 912 *"Searching for joinable games in progress"* and 913
+*"Searching for open games"*, beside 911 *"Searching for opponents… until the required number of
+players are found"*, which is forming.
+
+The case *against* is stronger and is what this server follows. The only automatch behaviour anyone
+has **observed** is forming — a real session assembled its rotation from the union of what its
+searchers had requested, which is a game built for that group rather than one they were dropped
+into. On this deployment it is also the harder half to justify: the automatching lobby only ever
+contains games automatching itself formed, so slot-in is dormant unless it reaches into other
+lobbies, and pulling searchers into Free Battle games is a policy invention with nothing behind it.
+
+If it is ever built, the client path is believed to be **`0x43f2` alone**, carrying an existing
+game's id with no preceding `0x43f1` — a *reading* of the state machine, not an observation.
+Confirm that before relying on it.
+
+**Also still unimplemented:** `0x43f4` on window close, and `0x43f0`/`0x43f5`, which the automatch
+screen ignores anyway.
 
 ## 8. Release-day scope
 
