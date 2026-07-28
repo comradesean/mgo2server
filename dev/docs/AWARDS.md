@@ -136,25 +136,100 @@ read from `0x4107` slots 1–3, which we serve as zero until stage boundaries ar
 
 ## Granting policy
 
-**Unwritten.** Both fields currently send zero, which is honest and means no character can hold a
-title or medal. The rules are ours to choose; when they exist they belong here, labelled as policy,
-with the reasoning for each threshold.
+### The source, and what it is worth
 
-Constraints on any scheme:
+A community guide (GameFAQs, HeathclifFlowen) gives concrete requirements. **Tier 3-4** under
+CLAUDE.md's hierarchy, and its own author opens by saying all of it is "subject to MASSIVE
+scrutiny" after the 1.30 patch. Treat every number as a starting point to be checked live, not as
+a specification.
 
-- **Titles appear to LATCH, not to be recomputed.** Operator observation, 2026-07-28: *"you unlock
-  the animal rank and it goes into your history."* If unlocking is an event that accumulates, then
-  the wire-563 mask is "every title ever earned" rather than "how you play lately", and a design
-  that recomputes it each time — clearing bits when a player's style shifts — would be wrong. This
-  supersedes an earlier note here that argued the opposite from first principles; the earlier
-  reasoning (a title you can never lose stops describing anybody) is sound as game design and
-  irrelevant as archaeology, because it is not what the game does.
-- **That leaves an open question worth answering before building.** The Title History panel is
-  EMPTY on a character whose title bits were set, and PROTOCOL.md records that title and award
-  *history* are "not fed by this burst, by any command, or by the record tables earlier suspected".
-  So either the client accumulates history itself by noticing newly-set bits between sessions — in
-  which case latching the mask is enough and history fills in over time — or something we have not
-  found feeds it. Worth settling, because it decides whether history is free or is a second
-  feature.
-- **Do not tie either to the fingerprints' old behaviour.** Everything on this screen used to award
-  everything, which is not a baseline to preserve.
+**But it corroborates our extraction in a way that materially raises confidence.** The guide lists
+mode-preference ranks that are ABSENT from our 22: Killer Whale (TDM), Fighting Fish (DM), Komodo
+Dragon (Stealth DM), Arctic Skua (Solo Capture), Elephant (Base), Cuckoo (Bomb) — and separately
+notes that 1.30 "added new ranks, mostly mode preference ranks". Our disc carries preference titles
+for exactly four modes (Sneaking, Capture, Rescue, Team Sneaking) and none of those six. Two
+independent artefacts agreeing on which titles are launch-era is worth more than either alone.
+
+### The 1.30 split — this is the load-bearing part
+
+The patch notes the guide quotes describe a **behavioural change**, not just renumbering:
+
+| | release day (our target) | after 1.30 |
+| --- | --- | --- |
+| basis | overall/cumulative performance | the **weekly** total |
+| cadence | instant | weekly, at scheduled maintenance |
+| how many | **one** — the highest you qualify for, by an override order | **all** you qualify for, with the highest displayed |
+| history | — | others you qualified for go to rank history |
+
+So the familiar "you unlock a rank and it goes into your history, and you wear one" is **1.30
+behaviour**. Release-day behaviour is simpler: one title at a time, recomputed from career stats,
+chosen by override.
+
+That also resolves what looked like a contradiction: the wire has both a 22-bit mask AND a 1-based
+equipped field, which reads like a collection plus a choice — but at launch the mask would carry a
+single bit and 541 would name that same title. The multi-bit collection is what 1.30 turned on.
+
+### Requirements, as reported
+
+**The soldier ranks are the reliable ones**: the 1.30 notes say explicitly that "the requirements
+to obtain high ranking Titles remains the same", and that high ranking means HOUND and above. So
+these four should be release-day accurate:
+
+| title | K/D (TDM + DM) | win % (Rescue, Capture, TSNE) | bases conquered / base rounds |
+| --- | --- | --- | --- |
+| FOXHOUND | >= 1.5 | >= 65% | > 1.2 |
+| FOX | >= 1.45 | >= 62.5% | > 1.1 |
+| DOBERMAN | >= 1.4 | >= 60% | > 1.0 |
+| HOUND | >= 1.3 | >= 55% | > 0.9 |
+
+**Everything below HOUND was explicitly changed by 1.30**, and the guide's base numbers are its
+pre-1.30 findings with 1.30 notes appended — which makes the base numbers the closer ones for us:
+
+| title | requirement as reported |
+| --- | --- |
+| EAGLE | K+s/D+s >= 1.3 overall, AND (headshot kills + stun headshots) / (all kills + all stuns) > 0.3 |
+| CROCODILE | K+s/D+s >= 1.5 overall, AND headshot ratio < 0.3 — otherwise EAGLE overrides |
+| JAWS | K+s/D+s >= 1.25 overall, AND knife kills / total kills > 0.075 |
+| FLYING SQUIRREL | rolls / rounds >= 15 |
+| TORTOISE | box uses / rounds > 15 |
+| BEAR | >= 10 melee hits per round AND >= 10 CQC attacks per round |
+| SLOTH | K+s/D+s <= 0.85, AND headshot deaths / total deaths >= 0.60 |
+| NIGHT OWL | ENVG seconds / total play seconds > 0.05 |
+| mode preference | that mode's seconds / total seconds > 0.70 (SNAKE, KEROTAN, GA-KO, CHAMELEON) |
+| TSUCHINOKO | do not log in for several game weeks; overrides everything |
+| BEE, CHICKEN, PIGEON, RAT, WATER BEAR | **no numbers** — the guide never pinned them |
+
+Ratio definitions the guide uses: `K/D` is kills / deaths; `K+s/D+s` is
+(kills + stuns) / (deaths + stuns received); win % is (rounds won / rounds played) x 100.
+
+### Override order
+
+Best to worst, so a higher one suppresses everything below it. TSUCHINOKO sits above everything.
+
+    TSUCHINOKO > FOXHOUND > FOX > DOBERMAN > HOUND > EAGLE > CROCODILE > JAWS >
+    FLYING SQUIRREL > [mode preference] > SLOTH > NIGHT OWL > [untested: BEAR, BEE,
+    CHICKEN, PIGEON, RAT, TORTOISE, WATER BEAR]
+
+The CROCODILE/EAGLE pair is the instructive one: CROCODILE needs a *higher* K+s/D+s than EAGLE, yet
+ranks below it, so a player who qualifies for both gets EAGLE. Any implementation has to apply the
+order rather than picking the "hardest" match.
+
+### What we can actually compute today
+
+Every input above exists in `round_report` or `round_weapon_tally` except two:
+
+- **Rounds won** — `team_win` gives it per round, so win % is available.
+- **Knife kills** — `round_weapon_tally`, weapon id 1. Only since 2026-07-28, so history is thin.
+- **Stuns received** — struct A `counter_0x0f`.
+- **Melee hits and CQC given** — struct B b22 and b10.
+
+Two gaps: **CHAMELEON needs Team Sneaking**, which release-day scope keeps switched off, so it can
+never be earned in v1. And several thresholds are per-round averages that will be wildly unstable
+over a handful of rounds — a minimum play time is part of the original design ("certain sets of
+ranks require a certain amount of play time") and the guide never pins it.
+
+### Still undecided
+
+Whether to implement **release-day behaviour** (one title, career stats, recomputed on change) or
+the **1.30 behaviour** most people remember (weekly, multiple, with history). CLAUDE.md's target
+says the former. Nothing is built either way.
