@@ -141,6 +141,12 @@ doc: |
   in any row**. That half is refuted. Frame 319 needs no extra term: TDM raw =
   2*2 + 2*2 − 1 = 7, wired 4 because the clamped total was already at its floor.
 
+  **The −1 is now live-confirmed on the wire** (2026-07-27, Sneaking game 230 round 1, which
+  also confirms the whole SNE row): a player with 3 kills, 3 headshots, combo 3 and ONE
+  knockout received wired 17 — `3*3 + 3*2 + 3*1 − 1*1 = 17`. Without the deduction it is 18;
+  at the old guessed −2 it is 16. This was the original INCOMPLETE note's open question and it
+  is closed. Sneaking has column 36 at zero, so the total is complete with nothing off-wire.
+
   THE "OTHER" ROW IS NOT RECONSTRUCTABLE FROM THE WIRE. Column 36 reads live n75 — which
   A1 proved is serialised nowhere in this frame — and scores x1 in Rescue, Capture and rule
   7. Every past attempt to decompose OTHER as "b36 + knockouts-received + mode extras" was
@@ -343,6 +349,16 @@ seq:
       [CONFIRMED-1] LOCK-ON STUNS DEALT — non-lethal knockouts scored with a lock-on.
       Storage n10, blob key `0x2e`. 0/517 archived frames, because no archived round combined
       a lock-on with a stun weapon.
+
+      ONE LIVE ATTEMPT, INCONCLUSIVE (2026-07-27). A Sneaking round was played to move this
+      pair: one player stunned another in a lobby with `auto_aim` ENABLED, and both this field
+      and lockon_stuns_received wired **0** while the plain knockout pair (`0x0d`/`0x0f`) wired
+      1/1. The same round's three kills also produced `lockon_kills = 0`, so nothing in it used
+      lock-on at all — which is why this does NOT refute the label. Two live possibilities
+      remain open: the lock simply was not engaged, or **lock-on does not apply to stun weapons
+      at all**, in which case this pair is structurally unreachable like b38. Settling it needs
+      a round with a confirmed lock (reticle) on a stun weapon, and a control kill that ticks
+      `lockon_kills` in the same round to prove lock-on was working.
 
       Named from the binary 2026-07-27, and the derivation is tight. The stun/knockout handler
       `0x6EDC90` takes `(ctx, dealerSlot, victimSlot, weaponId, hitClass, ...)`. Its dealer and

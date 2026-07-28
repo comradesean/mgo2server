@@ -3551,3 +3551,32 @@ part of designing the round.
 **Also confirmed:** headshots score nothing in Base (three headshots contributed zero, matching
 column 4 = 0 for rule 5); friendly kills again do not count in A kills (3 enemy kills wired 3);
 and the streak-record slots b00/b02 contributed nothing, as expected for slots with no column.
+
+## The Sneaking row closes, and the stun deduction is confirmed at −1 — 2026-07-27
+
+Sneaking game 230 round 1, three players, Sean as Snake (b56 = 1). His report decomposes exactly
+against the rule-4 coefficients, and Sneaking has score-table column 36 at zero, so the total is
+complete with nothing off-wire:
+
+    kills 3*3  +  headshots 3*2  +  combo(b36) 3*1  −  knockouts_received 1*1  =  17,  wire 17
+
+**This closes the file's original INCOMPLETE note.** The missing "deduction for BEING stunned" is
+`knockouts_received × −1`, and this is the first round to show it directly: without the term the
+prediction is 18, at the once-guessed −2 it is 16, and the wire says 17. Combined with the Base
+round earlier the same night, four of the six playable rules (DM, TDM via the table's own TDM row
+matching, Sneaking, Base) are now confirmed from live bytes; Rescue and Capture never can be,
+because their column 36 is nonzero.
+
+The same round re-confirmed the Snake conservation laws with three players: Sean's b54 (times
+Snake was spotted) = 1 against rawr's b53 (times this player spotted Snake) = 1, and rawr's b55
+(first to spot per life) = 1.
+
+**The lock-on stun test was inconclusive, not negative.** The round was played to move
+`lockon_stuns_dealt` / `lockon_stuns_received` (wire `0x19`/`0x1d`, live n10/n12). A stun was
+landed with `auto_aim` ENABLED in the lobby, and both fields wired 0 while the plain knockout pair
+`0x0d`/`0x0f` wired 1/1. But the round's three kills also wired `lockon_kills = 0`, so nothing in
+it used lock-on at all — there is no evidence the lock was ever engaged. Two possibilities stay
+open: the lock simply was not acquired, or **lock-on does not apply to stun weapons**, which would
+make this pair structurally unreachable in the same way b38 is. Settling it needs a round with a
+confirmed reticle lock on a stun weapon AND a control lock-on kill in the same round to prove the
+mechanic was working.
