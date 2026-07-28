@@ -129,6 +129,19 @@ doc: |
   the Rescue OTHER row, has a coefficient of ZERO in every rule; the Rescue OTHER gap
   (screen 18 vs b42 21) is explained by n75, not by b42.
 
+  WHICH FOLLOWS INTO A RULE FOR TESTING THE COEFFICIENTS. Column 36 is nonzero in exactly
+  RESCUE, CAPTURE and rule 7, and zero in DM, TDM, SNEAKING and BASE. So:
+
+    - **DM, TDM, Sneaking, Base — the score is fully reconstructable from the wire.** Every
+      scoring input is a serialised field, so a decomposition that misses is a real finding.
+    - **Rescue, Capture, Team Sneaking — it is NOT, ever.** Any residual can be absorbed by an
+      invisible counter, so a decomposition that "works" proves nothing and one that fails
+      indicts nothing. Do not try to validate coefficients in these modes.
+
+  Learned the hard way 2026-07-27: two live Rescue rounds were played specifically to check the
+  Rescue coefficients and could not, residuals of 2 and 19 both landing where n75 absorbs them.
+  Test the friendly-kill −5 in BASE (rule 5 carries it AND has column 36 zero), not in Rescue.
+
   Suicide-class deaths deduct like any death. Friendly kills are NOT score-neutral in every
   mode — they cost −5 in Rescue and Base, and are merely uncounted in TDM/DM.
 
