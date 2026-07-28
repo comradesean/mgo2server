@@ -66,10 +66,11 @@ Notes that matter for granting:
 - **Several titles are unflattering** — SLOTH, PIGEON, CHICKEN, TSUCHINOKO, RAT. They are not
   achievements and should not be treated as a ladder; the set is a personality read, and a player
   who rarely plays is *supposed* to get TSUCHINOKO.
-- **Most are ratios, not totals.** "High kill count" against a career total would mean nobody
-  qualifies early and everybody qualifies eventually. Per-round or per-hour rates keep the title
-  meaningful and let it change as a player's style changes — which is what a play-style title is
-  for.
+- **Ratio-versus-total is now the open design question, not a settled one.** If titles latch (see
+  Granting policy), then "everybody qualifies eventually" is not a bug — it is how an unlockable
+  works, and a career total is the natural measure. If they are a live read of current style, rates
+  are right. The operator's observation points at latching; the earlier note here assumed the
+  opposite and was written before that was known.
 
 ---
 
@@ -119,9 +120,21 @@ read from `0x4107` slots 1–3, which we serve as zero until stage boundaries ar
 title or medal. The rules are ours to choose; when they exist they belong here, labelled as policy,
 with the reasoning for each threshold.
 
-Two constraints on any scheme:
+Constraints on any scheme:
 
-- **Titles should be recomputed, medals should latch.** A medal says "you did this once"; a title
-  says "this is how you play". A title that could never be lost would stop describing anybody.
+- **Titles appear to LATCH, not to be recomputed.** Operator observation, 2026-07-28: *"you unlock
+  the animal rank and it goes into your history."* If unlocking is an event that accumulates, then
+  the wire-563 mask is "every title ever earned" rather than "how you play lately", and a design
+  that recomputes it each time — clearing bits when a player's style shifts — would be wrong. This
+  supersedes an earlier note here that argued the opposite from first principles; the earlier
+  reasoning (a title you can never lose stops describing anybody) is sound as game design and
+  irrelevant as archaeology, because it is not what the game does.
+- **That leaves an open question worth answering before building.** The Title History panel is
+  EMPTY on a character whose title bits were set, and PROTOCOL.md records that title and award
+  *history* are "not fed by this burst, by any command, or by the record tables earlier suspected".
+  So either the client accumulates history itself by noticing newly-set bits between sessions — in
+  which case latching the mask is enough and history fills in over time — or something we have not
+  found feeds it. Worth settling, because it decides whether history is free or is a second
+  feature.
 - **Do not tie either to the fingerprints' old behaviour.** Everything on this screen used to award
   everything, which is not a baseline to preserve.
