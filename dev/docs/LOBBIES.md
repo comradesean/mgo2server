@@ -458,6 +458,19 @@ the database.
 | --- | --- | --- |
 | gate list `0x2003` entry `0x2d` bit 0 | `01` confirmed on the wire | no icon. **Entry was never tested** — see below |
 | hub list `0x4902` entry `0x07`, all bits | `ff` confirmed on the wire | no icon, no change of any kind |
+| sprite tokens in the 16-byte lobby name | `0x01`–`0x1F`, `0x7F`, SJIS `81 9B`, bytes verified | `0x01`–`0x1F` render as **nothing**; `0x7F` renders a **white square**; no icon |
+
+The name probe was the one experiment whose negative means something, and it came back negative.
+The plain text engine swallows `0x01`–`0x1F` with no glyph *unless* a sprite-token table matches,
+so invisible is a real elimination rather than "we tried it and nothing happened". `0x7F` is the
+only byte that rendered at all, and a white square is what a missing glyph looks like — it fell
+through to the font lookup rather than matching a token. Nothing produced an icon.
+
+Names were set straight into `lobby.name` and read back out of a live `0x2003` capture as hex
+before the result was believed. Note the trap that invalidated the first attempt: **a compose run
+recreates the containers, registration re-picks from `MGO2SERVER_LOBBY_NAMES`, and the probe name
+is silently replaced by a pool name.** Two of the four rows reverted that way and tested nothing,
+which showed up as a real lobby name sitting among the gibberish ones.
 
 The second is the stronger result. Setting **every** bit of the flags byte at once means no single
 bit of it, and no combination, is *sufficient* to mark a lobby — the observation that would have
@@ -470,7 +483,21 @@ client-side from the player rather than the lobby, or absent from this build. An
 is open. Do not add a third "restriction" field on the strength of a name until something is
 actually observed to change.
 
-**The entry gate has never been exercised, and an earlier version of this file said otherwise.**
+**The beginners-only entry gate does NOT refuse entry. Observed 2026-07-28, cleanly this time.**
+A character with `profile+13097 = 0` joined lobby 8 with its restriction bit confirmed on the wire
+(`... 3d77 01f4 0008 01`) and `beginners_only = true` in the row. The join is not an inference from
+an absent complaint: the lobby's own server logged the `0x4100` connect burst. No dialog 2355, no
+refusal.
+
+That contradicts the ELF reading, which is worth stating plainly rather than explaining away.
+`0x884300` and its four callers do what they are described as doing; something about the premise
+is wrong. Candidates, none tested: `profile+13097` is nonzero for a real character because
+something we have not found writes it; `0x892220` is not the handler on this path; or the
+predicate fails to match for a reason the static read did not expose. **This is the second time
+this chain has looked right in the binary and not held against a client** — the first was assuming
+it drove the icon.
+
+**An earlier version of this file claimed the gate had been tested when it had not.**
 It recorded that "a level 23 character entered freely" with bit 0 set, and treated the conflict
 with `0x892220` as an unexplained contradiction. That was not an observation: the tester was
 looking for the icon and never attempted a restricted entry. Absence of a complaint is not a
