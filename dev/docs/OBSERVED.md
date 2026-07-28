@@ -3448,3 +3448,33 @@ zero and every scoring input is on the wire — the friendly-kill −5 in partic
 Neither round tested the team_win rename: the same character won both, so a constant team-slot
 index and a per-round win flag predict identical output. That test wants a round the *other* side
 wins.
+
+## team_win flipped inside one game, and the Base row decomposed exactly — 2026-07-27
+
+**The team_win rename is live-proven.** Game 227 ran three Rescue rounds with the same two
+characters. Chara 1 wired the flag 1, 1, 0; chara 3 wired 0, 0, 1. A team slot index is constant
+per player per game — that is the whole content of the reading it replaced — so a mid-game flip
+refutes it outright. Every earlier round had the same side winning, which is exactly why the
+archive analysis (50 flips for one character over 239 rounds, top scorer holding the 1 in 96 cases
+to 5) could point at the answer but not close it.
+
+Round 3 also decomposed cleanly on its own: chara 3 wired score 5 with `b30 fully_defended = 1`
+and nothing else, and b30 has no score-table column — so the 5 is `team_win 1x5` alone.
+
+**The Base row is confirmed exactly, on the wire.** A three-player Base round (game 229): one
+player captured three points and won, wiring `b25 = 3`, `b40 = 12`, `team_win = 1`, and a score of
+**32**:
+
+    team_win 1x5  +  bases_conquered 3x5  +  capture-time 12x1  =  32
+
+Base has score-table column 36 at zero, so every scoring input is on the wire and that total is
+complete — no residual, nothing absorbed by an invisible counter. It is the first end-to-end
+confirmation of a whole mode row from live bytes rather than from a screen. `b12 rolls = 5` in the
+same report contributed nothing, as expected for a slot with no column.
+
+**The friendly-kill −5 was the point of the round and still escaped.** The team-killer wired
+`b05 = 1`, `kills = 0` (friendly kills again not counting as kills) and a score of **0**. Raw
+would be −5 and the clamp at 0 absorbed it, so the observation is consistent with the coefficient
+and equally consistent with zero. Third time a clamp has hidden a deduction. The round that would
+show it: capture one base and team-kill once, so the score reads 20 instead of 25 — the killer has
+to stay positive or the clamp eats the evidence.
