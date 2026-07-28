@@ -372,8 +372,15 @@ seq:
       [CORRECTED 2026-07-27] TEAM WIN flag for this round — 1 if this player's side won, 0
       otherwise. Live index n15, an ordinary delta like every other A counter.
 
+      **LIVE-PROVEN 2026-07-27 by a flip within one game.** Game 227, three Rescue rounds, the
+      same two characters throughout: chara 1 wired 1, 1, 0 and chara 3 wired 0, 0, 1. A team
+      slot index is constant per player per game by definition and cannot flip mid-game; a win
+      flag flips exactly when the winner changes, which is what happened. This is the
+      discriminating observation the two earlier lines of evidence could only point at — every
+      previous round had the same side winning, where both readings predict identical output.
+
       **This field was previously documented as `team_slot`, "a team slot index, constant per
-      player per game". That reading is falsified.** Two independent lines killed it:
+      player per game". That reading is falsified.** Two further lines agree:
 
       1. ELF: it is column 5 of the score table at `ComputeScore` (`0x6FA408`), carrying a
          coefficient of **5 in Rescue, Capture, Sneaking, Base and rule 7**, and 0 in DM/TDM.
@@ -545,6 +552,16 @@ types:
           table and costs **−5 in Rescue and in Base**; in every other rule its coefficient is
           0. So a team-killer is penalised in the objective modes and merely uncredited in the
           deathmatch modes.
+
+          THE PENALTY IS STILL NOT DIRECTLY OBSERVED, and the reason is instructive. A Base
+          round was played on 2026-07-27 specifically to see it: the team-killer wired b05 = 1,
+          kills 0 (friendly kills do not count as kills — confirmed again), and a score of **0**.
+          Raw would be −5, and the clamp at 0 swallowed it, so 0 is equally consistent with a
+          coefficient of −5 and one of 0. Consistent, not confirming.
+
+          To actually see it the killer must bank enough to stay positive: capture one base and
+          team-kill once in the same round, and the score should read `5*5 − 5 = 20` instead of
+          25. Any round where the team-killer would otherwise score zero cannot show it.
       - id: friendly_stuns
         type: s2
         doc: "slot 7. [CONFIRMED] friendly stuns (FF round: 2/2). Not counted in A knockouts_dealt; score-neutral."
@@ -703,7 +720,12 @@ types:
           absolute-snapshot reading is now tier 1, not an inference from its values.
       - id: bases_conquered
         type: s2
-        doc: "slot 26. [CONFIRMED] bases conquered: 4 and 2 in the first Base round, matching both screens' CONTROL row exactly (scores *5 in Base)."
+        doc: |
+          slot 26. [CONFIRMED] bases conquered: 4 and 2 in the first Base round, matching both
+          screens' CONTROL row exactly. Scores **x5 in Base**, now confirmed on the wire rather
+          than off a screen: 2026-07-27, a player who captured three points wired b25 = 3 and a
+          score of 32, decomposing as `team_win 1*5 + b25 3*5 + b40 12*1` — exact, in a mode
+          with no off-wire column, so the whole score is accounted for.
       - id: sop_destabilizer_uses
         type: s2
         doc: "slot 27. [CONFIRMED] SOP destabilizer uses: 1 on the single engineered use, score exact with the *10 category (42 = bases 3*5 + this*10 + teamwin 5 + b40 12)."
