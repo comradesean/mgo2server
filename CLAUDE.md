@@ -65,6 +65,8 @@ not an elimination if the thing varied could not have mattered.
   generated from the binary by `dev/tools/dump_error_table.py`. Check here before inventing a code.
 - `dev/docs/HELP.md` — the TIPS panel: an HTTP document per topic, not a lobby command.
 - `dev/docs/SETUP.md` — the external setup: emulator settings, certificate, and host addressing.
+- `dev/docs/ASSETS.md` — opening the disc's own data: the path-string crypto, Solideye/gcx
+  commands, and where the UI label strings live (they are *not* in the ELF).
 
 ## Distinguishing spec from policy
 

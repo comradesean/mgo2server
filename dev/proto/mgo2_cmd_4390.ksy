@@ -36,9 +36,15 @@ doc: |
   The rebaseline is `SET(key 0xb2, 152, live)` at `0x27DC60`, immediately after the send.
 
   WIDTH AND SIGN, exactly: both loads are ZERO-extending (`lhz`), the subtract is 32-bit,
-  and only the low 16 bits reach the wire. So the wire value is `(s16)(u16)(live − baseline)`
-  — a counter that went DOWN wires negative, and one that crossed 0xFFFF wires the wrapped
-  low word. Nothing clamps, saturates or validates anywhere in either function.
+  and only the low 16 bits reach the wire. So the wire value is `(s16)(u16)(live − baseline)`,
+  and a counter that went DOWN wires negative.
+
+  It cannot, however, wrap. Gameplay does not store into the blob directly — it goes through
+  a thin wrapper `0x6A9758(blobBase, key, len, u16)`, and every bump site computes
+  `min(value + 1, 0xFFFF)`. **The counters SATURATE at 0xFFFF rather than wrapping**, so a
+  wrapped low word is not a possible wire value and must not be parsed as one. (The wrapper
+  is also why a search for constant keys at the `SET` call site finds nothing: the key is a
+  constant one frame up, at the `bl 0x6a9758` site, not at the `bl 0x27F258` inside it.)
 
   b00/b01 are STREAK RECORDS (store-if-greater), confirmed in the binary at `0x27D6D4` /
   `0x27DCD8`: the round's value at blob key `0x15a` is stored into live n17 or live n18 —
@@ -47,35 +53,72 @@ doc: |
   **b02 is NOT touched by that code**; its streak-record label rests on live data alone. b24
   is the one slot that is not a delta at all (raw absolute snapshot — see its doc).
 
-  The score is the delta of a store that CLAMPS AT 0 (a −10 round on a +7 bank wires −7);
-  whether that store resets per game or per stage is deliberately unresolved — no consumer
-  for the answer. The clamp is NOT in the builder or its caller (both were read end to end);
-  it must live in whatever increments live n03.
+  THE SCORE IS NOT AN ACCUMULATOR — SETTLED 2026-07-27, and this supersedes the whole
+  "banked store, clamp at 0, per-game or per-stage?" reading. `ComputeScore(rule, slot)` at
+  `0x6FA408` RECOMPUTES the score from the other live counters, and `0x71B470` clamps the
+  result to [0, 65535] (`0x71B510`..`0x71B534`) before storing it into live n03. That is the
+  only write to n03 in the binary. So there is no bank and no reset scope to determine: the
+  question "per game or per stage" was malformed. What the wire carries is still the delta
+  (n03 now − n03 at baseline), which is why a round that lowers a previously-clamped total
+  can wire a negative.
 
-  SCORE FORMULA (client-side; every mode retunes multipliers over shared categories —
-  full per-mode tables in PROTOCOL.md "0x4390"). TDM/DM:
-    kills*3 − deaths*2 + (headshots_lethal + headshots_stun)*2 + hacks(b19)*5
-    + assists(b37)*3 + knockouts_dealt*M + wakes(b35)*2 + combo(b36)*1
-  where M = 2 in TDM, 3 in DM.
+  SCORE FORMULA — the actual table (ELF + disc, 2026-07-27). `ComputeScore` walks a
+  37-column x 11-row table of s8 coefficients, row = game rule (`mulli r25,r3,37` at
+  `0x6FA448`), with a jump table at `0x6FA4C4` mapping each column to the live counter it
+  reads. The table is NOT static in the binary: its base is `*(0xFDE2AC) = 0x1659F24` in
+  .bss, filled at runtime by the GCX native command at `0x6FA1B8` (hash `0x0035706D`) from
+  `-rule N -score <37 ints>` directives in the stage script. The values were read out of the
+  disc (`stage/n002a|n003a|n004a/scenerio.gcx` proc23) and are byte-identical across stages:
 
-  INCOMPLETE — the formula above is missing at least one deduction term for BEING stunned.
-  It is wire-exact for every observed round in which the scorer was not knocked out (e.g.
-  frame 318: knockouts_dealt 2 + headshots_stun 1 => 2*2 + 1*2 = 6, wire 6), but frame 319
-  (knockouts_dealt 2, headshots_stun 2, knockouts_received 1, b04 1) predicts 8 and wires 4.
-  A term of − knockouts_received*2 − b04*2 fits 319 exactly and is consistent with every
-  other archived round, but it is NOT confirmed: the paired frame 320 (received 2, dealt 0)
-  wires −2 where that term predicts a raw −4, reconcilable only by assuming the clamp-at-0
-  store absorbed the difference, which was not independently checked. Settle it with a round
-  where one player is stunned, self-stuns zero times, and scores nothing else.
+    rule 0 DEATHMATCH   rule 1 TEAM DEATHMATCH   rule 2 RESCUE   rule 3 CAPTURE
+    rule 4 SNEAKING     rule 5 BASE              rule 7 TEAM SNEAKING
+    rules 6, 8, 9, 10 are never emitted by any stage script and score nothing at all.
 
-  Also mapped exactly: RESCUE (kill*7, teamwin*5, goal(b27)*3,
-  target-defence(b28)*3, carry(b42)*1-ish), BASE (kill*3, sop-destab(b26)*10, control(b25)*5,
-  teamwin*5, wake*3, capture-time points(b40)*1 -- time spent advancing a capture, NOT the
-  number of captures), CAPTURE (kill*5, put(b46)*1, goal(b34)*5, teamwin*5). SNE categories named with multipliers (dogtag*1 varying values, holdup(b50)*2,
-  snake-kill(b51) 6/kill, mk2-kill*4, death*-2) but not yet fully decomposed. Suicide-class
-  deaths deduct like any death. Friendly kills/stuns are score-neutral. kill_1st_place (b39)
-  pays *5 in DM. The screen's OTHER row = b36 + knockouts-received*1 (wire-proven) + mode
-  extras (Base b40, Rescue b42-ish, one carrier-less Capture 5-per-goal).
+  The rule ids are not guessed from coefficients: the UI's rule-name function `0x9C2778`
+  switches on the mode id through a jump table at `0x9C2864` whose cases land on the strings
+  `Rule_Eng_DM`, `_TDM`, `_RESCUE`, `_CAP`, `_SNEAK`, `_BASE`, `_TSNE`, `_COOP` — giving
+  2 = Rescue and 7 = Team Sneaking directly. That is what identifies rule 7, and it is
+  corroborated twice over: the five slots that score only in rule 7 all have writers guarded
+  by `cmpwi 7` in functions whose sibling branch tests `cmpwi 2` and writes a confirmed
+  Rescue slot.
+
+  Coefficients by wire field (0 omitted). r0=DM r1=TDM r2=RES r3=CAP r4=SNE r5=BASE r7=?:
+
+    kills            r0 3  r1 3  r2 7  r3 5  r4 3  r5 3  r7 5
+    deaths           r0 −2 r1 −2             r4 −2
+    knockouts_dealt  r0 3  r1 2  r2 7  r3 5  r4 2  r5 3  r7 5
+    knockouts_recvd  r0 −2 r1 −1             r4 −1
+    headshots (lethal + stun, summed)  r0 2 r1 2 r2 3 r3 3 r4 2
+    team_win               r2 5  r3 5  r4 5  r5 5  r7 5
+    b05 friendly kills     r2 −5 r5 −5
+    b19 hacks        r1 5  r3 3  r4 5
+    b35 wakes        r1 2  r3 5  r4 2  r5 3  r7 5
+    b36 combo        (r0/r1/r4: coefficient clamped to 1; col 9's raw value is the step size)
+    b37 assists      r1 3  r2 5  r3 3  r4 3  r5 3
+    b39 kill 1st     r0 5
+    b40 capture-time r5 1        b25 r5 5     b26 r5 10
+    b27 r2 3   b28 r2 3   b29 r2 2   b41 r2 3
+    b34 r3 5   b46 r3 1
+    b47 r4 3   b48 r4 5   b49 r4 5   b50 r4 2   b51 r4 6   b52 r4 4   b57 r4 3
+    b32 r7 3   b43 r7 5   b45 r7 3
+
+  Validated against the archive: 165 of 172 nonzero-score frames reproduce exactly; the
+  residuals are clamp effects and the off-wire OTHER column below.
+
+  BEING STUNNED DOES DEDUCT, and the old guess was half right: the term is on
+  knockouts_received, but it is −1 in TDM (not −2), and **b04 self-stuns have no coefficient
+  in any row**. That half is refuted. Frame 319 needs no extra term: TDM raw =
+  2*2 + 2*2 − 1 = 7, wired 4 because the clamped total was already at its floor.
+
+  THE "OTHER" ROW IS NOT RECONSTRUCTABLE FROM THE WIRE. Column 36 reads live n75 — which
+  A1 proved is serialised nowhere in this frame — and scores x1 in Rescue, Capture and rule
+  7. Every past attempt to decompose OTHER as "b36 + knockouts-received + mode extras" was
+  fitting around a counter that simply is not on the wire. b42, long suspected of feeding
+  the Rescue OTHER row, has a coefficient of ZERO in every rule; the Rescue OTHER gap
+  (screen 18 vs b42 21) is explained by n75, not by b42.
+
+  Suicide-class deaths deduct like any death. Friendly kills are NOT score-neutral in every
+  mode — they cost −5 in Rescue and Base, and are merely uncounted in TDM/DM.
 
   STRUCT B <-> 0x4107: B-index = personal-stats slot − 1, exact for 25+ tested pairs across
   all six modes. 0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed
@@ -84,6 +127,24 @@ doc: |
   Soldiers Trained), b46 (Capture put count, not training time), b47/b48 (body searches
   that yielded items / dogtags collected from the ground, not the two training-time slots)
   — remaining [PREDICTED] labels are hypotheses, not facts.
+
+  SOME 0x4107 SLOTS ARE NOT FED BY THIS COMMAND AT ALL — established 2026-07-27 by decoding
+  the DETAIL page's display list (a 36-entry resource-hash array at `0xE13BDC` in MGO2.elf,
+  resolved against the disc's string resources). Nine of its rows are quantities struct B
+  provably cannot carry:
+
+      Time Playing DEATHMATCH / TEAM DEATHMATCH / BASE / CAPTURE / RESCUE /
+      TEAM SNEAKING / SNEAKING          (seven per-mode play-time counters)
+      Host Rating, Instructor Score
+
+  The seven play-time rows cannot be struct-B slots by a simple argument: play time
+  necessarily accrues in EVERY round of its mode, so under delta semantics the owning slot
+  would be nonzero in essentially every report. Every unmapped B slot is 0/517. They are
+  therefore SERVER-DERIVED, and the derivation is available to us — "Time Playing <mode>" is
+  the sum of `seconds_in_game` over that character's reports grouped by the game's mode.
+  Host Rating and Instructor Score were already in the no-wire-source category; this puts
+  the play-time rows there too, and explains a chunk of the 0x4107 slots that no amount of
+  0x4390 analysis was ever going to name.
 
   EVIDENCE TAGS. Every field doc opens with one tier tag, optionally followed by a mode
   scope. Tiers:
@@ -172,9 +233,19 @@ seq:
   - id: score
     type: s2
     doc: |
-      [CONFIRMED] round score as the DELTA of a clamp-at-0 store — NOT raw round points.
-      Wires 0 for a losing round with nothing banked, a true negative when banked score
-      absorbs the loss (−7 observed = bank 7 → 0 on raw −10). See formula in the header.
+      [CORRECTED] round score, the delta of live n03 — NOT raw round points, and NOT a bank.
+
+      MECHANISM (ELF 2026-07-27): n03 is not accumulated. `ComputeScore(rule, slot)` at
+      `0x6FA408` recomputes the whole score from the player's other live counters against a
+      per-mode coefficient table, and `0x71B470` clamps it to **[0, 65535]** at
+      `0x71B510`..`0x71B534` before the single store into n03 — the only write to that field
+      in the binary. The wire then carries `n03 − baseline n03` like everything else.
+
+      That is why a negative appears: not because a "bank" absorbed a loss, but because the
+      recomputed clamped total came out lower than it was at the last baseline. The clamp
+      floor at 0 is what makes deeply negative rounds wire as a smaller negative than the raw
+      arithmetic predicts. The old "banked store, resets per game or per stage?" question is
+      retired — there is no store to reset. Full coefficient table in the header doc.
   - id: knockouts_dealt
     type: s2
     doc: "[CONFIRMED] knockouts dealt, all types (slam/tranq/sleep) — requires an actual faint; non-fainting melee ticks b22/b23 instead. Friendly stuns do NOT count. Scores *2 TDM / *3 DM."
@@ -222,18 +293,25 @@ seq:
       `sum(headshots_stun) == sum(headshots_stun_received)` in 15/15 rounds. Not a same-frame
       mirror and must not be read as one. The sleep-stab round's 1 suggests the neck syringe
       counts (unverified).
-  - id: unknown_0x19
+  - id: lockon_stuns_dealt
     type: s2
     doc: |
-      [UNKNOWN] zero in every observed round (0/517 archived frames).
+      [CONFIRMED-1] LOCK-ON STUNS DEALT — non-lethal knockouts scored with a lock-on.
+      Storage n10, blob key `0x2e`. 0/517 archived frames, because no archived round combined
+      a lock-on with a stun weapon.
 
-      NOT A DEAD FIELD — it has real backing storage. It is live index n10, blob key `0x2e`,
-      with its own 2-byte descriptor in the table at `0x103C0C6`, and the caller fills it with
-      an ordinary `live − baseline` subtract (`0x27D76C`, stored to A+0x28 at `0x27D7A0`,
-      serialized at `0xD42358`). Nothing has ever incremented blob+0x2e in an observed round.
-      This is "code path exists, no observed round exercised it", not "dead field" — the
-      distinction matters, because a future mode or event could move it.
-      Live watch address: `0x1610568 + slot*0x510 + 0x2e`.
+      Named from the binary 2026-07-27, and the derivation is tight. The stun/knockout handler
+      `0x6EDC90` takes `(ctx, dealerSlot, victimSlot, weaponId, hitClass, ...)`. Its dealer and
+      victim arguments are pinned by two already-CONFIRMED labels — it writes knockouts_dealt
+      (key `0x22`) on arg2 and knockouts_received (key `0x24`) on arg3. It then switches on
+      `hitClass`: `== 1` writes n08/n09 (the CONFIRMED stun-headshot pair), `== 2` writes
+      n10/n12, i.e. this field and unknown_0x1d.
+
+      The same enum appears in the same argument position in the KILL handler `0x6EEAF0`,
+      where `== 1` selects headshots_lethal/headshot_deaths and `== 2` selects
+      lockon_kills/lockon_deaths. So four independently confirmed labels fix the enum:
+      1 = headshot, 2 = lock-on. This pair is the stun-side counterpart of lockon_kills,
+      exactly as headshots_stun is of headshots_lethal.
   - id: lockon_deaths
     type: s2
     doc: |
@@ -241,19 +319,17 @@ seq:
       other dealt/received pairs; unlike those, this pairing has NOT been counted out and
       carries no N — and it cannot be checked against `dev/proto/samples/4390`, where both
       lock-on fields are 0/517. See lockon_kills.
-  - id: unknown_0x1d
+  - id: lockon_stuns_received
     type: s2
     doc: |
-      [DOUBTED] capture-era 'rounds played' label; never nonzero across all live reports
-      (0/517 archived frames), so the label has no support and should not be relied on.
+      [CONFIRMED-1] LOCK-ON STUNS RECEIVED — the received side of lockon_stuns_dealt, written
+      on the victim by the same handler `0x6EDC90` under `hitClass == 2`. Storage n12, blob
+      key `0x32`. 0/517.
 
-      NOT A DEAD FIELD, same as unknown_0x19: real storage at live index n12, blob key `0x32`,
-      own descriptor, ordinary `live − baseline` fill (`0x27D7D4`, stored to A+0x30 at
-      `0x27D7F0`, serialized at `0xD42388`). Never incremented in an observed round.
-      Live watch address: `0x1610568 + slot*0x510 + 0x32`.
-
-      Note the "rounds played" guess is independently implausible under delta semantics: a
-      per-round counter incremented once per round would wire 1 in every report, not 0.
+      **This retires the capture-era "rounds played" label**, which was already independently
+      implausible: under delta semantics a counter incremented once per round would wire 1 in
+      every report, not 0 in all 517. See lockon_stuns_dealt for the full derivation of the
+      hit-class enum.
   - id: round_completed
     type: s2
     doc: "[CONFIRMED] 1 for a player present at normal round end, 0 in quit/teardown reports (325/360 archived frames wire 1, 35 wire 0; twice also 0 with full seconds, unexplained but benign)."
@@ -265,9 +341,33 @@ seq:
       lose wired 0; draws flag both). RESCUE, BASE and CAPTURE = simply died zero times (10/10
       observations, including losing-team survivors). No score contribution. Counted per
       stage by b24 (TDM).
-  - id: team_slot
+  - id: team_win
     type: u2
-    doc: "[CONFIRMED] team slot index: constant per player per game, 0 for everyone in DM. NOT the team color (index-to-color varies per game)."
+    doc: |
+      [CORRECTED 2026-07-27] TEAM WIN flag for this round — 1 if this player's side won, 0
+      otherwise. Live index n15, an ordinary delta like every other A counter.
+
+      **This field was previously documented as `team_slot`, "a team slot index, constant per
+      player per game". That reading is falsified.** Two independent lines killed it:
+
+      1. ELF: it is column 5 of the score table at `ComputeScore` (`0x6FA408`), carrying a
+         coefficient of **5 in Rescue, Capture, Sneaking, Base and rule 7**, and 0 in DM/TDM.
+         Every per-mode table already documented here lists a "TEAM WIN x5" category whose
+         wire source was unidentified. This is it. A slot index would not be a scoring input.
+      2. Archive: a slot index is constant per player per game; this is not. Over 239 rounds
+         ch1's value flips 50 times, ch2's 22, ch3's 32. And in the 105 rounds where players
+         disagree, the round's top scorer holds the 1 in **96 cases against 5** — a winner
+         marker, not an identity.
+
+      Both readings predict 0 for everyone in DM, which is why the old one survived: DM has
+      no teams, so nobody is ever on a winning *team*. The "grouped killers correctly in a
+      3-player TDM" observation is likewise explained — teammates win together.
+
+      NOTE FOR THE SERVER: `round_report.team_slot` (column, Java field `teamSlot`, migration
+      `V18__team_slot.sql`) still carries the old name and therefore now stores a win flag
+      under a misleading label. Renaming it is a schema change and is deliberately NOT done
+      here — the spec is corrected first. Anything deriving team identity from that column is
+      wrong today and was wrong before this was noticed.
   - id: seconds_in_game
     type: u2
     doc: |
@@ -351,11 +451,18 @@ types:
           b34     -> n62            b46–b57 -> n63–n74
 
       Read that as the storage neighbourhoods the wire order scrambles: b35 (wakes) is stored
-      right after b19, and b24/b40 sit inside the b25..b34 storage run. Since the four known
-      exceptions to the "B-index = slot − 1" rule (b35, b46, b47, b48) are precisely slots
-      whose storage position differs from their wire position, the permutation is the leading
-      candidate explanation for the rule's failures — but that is a HYPOTHESIS, not a result;
-      nobody has yet established which of the two orders the 0x4107 record itself follows.
+      right after b19, and b24/b40 sit inside the b25..b34 storage run.
+
+      IT DOES NOT EXPLAIN THE SLOT-RULE EXCEPTIONS — hypothesis raised and killed the same
+      day (2026-07-27). The tempting story was that 0x4107 follows storage order while 0x4390
+      follows wire order, which would have made b35/b46/b47/b48 fall out for free. Tracing
+      the 0x4107 parser at `0xD3DB1C` settles it the other way: that record follows the SAME
+      slot order as struct B for slots 1..63 (identity mapping into its destination buffer),
+      and its only permutation is confined to the tail — wire 64 -> mem 71, 65 -> mem 72,
+      66..73 -> mem 63..70, verified live because Knife Kills (slot 64) is drawn from
+      `rec+0x11C` = mem 71. Nothing above slot 63 is reachable from struct B's 58 slots, so
+      the two permutations never interact. The b35/b46/b47/b48 exceptions are genuine
+      exceptions and still want an explanation.
 
       To watch any slot live under RPCS3: `0x1610568 + playerSlot*0x510 + 0x1a + 2n`.
     seq:
@@ -377,13 +484,20 @@ types:
           slot 3. [CONFIRMED] best consecutive lethal-headshots streak this stage (bullets
           only; 2 separated wired 1). Slot 3 never surfaces on the stats screen.
 
-          BUT the streak-record MECHANISM is not shared with b00/b01. The store-if-greater
-          code at `0x27D6D4`/`0x27DCD8` touches only live n17 (b00) and n18 (b01), selecting
-          between them on bit 0 of the flags byte at blob key `0x159`. Storage index n19
-          (this slot) is not written there at all. So the "per-stage running max" label here
-          rests entirely on the live observation, and whatever maintains it is elsewhere in
-          the binary — worth finding, because the two mechanisms may not have the same reset
-          rule.
+          CORROBORATED from the disc + ELF (2026-07-27): the client's title/award table at
+          `0xE139C0` carries a `%d consecutive headshots` family (ids 10/11/12, thresholds
+          3/10/30) — so the client definitely tracks such a counter, and the 3/10/30 medal
+          was already observed live. The award has NO Personal Stats label of its own, which
+          fits 0x4107 slot 3 never surfacing on screen while still being fed.
+
+          The streak-record MECHANISM is not shared with b00/b01, and it has now been located.
+          The store-if-greater code in the report caller (`0x27D6D4`/`0x27DCD8`) touches only
+          live n17 (b00) and n18 (b01), selecting between them on bit 0 of the flags byte at
+          blob key `0x159` — storage n19 (this slot) is not written there at all. Its own
+          streak is maintained at **`0x6EF620`**, assigned from blob key `0x15c` (b00/b01 use
+          key `0x15a`). Separate running total, separate key, so the two need not share a
+          reset rule; confirming that they do would take a stage rotation with a live headshot
+          streak in flight.
       - id: suicides
         type: s2
         doc: "slot 4. [CONFIRMED] suicides — grenades (3/3), menu-suicides (5/5), and falling deaths (3/3) all count. Deduct −2 from score like any death."
@@ -399,7 +513,13 @@ types:
           Supersedes the earlier reading that slot 5 was a dead 'Times Stunned'.
       - id: friendly_kills
         type: s2
-        doc: "slot 6. [CONFIRMED] friendly kills (FF round: 3/3). Not counted in A kills; score-neutral."
+        doc: |
+          slot 6. [CORRECTED] friendly kills (FF round: 3/3). Not counted in A kills.
+
+          NOT score-neutral — that was a TDM/DM-only observation. It is column 6 of the score
+          table and costs **−5 in Rescue and in Base**; in every other rule its coefficient is
+          0. So a team-killer is penalised in the objective modes and merely uncredited in the
+          deathmatch modes.
       - id: friendly_stuns
         type: s2
         doc: "slot 7. [CONFIRMED] friendly stuns (FF round: 2/2). Not counted in A knockouts_dealt; score-neutral."
@@ -464,10 +584,22 @@ types:
           Trained) and b46 (Capture put count, not training time) — treat the remaining
           [PREDICTED] labels around here as weak.
 
-          Storage index n31, blob key `0x58`. The binary confirms it is a live field with its
-          own descriptor and an ordinary delta fill — so "never incremented in an observed
-          round", not "absent". Watch it at `0x1610568 + slot*0x510 + 0x58`; that is the
-          cheapest way to settle what, if anything, moves it.
+          **PERMANENTLY ZERO ON THIS BUILD — the slot has NO WRITER ANYWHERE (2026-07-27).**
+          Storage n31, blob key `0x58`. An exhaustive sweep of all 152 `bl 0x6a9758` bump
+          sites (the only path by which gameplay reaches a player's live block) finds not one
+          that targets key `0x58`. This is stronger than the usual "never observed nonzero":
+          it is not awaiting an unplayed mode or an untried event — no code path in the binary
+          can make it nonzero. A live watchpoint would be wasted effort.
+
+          Note this is a DIFFERENT status from the other blanks in this file, which do have
+          writers and simply were not exercised. b14 is the only slot proven inert.
+
+          The LABEL on 0x4107 slot 15 is now tier-1 confirmed as "Time as Dedicated Host":
+          it is entry 11 of the DETAIL page's display list, a 36-entry resource-hash array at
+          `0xE13BDC` in MGO2.elf (decoded against the disc's string resources 2026-07-27; all
+          22 of its independently known index-slot pairs match the live fingerprint exactly).
+          So the falsification here means "the client never REPORTS dedicated-host time",
+          not "slot 15 is mislabelled". The two claims are compatible and both stand.
       - id: catapult_uses
         type: s2
         doc: "slot 16. [CONFIRMED] catapult uses (3/3)."
@@ -540,19 +672,54 @@ types:
         doc: "slot 29. [CONFIRMED] GA-KO defended = the screen TARGET DEFENCE category, scoring *3 (defender round decomposed 18 = kill*7 + hs*3 + this*3 + teamwin*5 exact); requires an actual defense event — 0 in the untouched-GA-KO round (B30 fires there instead)."
       - id: gako_pickups
         type: s2
-        doc: "slot 30 unmapped on the stats screen. [RES] 1 on the picking-up attacker in both pickup rounds (with and without delivery) — pickups reading holding."
+        doc: |
+          slot 30, unmapped on the stats screen. [CONFIRMED, RES] GA-KO pickups AFTER the
+          round's first — the "subsequent grabs" counter. Scores **x2 in Rescue** (score-table
+          column 18, nonzero in rule 2 only).
+
+          Mechanism: the "objective picked up" method `0x706BB8` keeps a per-round latch (bit
+          `0x100` of `[this+0x668]`). The FIRST grab of the round takes the unlatched path and
+          bumps b41; once latched, the mode-2 path falls to `0x706D7C` and bumps this slot
+          (key `0x82`) instead at `0x706DD0`. So b41 and b29 partition pickups into "first"
+          and "the rest" — they are not two views of the same event.
       - id: fully_defended_matches
         type: s2
         doc: "slot 31. [CONFIRMED-1] fully defended: 1 on the defender of a round where the GA-KO was never taken (engineered idle round); fires per ROUND despite the stat name Fully Defended Matches; absent when the GA-KO was picked up. Defender scored exactly 5 that round with zero activity — B30*5 score-category candidate."
-      - id: unknown_b31
+      - id: rescue_solo_team_wipe
         type: s2
-        doc: "slot 32 unmapped. [UNKNOWN] never observed nonzero (0/517). Storage index n54."
-      - id: unknown_b32
+        doc: |
+          slot 32 unmapped on any screen. [CONFIRMED-1, RES] a Rescue round-end award: granted
+          when EVERY member of a losing team of 4 or more was last killed by the same player —
+          a solo team wipe. Storage n54; 0/517, which needs a 4v4 Rescue round and one player
+          eliminating the entire opposing side, so its absence from a small archive is
+          expected.
+
+          Found in the round-end award code as the else-branch of b30 fully_defended_matches,
+          which is why the two sit adjacent. Scores nothing (its score-table column is zero in
+          all 11 rules) — it is an award/statistic, not a scoring category.
+      - id: tsne_spots_made
         type: s2
-        doc: "slot 33 unmapped. [UNKNOWN] never observed nonzero (0/517). Storage index n57."
-      - id: unknown_b33
+        doc: |
+          slot 33. [CONFIRMED-1, TSNE] TEAM SNEAKING: times this player SPOTTED an enemy
+          sneaker. The TSNE twin of b53 times_spotted_snake. Scores **x3**. Storage n57;
+          0/517 because the archive contains no Team Sneaking rounds at all.
+
+          Writer `0x6FB8A0(spotter, spotted)` writes key `0x8c` on the spotter at `0x6FB9FC`.
+          Reached from the melee/spot handler `0x6ED088`, whose mode test is explicit:
+          `bl 0x6a9a38; cmpwi cr7,r3,7; beq` -> the TSNE arm at `0x6ED364` (the neighbouring
+          arm handles the Sneaking case and calls `0x70F460`, the Snake-spotting writer of
+          b53/b54). Both writers set the identical HUD byte, so it is the same alert mechanism
+          in a different mode.
+      - id: tsne_times_spotted
         type: s2
-        doc: "slot 34 unmapped. [UNKNOWN] never observed nonzero (0/517). Storage index n58."
+        doc: |
+          slot 34. [CONFIRMED-1, TSNE] TEAM SNEAKING: times this player WAS SPOTTED while
+          sneaking. The TSNE twin of b54 times_spotted_as_snake. Storage n58; 0/517.
+
+          Same writer `0x6FB8A0`, key `0x8e` applied to the spotted player at `0x6FBA54`.
+          Renders on the Team Sneaking sub-page (`SP_SCORE_TSNE02`) beside slot 33, and its
+          score-table column is zero in all 11 rules — a scoreboard statistic that pays
+          nothing, exactly like its Sneaking twin.
       - id: capture_goals
         type: s2
         doc: "slot 35 unmapped. [CONFIRMED] CAPTURE goals: 1 with the round's single goal, screen GOAL=1x5, score exact. Distinct from Rescue goals (b27)."
@@ -573,7 +740,16 @@ types:
         doc: "slot 38 (unmapped on screen). [CONFIRMED] assists; scores *3. Earned by stun-setups before a teammate's kill AND by each successful scan (3 in a 1v1 hack round). Damage-only setups earn nothing."
       - id: unknown_b38
         type: s2
-        doc: "slot 39. [UNKNOWN] never observed nonzero (0/517). Storage index n44."
+        doc: |
+          slot 39. [UNKNOWN] never observed nonzero (0/517). Storage index n44. Scores nothing
+          (score-table column 11 is zero in all 11 rules) and renders on no page.
+
+          MECHANISM FOUND, EVENT NOT NAMED — the honest state as of 2026-07-27. It has exactly
+          one writer, guarded only by a per-mode flag bit, inside a script-bound listener with
+          no caller in the binary, no referenced string and no notifier id. Nothing in the ELF
+          says what fires it. Naming it needs either the GCX script layer (which is what binds
+          the listener) or a live watchpoint at `0x1610568 + slot*0x510 + 0x5e`. Deliberately
+          left unnamed rather than guessed.
       - id: kill_1st_place
         type: s2
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
@@ -598,27 +774,89 @@ types:
           resets does not accumulate, while progress held across an interruption does.
       - id: rescue_carry_marker
         type: s2
-        doc: "slot 42. [RES] 1 on the GA-KO-carrying attacker in both carry rounds — per-carry-run marker candidate. Unlabelled."
+        doc: |
+          slot 42. [CONFIRMED-1, RES] the round's FIRST GA-KO pickup — one per round, not per
+          carry. Scores **x3 in Rescue** (score-table column 19, nonzero in rule 2 only).
+          Unlabelled on any stats page.
+
+          The "per-carry-run marker candidate" this file used to guess is now a mechanism: the
+          writer at `0x706E30` (key `0x88`) sits on the unlatched path of `0x706BB8`, gated by
+          a per-round latch that then diverts every later pickup to b29. Its Team Sneaking
+          twin is slot 44 (key `0x90`, same function, `cmpwi 7` arm).
       - id: rescue_carry_magnitude
         type: s2
-        doc: "slot 43. [RES] 7 then 21 on the GA-KO-carrying attacker — carry magnitude (seconds?). Feeds the Rescue OTHER row imperfectly: screen OTHER=18 vs this=21, gap unresolved (the no-delivery round decomposes as OTHER=7 minus death*2 exactly). Unlabelled."
-      - id: unknown_b43
-        type: s2
-        doc: "slot 44. [UNKNOWN] never observed nonzero (0/517). Storage index n59."
-      - id: unknown_b44
-        type: s2
-        doc: "slot 45. [UNKNOWN] never observed nonzero (0/517). Storage index n60."
-      - id: unknown_b45
+        doc: |
+          slot 43. [RES] 7 then 21 on the GA-KO-carrying attacker — carry magnitude
+          (seconds?). Unlabelled on any stats page.
+
+          IT DOES NOT SCORE, AND THE "OTHER ROW" GAP IS CLOSED (2026-07-27). This slot's
+          score-table column (20) is **zero in all 11 rules**, so it contributes nothing to
+          the round score in any mode. The long-standing puzzle — screen OTHER = 18 against
+          this reading 21 — was never about b42 at all: the Rescue OTHER row is column 36,
+          which reads live n75, a counter this frame does not serialise anywhere. OTHER is
+          structurally unreconstructable from the wire; stop trying to fit it to b42.
+
+          THE UNITS ARE NOW KNOWN: **2-second ticks**, not seconds. The writers at `0x706FB8`
+          and `0x708410` accumulate against a quantum of `0x1770` = 6000 units and bump once
+          per quantum, and the same idiom in b13/b20/b40 (all confirmed durations) uses 3000
+          for one second. So the archived 7 and 21 are **14 s and 42 s** of carrying, against
+          rounds of 98 s and 99 s — which is why the earlier "seconds?" reading looked
+          plausible but never quite reconciled with the screen.
+
+          There are two independent accumulators (`[this+0x6ec]`, `[this+0x6f0]`), one per
+          carriable objective, so a single report can cover two concurrent carries.
+      - id: tsne_first_pickup
         type: s2
         doc: |
-          slot 46. [UNKNOWN] never observed nonzero (0/517). Storage index n61.
+          slot 44. [CONFIRMED-1, TSNE] TEAM SNEAKING: FIRST pickup of the round's objective.
+          The TSNE twin of b41 rescue_carry_marker. Scores **x5**. Storage n59; 0/517.
 
-          DOWNGRADED from the name `training_mode_time_s` (2026-07-27). That name was a pure
-          slot-rule inference from 0x4107 slot 46 "Training Mode Time", carrying a [PREDICTED]
-          tag, and the slot rule has now failed four times in this region (b35, b46, b47, b48).
-          An untested inference sitting in the field NAME reads as knowledge to every consumer
-          of this file, which is exactly how the rule's earlier failures propagated. It keeps
-          the neighbours' honest label until something moves it.
+          Writer `0x706BB8` (the "objective picked up" method, vtable `0xFB512C`), key `0x90`
+          at `0x706E90` under `cmpwi 7`, against the mode-2 arm's key `0x88` = b41 at
+          `0x706E30`. A per-round latch (bit `0x100` of `[this+0x668]`, tested `0x706CA8`, set
+          `0x706D08`) restricts both to the round's first grab.
+
+          That latch also settles the neighbouring Rescue pair: the ALREADY-latched mode-2
+          path goes to key `0x82` = b29 gako_pickups. So **b41 is "first grab" and b29 is
+          "subsequent grabs"** — the mechanism behind the guess this file recorded as a
+          "per-carry-run marker candidate".
+      - id: tsne_carry_time
+        type: s2
+        doc: |
+          slot 45. [CONFIRMED-1, TSNE] TEAM SNEAKING: time spent carrying the objective, in
+          **2-second ticks** (quantum `0x1770` = 6000 units). The TSNE twin of b42. Storage
+          n60; 0/517. Scores nothing (column 24 is zero in all 11 rules), like its twin.
+
+          Writers `0x7070CC`/`0x707174`/`0x708584`/`0x70862C`, key `0x92`, against the mode-2
+          arm's key `0x8a` = b42. There are two independent carry accumulators
+          (`[this+0x6ec]`, `[this+0x6f0]`) matching the two `PRP_TEAM_SNEAKING_TGT_01/02`
+          objective props, so a TSNE round can carry two objectives at once.
+      - id: tsne_goals
+        type: s2
+        doc: |
+          slot 46. [CONFIRMED-1, TSNE] TEAM SNEAKING: objective delivered to the goal. The
+          TSNE twin of b27 gako_saved. Scores **x3**. Storage n61; 0/517.
+
+          Writer `0x706A10` (the "objective reached the goal" method, vtable `0xFB5134`):
+          `bl 0x6a9a38; cmpwi cr7,r3,7; beq` -> key `0x94` at `0x706BAC`, against the mode-2
+          arm's key `0x7e` = b27 at `0x706B54`.
+
+          THIS SLOT WAS CALLED `training_mode_time_s`, AND THAT WAS WRONG — it is a per-goal
+          COUNT in a mode that has nothing to do with training. The name came from the slot
+          rule pointing at 0x4107 slot 46 "Training Mode Time", a [PREDICTED] label nobody
+          tested. Worth noting how good the trap was: slot 46 IS a genuine time slot on the
+          stats screen (one of exactly six — 14, 15, 21, 46, 47, 48 — per the renderer's
+          `%.2d:%.2d:%.2d` path), so every check short of finding the writer would have
+          confirmed it. Fifth slot-rule failure in this region, after b35, b46, b47 and b48.
+
+          THIS SLOT WAS CALLED `training_mode_time_s`, AND THAT WAS WRONG. The name came from
+          the slot rule pointing at 0x4107 slot 46 "Training Mode Time" — a [PREDICTED] label
+          that was never tested. The score table refutes it outright: a training-mode duration
+          would not be a Team Sneaking scoring category. Worth noting how close the trap was —
+          slot 46 IS a genuine time slot on the stats screen (one of exactly six, alongside
+          14, 15, 21, 47 and 48, per the renderer's `%.2d:%.2d:%.2d` path), so every check
+          short of reading the score table would have confirmed the wrong answer. This is the
+          fifth slot-rule failure in this region, after b35, b46, b47 and b48.
       - id: capture_put_count
         type: s2
         doc: "slot 47. [CONFIRMED] CAPTURE PUT COUNT: 30 = the screen PUT COUNT=30x1 row, score exact. (Second training-name slot-rule casualty in this region — the fingerprint said Combat Training Instructor.)"
@@ -648,10 +886,18 @@ types:
           (Counts are over round_completed=1 only; the rc=0 teardown frame at 070239 is
           excluded per the header rule and would otherwise read 14/14.)
 
-          Feeds the SNE DOGTAG score row, but NEITHER the multiplier NOR which of the pair
-          feeds it is resolved: the one decomposed round (~16 points across two tags) had
-          b47 == b48, so it cannot distinguish them, and observed tag values vary. Settling
-          it wants a round where b47 and b48 differ and the DOGTAG row is read off screen.
+          THE DOGTAG SCORING QUESTION IS ANSWERED (ELF score table, 2026-07-27), and the
+          answer is "both of them, at different rates":
+
+              b47 (searches that yielded an item)  x3   in Sneaking
+              b48 (tags collected from the ground) x5   in Sneaking
+
+          The old note asked which of the pair feeds the DOGTAG row and at what multiplier,
+          and expected to settle it with a round where the two differ. No such round is
+          needed: they are columns 28 and 29 of the score table, both nonzero in rule 4 only.
+          This also explains why observed per-tag values "varied" — a round is being paid on
+          two counters at once, and the four archived rounds where b47 > b48 (233, 238, 266,
+          196) mix the rates at 3 and 5 rather than showing one rate that moves.
       - id: wins_as_snake
         type: s2
         doc: |
@@ -672,9 +918,25 @@ types:
       - id: snake_kills
         type: s2
         doc: "slot 52. [CONFIRMED] SNAKE KILL (SNE screen row): kills of the Snake, worth 6 points each (screen 2 = wire 2, score 22 exact only at 6/kill)."
-      - id: unknown_b52
+      - id: mk2_kills
         type: s2
-        doc: "slot 53. [UNKNOWN] never observed nonzero (0/517). Storage index n69."
+        doc: |
+          slot 53. [CONFIRMED, SNE] **Mk.II destructions** — destroying the Metal Gear Mk.II,
+          worth **x4** in Sneaking. Storage n69.
+
+          MECHANISM [CONFIRMED-1], NAME [PREDICTED] — keep the distinction. What the binary
+          proves is that this slot is written by the same function that writes b51 snake_kills,
+          under the same test against a different role byte: it counts **kills of the second
+          Sneaking-mission special unit**. That the unit is the Metal Gear Mk.II is inference,
+          resting on three things that agree but none of which is a direct observation:
+          - column 34 of the score table pays it **x4 in Sneaking only**, and the Sneaking
+            screen's category list already carried `MK.II KILL x4` with no known wire source;
+          - the award table at `0xE139C0` has a `%d Mk.II destructions` family (ids 63/64/65,
+            thresholds 50/100/500);
+          - the `MK2_SKILL` string, and this slot sitting immediately after b51 snake_kills.
+
+          0/517 because nobody in the archive ever destroyed one. A single Sneaking round with
+          a deliberate Mk.II kill settles the name.
       - id: times_spotted_snake
         type: s2
         doc: |
@@ -741,15 +1003,30 @@ types:
           is an accumulated counter, so on the three teardown frames (201, 236, 253) the flag
           reads 0 and this still reads 1. **This is the reliable role field; flag_0x04 is
           not.** Prefer it whenever round_completed=0.
-      - id: unknown_b57
+      - id: mk2_knockouts_dealt
         type: s2
         doc: |
-          slot 58. [UNKNOWN] never observed nonzero (0/517). Storage index n74 — the last
-          live counter the frame carries. 0x4107 slots ≥59 (Victories as Snake 63, Knife
+          slot 58. [CONFIRMED-1 mechanism, PREDICTED name] knockouts DEALT while holding the
+          second Sneaking-mission special role — the same role whose kills b52 counts, so the
+          name stands or falls with mk2_kills and carries the same caveat: the role's identity
+          as the Mk.II is inference, the "a knockout dealt while in that role" mechanism is
+          read from the binary. Scores **x3** in Sneaking
+          (score-table column 31, nonzero in rule 4 only). Storage n74, the last live counter
+          the frame carries. 0/517: nobody in the archive held that role and stunned anyone.
+
+          Written by the same role-tested path as b52, which is what ties the two together; as
+          with b52 the ROLE's identity (Mk.II) is [PREDICTED], while the mechanism — "a
+          knockout dealt while in that role" — is read from the binary. Renders on no stats
+          page, so there is no label to recover.
+
+          0x4107 slots ≥59 (Victories as Snake 63, Knife
           Kills 64, Snake Kills 67, Snake Time 72) exceed this block — weapon lines feed from
           0x43a2 tallies, snake stats from elsewhere.
 
           For completeness on the storage side: live n16 and n75 exist in the blob with their
           own descriptors but are wired NOWHERE — neither struct A nor struct B reads them.
           They bracket the struct-A/struct-B split (n00–n15 and n17–n74), so the frame carries
-          74 of the 76 live counters.
+          74 of the 76 live counters. **The two gaps have different causes**: n16 has no writer
+          either, so it is dead at both ends, whereas **n75 is alive** — it is written during
+          play and it is score-table column 36, the "OTHER" row, paying x1 in Rescue, Capture
+          and Team Sneaking. n75 is the one counter this frame is genuinely missing.
