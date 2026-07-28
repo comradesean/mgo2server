@@ -35,6 +35,18 @@ struct.unpack_from(">12I", data, VA - 0x10000)      # file offset = VA - 0x10000
 
 ---
 
+## The client's record store
+
+A 26-record in-memory property store. Full write-up in [CLIENT_STORE.md](CLIENT_STORE.md); the
+entry points are `0x27EF90` (RecordBuffer), `0x27F160` (RecordGet), `0x27F258` (RecordSet) and the
+descriptor table at `0x103BC18`.
+
+**Records 1-24 are the per-slot player stat blobs** already documented in section 1 below, reached
+through this API rather than being a separate structure. Record 25 is the local player's own
+settings, and its key 140 is the hosted-game name at the fixed address `0x161822C` — the value
+automatching's elected host puts in `0x4310`, and the reason a host can silently fail to create.
+
+
 ## 1. The round report — `0x4390`
 
 | VA | what it is |

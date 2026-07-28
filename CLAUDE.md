@@ -73,6 +73,10 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/LOBBIES.md` — the lobby model: types, subtypes and the categories this build has, the
   two lists the client keeps, what the port check dials, and the deployment rules that follow.
 - `dev/docs/STUN.md` — the UDP port check.
+- `dev/docs/CLIENT_STORE.md` — **the client's 26-record property store**: where the hosted-game name
+  automatching depends on lives, why "exactly one writer" results there are conclusive rather than
+  lucky, and the open question of whether any of it is persisted. Also the starting points for how
+  MGS4 reads MGO play time back for its single-player unlocks.
 - `dev/docs/CRYPTO.md` — every cipher, key and hash, and where each is applied.
 - `dev/docs/AUTOMATCH.md` — **automatching**, end to end: the 18-state client machine, the four
   packets we still do not send, the discriminated result codes and the sentence each prints, the
