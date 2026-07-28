@@ -202,7 +202,19 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(instructor != null ? instructor.generation() : 0);
 		info.writeInt(4032);
 		BufferUtil.writeString(info, "FP-STR-C", StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		info.writeByte(46);            // u8 → T+0x1AD8
+		// [ELF] The clan emblem flag, not a spare byte. T+0x1AD8 is 6816 + 56, and the 0x4103
+		// parser writes this u8 with `addi r4,r24,56` off `r24 = profile+6816` (0xD3F3FC), so it
+		// lands in profile+6872 — the same slot 0x4122 fills for the local player. It sat here
+		// carrying the fingerprint value 46 since the tail was mapped, which is why no one ever
+		// saw anyone else's emblem: 0x905A94 tests this byte for exact equality with 3, and
+		// anything else means "no emblem" and skips the 0x4b4a fetch entirely.
+		//
+		// The gate at 0x905A7C needs BOTH this byte == 3 and the membership state above in
+		// {1, 2} — state 0 wraps to 255 under its unsigned compare and also skips. A character
+		// with no clan sends state 99 and flag 0, and correctly fetches nothing.
+		info.writeByte(clan.id() != 0
+			&& clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
+			? ClanService.EMBLEM_ON_DISPLAY : 0);    // u8 → T+0x1AD8 = profile+6872
 		info.writeInt(4033).writeInt(4034).writeInt(4035); // → T+0x32F0/F4/F8
 		info.writeInt(4036);           // trailing u32 → T+0x124
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
