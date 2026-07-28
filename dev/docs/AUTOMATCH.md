@@ -231,6 +231,56 @@ and uses entry 0.** So naming an index only works when that entry is populated w
 **`0x43f1` carries no game id, no timestamp and no player count.** Rule, map and flags live *inside*
 the block, selected by the rotation index. The game id arrives separately in `0x43f2`.
 
+### The block is the host's settings object, not a message (2026-07-28)
+
+The tempting reading — that the client takes rule, map and flags out of the block and gets everything
+else from its own stored settings — is **wrong**, and building on it would have shipped a match with
+a zero-length round.
+
+There is one **968-byte settings struct**. It lives at `screen+112` on the automatch screen and at
+`net+0x8EF8` as the live game object; `0x4313`'s parser `memset`s 968 bytes there at `0xD44484`, and
+`screen+112+968` is exactly the screen's host-id field. **The settings block sits at `+752` inside
+it**, so the `memcpy(screen+864, obj+148, 204)` at `0x93D398` is dropping our block into the block
+slot of the very struct about to be handed to the create task. `screen+864/880/896` are not three
+fields lifted out of the block — they are `rules[0]`, `maps[0]`, `flags[0]` *inside the copy*.
+
+The create task `0x8C9FA4` is only a spawner; its body `0x8CA0CC` calls the `0x4310` builder
+`0xD446C8`, which **reads nothing but that struct** and performs **no numeric validation at all** —
+only `strlen` and a charset check on name, comment and password. So zeros go out as zeros: max
+players 0, briefing 0, every timer 0. The running game then reads those exact offsets through a bank
+of ~70 getters at `0x907030`–`0x907A70`.
+
+**Therefore: serve the same 204 bytes you would serve in a `0x4313` for that game.** Same structure,
+same offsets, same reader (`0xD4364C`) — that is the whole shortcut.
+
+Three rules that follow, each of which is a silent bug otherwise:
+
+1. **Send rotation index 0 and put the elected rule/map at entry 0 yourself.** The client rewrites
+   entry 0 from entry `idx` but does **not** clear entry `idx`, so any nonzero index makes that rule
+   play twice per cycle.
+2. **The rotation must be contiguous from index 0 with nonzero maps** — the blob-save loop at
+   `0x8CA254` stops at the first zero map, and `rules[] > 10` triggers the entry-0 fallback.
+3. **22 of the 204 bytes never reach the wire** (blocks 67, 76–79, 82–83, 88–91, 170–176, 184–187),
+   because `0x4310` omits them. For the *host* they still land in the live game object via
+   `memcpy(net+0x8EF8, S, 968)` at `0x8CAAC8`; for joiners they come only from our `0x4313`. Six are
+   read by the getter bank, so author them the same in both or host and clients disagree.
+
+Timer units, **inferred**: the post-create cache at `0x8CA470` multiplies eight of the seventeen u32s
+by 60 and stores the other nine as bytes — so blocks 100–167 are eight `{minutes, count}` pairs plus
+a lone value at 132.
+
+### Two things outside the server's control
+
+- **The game name is client-side.** `0x93D354` reads it from the player's own saved record, and the
+  create is refused when it is shorter than three characters (`0xD44730`). The failure is state 13 →
+  state 1 with **no dialog**. A character that has never named a hosted game will fail automatch
+  silently and nothing we send can fix it — check this first when a live test does nothing.
+- **Comment, password flag and password are never written on the automatch path** and come from the
+  raw screen allocation. *Inferred* that the allocator zeroes them; if it does not, the first
+  automatch `0x4310` we receive will carry a garbage comment or a spurious password flag. Cheap to
+  confirm from a capture, and worth checking, because a password on a formed game would make every
+  join fail — silently, again.
+
 ### The block's field map
 
 Block offset *N* is `0x4313` wire `0xA8 + N`. Every `0x4313` name in `PROTOCOL.md` drops straight in,
