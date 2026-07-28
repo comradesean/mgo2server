@@ -2,6 +2,7 @@ package mgo2server.game;
 
 import mgo2server.GameClient;
 import mgo2server.TestDatabase;
+import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.model.CharaSkill;
 import mgo2server.common.Services;
 import mgo2server.common.ServicesFactory;
@@ -27,6 +28,19 @@ public abstract class BaseGameClientServerIT {
 	/** Id of the lobby row created for this test, which hosted games reference. */
 	protected long lobbyId;
 
+	/**
+	 * The automatch policy the server under test is built with; override per test class.
+	 * <p>
+	 * Unlike {@code Policy}, this one is passed in rather than read from a process-wide static,
+	 * precisely so a test can decide whether the availability window is open. The default is the
+	 * production reading, which with no environment set means <b>disabled</b> — so every other test
+	 * class sees {@code 0x43e0} refused with {@code AUTOMATCH_NOT_OPEN}, which is what a default
+	 * deployment does.
+	 */
+	protected AutomatchPolicy automatchPolicy() {
+		return AutomatchPolicy.from(System::getenv);
+	}
+
 	@BeforeEach
 	public void setup() {
 		var database = TestDatabase.get();
@@ -48,7 +62,8 @@ public abstract class BaseGameClientServerIT {
 				.one());
 
 		// Port 0 lets the OS pick, so parallel test classes never fight over a port.
-		server = GameServerFactory.createGameServer(services, 0, lobbyType(), lobbyId, 0);
+		server = GameServerFactory.createGameServer(services, 0, lobbyType(), lobbyId, 0,
+			automatchPolicy());
 		server.start().join();
 
 		client = new GameClient(server.boundPort());

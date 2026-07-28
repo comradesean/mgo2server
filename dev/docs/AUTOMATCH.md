@@ -1,8 +1,9 @@
 # Automatching
 
 Everything the client needs to complete an automatch connection, read from `MGO2.elf` and the disc
-on 2026-07-28 by four parallel investigations. **Nothing here is implemented yet.** Four commands
-are missing and three names in `PROTOCOL.md`/`PACKETS.md` were wrong.
+on 2026-07-28 by four parallel investigations. Three names in `PROTOCOL.md`/`PACKETS.md` were wrong
+and are corrected here. **Implementation status is in §7a** — currently: the two client→server
+commands are validated and refused outside a configured window; none of the four pushes exist yet.
 
 The short version: automatch is **not a separate connection path**. The server picks a host, tells
 everyone, and the clients re-enter the ordinary create-game and join-game handshakes we already
@@ -146,6 +147,26 @@ Bar height for column *i* is `A[i] + B[i]`, clamped to 15 (960 px / 64 px per un
 **The axis is player level.** The centre column is `levelFromScore(charRec+0x120)` via `0x6F9260`,
 clamped 0–22; the lit window is `[centre − band, centre + band]`. The 23 is confirmed four ways: the
 loop bound at `0x93C790` and four 23-entry sprite-hash tables at `0xE14BA0 + 128/220/312/404`.
+
+**The level table is not in the binary and cannot be extracted from it** (investigated 2026-07-28).
+`0x6F9260` walks a 128-entry u32 array in `.bss` at `0x1659D24` — pointer at `0xFDE280`, zero at
+load — filled at runtime by the GCX native `0x6F9370` (option letter `-r`) from a stage script. It
+sits `0x200` bytes below the `ComputeScore` table `ADDRESSES.md` already records as script-fed: same
+allocation, same lifecycle. Getting the numbers means extracting the script per `ASSETS.md`, or
+bisecting experience against the rendered level on a live client.
+
+The algorithm *is* readable, and it corrects a claim in `CharacterService`: the level is the **count
+of thresholds `<=` experience**, not one more than that count (signed `ble` at `0x6F9278`; the
+return is the count). Below the first threshold it returns 0. `charRec+0x120` is
+`session+0x58F8`, written by the `0x4101` parser from **wire offset `0x1C` — the u32 the server
+already sends as "experience"**, not a separate career score and not `chara.rank`.
+
+The 22 is a presentation clamp at `0x93C348`, not a property of the table. `countLevels()` at
+`0x6F9328` exists precisely because the client does not know how many levels there are either.
+
+The same function is a **real gate elsewhere**: `0x8BA560` admits a player to a game only when
+`base − tolerance <= level <= base + tolerance`, behind bit 12 of the flags word — so
+`level_limit_base` and `level_limit_tolerance` are in **level units**, not experience.
 
 **What A and B are** — the ELF cannot distinguish them (nothing reads them apart; the only consumer
 sums them), but the disc names the panel: **"Entry Status"** (915) with two values, **"Matching"**
@@ -315,6 +336,37 @@ on this screen instead, the fault is upstream of `0x43e0`.
 **not reachable** from any automatch code. They are not part of this flow.
 
 ---
+
+## 7a. What is implemented (2026-07-28)
+
+**Step 2 of the build: honest refusal.** `0x43e0` and `0x43e2` moved out of `HubGameController` into
+`AutomatchGameController` — they had to move rather than be duplicated, because
+`GameServerHandler` throws at construction if two controllers claim one command id.
+
+What changed on the wire:
+
+- `0x43e0` is validated. The rule filter must be in **{0–5, 11}**; 6 (BOMB) and 7 (Team Sneaking)
+  are refused with **−950** rather than queued under a rule no menu row can produce.
+- Outside the availability window — and by default there is no window, so always — the reply is
+  **−970**, four bytes, and the client prints *"Automatching is currently not open"*.
+- `0x43e2` still answers an explicit four-byte zero.
+
+**This is already an improvement over what it replaced.** The old handler answered result 0
+unconditionally, which registers the client's push channel and commits us to speaking again; we then
+never did, and the player got a twenty-minute stopwatch with no explanation. Refusing honestly is
+worse than matchmaking and much better than that.
+
+Operator policy lives in `AutomatchPolicy` and is read from the environment
+(`MGO2SERVER_AUTOMATCH_*`, documented in `server.env`), **not** from a classpath JSON beside
+`awards.json`: that file is baked into the shaded jar, so editing a window would need a rebuild
+where an env change needs a restart, and its process-wide `static CURRENT` cannot express
+"window open" in one test and "closed" in the next within one JVM.
+
+`_MODE` selects the strategy — `BOTH`, `FORM_ONLY` or `SLOT_IN_ONLY`. `SLOT_IN_ONLY` refuses to
+start without `_SLOT_IN_LOBBIES`, because this lobby only ever contains games automatching itself
+formed and that mode never forms one.
+
+Still unimplemented: the queue, the scheduler, and all four pushes.
 
 ## 8. Release-day scope
 

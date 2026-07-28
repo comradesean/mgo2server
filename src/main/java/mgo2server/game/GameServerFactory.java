@@ -1,8 +1,10 @@
 package mgo2server.game;
 
+import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.Services;
 import mgo2server.game.ChannelRegistry;
 import mgo2server.game.controller.AccountGameController;
+import mgo2server.game.controller.AutomatchGameController;
 import mgo2server.game.controller.CommonGameController;
 import mgo2server.game.controller.CharacterConnectController;
 import mgo2server.game.controller.CharacterGameController;
@@ -29,6 +31,17 @@ public class GameServerFactory {
 	 */
 	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
 			long lobbyId, int lobbySubtype) {
+		return createGameServer(services, port, lobbyType, lobbyId, lobbySubtype,
+			AutomatchPolicy.from(System::getenv));
+	}
+
+	/**
+	 * Takes the automatch policy explicitly, so a test can stand up a server with the window open or
+	 * closed. Unlike a cooldown, this differs between a test and a deployment, which is why it is
+	 * threaded through rather than read from a static the way {@code Policy} is.
+	 */
+	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
+			long lobbyId, int lobbySubtype, AutomatchPolicy automatchPolicy) {
 		var controllers = new ArrayList<IGameController>();
 
 		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
@@ -66,6 +79,7 @@ public class GameServerFactory {
 				controllers.add(new ChatGameController(services.getGameService(), channels));
 				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
+				controllers.add(new AutomatchGameController(automatchPolicy));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),
 					services.getClanService(), services.getGameService()));

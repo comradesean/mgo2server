@@ -198,12 +198,22 @@ public class CharacterService {
 
 	/**
 	 * Experience for character level 3 — Konami's documented instructor requirement, "Level 3 or
-	 * above". Recovered from the client's own threshold table, which the level display walks: the
-	 * first entries are 125, 250, <b>375</b>, 500, 650, and the level is one more than the number of
-	 * thresholds the experience clears. 22 entries, capped at 4,600.
+	 * above".
 	 * <p>
-	 * The table reproduces all six live readings below, which is why it is trusted: 214 -> 1,
-	 * 428 -> 3, 499 -> 3, 500 -> 4, 1,600 -> 10, 49,250 -> 22.
+	 * <b>Provenance corrected 2026-07-28.</b> This used to say the value was "recovered from the
+	 * client's own threshold table". It cannot have been: the table is <em>not in the binary</em>.
+	 * {@code 0x6F9260} walks a 128-entry array in {@code .bss} at {@code 0x1659D24}, zero at load and
+	 * filled at runtime by a GCX native from a stage script. See {@code dev/docs/AUTOMATCH.md} §3.
+	 * <p>
+	 * What survives, and why 375 is still the right number: the level is the <b>count of thresholds
+	 * at or below the experience</b> — not one more than it, as this comment also used to claim; the
+	 * disassembly is a signed {@code ble} whose return is the count. Six live readings constrain the
+	 * low entries: 214 -> 1, 428 -> 3, 499 -> 3, <b>500 -> 4</b>, 1,600 -> 10, 49,250 -> 22. The
+	 * 499/500 pair brackets {@code T[3] = 500} to a single experience point, and {@code 125, 250,
+	 * 375, 500} is consistent with every reading under the corrected model.
+	 * <p>
+	 * The "650" and "22 entries, capped at 4,600" in the old comment had no traceable source, and
+	 * 4,600 contradicted the neighbouring note that levels 10 to 22 cost over 47,000. Both are gone.
 	 */
 	public static final int LEVEL_3_EXPERIENCE = 375;
 
@@ -225,7 +235,8 @@ public class CharacterService {
 	 * predicted level 4 at 1,600; the next reading falsified it — 1,600 is level 10. No simple
 	 * power law or geometric progression fits the four readings either, because levels 1 to 10 cost
 	 * under 1,400 experience between them while 10 to 22 costs over 47,000. The thresholds are a
-	 * table, and the honest source for it is the binary.
+	 * table, and the honest source for it is a <b>stage script on the disc</b> — not the binary, as
+	 * this used to say.
 	 */
 	public static final int LEVEL_4_EXPERIENCE = 500;
 
