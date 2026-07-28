@@ -256,6 +256,36 @@ public class CharacterService {
 	 * a defect a player notices and we cannot explain, while one consistent slightly-low number is
 	 * explainable. Consistency wins; the coverage hole is documented where the query lives.
 	 */
+	/**
+	 * A character's instructor score: how many students reviewed them, and the average rating in
+	 * 8.8 fixed point.
+	 * <p>
+	 * The vote count is what the Personal Data screen renders as the denominator of "N stars /
+	 * M votes" ({@code 0x4103} wire 636). It sends 0 for someone never reviewed, which is honest,
+	 * where the fingerprint that used to sit there quoted 4034 votes for ratings nobody had cast.
+	 * <p>
+	 * {@code averageFixed} matches {@link RankingService}'s scale so the card and the ranking board
+	 * cannot disagree — the client draws these rows as {@code x.yy} over a ten-segment gauge with a
+	 * 1/256 multiplier. The wire slot for the star NUMERATOR has not been located yet, so only the
+	 * denominator is served today.
+	 */
+	public record InstructorScore(int votes, int averageFixed) {
+	}
+
+	public InstructorScore instructorScore(long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select count(*) as votes,
+						coalesce(round(avg(rating) * 256), 0)::bigint as average_fixed
+					from instructor_review
+					where instructor_chara_id = :chara
+					""")
+			.bind("chara", charaId)
+			.map((rs, ctx) -> new InstructorScore(rs.getInt("votes"),
+				(int) rs.getLong("average_fixed")))
+			.one());
+	}
+
 	public long displayedPlaySeconds(long charaId) {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""

@@ -218,10 +218,16 @@ public class PersonalStatsController implements IGameController {
 		info.writeByte(clan.id() != 0
 			&& clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
 			? ClanService.EMBLEM_ON_DISPLAY : 0);    // u8 → T+0x1AD8 = profile+6872
-		info.writeInt(0)               // → T+0x32F0
-			.writeInt(0)               // → T+0x32F4: the INSTRUCTOR SCORE denominator, rendered as
-			                           // "/ 4034 votes" until now. Same reasoning as host rating.
-			.writeInt(0);              // → T+0x32F8
+		// T+0x32F4 is the INSTRUCTOR SCORE denominator — the "/ N votes" on the screen. We DO
+		// measure this: instructor_review holds one row per graduation review. It read "/ 4034
+		// votes" until now purely because that was the fingerprint value.
+		//
+		// The star NUMERATOR's wire slot has not been located (the 0x4103 spec records the
+		// rating-block numerators as unlocated), so the count is served and the stars are not yet.
+		var instructorScore = characterService.instructorScore(charaId);
+		info.writeInt(0)                          // → T+0x32F0 [UNKNOWN]
+			.writeInt(instructorScore.votes())    // → T+0x32F4 instructor score denominator
+			.writeInt(0);                         // → T+0x32F8 [UNKNOWN]
 		info.writeInt(0);              // trailing u32 → T+0x124 [UNKNOWN]
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 
