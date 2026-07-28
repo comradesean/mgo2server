@@ -870,6 +870,10 @@ documented anywhere we have.
 
 ### The worn title at `0xef`, and why the scorecard was blank
 
+**Confirmed live 2026-07-28**: with this byte carrying the worn title, the animal-rank badge appears
+on the in-game scorecard. It had never appeared while the byte carried `chara.rank`, which is dead.
+The chain below is therefore observed end to end, not merely traced.
+
 **This byte is the animal-rank index, not a separate "rank" quantity.** Traced end to end
 2026-07-28:
 
