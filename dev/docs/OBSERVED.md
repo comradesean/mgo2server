@@ -3801,3 +3801,53 @@ which settles the open question of whether BOMB Mission arrived server-side. It 
 Dead ends closed in the same pass: `0xE13BB8` / `0xE1B834` are hash caches of string bank
 `0x654515` (labels come from `0x8E15E8` → `0x240708(bank, 2*rule)`) and are referenced by nothing;
 `0x9C2708` is a widget text setter with no rule argument; and `0x4902` carries no rule mask.
+
+## b38 is the Headshots-Only penalty death — the frame is complete — 2026-07-28
+
+The last unnamed field in `0x4390` has a name, and it is testable on demand.
+
+**Round-flags bit `0x4` is "HEADSHOTS ONLY"**, a per-round host toggle in Create Game. The game's
+own English tooltip: *"When enabled, if a player is not taken down by a headshot, a penalty will be
+handed to the shooter."* **Bit `0x2` is "Drebin Points Enabled".** The two are a **three-way radio,
+not independent bits** — 0 Normal, 2 Drebin Points, 4 Headshots Only — which is exactly why only
+those two values are ever tested anywhere in the binary.
+
+Recovered from a plain-text-labelled lobby menu table at `0xFE7084/88/8C`, whose neighbours are
+`obj_4_select_others`, `icon_drebin_point` and `icon_HSonly`; rows built at `0x8AD6B4`..`0x8AD838`
+with label ordinals 400/402/403 and tooltips 409/411/412. Note this is a PER-ROUND option and so is
+none of the `game` table's columns — those come from a different field, the `S+0x3A0` bitfield
+expanded into the `0x4310` settings word at `0x8CA2BC`..`0x8CA420`.
+
+**Player state 191 is the Headshots-Only penalty state.** One entry point in the whole binary:
+`li r4,191` at `0x77B0DC` / `bl 0x3A5620` at `0x77B0E0`, reachable only when bit 63 of
+`[chara+0x368]` is set — written only at `0x76C27C` inside `0x76C1D0`, whose only caller is
+`0x77864C`, itself gated on `roundFlags & 0x4` at `0x778610`. Nothing else in the game can put a
+player into state 191.
+
+So **b38 counts deaths caused by the Headshots-Only penalty**, and its 0/551 is explained rather
+than mysterious: every archived round carried `flags = 0`, and the flag is a precondition.
+
+**How to move it:** host a round with the third "others" row selected; `checkHostSettings` should
+log `flags=4`. There is a free visual tell — the round list draws Headshots-Only rounds **light
+blue** (`0x3BCFFF`) and Drebin-Points rounds **pink** (`0xE12682`). Those two constants an earlier
+pass could not place are RGB colours, not resource hashes.
+
+**Predictions that would confirm it, and falsify it if wrong:** b38 and b03 (suicides) move together
+(the raiser is `kill(slot, slot, 0, 0)`); `deaths` also increments; the death names **no killer and
+no weapon** (damage cause 0 = `NONE`); and b38 stays 0 in Normal and Drebin rounds. Reach is not
+host-only — events 6/7 come from the same host-gated function and appear on charas 1, 2 and 3 in
+the archive.
+
+**Honest gap, stated rather than smoothed:** the arming site tests only the victim's down-state, NOT
+whether the takedown was a headshot. So either those down-states are themselves headshot-specific,
+or the penalty is broader than the tooltip claims. One live headshot kill in a Headshots-Only round
+settles it. Also unresolved: which rules ALLOW bit `0x4` lives in runtime `.bss` (read it off the
+greyed-out row live), and the single inferred link in the chain is who sets bit 56 of
+`[controller+0x368]` — sole writer `0x7907E8`, a virtual slot-`0xC4` method whose callers do not
+resolve statically.
+
+**The frame is now complete.** All 23 struct-A fields and 57 of 58 struct-B slots are named; the
+one exception, b14, is not unknown but *proven identically zero* — nothing can make live differ from
+baseline, so it can never carry a value. Three reusable finds came out of the same pass: the
+damage-source name table at `0x1035818` (which independently re-confirms b17 and b18), the
+per-object 896-bit flag API at `0x305A60`, and the labelled lobby menu table above.
