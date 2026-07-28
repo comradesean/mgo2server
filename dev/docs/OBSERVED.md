@@ -3478,3 +3478,43 @@ would be −5 and the clamp at 0 absorbed it, so the observation is consistent w
 and equally consistent with zero. Third time a clamp has hidden a deduction. The round that would
 show it: capture one base and team-kill once, so the score reads 20 instead of 25 — the killer has
 to stay positive or the clamp eats the evidence.
+
+## The b14 negative was right by luck, not by method — 2026-07-27, re-audit
+
+The retraction above is itself partly retracted, and the shape of that is worth keeping.
+
+**b14 (live n31, blob key `0x58`) is identically zero — but not for the published reason.** The
+original claim, "no writer anywhere", is **literally false**: three sites write blob byte `0x58` —
+`0x27D4DC` (`SET(base, 0x1a, 152)` from a zeroed buffer) and `0x71B3B8`/`0x71BDC0`, a host-only
+per-slot loop copying the baseline block back over the live block. What holds is stronger and
+narrower: **nothing can make `live[n31]` differ from `baseline[n31]`**. Init zeroes both, the reset
+loop assigns live := baseline, and the post-report store assigns baseline := live. The wire field
+is exactly that difference, so it is identically 0 — "written only in ways that move both copies
+together", not "unwritten".
+
+**The re-audit's real lesson is about the first sweep.** It was wrong at exactly 2 of 152 sites:
+`0x6ED784` (11 keys, not 1) and `0x6EFF98` (4 keys — `0x5c`, `0x62`, `0x64`, `0xa0` — the CQC
+handler's shared tail, which nobody had spotted). The other 150 attributions were correct, and
+critically **no key left the inventory**: every mis-attributed key has another correct writer
+elsewhere, which is why no slot reading changed. So the b14 negative was true, and the method that
+produced it could not have known that. Right by luck.
+
+What makes the second pass trustworthy where the first was not: call sites enumerated from raw
+branch encodings; keys recovered by forward *and* backward CFG dataflow; and — the check the first
+pass never made — a proof that all 152 `r4` values are in-function `li` constants, so no site takes
+a computed or parameterised key. That is precisely the assumption the original sweep rested on
+without testing. The 19 direct `0x27F258` sites with non-constant keys are excluded individually by
+length against the descriptor table. Residual gap, stated rather than hidden: a record pointer
+spilled to stack and reloaded would evade the taint trace; the settling experiment is an RPCS3
+write watchpoint on `0x1610568 + 0x510*slot + 0x58`.
+
+**Dispatcher `0x6ED650` fully resolved:** 15 entries, 32 callers (not 31 — a tail `b 0x6ed650` at
+`0x6EDC58` carries `li r3,0xe` and is the sole raiser of event 14). **Events 11–14 write no stat
+key at all** — they are pure `0x6FC760(id, slot)` notifier raises, and event 13 runs an 18000-tick
+(6 s) accumulator first. Key `0x58` is nowhere in the dispatcher, which was the specific hole the
+re-audit was opened to check.
+
+b38's chain reproduces instruction for instruction: `cmpwi 0xbf` at `0x7787DC`, host test,
+`bl 0x6ef930(slot,slot,0,0)` at `0x778D0C`, `li r3,8; bl 0x6ed650` at `0x778D18`/`0x778D20`; the
+arm at `0x6ED9B8` consults `0x6A9948` bit `0x4`, `li r4,0x72` at `0x6EDA00` with a matching
+`lhz r9,0x58(r3)`, then `b 0x6ed760` into `bl 0x6a9758` at `0x6ED784`.

@@ -626,27 +626,39 @@ types:
           Trained) and b46 (Capture put count, not training time) — treat the remaining
           [PREDICTED] labels around here as weak.
 
-          **CLAIMED PERMANENTLY ZERO, NOW UNDER RE-AUDIT — do not rely on it (2026-07-27).**
-          Storage n31, blob key `0x58`.
+          **IDENTICALLY ZERO ON THIS BUILD — re-audited and restored, with a different reason
+          than first published (2026-07-27).** Storage n31, blob key `0x58`.
 
-          The claim was: an exhaustive sweep of all 152 `bl 0x6a9758` bump sites — the only path
-          by which gameplay reaches a player's live block — found not one targeting key `0x58`,
-          making the slot structurally incapable of ever being nonzero.
+          The original claim was "no writer anywhere", from a sweep of the 152 `bl 0x6a9758`
+          bump sites finding none that carried `li r4, 0x58`. **That sentence is literally
+          false**, and the sweep's method was unsound (it recovered keys by scanning backwards
+          for the nearest `li r4`, which cannot separate keys converging on a shared tail; it
+          mis-attributed 2 of 152 sites). Three sites do write blob byte `0x58`:
+          `0x27D4DC` (`SET(base, 0x1a, 152)` from a zeroed buffer) and `0x71B3B8`/`0x71BDC0`
+          (a host-only per-slot loop, `addi r4,r31,0x1a` / `li r5,2` over `r31 = 0,2,…,0x96`,
+          copying the baseline block back over the live block).
 
-          That sweep recovered each site's key by scanning backwards for the nearest preceding
-          `li r4, KEY`, and **that method is now known to mis-attribute keys.** The player-event
-          dispatcher `0x6ED650` routes ~15 events through a SHARED increment tail at `0x6ED760`,
-          so several distinct keys reach one store and a backwards-linear scan cannot tell them
-          apart. It demonstrably missed key `0x72` (b38, written at `0x6ED784` via `li r4,114`
-          at `0x6EDA00`). If it missed one key that way it can have missed this one, and the
-          dispatcher's higher event ids are exactly the sort of place a lone writer would hide.
+          What is actually load-bearing, and survives a proper control-flow re-derivation:
+          **nothing can make `live[n31]` differ from `baseline[n31]`.** Init zeroes both; the
+          reset loop assigns live := baseline; the post-report store at `0x27DC70` assigns
+          baseline := live. The wire field is exactly that difference (`lhz r3,0x102(r1)`,
+          `lhz r18,0x19a(r1)`, `subf`, `stw r3,0x230(r1)` at `0x27D970`..`0x27D9D4`), so it is
+          identically 0 — not "unwritten", but "written only in ways that move both copies
+          together". The slot is safe to treat as a permanent zero.
 
-          So the honest status is **[UNKNOWN], never observed nonzero (0/517)** — the same as
-          the file's other blanks — and NOT the "proven inert" it was briefly published as. The
-          same caveat applies to the companion claim that live n16 (key `0x3a`) has no writer.
-          Both are being re-derived by following control flow into each call rather than
-          scanning backwards; until that lands, treat a nonzero b14 as a finding, not a
-          corruption, and do not have the server assume a permanent zero.
+          The re-audit is trustworthy where the sweep was not: call sites enumerated from raw
+          branch encodings, keys recovered by forward AND backward CFG dataflow, and — the
+          check the first pass never made — it *proved* all 152 `r4` values are in-function `li`
+          constants, so no site takes a computed or parameterised key. The 19 direct `0x27F258`
+          sites with non-constant keys are excluded individually by length against the
+          descriptor table (byte `0x58` is reachable only as `key=0x58,len=2` or
+          `key=0x1a,len=152`). Residual gap, stated honestly: a record pointer spilled to stack
+          and reloaded would evade the taint trace. The settling experiment is an RPCS3 write
+          watchpoint on `0x1610568 + 0x510*slot + 0x58`.
+
+          Companion result for live n16 (key `0x3a`): same verdict by the same method, but a
+          DIFFERENT kind of nothing — n16 is unread and unwritten, dead at both ends, whereas
+          n31 is read every round and wires the resulting zero.
 
           Independently of all that: the LABEL on 0x4107 slot 15 is tier-1 confirmed as "Time as
           Dedicated Host" (entry 11 of the DETAIL display list at `0xE13BDC`), and the live
