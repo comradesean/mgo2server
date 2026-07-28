@@ -168,6 +168,21 @@ public class RankingService {
 			group by c.id, c.name
 			""";
 
+	/**
+	 * Host rating, 8.8 fixed point like the instructor board beside it. Sourced from
+	 * {@code host_review} since 2026-07-28 — before that nothing stored a host vote, and this
+	 * board returned {@link #EMPTY_BOARD} on the honest grounds that a column of zeroes would look
+	 * identical while claiming we had measured something. Now we measure it.
+	 */
+	private static final String PLAYER_HOST_RATING = """
+			select c.id as id, c.name as name,
+				round(avg(v.rating) * :scale)::bigint as value
+			from chara c
+			join host_review v on v.host_chara_id = c.id
+			where c.active %s
+			group by c.id, c.name
+			""";
+
 	/** No subject has a value, so the board is empty and its total is zero. */
 	private static final String EMPTY_BOARD = """
 			select c.id as id, c.name as name, 0::bigint as value
@@ -247,7 +262,8 @@ public class RankingService {
 			case SKEY_GRADE_POINT -> PLAYER_GRADE_POINT;
 			case SKEY_INSTRUCTOR_RATING ->
 				PLAYER_INSTRUCTOR_RATING.formatted(window(term, "v.reviewed_at"));
-			// Host rating has no stored source; see the class note.
+			case SKEY_HOST_RATING ->
+				PLAYER_HOST_RATING.formatted(window(term, "v.reviewed_at"));
 			default -> EMPTY_BOARD;
 		};
 	}

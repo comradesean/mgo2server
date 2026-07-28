@@ -264,25 +264,46 @@ public class CharacterService {
 	 * M votes" ({@code 0x4103} wire 636). It sends 0 for someone never reviewed, which is honest,
 	 * where the fingerprint that used to sit there quoted 4034 votes for ratings nobody had cast.
 	 * <p>
-	 * {@code averageFixed} matches {@link RankingService}'s scale so the card and the ranking board
-	 * cannot disagree — the client draws these rows as {@code x.yy} over a ten-segment gauge with a
-	 * 1/256 multiplier. The wire slot for the star NUMERATOR has not been located yet, so only the
-	 * denominator is served today.
+	 * {@code ratingSum} is the star NUMERATOR at wire 632. The client draws
+	 * {@code clamp(ceil(2 * numerator / denominator), 0, 10)} half-stars ({@code 0x94258C}), so
+	 * sending the rating SUM over the vote COUNT makes the ratio the average and the gauge lands on
+	 * the real star count — four reviews averaging 3.00 send 12/4 and draw three stars.
 	 */
-	public record InstructorScore(int votes, int averageFixed) {
+	public record InstructorScore(int votes, int ratingSum) {
+	}
+
+	/**
+	 * A character's host rating: how many players have voted on their hosting, and the sum of
+	 * those votes. Same shape and the same gauge maths as {@link #instructorScore} — wire 571 is
+	 * the numerator and 575 the denominator on {@code 0x4103}.
+	 * <p>
+	 * Source is {@code host_review}, filled from {@code 0x43c4}. Before 2026-07-28 nothing stored
+	 * these votes, which is why this gauge could only read zero and why the ranking board's
+	 * host-rating row was empty.
+	 */
+	public InstructorScore hostScore(long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select count(*) as votes, coalesce(sum(rating), 0)::bigint as rating_sum
+					from host_review
+					where host_chara_id = :chara
+					""")
+			.bind("chara", charaId)
+			.map((rs, ctx) -> new InstructorScore(rs.getInt("votes"),
+				(int) rs.getLong("rating_sum")))
+			.one());
 	}
 
 	public InstructorScore instructorScore(long charaId) {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""
-					select count(*) as votes,
-						coalesce(round(avg(rating) * 256), 0)::bigint as average_fixed
+					select count(*) as votes, coalesce(sum(rating), 0)::bigint as rating_sum
 					from instructor_review
 					where instructor_chara_id = :chara
 					""")
 			.bind("chara", charaId)
 			.map((rs, ctx) -> new InstructorScore(rs.getInt("votes"),
-				(int) rs.getLong("average_fixed")))
+				(int) rs.getLong("rating_sum")))
 			.one());
 	}
 

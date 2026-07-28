@@ -184,6 +184,18 @@ public class HostGameController implements IGameController {
 	public static final int UPDATE_STATS_RESULT = 0x4391;
 
 	/** End-of-round report (meaning unconfirmed). Answered {@code result(0)}. */
+	/**
+	 * The host-rating vote a player casts as they leave a game — a bare u32 of 1..5 stars.
+	 * <p>
+	 * IDENTIFIED 2026-07-28. It was an unhandled command dropped with a WARN, documented in
+	 * PACKETS.md as "[UNKNOWN] In-match enumerated command". Two things settle it: the ELF accepts
+	 * only the values 1..5 ({@code 0xD40E44} aborts otherwise), which rules out the character-id
+	 * reading the rest of the {@code 0x43xx} family invites; and an operator who gave a host five
+	 * stars produced exactly {@code 43c4 = 00000005}, sent right after the game-info screen and
+	 * immediately before quitting.
+	 */
+	public static final int RATE_HOST = 0x43c4;
+
 	public static final int ROUND_END = 0x43a2;
 
 	/**
@@ -191,6 +203,11 @@ public class HostGameController implements IGameController {
 	 * The builder caps entries at 0x7f and the caller at 50.
 	 */
 	private static final int WEAPON_TALLY_BYTES = 7;
+
+	/** The star range the client sends and the ELF enforces at {@code 0xD40E44}. */
+	private static final int MIN_HOST_RATING = 1;
+
+	private static final int MAX_HOST_RATING = 5;
 
 	/** The caller-side cap on weapon entries; more than this is a mis-parse, not data. */
 	private static final int MAX_WEAPON_TALLIES = 50;
@@ -420,6 +437,7 @@ public class HostGameController implements IGameController {
 		handlers.put(SET_GAME, this::setGame);
 		handlers.put(UPDATE_STATS, this::updateStats);
 		handlers.put(ROUND_END, this::roundEnd);
+		handlers.put(RATE_HOST, this::rateHost);
 		handlers.put(PASS_HOST, this::passHost);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
@@ -763,6 +781,38 @@ public class HostGameController implements IGameController {
 		// than the payload length, so the client consumed four bytes of stale buffer as its
 		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4311_s2c.ksy.
 		ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.NONE);
+	}
+
+	/**
+	 * Stores a host-rating vote ({@link #RATE_HOST}) and acknowledges.
+	 * <p>
+	 * The vote comes from a PLAYER, not the host, so the game is resolved by membership
+	 * ({@code gameContaining}) rather than by {@code hostedGame}. The rating applies to whoever
+	 * hosts that game. Out-of-range values are dropped rather than clamped — the client will not
+	 * send them, so one that arrives means the reading is wrong and should be visible.
+	 */
+	private void rateHost(GameControllerContext ctx) {
+		var payload = ctx.packet().getPayload();
+		var account = ctx.connection().account();
+		var voterId = account != null ? account.getCurrentCharaId() : null;
+
+		if (voterId != null && payload.readableBytes() >= Integer.BYTES) {
+			var rating = payload.readInt();
+			var game = gameService.gameContaining(voterId).orElse(null);
+			if (rating < MIN_HOST_RATING || rating > MAX_HOST_RATING) {
+				logger.warn("0x43c4 host rating {} is outside 1..5 — dropped. The ELF rejects "
+					+ "these too, so this means our reading of the command is wrong.", rating);
+			} else if (game == null) {
+				logger.warn("0x43c4 host rating {} from character {}, who is in no game; dropped.",
+					rating, voterId);
+			} else if (gameService.recordHostVote(game.getId(), game.getHostCharaId(), voterId,
+					rating)) {
+				logger.info("Game {}: character {} rated host {} at {} stars.",
+					game.getId(), voterId, game.getHostCharaId(), rating);
+			}
+		}
+
+		acknowledgeResult(ctx);
 	}
 
 	/**

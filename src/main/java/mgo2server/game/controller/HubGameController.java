@@ -120,6 +120,10 @@ public class HubGameController implements IGameController {
 
 	public static final int AUTOMATCH_STATUS_RESULT = 0x43e1;
 
+	public static final int CANCEL_AUTOMATCH = 0x43e2;
+
+	public static final int CANCEL_AUTOMATCH_RESULT = 0x43e3;
+
 	private static final int NAME_LENGTH = 16;
 
 	/**
@@ -175,6 +179,32 @@ public class HubGameController implements IGameController {
 		handlers.put(UNKNOWN_4440, ctx -> ctx.write(UNKNOWN_4440_RESULT, GameError.NONE));
 		handlers.put(GET_TRAINING_PARAMS, this::getTrainingParams);
 		handlers.put(GET_AUTOMATCH_STATUS, this::getAutomatchStatus);
+		handlers.put(CANCEL_AUTOMATCH, this::cancelAutomatch);
+	}
+
+	/**
+	 * Cancelling the automatching search ({@code 0x43e2}, empty payload).
+	 * <p>
+	 * Unanswered, this is the {@code (1345:FFFFFF60)} hang — <em>"A network server error has
+	 * occurred.\nUnable to cancel automatching."</em> The client stalls on the reply slot and the
+	 * {@code -160} is its own timeout, not anything we sent, which is the usual signature of a
+	 * missing reply rather than a malformed one.
+	 * <p>
+	 * Shape from the parser at {@code 0xD5BB04}: it validates the command id at {@code 0xD5BB48},
+	 * reads exactly <em>one u32</em> through {@code 0xD5CC64} and treats it as the result. Nothing
+	 * follows it. On a <b>zero</b> result it calls {@code 0xD5B41C} — the teardown that actually
+	 * takes the client out of the searching state — then signals request slot 51. A nonzero result
+	 * signals the slot too, so the screen unblocks either way, but only zero cancels the search.
+	 * That is why this is an explicit 4-byte zero and not an empty payload: an empty one would
+	 * leave the client reading four bytes of stale receive buffer as its result, the same trap
+	 * {@code 0x4399} fell into.
+	 * <p>
+	 * <b>Operator note:</b> we do not model an automatch queue at all, so there is no server-side
+	 * search to stop — this is an honest ack that lets the client leave a state it entered on its
+	 * own. When matchmaking is implemented, the dequeue belongs here.
+	 */
+	private void cancelAutomatch(GameControllerContext ctx) {
+		ctx.write(CANCEL_AUTOMATCH_RESULT, GameError.NONE);
 	}
 
 	/**

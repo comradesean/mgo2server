@@ -314,12 +314,39 @@ public class RankingWebControllerIT extends BaseWebClientServerIT {
 	 * ([ELF] {@code 0x911674}).
 	 */
 	@Test
-	public void hostRatingBoardIsEmptyBecauseNothingMeasuresIt() throws IOException {
+	public void hostRatingBoardIsEmptyUntilSomebodyVotes() throws IOException {
 		givenCharacters("Alpha", "Bravo");
 
 		var board = decode(players(0, 8, RankingService.SKEY_HOST_RATING, 0, PAGE_RECORDS, 0));
 
 		assertThat(board.count()).isZero();
 		assertThat(board.total()).isZero();
+	}
+
+	/**
+	 * Host rating had no source at all until {@code 0x43c4} was identified on 2026-07-28, and this
+	 * board returned an empty result on purpose rather than a column of zeroes. It has one now, so
+	 * the empty case above must be "nobody voted" rather than "nothing measures it" — otherwise
+	 * that test would keep passing for a reason that had stopped being true.
+	 */
+	@Test
+	public void hostRatingBoardRanksTheVotesItIsGiven() throws IOException {
+		var ids = givenCharacters("Alpha", "Bravo");
+		TestDatabase.get().jdbi().useHandle(handle -> handle
+			.createUpdate("""
+					insert into host_review (game_id, host_chara_id, voter_chara_id, rating)
+					values (900, :alpha, :bravo, 5), (901, :bravo, :alpha, 3)
+					""")
+			.bind("alpha", ids.get(0))
+			.bind("bravo", ids.get(1))
+			.execute());
+
+		var board = decode(players(0, 8, RankingService.SKEY_HOST_RATING, 0, PAGE_RECORDS, 0));
+
+		assertThat(board.count()).isEqualTo(2);
+		assertThat(board.total()).isEqualTo(2);
+		// 8.8 fixed point, the scale the client's ten-segment gauge divides by 256.
+		assertThat(board.rows().get(0).value()).isEqualTo(5 * 256);
+		assertThat(board.rows().get(1).value()).isEqualTo(3 * 256);
 	}
 }
