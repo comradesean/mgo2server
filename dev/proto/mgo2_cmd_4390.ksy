@@ -72,7 +72,12 @@ doc: |
 
     rule 0 DEATHMATCH   rule 1 TEAM DEATHMATCH   rule 2 RESCUE   rule 3 CAPTURE
     rule 4 SNEAKING     rule 5 BASE              rule 7 TEAM SNEAKING
-    rules 6, 8, 9, 10 are never emitted by any stage script and score nothing at all.
+    rules 6, 8, 9, 10 are never emitted by any stage script and score nothing at all —
+    now EXHAUSTIVE over the disc (2026-07-27): only five stages carry real scripts
+    (n002a, n003a, n004a, n007a, n012a; r_sneak_n and r_sna01_n are stubs holding one
+    print statement), each emits exactly seven `command [35706d]` blocks, and the seven
+    rows are byte-identical across all five (matching md5). There is no hidden BASE
+    variant behind rule 6 and no COOP table behind rule 8 anywhere on this disc.
 
   The rule ids are not guessed from coefficients: the UI's rule-name function `0x9C2778`
   switches on the mode id through a jump table at `0x9C2864` whose cases land on the strings
@@ -591,15 +596,33 @@ types:
           Trained) and b46 (Capture put count, not training time) — treat the remaining
           [PREDICTED] labels around here as weak.
 
-          **PERMANENTLY ZERO ON THIS BUILD — the slot has NO WRITER ANYWHERE (2026-07-27).**
-          Storage n31, blob key `0x58`. An exhaustive sweep of all 152 `bl 0x6a9758` bump
-          sites (the only path by which gameplay reaches a player's live block) finds not one
-          that targets key `0x58`. This is stronger than the usual "never observed nonzero":
-          it is not awaiting an unplayed mode or an untried event — no code path in the binary
-          can make it nonzero. A live watchpoint would be wasted effort.
+          **CLAIMED PERMANENTLY ZERO, NOW UNDER RE-AUDIT — do not rely on it (2026-07-27).**
+          Storage n31, blob key `0x58`.
 
-          Note this is a DIFFERENT status from the other blanks in this file, which do have
-          writers and simply were not exercised. b14 is the only slot proven inert.
+          The claim was: an exhaustive sweep of all 152 `bl 0x6a9758` bump sites — the only path
+          by which gameplay reaches a player's live block — found not one targeting key `0x58`,
+          making the slot structurally incapable of ever being nonzero.
+
+          That sweep recovered each site's key by scanning backwards for the nearest preceding
+          `li r4, KEY`, and **that method is now known to mis-attribute keys.** The player-event
+          dispatcher `0x6ED650` routes ~15 events through a SHARED increment tail at `0x6ED760`,
+          so several distinct keys reach one store and a backwards-linear scan cannot tell them
+          apart. It demonstrably missed key `0x72` (b38, written at `0x6ED784` via `li r4,114`
+          at `0x6EDA00`). If it missed one key that way it can have missed this one, and the
+          dispatcher's higher event ids are exactly the sort of place a lone writer would hide.
+
+          So the honest status is **[UNKNOWN], never observed nonzero (0/517)** — the same as
+          the file's other blanks — and NOT the "proven inert" it was briefly published as. The
+          same caveat applies to the companion claim that live n16 (key `0x3a`) has no writer.
+          Both are being re-derived by following control flow into each call rather than
+          scanning backwards; until that lands, treat a nonzero b14 as a finding, not a
+          corruption, and do not have the server assume a permanent zero.
+
+          Independently of all that: the LABEL on 0x4107 slot 15 is tier-1 confirmed as "Time as
+          Dedicated Host" (entry 11 of the DETAIL display list at `0xE13BDC`), and the live
+          falsification of dedicated-host time stands on its own evidence — three hosted games
+          produced no report for the hosting character and the next report wired 0. Whatever
+          b14 turns out to be, it is not that.
 
           The LABEL on 0x4107 slot 15 is now tier-1 confirmed as "Time as Dedicated Host":
           it is entry 11 of the DETAIL page's display list, a 36-entry resource-hash array at
@@ -748,15 +771,44 @@ types:
       - id: unknown_b38
         type: s2
         doc: |
-          slot 39. [UNKNOWN] never observed nonzero (0/517). Storage index n44. Scores nothing
-          (score-table column 11 is zero in all 11 rules) and renders on no page.
+          slot 39. [UNKNOWN what to call it] never observed nonzero (0/517). Storage index n44,
+          blob key `0x72`. Scores nothing (score-table column 11 is zero in all 11 rules) and
+          renders on no stats page.
 
-          MECHANISM FOUND, EVENT NOT NAMED — the honest state as of 2026-07-27. It has exactly
-          one writer, guarded only by a per-mode flag bit, inside a script-bound listener with
-          no caller in the binary, no referenced string and no notifier id. Nothing in the ELF
-          says what fires it. Naming it needs either the GCX script layer (which is what binds
-          the listener) or a live watchpoint at `0x1610568 + slot*0x510 + 0x5e`. Deliberately
-          left unnamed rather than guessed.
+          PRECISELY CHARACTERISED, DELIBERATELY UNNAMED (2026-07-27, after two false starts).
+
+          It is **host-side**, and it fires on a **self-inflicted death in player state 191**,
+          in a round whose flags byte has **bit `0x4`** set. The chain:
+          - Written at `0x6ED784` (`li r4,114` = key `0x72` at `0x6EDA00`) as **event 8** of a
+            host-only numbered player-event dispatcher `0x6ED650`, `f(eventId, playerSlot)` —
+            31 callers, jump table at `0x6ED6E0`.
+          - Event 8 has exactly one raiser in the binary: `bl 0x6ED650` at `0x778D20`, preceded
+            at `0x778D0C` by `0x6EF930(slot, slot, 0, 0)` — a kill whose victim IS the killer.
+          - It sits in `0x778380`, the death-cause classifier (the same function raises event 6
+            on damage-cause 141 and event 7 on causes 65/67), on the branch
+            `player->[0x90] == 191`, after a `[this+0x200]` countdown expires with flag bit 56
+            of `[this+0x368]` set. State 191 is written in one place only: `li r9,191;
+            stw r9,0x90(r29)` at `0x3A841C`, under `mode == 1` of the virtual method `0x3A81B8`.
+          - The mode guard `0x6A9948` reads the third byte of the `[rule, map, flags]` round
+            triple the host pushes in `0x4310` at `0xA3 + 3*round`. Only bits `0x2` and `0x4`
+            are ever tested binary-wide; this slot is on bit `0x4`, alongside the kill/melee/CQC
+            announcement paths.
+
+          State 191 and flags bit `0x4` are unnamed — no string, resource hash, error code or
+          script token touches either. So the mechanism is known to the instruction and the
+          NAME is still absent, which is the honest place to stop.
+
+          FALSIFIABLE PREDICTION, for whoever gets a round that moves it: because the raiser is
+          a self-kill, **b38 and b03 (suicides) must move together on the same player in the
+          same report.** If b38 ever ticks without b03, this whole chain is wrong.
+
+          TWO EARLIER READINGS OF THIS SLOT WERE WRONG, both recorded here as a warning.
+          A "script-bound listener with no caller" was identified as the sole writer; that block
+          (`0x6EC250`..`0x6ECA98`) is **dead code** — its descriptor `0x1014868` is absent from
+          the native-command registry, the byte pattern occurs nowhere in the 17 MB binary at
+          any alignment, and no branch targets it. And the "one writer" claim was an artefact of
+          recovering keys by scanning backwards for the nearest `li r4` across a dispatcher whose
+          arms share one increment tail.
       - id: kill_1st_place
         type: s2
         doc: "slot 40. [CONFIRMED] kills of the current first-place player; matches the KILL 1ST PC screen line 4/4. Scores *5. Only ever nonzero in DM."
