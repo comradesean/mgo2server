@@ -174,12 +174,23 @@ doc: |
   all six modes. 0x4107 slots ≥ 59 (e.g. 64 Knife Kills) exceed B's 58 slots and are fed
   elsewhere (weapon lines from the 0x43a2 tallies; snake stats from flag_0x04 + A-block +
   b49). **The exceptions are not random and the rule does not "break" — RESOLVED 2026-07-27.**
-  Line the four documented exceptions up against what the 0x4107 slot they land on is called:
+
+  FIRST, WHAT AN "EXCEPTION" IS, because the shorthand misleads. These are two separately
+  labelled lists: struct B's 58 per-round counters, labelled by playing single-variable rounds,
+  and 0x4107's 73 career slots, labelled by writing slot numbers into them and reading the
+  screen. The "rule" is the observed offset between them. An exception is a place where the
+  ARITHMETIC PREDICTS a correspondence that the two labels contradict. **Nobody ever observed a
+  wake count appearing on screen under "Number of Soldiers Trained"** — the conflict is between a
+  prediction and two solid labels, not between two observations. Read `->` below as "the rule
+  predicts this lands here", never as "these are the same statistic":
 
       b35 wakes              -> slot 36  Number of Soldiers Trained
       b45 tsne_goals         -> slot 46  Training Mode Time
       b46 capture_put_count  -> slot 47  Combat Training Time (Instructor)
       b47 sne_bodysearches   -> slot 48  Combat Training Time (Student)
+
+  Every left-hand reading is live-confirmed and stays exactly as it is; so does every right-hand
+  label. Only the arrow is wrong.
 
   Those four are the ONLY training statistics in the whole 73-slot record, and they are the ONLY
   exceptions. Their neighbours on both sides (slots 35, 37, 45, 49, 50) are unlabelled, so there
@@ -193,6 +204,11 @@ doc: |
   feeds them from `chara_training_time`, accumulated from lobby presence, and its own docs record
   that this REPLACED a derivation from `round_report` because the host only reports when a player
   leaves early, so a host who quit first reported nobody and lost whole sessions.
+
+  Concretely, of the four collided slots this server today feeds 46, 47 and 48 with real
+  presence-derived values, and does not feed 36 (Soldiers Trained) at all — it goes out as a
+  fingerprint, and nothing in the codebase tracks students instructed, though `chara_instructor`
+  and `instructor_review` exist to build it from.
 
   So the rule, stated correctly: **B-index = personal-stats slot − 1, among those career slots
   that are fed by round reports at all.** Four slots in that range are fed by server-side
