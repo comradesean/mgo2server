@@ -13,12 +13,15 @@ import org.jdbi.v3.core.Jdbi;
  * write-only before this existed.
  *
  * <h2>Honest zeros</h2>
- * <b>The client mints medals and titles itself</b>, client-side, from the values these methods
- * return — a 22-title resource table and a 39-row medal threshold table, both baked into the
- * binary (PROTOCOL.md: "the server's only job is honest stats"). So a wrong stat does not merely
- * display wrong, it awards a medal nobody earned. Anything we cannot derive honestly is therefore
- * served as <b>zero</b>, which is inert, rather than as a plausible guess. The fingerprint values
- * this screen used to carry ({@code 1000 + slot}) were far past every threshold in the table.
+ * Anything we cannot derive honestly is served as <b>zero</b>, which is inert, rather than as a
+ * plausible guess. The fingerprint values this screen used to carry ({@code 1000 + slot}) are gone.
+ * <p>
+ * <b>Note what this is NOT about.</b> Medals and titles were long believed to be minted
+ * client-side from these very values, which made a wrong stat award an unearned medal. That was
+ * wrong (corrected 2026-07-28): both are gated by bitfields the server sends in {@code 0x4103} —
+ * wire 615 for medals, wire 563 for titles — and nothing on this screen influences them. Honest
+ * zeros here are still right, for the ordinary reason that a made-up statistic is a lie; they are
+ * just not load-bearing for awards. See GATES.md §5a.
  *
  * <h2>Where a naive sum would be wrong</h2>
  * Three of these are subtle enough to have caused real errors already:

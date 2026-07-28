@@ -124,13 +124,41 @@ actively wrong:
 
 | thing | how the client derives it |
 | --- | --- |
-| **Medals** (39-row threshold table at `0xE139C0`) and **titles** (22-title table at `0xE14EB0`) | from the stat values in `0x4105`/`0x4107`. **A wrong stat mints an unearned medal** — this is why undrivable slots are served as zero and never as a placeholder |
+| ~~Medals and titles~~ | **WRONG — corrected 2026-07-28, see §5a below.** These are SERVER-DRIVEN |
 | `0x4105` **OTHER row** | `column − headshots − lockon`, clamped at 0. So columns 0/1/4/5 are **minuends**: send the total and OTHER falls out |
 | `0x4105` **ALL row** | sum of the displayed rows |
 | `0x4105` **Total page** and the **header play time** | per-column sums over mode rows **0..6** |
 
 **Row 6 is invisible but summed into every Total and the header.** Anything placed there inflates
 totals with nothing on screen to explain it. Rows 6 and 7 must be zero.
+
+### 5a. Medals and titles are OURS, not the client's
+
+This page said the opposite until 2026-07-28, and so did `PROTOCOL.md`. Both were wrong, and a live
+report is what caught it: a character showed "500 Mk.II destructions" with zero Mk.II kills, and the
+award survived every stat being reset to zero.
+
+**Medals are gated only by a 16-byte bitfield at `0x4103` wire 615.** The gate at `0x916E20` reads
+the row id, tests the bit (`0xD5C2A8`), and skips the row if it is clear — there is no stat load
+anywhere in `0x916E20`..`0x916FD0`. The `threshold` word in the `0xE139C0` table is loaded *after*
+the gate and `sprintf`'d into the description as its `%d`, which is why the number reads like a
+requirement when it is only text.
+
+**Titles are gated by a 22-bit mask at wire 563** (rating-block entry 3).
+
+The symptom reproduced byte-exactly: we sent the string `"FP-STR-C"` at wire 615, whose byte 4 is
+`'T'` = `0x54`, bit 6 set = medal id 65 = "500 Mk.II destructions". That one string lit 17 medals.
+Wire 563 carried `4024`, setting title bits 3–11.
+
+**The layout is medal-id-keyed, not row-indexed** — a hand-written switch with a byte and bit per
+id, LSB-first; bits 3 and 7 of each byte and bytes 13–15 are unused.
+
+**Client bug to avoid: never set title bit 22 or above.** The popcount loop runs 23 iterations for
+22 titles and reads past the table.
+
+**Consequence.** We currently send zeros, so no character can hold a medal or title at all. Serving
+them means *deciding when to set each bit server-side* — the thresholds in `0xE139C0` are
+transcribed in OBSERVED.md and can drive it, but nothing implements that yet.
 
 ---
 

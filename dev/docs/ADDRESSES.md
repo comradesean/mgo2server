@@ -161,10 +161,14 @@ struct.unpack_from(">12I", data, VA - 0x10000)      # file offset = VA - 0x10000
 | `0xD3E314`, `0xD3E32C`, `0xD3E348` | the `0x4107` tail permutation: wire 64 → mem 71, 65 → mem 72, 66..73 → mem 63..70 |
 | `0xE13BDC`, duplicated at `0xE13C6C` | **the DETAIL page display list** — 36 u32 resource hashes, in display order |
 | `0xE139C0`..`0xE13B90` | **the medal/award threshold table** — 39 rows of `{u32 id, u32 nameHash, u32 threshold}`, `0xFFFFFFFF` terminated |
-| `0xE14EB0` / `0xE152D0` | the 22-title resource table / award sprites |
+| `0xE14EB0` / `0xE152D0` | the title strings — **66 of them, 22 titles × 3 forms** — and the **title** sprite table. Medals have no sprite |
+| `0x916E20` | **the medal gate.** Reads the row id, tests the bitfield bit, skips the row if clear. No stat is loaded in `0x916E20`..`0x916FD0`, which is what proves medals are server-driven |
+| `0xD5C2A8` | the bit test the gate calls — medal-id-keyed, LSB-first |
+| `0x94258C` | the star gauge: `clamp(ceil(2 · numerator / denominator), 0, 10)` half-stars, 11-entry icon table |
+| `0xD40E44` | rejects any `0x43c4` host-rating vote outside 1..5 |
 | `0xD25D0` | the 24-bit rotate-5-add string hash used for resource names |
 | `0x942564` | the 9,999,999 display clamp |
-| `0xD3F3A4` / `0xD3F3C0` / `0xD3F3DC` | the medal bitmask and survival fields parsed out of `0x4103` — **unresolved** against the "medals are client-computed" finding; possibly survival-lobby specific |
+| `0xD3F3A4` / `0xD3F3C0` / `0xD3F3DC` | the medal bitmask and survival fields parsed out of `0x4103`. **The tension is resolved (2026-07-28): medals really are server-driven** and "client-computed" was the wrong reading — see `GATES.md` §5a |
 | `0x91B338` | the stats screen reading rating-block entry 4 |
 
 ---
