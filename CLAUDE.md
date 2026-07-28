@@ -95,8 +95,13 @@ docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
   maven:3.9-eclipse-temurin-25 mvn -B verify
 ```
 
-Expect two counts in the summary — currently 129 unit and 76 integration. One number means the
-integration tests did not run.
+Expect two counts in the summary — currently **159 unit and 150 integration** (2026-07-27). One
+number means the integration tests did not run.
+
+Running it alongside a live stack is safe: the suite spins up its own `PostgreSQLContainer` on a
+random published port and never touches the deployed database, even though the deployed postgres
+publishes host `5432`. The `--network host` above applies only to the maven container, so it can
+reach those random ports on localhost.
 
 ## Debugging
 
