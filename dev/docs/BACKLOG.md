@@ -621,7 +621,7 @@ frame, applies the same non-host tripwire and participation check `0x4390` uses,
 the client's own 50, drops a short or over-long frame rather than storing it in part, and acks
 unconditionally. `0x4107` slot 64 Knife Kills is served from it.
 
-## Team Sneaking: research the gate, do NOT enable it (release-day scope)
+## Team Sneaking: the gate is FOUND and it is ours — still not enabled (release-day scope)
 
 *Pinned 2026-07-27.* Rule 7 (Team Sneaking) is fully present on the retail BLUS30109 disc: the
 `Rule_Eng_TSNE` string, the `TSNE01`/`TSNE02` stat row labels, the TSNE-only `TSneAlertSec` timer,
@@ -638,7 +638,31 @@ disc, which is exactly what the binary shows.
 **So "the client doesn't offer TSNE" is probably a gating question, not missing content — and the
 gate may be on our side of the wire.**
 
-**SCOPE DECISION 2026-07-27: we are not turning it on.** The first release of `mgo2server` serves
+**THE GATE IS FOUND (2026-07-28), and it is a byte we send.** The rule list is the AND of two
+gates, and the disc-side one already permits Team Sneaking:
+
+- **Client-side static mask — allows rule 7.** GCX native `0xAB3201` (OPD `0x101B740`, function
+  `0x8E0A64`) loads `rule_bit` from `o/stage/lobby/scenerio.gcx` `proc17`:
+  `command [ab3201] -rule_bit 191 …`. `191 = 0xBF` = rules {0,1,2,3,4,5,**7**}, and the loader
+  allocates `map_bit[7]`/`ruleopt_bit[7]`, so `countSelectableRules()` (`0x8E0824`) returns **7**.
+- **The veto — `0x4101` payload byte `0x12A`, bit 0.** The create-game menu builder at `0x8AFD84`
+  special-cases rule 7: `cmpwi r9,7` / `bl 0xd382f8` (`featureBit(ctx, 0)`) / skip the row when the
+  bit is clear. `0xD382F8` reads `ctx[0x117D0 + bit/8]` and rejects any bit above 5 — six feature
+  flags in one byte. `ctx+0x117D0` has exactly one writer in the binary, `0xD3C348`, inside the
+  `0x4101` parser, and walking that parser's reads puts the block at offset **`0x12A`** — inside
+  the 25-byte tail we currently zero-fill (`CharacterConnectController`, `BLOCKED_END = 0x129`).
+  The same gate is enforced at four further sites, so it is a real feature flag rather than menu
+  cosmetics. Bit 0 also unlocks one Sneaking rule option (`ruleopt_bit[4] = 4`) — one bit turning
+  on TSNE *and* an option matches the tier-3 account of the 2008-07-04 maintenance exactly.
+
+So **we are the ones suppressing it**, by sending a zero byte. Enabling it is a one-byte change.
+
+**Rules 6 (BOMB) and 8 (COOP) are hardcoded off and no server input can reach them** — all three
+enumerators contain literal `cmpwi 6` / `cmpwi 8` skips *before* the mask is consulted, and the GCX
+loader has no storage slot for their map/option data. They need a client patch, which also resolves
+the open question of whether BOMB was server-side: it was not.
+
+**SCOPE DECISION 2026-07-27, unchanged and now better founded: we are not turning it on.** The first release of `mgo2server` serves
 release-day MGO2 (see CLAUDE.md, "Target version"), and TSNE post-dates launch by three weeks.
 Understanding the gate is still worth doing — it is what makes a later version toggle designable,
 and it decides whether the five TSNE struct-B slots (b32, b33, b43, b44, b45) are ever testable —
