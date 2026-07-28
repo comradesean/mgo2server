@@ -1,6 +1,7 @@
 package mgo2server.common.service;
 
 import mgo2server.common.CharacterNames;
+import mgo2server.common.Level;
 import mgo2server.common.Policy;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
@@ -200,22 +201,21 @@ public class CharacterService {
 	 * Experience for character level 3 — Konami's documented instructor requirement, "Level 3 or
 	 * above".
 	 * <p>
-	 * <b>Provenance corrected 2026-07-28.</b> This used to say the value was "recovered from the
-	 * client's own threshold table". It cannot have been: the table is <em>not in the binary</em>.
-	 * {@code 0x6F9260} walks a 128-entry array in {@code .bss} at {@code 0x1659D24}, zero at load and
-	 * filled at runtime by a GCX native from a stage script. See {@code dev/docs/AUTOMATCH.md} §3.
+	 * <b>Provenance resolved 2026-07-28, and the numbers were right all along.</b> This used to say
+	 * the value was "recovered from the client's own threshold table", which cannot have been true —
+	 * the table is not in the binary. It is a GCX script argument on the disc, and it has now been
+	 * read from there; the whole table lives in {@link mgo2server.common.Level}, which this defers to.
 	 * <p>
-	 * What survives, and why 375 is still the right number: the level is the <b>count of thresholds
-	 * at or below the experience</b> — not one more than it, as this comment also used to claim; the
-	 * disassembly is a signed {@code ble} whose return is the count. Six live readings constrain the
-	 * low entries: 214 -> 1, 428 -> 3, 499 -> 3, <b>500 -> 4</b>, 1,600 -> 10, 49,250 -> 22. The
-	 * 499/500 pair brackets {@code T[3] = 500} to a single experience point, and {@code 125, 250,
-	 * 375, 500} is consistent with every reading under the corrected model.
+	 * The old comment's figures — {@code 125, 250, 375, 500, 650}, 22 entries capped at 4,600 — are
+	 * <b>all correct</b>. Only the claimed source was wrong. An intermediate correction here also
+	 * asserted that 4,600 was contradicted by the 49,250 → 22 reading; <b>that was itself wrong</b>,
+	 * because 49,250 exceeds every threshold and so simply yields the maximum.
 	 * <p>
-	 * The "650" and "22 entries, capped at 4,600" in the old comment had no traceable source, and
-	 * 4,600 contradicted the neighbouring note that levels 10 to 22 cost over 47,000. Both are gone.
+	 * One thing the disassembly did correct: the level is the <b>count</b> of thresholds at or below
+	 * the experience, not one more than it. {@code 499} displays as 3 and {@code 500} as 4, with
+	 * {@code T[3] = 500}.
 	 */
-	public static final int LEVEL_3_EXPERIENCE = 375;
+	public static final int LEVEL_3_EXPERIENCE = Level.experienceFor(3);
 
 	/**
 	 * The measured experience threshold for character level 4 — {@code T[3]} of that same table.
@@ -232,13 +232,16 @@ public class CharacterService {
 	 * and 500 as level 4 on the live client. Not derived — measured.
 	 * <p>
 	 * Do not try to compute it. A {@code 100 * level^2} curve fitted the first two readings and
-	 * predicted level 4 at 1,600; the next reading falsified it — 1,600 is level 10. No simple
-	 * power law or geometric progression fits the four readings either, because levels 1 to 10 cost
-	 * under 1,400 experience between them while 10 to 22 costs over 47,000. The thresholds are a
-	 * table, and the honest source for it is a <b>stage script on the disc</b> — not the binary, as
-	 * this used to say.
+	 * predicted level 4 at 1,600; the next reading falsified it — 1,600 is level 10. The thresholds
+	 * are a table, and it has since been read from a <b>stage script on the disc</b>: see
+	 * {@link Level}.
+	 * <p>
+	 * This comment also used to claim levels 10 to 22 cost "over 47,000" experience between them.
+	 * <b>That was wrong</b>, and it came from reading the 49,250 → 22 observation as a threshold when
+	 * it is merely a value above the cap. The real span is level 10 at 1,450 to level 22 at 4,600 —
+	 * 3,150, not 47,000.
 	 */
-	public static final int LEVEL_4_EXPERIENCE = 500;
+	public static final int LEVEL_4_EXPERIENCE = Level.experienceFor(4);
 
 	/**
 	 * Game modes that carry a play-time figure — modes 0..5 in the {@code 0x4105} grid.

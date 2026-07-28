@@ -659,6 +659,27 @@ public class GameService {
 	 * character rather than a game id the edit does not carry. A {@code null} password clears the
 	 * lock.
 	 */
+	/**
+	 * Renames a game, and clears any password on it.
+	 * <p>
+	 * For automatching, which names its games itself so they are identifiable in the list rather than
+	 * carrying whatever the elected host happened to have saved. The password is cleared in the same
+	 * statement deliberately: the automatch path never writes that field on the client, so it holds
+	 * whatever the screen allocation contained, and a spuriously-set password would make every
+	 * joiner's {@code 0x4320} fail the check in {@code GameListGameController} — <b>silently</b>, with
+	 * the client returning to its menu and no dialog. Clearing it costs nothing and removes a failure
+	 * mode nobody could diagnose from the outside.
+	 *
+	 * @return whether a row was updated
+	 */
+	public boolean renameAndUnlock(long gameId, String name) {
+		return jdbi.withHandle(handle -> handle
+			.createUpdate("update game set name = :name, password = null where id = :id")
+			.bind("name", name)
+			.bind("id", gameId)
+			.execute()) > 0;
+	}
+
 	public void updateGameSettings(long lobbyId, long hostCharaId, String name, String comment,
 			String password) {
 		jdbi.useHandle(handle ->

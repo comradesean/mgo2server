@@ -238,7 +238,39 @@ public class Automatch {
 	public interface GameLookup {
 		/** The id of a game this character hosts in this lobby, or 0. */
 		long hostedGameId(long lobbyId, long hostCharaId);
+
+		/**
+		 * Renames a formed game and clears any password on it.
+		 * <p>
+		 * Automatch games are named by us rather than by whoever happened to be elected host, so a
+		 * player can tell at a glance in the game list what they have been dropped into. Clearing the
+		 * password matters more than the name: the automatch path never writes that field on the
+		 * client, so it carries whatever its screen allocation held, and a set flag would make every
+		 * join fail the password check silently.
+		 * <p>
+		 * Defaulted to a no-op so this stays a functional interface: naming is cosmetic, and a test
+		 * that only cares about election should not have to supply it.
+		 */
+		default void renameAndUnlock(long gameId, String name) {
+		}
 	}
+
+	/**
+	 * Names automatch games {@code AUTOMATCH1}, {@code AUTOMATCH2}, … within this process.
+	 * <p>
+	 * Per-process and never persisted, because the counter is only there to keep two concurrent
+	 * automatch games apart in a list. It resets on restart, which is fine: games do not survive a
+	 * restart either ({@code Main} deletes this lobby's games at startup).
+	 * <p>
+	 * <b>This does not remove the requirement that the elected host already have a saved game name.</b>
+	 * That name is read from the client's own store and checked before {@code 0x4310} is sent, so the
+	 * refusal happens inside the client and this rename runs long after it would have.
+	 */
+	private final java.util.concurrent.atomic.AtomicInteger gameNumber =
+		new java.util.concurrent.atomic.AtomicInteger();
+
+	/** The 16-character limit is protocol — {@code game.name} and the wire field are both 16. */
+	private static final int NAME_LENGTH = 16;
 
 	public Automatch(AutomatchPolicy policy, long lobbyId, int lobbySubtype, GameLookup games) {
 		this.policy = policy;
@@ -427,8 +459,16 @@ public class Automatch {
 			}
 
 			if (match.gameId != 0) {
-				logger.info("Automatch releasing {} players into game {}.", match.members.size(),
-					match.gameId);
+				var name = "AUTOMATCH" + gameNumber.incrementAndGet();
+				try {
+					games.renameAndUnlock(match.gameId, name.substring(0,
+						Math.min(name.length(), NAME_LENGTH)));
+				} catch (RuntimeException e) {
+					// Cosmetic; never worth stranding a formed match over.
+					logger.warn("Could not rename automatch game {}.", match.gameId, e);
+				}
+				logger.info("Automatch releasing {} players into game {} ({}).",
+					match.members.size(), match.gameId, name);
 				// The host is included deliberately: its own handler expects this packet, and a
 				// spurious one to a host that has left is dropped, where omitting it can park it
 				// forever.
