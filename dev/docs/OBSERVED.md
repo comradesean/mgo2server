@@ -3614,3 +3614,46 @@ authority on which stuns carried a lock.
 
 Snake conservation laws held again with three players: sean's b53 (spots) 4 against poop's b54
 (times spotted as Snake) 4, and b55 (first-to-spot per life) 3 against the Snake's 3 deaths.
+
+## The Mk.II names itself, and needs twelve players — 2026-07-27
+
+`mk2_kills` (b52) and `mk2_knockouts_dealt` (b57) drop `[PREDICTED]`. The decisive evidence is the
+game's own Sneaking rule text, pulled off the disc with gcx
+(`n012a/scenerio_strres/507.bin`, English; the same sentence in 508-511 for fr/de/it/es):
+
+> "(If 11 or more characters are playing, one player becomes Metal Gear Mk.II and can support
+> Snake.)"
+
+That is the only entity in the whole string corpus gated on a player count, and the binary has
+exactly one role gated on a player count — the `+0x80` byte of the Sneaking singleton, which is
+the role the writer trace had already reached. Three corroborations: the holder is forcibly moved
+to **team 2** (`li r0,2; stb r0,1(r3)` at `0x71CA0C`), the team the kill-credit path tests at
+`0x6FC254` before crediting snake_kills/mk2_kills — the role joins Snake's side; `MK2_SKILL` and
+`SNAKE_SKILL` are the only two unique-character skill names the ELF references; and `MK2 SPARK` is
+damage-source id `0x72`, the taser, which is exactly what b57 counts.
+
+**The gate is a hard player-count threshold with randomised selection.** `cmpwi cr7,r28,11` / `ble`
+at `0x71C7FC`, same literal in the request handler at `0x71C6CC` (refusal writes status `0xFF`),
+where r28 counts slots 0..23 with `team != 0xFE`. The Snake role in the same function uses
+`cmpwi cr7,r28,1`, i.e. 2+ players — same counter, different literal, which is what makes the
+comparison meaningful. Selection is an LCG (`seed*0x5D588B65 + 1`, `0x71CBD8`..`0x71CBF8`) mixed
+with round elapsed time and a profile byte, modulo the pool, drawn from the larger of team 0/1. An
+already-seated Mk.II is not demoted if the count later drops.
+
+**Note the off-by-one and do not paper over it:** the code requires **> 11, i.e. 12 or more**,
+while the manual sentence says "11 or more". That could not be reconciled from the binary. Plan any
+test for 12+.
+
+**Consequence for the report:** b52 and b57 are **untestable in a 2-3 player rig, not merely
+untested** — a different documentation category from the Team Sneaking slots, which only need a
+mode nobody has hosted. These need twelve human participants.
+
+The operator's recollection — "no way to deploy it, pretty sure it's random when you hit 11
+players" — was right on both counts, and was what prompted looking. Worth recording as a case where
+a player's memory of the game correctly aimed a binary search that then produced tier-1 evidence.
+
+Two loose ends left open in the write-up: the code site loading the `MK2_SKILL` pointer was not
+located (base-register indirection defeats a grep; it would only be a fourth corroboration), and
+whether the Snake/Mk.II machinery is rule-4-only or a "Snake can join" host option overlaid on
+other rules is unresolved. Bonus: `0x6A9488` is `clamp(x, 0, 3)`, not a settings getter, which
+makes the branch at `0x71C8FC` dead.

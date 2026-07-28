@@ -1098,19 +1098,39 @@ types:
           slot 53. [CONFIRMED, SNE] **Mk.II destructions** — destroying the Metal Gear Mk.II,
           worth **x4** in Sneaking. Storage n69.
 
-          MECHANISM [CONFIRMED-1], NAME [PREDICTED] — keep the distinction. What the binary
-          proves is that this slot is written by the same function that writes b51 snake_kills,
-          under the same test against a different role byte: it counts **kills of the second
-          Sneaking-mission special unit**. That the unit is the Metal Gear Mk.II is inference,
-          resting on three things that agree but none of which is a direct observation:
-          - column 34 of the score table pays it **x4 in Sneaking only**, and the Sneaking
-            screen's category list already carried `MK.II KILL x4` with no known wire source;
-          - the award table at `0xE139C0` has a `%d Mk.II destructions` family (ids 63/64/65,
-            thresholds 50/100/500);
-          - the `MK2_SKILL` string, and this slot sitting immediately after b51 snake_kills.
+          NAME CONFIRMED 2026-07-27 — the game says so itself. The Sneaking rule text on the
+          disc (gcx string resource `n012a/scenerio_strres/507.bin`, English; the same sentence
+          in 508-511 for fr/de/it/es) reads:
 
-          0/517 because nobody in the archive ever destroyed one. A single Sneaking round with
-          a deliberate Mk.II kill settles the name.
+              "(If 11 or more characters are playing, one player becomes Metal Gear Mk.II
+               and can support Snake.)"
+
+          That is the ONLY entity in the entire string corpus gated on a player count, and the
+          binary has exactly one role gated on a player count — the `+0x80` byte of the Sneaking
+          singleton, which is the role A6 traced this slot to. Three further corroborations:
+          the chosen holder is forcibly moved to **team 2** (`li r0,2; stb r0,1(r3)` at
+          `0x71CA0C`), which is the team the kill-credit path tests at `0x6FC254` before
+          crediting snake_kills/mk2_kills — the role literally joins Snake's side; `MK2_SKILL`
+          and `SNAKE_SKILL` (`0xE1B808`/`0xE1B7F8`) are the only two unique-character skill names
+          the ELF references; and `MK2 SPARK` is damage-source id `0x72` (`0x1036BCC`), the
+          taser, which is what b57 counts.
+
+          **UNTESTABLE BELOW 12 PLAYERS — not merely untested.** The role is assigned only when
+          the participant count clears a hard threshold: `cmpwi cr7,r28,11` / `ble` at
+          `0x71C7FC`, with the same literal in the request handler at `0x71C6CC` (refusal writes
+          status `0xFF`). r28 counts slots 0..23 whose `team != 0xFE`. Note the code wants
+          **> 11, i.e. 12 or more**, while the manual sentence says "11 or more" — an off-by-one
+          that could not be reconciled from the binary, so plan for 12+. For contrast the Snake
+          role in the same function uses `cmpwi cr7,r28,1` (2+ players).
+
+          Selection is RANDOM once the gate passes: an LCG `seed = seed*0x5D588B65 + 1`
+          (`0x71CBD8`..`0x71CBF8`) mixed with round elapsed time and a profile byte, modulo the
+          pool size, drawn from the LARGER of team 0 / team 1. An already-seated Mk.II is not
+          demoted if the count later drops (`0x71C8D0`).
+
+          So 0/517 is fully explained and no small-lobby experiment can change it. This is a
+          DIFFERENT category from the Team Sneaking slots, which merely need a mode nobody has
+          hosted — this one needs twelve human participants.
       - id: times_spotted_snake
         type: s2
         doc: |
@@ -1180,11 +1200,10 @@ types:
       - id: mk2_knockouts_dealt
         type: s2
         doc: |
-          slot 58. [CONFIRMED-1 mechanism, PREDICTED name] knockouts DEALT while holding the
-          second Sneaking-mission special role — the same role whose kills b52 counts, so the
-          name stands or falls with mk2_kills and carries the same caveat: the role's identity
-          as the Mk.II is inference, the "a knockout dealt while in that role" mechanism is
-          read from the binary. Scores **x3** in Sneaking
+          slot 58. [CONFIRMED, SNE] knockouts DEALT while playing as the Metal Gear Mk.II —
+          the same role whose kills b52 counts, and the name is now confirmed with it (see
+          b52: the disc's own Sneaking rule text names the role, and the taser that delivers
+          these stuns is damage-source `MK2 SPARK`, id `0x72`). Scores **x3** in Sneaking
           (score-table column 31, nonzero in rule 4 only). Storage n74, the last live counter
           the frame carries. 0/517: nobody in the archive held that role and stunned anyone.
 
