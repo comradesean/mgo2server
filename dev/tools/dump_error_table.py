@@ -6,13 +6,27 @@ Inputs:
   /mnt/f/ClaudeHole/mgo2_extract/gcx/scenerio_strres  control entries (Solideye + Gcx output)
   dev/analysis/strings/lobby.txt                   id -> text, from the same extraction
 
-The CODES list is hand-maintained: those pairs come from reading the dispatcher's cmpwi
-chains in the disassembly, not from any table, so a new one has to be traced before it can
-be added here.
+  dev/analysis/dialog_paths.json                   result code -> dialogId, from
+                                                   dev/tools/trace_dialog_paths.py
+
+Run trace_dialog_paths.py first if the code -> dialogId mapping needs refreshing; this script
+only turns dialogIds into sentences. Nothing in ERRORS.md is hand-written — edits made to that
+file are destroyed on the next run, so prose belongs in ARM_NOTES below.
 """
-import struct, pathlib
+import json, struct, pathlib
 
 ELF = "/mnt/f/ClaudeHole/nomad/dev/ref/MGO2 (decrypted).elf"
+PATHS = pathlib.Path("/mnt/f/ClaudeHole/nomad/dev/analysis/dialog_paths.json")
+
+# Which dispatcher arm serves which command. Only filled in where a live client or a capture has
+# tied the two together; every other arm is named from the operation its own sentences describe,
+# which identifies the screen without claiming to know the command id.
+ARM_COMMANDS = {
+    22: "0x4b01 — create clan",
+    23: "0x4b05 — disband clan",
+    25: "0x4b51 — set clan emblem",
+    29: "0x4b43 — apply to join clan",
+}
 STRRES = pathlib.Path("/mnt/f/ClaudeHole/mgo2_extract/gcx/scenerio_strres")
 CONTROL_BASE, TEXT_BASE = 21368, 21898
 
@@ -64,20 +78,6 @@ for i in range(664):
     if ordinal == -1:
         sec = dialog; continue
     rows.append((sec, dialog, ordinal))
-
-# codes recovered from the dispatcher error blocks (disassembly, not the table)
-CODES = [
- ("0x4b01", "create clan", "0xA7E680", [
-   (-1206, 6412), (-1200, 6408), (-1230, 6415), (-1231, 6411),
-   (-1233, 6410), (-262, 6410), (-160, 6414), (-24, 6409)]),
- ("0x4b05", "disband clan", "0xA7E74C", [(-1205, 6517), (-1207, None), (-1203, None)]),
- ("0x4b51", "set clan emblem", "0xA7E410", [
-   (-1216, 6524), (-1215, 6420), (-1218, 6529), (-1207, 6404), (-160, 6528)]),
- ("0x4b43", "apply to join clan", "0xA7E43C", [(-1217, None), (-1201, None), (-1207, None), (-160, None)]),
- ("0x4801", "send mail (per recipient)", "0x8EFD40", [
-   (-830, 6176), (-810, None), (-801, None), (-802, None), (-831, None), (-832, None), (-1230, None)]),
- ("0x3103", "delete character", "0x94F60C", [(-268, 2659), (-1212, 2658), (-241, 2660), (-260, 2626)]),
-]
 
 def text_for_dialog(dialog):
     for s, dl, ordinal in rows:
@@ -133,24 +133,150 @@ character name is already in use."* That is exactly what the client shows, so th
 rather than assumed.
 """)
 
+# Prose that belongs to one arm and cannot be derived from the binary. It lives here rather than
+# in ERRORS.md because that file is generated: an earlier version of this analysis was hand-edited
+# into the output and was destroyed the next time the generator ran.
+ARM_NOTES = {
+    29: """**Five of this screen's sentences cannot be reached through a result code.** DialogIds
+6454, 6455, 6456, 6458 and 6460 are never loaded into `r3` anywhere in the binary — including
+*"A fixed amount of time must pass in order to apply to join a clan."* (6458) and *"You are on the
+clan leader's Block List."* (6454). No result code produces them, so a server-side join cooldown or
+block-list refusal has to settle for the generic 24101. Carrying the text is not the same as being
+able to show it; check this table before designing a refusal around a sentence you found in a
+string dump.
+
+This started as "`li r3,6458` occurs nowhere", which only covered the result-code path. The
+display path has since been inventoried end to end, and the stronger claim now holds: **no
+dialogId in this binary is computed from data.** Every one reaches the display queue through one
+of **14 call sites** of `0x7FA780`, and at all of them the id is a compile-time constant — 167
+direct `li`, 20 from a two-way `subfic` select, 9 set in the preceding block, and 2 memory loads
+whose only writers are themselves `li`. None of those constants is 6454, 6455, 6456, 6458 or 6460.
+
+Where they *do* live: the per-screen message-id constructor `0x756F90` installs them into fields
+of a 384-byte object (`152/192/196/200/264`), and nothing reads those fields into a raiser.
+`0x7550B0` is an instruction-identical dead twin — called from nowhere and absent from the OPD
+table. One mechanism accounts for all five sentences at once, which is what makes this an
+explanation rather than a gap.
+
+Unresolved, and stated as such: no reader of that struct's dialogId fields was found at all, so
+what the object is *for* is unknown. That is a hole in the description, not in the conclusion,
+which rests on the raiser-side inventory being total. What would overturn it: a capture of a real
+server making this client print one of those sentences.
+
+This block is also why the tracer exists. Hand-reading missed it for a while because it is only
+eight instructions long with one `li` inside it: `bgt cr7,0xA7E924` sends everything above `-1207`
+to a continuation 0x4E0 bytes away, `-1217`'s `li` lives in a shared trampoline pool at
+`0xA7E7A0`, and `-160` takes two hops through `0xA7E808`, itself shared with the mail block. The
+sweep follows all of that without being told to, and independently reproduces the hand reading —
+which is the check that the two agree, not just that the tool ran.""",
+}
+
+paths = json.loads(PATHS.read_text()) if PATHS.exists() else None
+
+def describe(dialog):
+    """A dialogId as `string | message`, or the silent case."""
+    if dialog is None:
+        return "—", "_(no dialog raised — the code is stored and the screen does not respond)_"
+    sid, txt = text_for_dialog(dialog)
+    return str(sid or "—"), (txt.replace("|", "\\|") if txt else f"_(dialog {dialog}, no string)_")
+
+def operation(arm):
+    """Name an arm from the operation its own default sentence describes."""
+    if arm["index"] in ARM_COMMANDS:
+        return f"`{ARM_COMMANDS[arm['index']]}`"
+    _, txt = describe(arm["default"])
+    tail = txt.split("\\n")[-1].strip()
+    for lead in ("Unable to ", "You are ", "This "):
+        if tail.startswith(lead):
+            return tail.rstrip(".")
+    return tail.rstrip(".") or "unattributed"
+
 w("## Codes worth sending\n")
-w("Recovered from the dispatcher's `cmpwi` chains. These are the client's own codes: send them")
-w("raw, not masked with `GameError.MASK`.\n")
-for cmd, what, addr, pairs in CODES:
-    w(f"\n### `{cmd}` — {what}  <sub>{addr}</sub>\n")
-    w("| code | string | message |")
-    w("| --- | --- | --- |")
-    for code, dialog in pairs:
-        sid, txt = text_for_dialog(dialog) if dialog else (None, "")
-        msg = txt.replace("|", "\\|") if txt else "_(dialogId not recovered)_"
-        w(f"| `{code}` | {sid or '—'} | {msg} |")
+if paths:
+    w(f"""Generated by `dev/tools/trace_dialog_paths.py`, which runs each of the dispatcher's
+`cmpwi` chains concretely once per candidate result code ({paths['sweep'][0]}..{paths['sweep'][1]})
+and records where each one lands. That is a complete description of the chain rather than a
+reading of it: an edge is found whether it came from an equality test, a range test or
+arithmetic, and each block's **default** path — the answer for every code not named — is reported
+rather than left implicit.
+
+These are the client's own codes: send them raw, not masked with `GameError.MASK`.
+
+The arms below are the {len(paths['arms'])} entries of the jump table at `{paths['table']}`,
+indexed by an operation ordinal the client stores at `104(r31)`. Four are tied to a command id by
+observation; the rest are named from the operation their own sentences describe, which identifies
+the screen without claiming to know the command id.
+""")
+    for arm in paths["arms"]:
+        if not arm["resolved"]:
+            w(f"\n### Arm {arm['index']} — not analysed  <sub>{arm['entry']}</sub>\n")
+            w("This chain is not a pure function of the result code — it calls out and reloads the")
+            w("code from memory, so the tracer declined it rather than guessing. "
+              f"({arm['unmodeled_reason'][0] if arm['unmodeled_reason'] else 'unmodelled'})\n")
+            continue
+        w(f"\n### Arm {arm['index']} — {operation(arm)}  <sub>{arm['entry']}</sub>\n")
+        w("| code | string | message |")
+        w("| --- | --- | --- |")
+        for s in arm["spans"]:
+            code = f"`{s['lo']}`" if s["lo"] == s["hi"] else f"`{s['lo']}`..`{s['hi']}`"
+            sid, msg = describe(s["dialog"])
+            w(f"| {code} | {sid} | {msg} |")
+        sid, msg = describe(arm["default"])
+        w(f"| _(any other)_ | {sid} | {msg} |")
+        if arm["unmodeled"]:
+            w(f"\n{arm['unmodeled']} codes on this arm were declined rather than guessed at.")
+        if arm["index"] in ARM_NOTES:
+            w("\n" + ARM_NOTES[arm["index"]])
+else:
+    w("`dev/analysis/dialog_paths.json` is missing — run `dev/tools/trace_dialog_paths.py`.\n")
+
+if paths:
+    twin = next((t for t in paths["other_tables"] if t["table"] == "0xA7ED30"), None)
+    w("\n## What else raises a dialog\n")
+    w(f"""The tracer also sweeps the rest of the binary, so the reach of the list above is measured
+rather than assumed. There are **{paths['raise_sites']}** call sites of `0x885A08` in the image.
+They divide up like this.
+
+**{paths['fixed_code_sites']} report a fixed code.** The instruction before the call is
+`li r4,<const>`, so no server result code reaches them. These are the client's own checks —
+password length, parental controls, a missing save — and no code we send can produce or suppress
+them.
+
+**{len(paths['constant_raises'])} raise the same dialogId whatever the code.** The code is carried
+through to the `(nnnn:FFFFFFFF)` suffix the player sees, but it does not select the sentence, so
+there is nothing to choose between. Sending a cleverer code to one of these changes the number in
+the brackets and nothing else.
+
+**{len(paths['inline_chains'])} are inline chains that do discriminate**, outside any jump table
+({', '.join(sorted({c['entry'] for c in paths['inline_chains']}))}). They are in the mail
+family and are listed in the JSON rather than here.
+
+**{paths['raise_sites'] - len(paths['raise_sites_covered']) - paths['fixed_code_sites']} are unaccounted for.** They carry a result code but the tracer could not recover a chain for them and
+verify it, so nothing is claimed about them either way. That is a known gap, not a clean bill of
+health: a sentence absent from this document is not thereby proved unreachable unless the argument
+for it is spelled out, as it is for arm 29. `dev/analysis/dialog_paths.json` carries the site
+list.
+""")
+    if twin:
+        live = [a for a in twin["arms"] if a["default"] is not None]
+        w(f"""### The network-error twin  <sub>{twin['table']}</sub>
+
+A second {len(twin['arms'])}-arm table sits beside the first and is indexed by the same operation
+ordinal. Every one of its {len(live)} live arms is fixed: it raises that operation's *"A network
+server error has occurred.\\nUnable to X"* dialog and never inspects a result code. Arm 22 gives
+create-clan's, arm 29 apply-to-join's, and so on, each matching the `-160` row of the
+corresponding arm above.
+
+So the client has two ways to report the same operation failing: one that reads a code we sent,
+and one for when nothing came back at all. Only the first is ours to drive.
+""")
 
 w("\n## The full table\n")
 w("Every entry whose section resolves to `MGO_ERROR_RES_LOBBY`. The dialogId is what the")
 w("dispatcher selects; the string is what the player reads.\n")
 w("| dialogId | ordinal | string | message |")
 w("| --- | --- | --- | --- |")
-resolved = unresolved = 0
+resolved = unresolved = blank = 0
 for s, dialog, ordinal in rows:
     if s is None or s >= 32:
         unresolved += 1
@@ -163,7 +289,15 @@ for s, dialog, ordinal in rows:
     sid = english(o, texts)
     txt = texts.get(sid, "").replace("|", "\\|")
     resolved += 1
+    blank += not txt
     w(f"| {dialog} | {ordinal} | {sid} | {txt} |")
+
+w("\n## Blank messages\n")
+w(f"""{blank} rows resolve to a string id that carries no text. Those are real ids, not decode
+failures — the extraction has the surrounding ids and simply nothing at that one, which is what an
+unused slot in a locale block looks like. Treat a blank as "this dialogId exists but the retail
+build shipped no English string for it", and do not send its code expecting a message.
+""")
 
 w("\n## Not resolved\n")
 w(f"""{unresolved} of {resolved + unresolved} entries belong to sections 32
