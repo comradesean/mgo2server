@@ -20,8 +20,7 @@ public record Config(
 	int lobbySubtype,
 	String advertiseIp,
 	java.util.List<String> lobbyNames,
-	boolean lobbyBeginnersOnly,
-	int lobbyHubFlags
+	boolean lobbyBeginnersOnly
 ) {
 	public static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/mgo2server";
 
@@ -53,8 +52,7 @@ public record Config(
 			integer(env, "MGO2SERVER_LOBBY_SUBTYPE", 0),
 			string(env, "MGO2SERVER_ADVERTISE_IP", ""),
 			names(env, "MGO2SERVER_LOBBY_NAMES"),
-			bool(env, "MGO2SERVER_LOBBY_BEGINNERS_ONLY"),
-			integer(env, "MGO2SERVER_LOBBY_HUB_FLAGS", 0)
+			bool(env, "MGO2SERVER_LOBBY_BEGINNERS_ONLY")
 		);
 	}
 

@@ -46,7 +46,9 @@ public class GameServerFactory {
 
 		// The queue lives here rather than behind Services: it holds channels and per-lobby state,
 		// while Services is lobby-agnostic and shared across a process.
-		var automatch = new Automatch(automatchPolicy);
+		var automatch = new Automatch(automatchPolicy, lobbyId, lobbySubtype,
+			(lobby, host) -> services.getGameService().getHostedGame(lobby, host)
+				.map(mgo2server.common.model.Game::getId).orElse(0L));
 
 		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
 		// the character-id to channel map current. Anything that has to reach a client other than the
@@ -68,13 +70,15 @@ public class GameServerFactory {
 			}
 			case ACCOUNT -> {
 				controllers.add(new AccountGameController(services.getAccountService(),
-					services.getCharacterService(), lobbyType));
+					services.getCharacterService(), lobbyType,
+					services.getLobbyService(), lobbyId));
 				controllers.add(new CharacterGameController(services.getAccountService(),
 					services.getCharacterService()));
 			}
 			case GAME -> {
 				controllers.add(new AccountGameController(services.getAccountService(),
-					services.getCharacterService(), lobbyType));
+					services.getCharacterService(), lobbyType,
+					services.getLobbyService(), lobbyId));
 				controllers.add(new CharacterConnectController(services.getCharacterService(),
 					services.getClanService(), services.getGameService(),
 					services.getAwardService()));
@@ -93,7 +97,7 @@ public class GameServerFactory {
 				controllers.add(new ClanGameController(services.getClanService(), services.getCharacterService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), services.getClanService(),
-					services.getAwardService(), lobbyId, lobbySubtype));
+					services.getAwardService(), lobbyId, lobbySubtype, automatch::gameCreated));
 			}
 		}
 

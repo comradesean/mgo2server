@@ -94,18 +94,16 @@ public class LobbyService {
 			// wired the deployment, not by the sequence. Same reasoning as seed.sql.
 			handle.createUpdate("""
 					insert into lobby (id, type, subtype, name, ip, port, beginners_only,
-						expansion_required, no_headshots, hub_flags)
+						expansion_required, no_headshots)
 					overriding system value
-					values (:id, :type, :subtype, :name, :ip, :port, :beginnersOnly, false, false,
-						:hubFlags)
+					values (:id, :type, :subtype, :name, :ip, :port, :beginnersOnly, false, false)
 					on conflict (id) do update set
 						type = excluded.type,
 						subtype = excluded.subtype,
 						name = excluded.name,
 						ip = excluded.ip,
 						port = excluded.port,
-						beginners_only = excluded.beginners_only,
-						hub_flags = excluded.hub_flags
+						beginners_only = excluded.beginners_only
 					""")
 				.bind("id", lobby.getId())
 				.bind("type", lobby.getType())
@@ -114,7 +112,6 @@ public class LobbyService {
 				.bind("ip", lobby.getIp())
 				.bind("port", lobby.getPort())
 				.bind("beginnersOnly", lobby.isBeginnersOnly())
-				.bind("hubFlags", lobby.getHubFlags())
 				.execute();
 
 			// Keep the sequence past the explicit ids, or a later plain insert collides.

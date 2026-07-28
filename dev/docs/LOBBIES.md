@@ -483,8 +483,26 @@ client-side from the player rather than the lobby, or absent from this build. An
 is open. Do not add a third "restriction" field on the strength of a name until something is
 actually observed to change.
 
-**The beginners-only entry gate does NOT refuse entry. Observed 2026-07-28, cleanly this time.**
-A character with `profile+13097 = 0` joined lobby 8 with its restriction bit confirmed on the wire
+**RESOLVED 2026-07-28: the restriction is enforced server-side, and it works.** A beginners-only
+lobby now refuses a character above level 3 at the session check (`0x3003`), replying `-404`, which
+the lobby-connect state machine renders as *"You cannot login to this lobby."* Confirmed live: a
+level-23 character was refused (`Out 3004 = fffffe6c`, and the server logged the refusal with its
+49,225 experience), and a level-1 character joined the same lobby (`00000000`).
+
+The code was found by tracing the lobby-connect state machine, which the dialog tracer had missed
+because it sits outside the 31-arm dispatcher: at `0x947198` onward it compares the completed
+request's result — `-240` to dialog 2340, `-402` to 2640, and **both `-403` and `-404` to dialog
+2355**, falling through to 2339 (*"Unable to connect to lobby."*) for anything unnamed. `-404` was
+chosen over `-403` because it is the code the client's own beginner check passes when it raises the
+same dialog (`li r4,-404` at `0x892250`), so our refusal is indistinguishable from the client's.
+
+Level is experience: the threshold is `LEVEL_4_EXPERIENCE` = 500, measured rather than derived —
+499 displays as level 3 and 500 as level 4 on a live client — so "above level 3" needs no rounding
+argument. Who counts as a beginner is operator policy; that a lobby can be marked and a connect
+refused is protocol.
+
+**Why server-side.** The client has the entire mechanism and does not use it.
+A character with `profile+13097 = 0` joined a marked lobby with its restriction bit confirmed on the wire
 (`... 3d77 01f4 0008 01`) and `beginners_only = true` in the row. The join is not an inference from
 an absent complaint: the lobby's own server logged the `0x4100` connect burst. No dialog 2355, no
 refusal.

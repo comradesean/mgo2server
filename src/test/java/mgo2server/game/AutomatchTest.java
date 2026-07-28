@@ -46,9 +46,24 @@ public class AutomatchTest {
 	 * already decided that.
 	 */
 	private static Automatch queueNeeding(int minPlayers) {
-		return new Automatch(AutomatchPolicy.from(
-			Map.of("MGO2SERVER_AUTOMATCH_MIN_PLAYERS", String.valueOf(minPlayers))::get));
+		return queueNeeding(minPlayers, (lobbyId, hostCharaId) -> 0L);
 	}
+
+	/**
+	 * As above, with a stub for the one thing the matchmaker asks the database: whether a character
+	 * already hosts a game here. Returning 0 means "nobody hosts anything", which is what an empty
+	 * lobby looks like and what every test but the election ones wants.
+	 */
+	private static Automatch queueNeeding(int minPlayers, Automatch.GameLookup games) {
+		return new Automatch(AutomatchPolicy.from(
+			Map.of("MGO2SERVER_AUTOMATCH_MIN_PLAYERS", String.valueOf(minPlayers))::get),
+			LOBBY_ID, LOBBY_SUBTYPE, games);
+	}
+
+	/** The automatching lobby as deployed: id 3, subtype 2. */
+	private static final long LOBBY_ID = 3;
+
+	private static final int LOBBY_SUBTYPE = 2;
 
 	@Test
 	public void enqueueAddsOneSearcher() {
