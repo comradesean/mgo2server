@@ -1,0 +1,12 @@
+{
+  "_comment": "Bit 22 is one past the client's table. See AwardsConfig.MAX_TITLE_BIT and V45.",
+  "titles": [
+    {
+      "name": "TWENTY-THIRD", "bit": 22, "rank": 1, "description": "",
+      "requires": [
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    }
+  ],
+  "medals": []
+}

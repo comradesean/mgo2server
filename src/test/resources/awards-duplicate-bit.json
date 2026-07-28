@@ -1,0 +1,18 @@
+{
+  "_comment": "Two titles on one bit: unlocking either would light both on the client's screen.",
+  "titles": [
+    {
+      "name": "FIRST", "bit": 7, "rank": 1, "description": "",
+      "requires": [
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "SECOND", "bit": 7, "rank": 2, "description": "",
+      "requires": [
+        { "metric": "rounds", "op": ">=", "value": 10 }
+      ]
+    }
+  ],
+  "medals": []
+}

@@ -464,6 +464,151 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 			.isZero();
 	}
 
+	// --- Titles: the worn u8 at wire 541 and the 22-bit mask at wire 563 --------------------
+
+	/** TORTOISE, "Often uses cardboard box" — the cheapest title in awards.json to earn. */
+	private static final int TORTOISE_BIT = 19;
+
+	/** CROCODILE, "High kill count" — rank 11, so it outranks TORTOISE's 33 on the name plate. */
+	private static final int CROCODILE_BIT = 4;
+
+	/** The worn title, u8 at wire 541. 1-based: bit 19 is served as 20, and 0 means none. */
+	private static int wornTitle(GamePacket info) {
+		return info.getPayload().getUnsignedByte(541);
+	}
+
+	/** The 22-bit unlock mask, u32 at wire 563 — rating-block entry 3. */
+	private static int titleMask(GamePacket info) {
+		return info.getPayload().getInt(563);
+	}
+
+	/**
+	 * Runs the unlock pass. In the server it runs at round end and on lobby entry; these tests
+	 * write {@code round_report} rows straight to the database and never send {@code CONNECT}, so
+	 * nothing else is going to run it for them. Reading the stats screen deliberately does not,
+	 * which is why it has to be said here.
+	 */
+	private void whenTitlesAreEvaluated() {
+		services.getAwardService().evaluate(charaId);
+	}
+
+	/**
+	 * Rounds that carry box uses in slot 22 (struct-B b21). The kills are not decoration: without
+	 * them the fixture also clears CHICKEN ("Rarely participates in battle"), which would make the
+	 * exact-mask assertions below untrue for a reason that has nothing to do with what they test.
+	 */
+	private void givenBoxRounds(int rounds, int boxUsesEach) {
+		for (var i = 0; i < rounds; i++) {
+			givenReport(0, "kills, detail_counters", "5, " + detail(22, boxUsesEach));
+		}
+	}
+
+	/** The title counterpart of {@code aCharacterWithNoRoundsEarnsNoMedals}. */
+	@Test
+	public void aCharacterWithNoRoundsWearsNoTitle() {
+		givenSelectedCharacter("Snake");
+
+		// Every ratio clause is guarded by a rounds clause, so an empty character unlocks nothing.
+		assertThat(services.getAwardService().evaluate(charaId)).isEmpty();
+
+		var info = statsBurst().get(0);
+		assertThat(titleMask(info)).as("wire 563, the 22-bit mask").isZero();
+		assertThat(wornTitle(info)).as("wire 541, the worn title").isZero();
+	}
+
+	/**
+	 * TORTOISE asks for {@code box_per_round >= 15} over at least 5 rounds, so five rounds of 80
+	 * box uses is 400/5 = 80 and clears it by a wide margin. Nothing else in the file is cleared by
+	 * this fixture, which is why the mask can be asserted exactly rather than bit by bit.
+	 */
+	@Test
+	public void anEarnedTitleSetsExactlyItsOwnBit() {
+		givenSelectedCharacter("Snake");
+		givenBoxRounds(5, 80);
+
+		whenTitlesAreEvaluated();
+
+		var info = statsBurst().get(0);
+		assertThat(titleMask(info)).isEqualTo(1 << TORTOISE_BIT);
+		// 1-based on the wire: bit 19 is served as 20. Zero is "no title", not "title 0".
+		assertThat(wornTitle(info)).isEqualTo(TORTOISE_BIT + 1);
+	}
+
+	/**
+	 * The point of storing titles instead of deriving them, and the one property that must never
+	 * regress. Medals are derived at query time because every medal source is a career sum or
+	 * maximum and only grows. Title requirements are ratios, and a ratio falls — so a derived title
+	 * would disappear the moment a player had a bad week. The unlock is a row, inserted once and
+	 * never deleted.
+	 */
+	@Test
+	public void anUnlockedTitleLatchesAfterItsRatioFallsBelowTheThreshold() {
+		givenSelectedCharacter("Snake");
+		givenBoxRounds(5, 80);
+		whenTitlesAreEvaluated();
+
+		assertThat(titleMask(statsBurst().get(0)) & (1 << TORTOISE_BIT))
+			.as("earned at 80 box uses per round")
+			.isNotZero();
+
+		// 25 more rounds using the box not once. The requirement is genuinely no longer met, which
+		// the two figures below assert directly rather than by assuming the arithmetic.
+		givenBoxRounds(25, 0);
+		whenTitlesAreEvaluated();
+
+		var replies = statsBurst();
+		assertThat(slot(replies.get(3), 0, 22)).as("career box uses").isEqualTo(400);
+		assertThat(cell(replies.get(1), 0, 14)).as("rounds").isEqualTo(30);
+		// 400 / 30 = 13.3, under the 15 the title asks for, and it is still worn.
+		assertThat(titleMask(replies.get(0)) & (1 << TORTOISE_BIT)).isNotZero();
+		assertThat(wornTitle(replies.get(0))).isEqualTo(TORTOISE_BIT + 1);
+	}
+
+	/**
+	 * The player does not choose which title is worn — the client has no command for it — so the
+	 * server picks the best unlocked one by the {@code rank} ordering in awards.json, lowest wins.
+	 */
+	@Test
+	public void theWornTitleIsTheBestRankedOneUnlocked() {
+		givenSelectedCharacter("Snake");
+		// Five rounds that clear TORTOISE (box 80 per round) and CROCODILE (K+s/D+s of 50/5 = 10,
+		// against the 1.50 it asks for) at once.
+		for (var i = 0; i < 5; i++) {
+			givenReport(0, "kills, deaths, detail_counters", "10, 1, " + detail(22, 80));
+		}
+
+		whenTitlesAreEvaluated();
+
+		var info = statsBurst().get(0);
+		assertThat(titleMask(info)).isEqualTo((1 << CROCODILE_BIT) | (1 << TORTOISE_BIT));
+		// CROCODILE ranks 11 and TORTOISE 33, so CROCODILE is worn — and 1-based, so bit 4 is 5.
+		assertThat(wornTitle(info)).isEqualTo(CROCODILE_BIT + 1);
+	}
+
+	/**
+	 * A ratio over an empty denominator is ZERO, not infinity. A character with fifty kills and no
+	 * deaths has not earned an unbeatable kill/death ratio, and the alternative reading is not a
+	 * rounding difference: it would hand CROCODILE, EAGLE, JAWS and the FOXHOUND family to the
+	 * first player to survive five rounds. Asserted as behaviour — no title — rather than by
+	 * reaching for the divide.
+	 */
+	@Test
+	public void aRatioWithNoDenominatorAwardsNothing() {
+		givenSelectedCharacter("Snake");
+		for (var i = 0; i < 5; i++) {
+			givenReport(0, "kills", "10");
+		}
+
+		whenTitlesAreEvaluated();
+
+		var info = statsBurst().get(0);
+		assertThat(titleMask(info) & (1 << CROCODILE_BIT))
+			.as("CROCODILE asks for K+s/D+s >= 1.50, and 50/0 is not a pass")
+			.isZero();
+		assertThat(titleMask(info)).isZero();
+		assertThat(wornTitle(info)).isZero();
+	}
+
 	/** A bad id gets 0x4103 alone with a nonzero status; the client error-completes on it. */
 	@Test
 	public void unknownCharacterGetsAnErrorStatus() {

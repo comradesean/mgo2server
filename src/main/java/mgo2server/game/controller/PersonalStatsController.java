@@ -3,6 +3,7 @@ package mgo2server.game.controller;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.AwardService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.StatsService;
 import mgo2server.game.GameControllerContext;
@@ -100,12 +101,16 @@ public class PersonalStatsController implements IGameController {
 
 	private final StatsService statsService;
 
+	private final AwardService awardService;
+
 	public PersonalStatsController(CharacterService characterService, ClanService clanService,
-			AccountService accountService, StatsService statsService) {
+			AccountService accountService, StatsService statsService,
+			AwardService awardService) {
 		this.characterService = characterService;
 		this.clanService = clanService;
 		this.accountService = accountService;
 		this.statsService = statsService;
+		this.awardService = awardService;
 	}
 
 	@Override
@@ -196,7 +201,11 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(0);              // u32 → T+0x1E20 [UNKNOWN]
 		BufferUtil.writeString(info, chara.get().getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);           // the confirmed 128-byte comment → T+0x1E24
-		info.writeByte(0);             // u8 → T+0x1EA5 [UNKNOWN]
+		// Wire 541: the WORN title, 1-based, 0 for none. The server picks it — the client has no
+		// command to set one (all 24 0x41xx ids are accounted for) and the requirements source says
+		// the highest rank you qualify for is your main "as per the old override rule". So this is
+		// computed like the clan emblem flag rather than stored as a player choice.
+		info.writeByte(awardService.wornTitle(charaId));   // u8 → T+0x1EA5
 		for (var i = 0; i < 9; i++) {
 			info.writeByte(0);         // 9×u8 → T+0x32B8.. [UNKNOWN]
 		}
@@ -212,7 +221,7 @@ public class PersonalStatsController implements IGameController {
 		var hostScore = characterService.hostScore(charaId);
 		for (var i = 0; i < 9; i++) {
 			info.writeInt(switch (i) {
-				case TITLE_MASK_ENTRY -> 0;                 // no title is server-granted yet
+				case TITLE_MASK_ENTRY -> awardService.titleMask(charaId);
 				case HOST_RATING_NUMERATOR_ENTRY -> hostScore.ratingSum();
 				case HOST_RATING_DENOMINATOR_ENTRY -> hostScore.votes();
 				default -> 0;                               // [UNKNOWN]

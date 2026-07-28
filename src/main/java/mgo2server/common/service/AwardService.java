@@ -108,10 +108,19 @@ public class AwardService {
 		return unlocked;
 	}
 
-	/** The 22-bit mask for {@code 0x4103} wire 563. */
+	/**
+	 * The 22-bit mask for {@code 0x4103} wire 563.
+	 * <p>
+	 * The shift is written {@code 2 ^ title_bit} rather than the natural {@code 1 << title_bit}
+	 * because Jdbi renders statements through StringTemplate, which reads a less-than sign as the
+	 * start of an expression and fails to compile the statement — at runtime, not at build time,
+	 * so it surfaces as every request to this screen timing out. {@code ^} is exponentiation in
+	 * Postgres, not xor, so this is the same value. The same trap is documented in
+	 * {@code CharacterService.create} and in V20's migration.
+	 */
 	public int titleMask(long charaId) {
 		return jdbi.withHandle(handle -> handle
-			.createQuery("select coalesce(sum(1 << title_bit), 0) from chara_title "
+			.createQuery("select coalesce(sum((2 ^ title_bit)::bigint), 0) from chara_title "
 				+ "where chara_id = :chara")
 			.bind("chara", charaId)
 			.mapTo(Integer.class)
@@ -129,6 +138,26 @@ public class AwardService {
 			.min(java.util.Comparator.comparingInt(AwardsConfig.Title::rank))
 			.map(title -> title.bit() + 1)
 			.orElse(0);
+	}
+
+	/**
+	 * Records that this character has been seen, and re-evaluates first.
+	 * <p>
+	 * The order matters and is the whole reason this is one method rather than two calls at the call
+	 * site. TSUCHINOKO's requirement is an <i>absence</i> of play, measured from the previous stamp —
+	 * so the gap has to be tested while the previous stamp is still there. Stamping first would
+	 * reduce every gap to zero and make the title unreachable, which is exactly the kind of bug that
+	 * looks like a threshold being too strict.
+	 *
+	 * @return the bits newly unlocked, for logging
+	 */
+	public Set<Integer> seen(long charaId) {
+		var unlocked = evaluate(charaId);
+		jdbi.useHandle(handle -> handle
+			.createUpdate("update chara set last_seen_at = now() where id = :chara")
+			.bind("chara", charaId)
+			.execute());
+		return unlocked;
 	}
 
 	private boolean unlock(long charaId, int bit) {
