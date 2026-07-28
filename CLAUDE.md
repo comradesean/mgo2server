@@ -80,6 +80,31 @@ labelled where they appear:
 - **Presentation** — what the client can render. Claims in this category are checkable against the
   binary and usually have not been checked.
 
+## Target version: release day
+
+**The first release of `mgo2server` serves RELEASE-DAY MGO2 only.** Content that Konami switched on
+after launch stays off, even where the disc already contains it and we could enable it. Later
+versions are a future feature, behind explicit toggles, not something to slip in because it turned
+out to be easy.
+
+The rule to apply: *shipped on the disc* and *active on release day* are different questions, and
+only the first is readable from our artifacts. The disc tells you what content exists; it cannot
+tell you what Konami had enabled. So a mode's presence in the binary is never on its own a reason
+to serve it.
+
+Known post-launch, therefore out of scope for v1 (dates are community/patch-note knowledge — see
+OBSERVED.md — not read from the binary, so the boundary itself carries that tier):
+
+- **Team Sneaking** (rule 7) — enabled 2008-07-04, three weeks after the 2008-06-12 launch,
+  reportedly by server-side maintenance. Fully present on the disc; deliberately not served.
+- **BOMB Mission** — roughly 2009-01-27.
+- **Survival** lobbies (Ver. 1.10) and **Tournament** lobbies (Ver. 1.20), plus the later Interval,
+  Stealth DM, Solo Capture and Race rules.
+
+Researching any of it is encouraged — knowing *how* a mode is gated is what makes a future toggle
+designable, and the findings belong in OBSERVED.md and BACKLOG.md. Enabling it is the part that
+waits.
+
 ## Running the tests
 
 **Always `mvn verify`, never `mvn test`.** Surefire only picks up `*Test`; every `*IT` runs under

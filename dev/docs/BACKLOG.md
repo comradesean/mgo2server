@@ -615,7 +615,7 @@ attributable: round_weapon_tally (game, chara, weapon, the triple, reported_at).
 (Knife Kills at minimum) derive from these tallies, not struct B — the knife round put its 4
 kills in 0x43a2 (weapon id 1) and nowhere else. Build the table at the next natural deploy.
 
-## Team Sneaking may be OURS to enable — the mode shipped on the disc and was switched on server-side
+## Team Sneaking: research the gate, do NOT enable it (release-day scope)
 
 *Pinned 2026-07-27.* Rule 7 (Team Sneaking) is fully present on the retail BLUS30109 disc: the
 `Rule_Eng_TSNE` string, the `TSNE01`/`TSNE02` stat row labels, the TSNE-only `TSneAlertSec` timer,
@@ -630,8 +630,15 @@ archived VERSION UPDATE page lists no client version that adds it (the first men
 disc, which is exactly what the binary shows.
 
 **So "the client doesn't offer TSNE" is probably a gating question, not missing content — and the
-gate may be on our side of the wire.** That would move five slots (b32, b33, b43, b44, b45) from
-"structurally unreachable" to "testable", and would make rule 7's score row exercisable.
+gate may be on our side of the wire.**
+
+**SCOPE DECISION 2026-07-27: we are not turning it on.** The first release of `mgo2server` serves
+release-day MGO2 (see CLAUDE.md, "Target version"), and TSNE post-dates launch by three weeks.
+Understanding the gate is still worth doing — it is what makes a later version toggle designable,
+and it decides whether the five TSNE struct-B slots (b32, b33, b43, b44, b45) are ever testable —
+but the answer feeds a future feature, not this release. Note the consequence for `0x4390`: those
+five slots stay unexercised BY DESIGN rather than by limitation, which is a better documented state
+than "we could not reach them".
 
 Where to look: whatever the client consults when populating the rule selector during game
 creation. Candidates are the lobby list entries (`0x4902`), the lobby/hub capability or settings
