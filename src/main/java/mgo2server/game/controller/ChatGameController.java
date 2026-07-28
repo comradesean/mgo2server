@@ -1,9 +1,8 @@
 package mgo2server.game.controller;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
 import mgo2server.common.service.GameService;
-import mgo2server.game.GameConnection;
+import mgo2server.game.ChannelRegistry;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
@@ -13,7 +12,6 @@ import org.apache.logging.log4j.Logger;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -50,44 +48,18 @@ public class ChatGameController implements IGameController {
 	private final GameService gameService;
 
 	/**
-	 * Live channels on this server by character id — the only way to reach a client that is not the
-	 * one currently asking.
+	 * Live channels on this server by character id.
 	 * <p>
-	 * Scoped to this controller instance, and therefore to one lobby server, rather than being a
-	 * static: production runs a process per lobby, but the integration tests stand several servers
-	 * up in one JVM, and a static map would silently join them together.
+	 * This map used to live here, and the reasoning for its scope is now in
+	 * {@link ChannelRegistry}. It moved out when a second subsystem — automatching — needed to reach
+	 * a client that is not the one currently asking; the registry keeps itself current through the
+	 * same two hooks this controller used, and is registered in {@code GameServerFactory}.
 	 */
-	private final Map<Long, Channel> channels = new ConcurrentHashMap<>();
+	private final ChannelRegistry channels;
 
-	public ChatGameController(GameService gameService) {
+	public ChatGameController(GameService gameService, ChannelRegistry channels) {
 		this.gameService = gameService;
-	}
-
-	/** Notes which channel belongs to which character, so chat can be pushed to it later. */
-	@Override
-	public void onPacket(GameConnection connection, Channel channel) {
-		var account = connection.account();
-		if (account == null || account.getCurrentCharaId() == null) {
-			return;
-		}
-		var previous = channels.put(account.getCurrentCharaId(), channel);
-		if (previous != null && previous != channel && previous.isActive()) {
-			// Same character on two live channels: a reconnect that raced its own teardown, or two
-			// clients sharing a character. The newest wins; the old one is left to close on its own.
-			logger.info("Character {} now has a second live channel; chat will go to the newest.",
-				account.getCurrentCharaId());
-		}
-	}
-
-	@Override
-	public void onDisconnect(GameConnection connection) {
-		var account = connection.account();
-		if (account != null && account.getCurrentCharaId() != null) {
-			channels.remove(account.getCurrentCharaId());
-		}
-		// The account is cleared before teardown on some paths, so sweep anything already dead
-		// rather than trusting the keyed removal alone.
-		channels.values().removeIf(channel -> !channel.isActive());
+		this.channels = channels;
 	}
 
 	/** In-game chat send. */
@@ -187,10 +159,10 @@ public class ChatGameController implements IGameController {
 
 		var delivered = 0;
 		for (var recipient : recipients) {
-			var channel = channels.get(recipient);
-			if (channel == null || !channel.isActive()) {
-				// A roster row with no live channel on this server: the player is in the game but
-				// connected elsewhere, or dropped without tearing down. Not an error.
+			// A roster row with no live channel on this server: the player is in the game but
+			// connected elsewhere, or dropped without tearing down. Not an error.
+			var channel = channels.channel(recipient).orElse(null);
+			if (channel == null) {
 				continue;
 			}
 			// Each recipient gets its own buffer written through its own pipeline: the encoders are

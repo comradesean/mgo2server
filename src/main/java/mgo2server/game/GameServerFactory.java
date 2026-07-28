@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import mgo2server.common.Services;
+import mgo2server.game.ChannelRegistry;
 import mgo2server.game.controller.AccountGameController;
 import mgo2server.game.controller.CommonGameController;
 import mgo2server.game.controller.CharacterConnectController;
@@ -30,6 +31,12 @@ public class GameServerFactory {
 			long lobbyId, int lobbySubtype) {
 		var controllers = new ArrayList<IGameController>();
 
+		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
+		// the character-id to channel map current. Anything that has to reach a client other than the
+		// one currently asking takes this.
+		var channels = new ChannelRegistry();
+		controllers.add(channels);
+
 		// Disconnect and ping, which every lobby answers.
 		controllers.add(new CommonGameController());
 
@@ -56,7 +63,7 @@ public class GameServerFactory {
 					services.getAwardService()));
 				controllers.add(new GameListGameController(services.getGameService(),
 					services.getCharacterService(), lobbyId, lobbySubtype));
-				controllers.add(new ChatGameController(services.getGameService()));
+				controllers.add(new ChatGameController(services.getGameService(), channels));
 				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
