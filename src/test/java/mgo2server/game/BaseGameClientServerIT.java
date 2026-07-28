@@ -75,6 +75,27 @@ public abstract class BaseGameClientServerIT {
 			.execute());
 	}
 
+	/**
+	 * Grants a character the whole gear catalogue, as the service grants at creation.
+	 * <p>
+	 * Same reasoning as {@link #grantStartingSkills}: a fixture that inserts a {@code chara} row
+	 * directly owns nothing, because ownership is data rather than something a read invents. Since
+	 * V44 that is true of gear too, and a character with no rows sends a count of zero — which is a
+	 * legitimate state, not a broken one.
+	 * <p>
+	 * DISTINCT because the catalogue holds {@code 0x86} twice.
+	 */
+	protected static void grantStartingGear(long charaId) {
+		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
+					insert into chara_gear (chara_id, item_id)
+					select :chara, distinct_items.item_id
+					from (select distinct item_id from gear_item) distinct_items
+					on conflict (chara_id, item_id) do nothing
+					""")
+			.bind("chara", charaId)
+			.execute());
+	}
+
 	@AfterEach
 	public void teardown() {
 		// Null-guarded so a failure in setup surfaces its own cause instead of an NPE from here.

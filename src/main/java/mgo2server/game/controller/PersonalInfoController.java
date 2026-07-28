@@ -83,14 +83,25 @@ public class PersonalInfoController implements IGameController {
 	 * "forget every item you own". A character logged in with the full catalogue, opened the
 	 * outfit screen, and closed it with nothing unlocked — not even starter gear.
 	 * <p>
-	 * So the reply repeats the catalogue verbatim. This is a readback, not per-character state:
-	 * ownership is not modelled anywhere, and {@code 0x4124} already advertises every item in
-	 * every colour, so the honest readback of "what you own" is that same list. When ownership
-	 * becomes real, both writers have to narrow together or this bug returns inverted.
+	 * So the reply reads the character's gear back, from the same
+	 * {@link CharacterService#ownedGear} the {@code 0x4124} writer uses. That shared source is the
+	 * point: while the catalogue was a constant only one of the two writers held, the two could
+	 * disagree, and the client keeps whichever spoke last. Any future narrowing — a starter set,
+	 * an unlock — now narrows both at once by construction.
 	 */
 	private void commitOutfit(GameControllerContext ctx) {
-		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
+		var account = ctx.connection().account();
+		if (account == null || account.getCurrentCharaId() == null) {
+			// The reply is a table, not a result code, so there is no error shape to send: a
+			// nonzero first word would be read as an entry count. Staying silent stalls the
+			// screen, but a session with no character cannot have reached it.
+			logger.warn("Outfit commit with no selected character; ignoring.");
+			return;
+		}
+
+		var gear = characterService.ownedGear(account.getCurrentCharaId());
+		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize(gear.size()));
+		LoadoutWriter.writeGear(buffer, gear);
 		ctx.write(new GamePacket(COMMIT_OUTFIT_RESULT, buffer));
 	}
 

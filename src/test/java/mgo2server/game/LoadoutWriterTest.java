@@ -2,6 +2,7 @@ package mgo2server.game;
 
 import io.netty.buffer.Unpooled;
 import mgo2server.common.model.CharaSkill;
+import mgo2server.common.service.CharacterService;
 import mgo2server.common.model.GearSet;
 import mgo2server.common.model.SkillSet;
 import org.junit.jupiter.api.Test;
@@ -12,35 +13,72 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 public class LoadoutWriterTest {
-	@Test
-	public void gearPayloadIsCountThenItemsThenTerminator() {
-		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
-
-		assertThat(buffer.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize());
-
-		var count = buffer.getInt(0);
-		assertThat(count).isPositive();
-		// count, then five bytes per item, then a 32-byte terminator.
-		assertThat(LoadoutWriter.gearPayloadSize()).isEqualTo(4 + count * 5 + 32);
+	private static List<CharacterService.OwnedGear> gear(int... ids) {
+		return java.util.Arrays.stream(ids)
+			.mapToObj(id -> new CharacterService.OwnedGear(id, 0xffffffffL))
+			.toList();
 	}
 
-	/** Every colour variant is advertised as unlocked. */
 	@Test
-	public void gearAdvertisesAllColours() {
-		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
+	public void gearPayloadIsCountThenItemsThenTerminator() {
+		var items = gear(0x04, 0x0B, 0x0C);
+		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize(items.size()));
+		LoadoutWriter.writeGear(buffer, items);
 
+		assertThat(buffer.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize(items.size()));
+		assertThat(buffer.getInt(0)).isEqualTo(items.size());
+		// count, then five bytes per item, then the 32-byte trailer.
+		assertThat(LoadoutWriter.gearPayloadSize(items.size())).isEqualTo(4 + items.size() * 5 + 32);
+	}
+
+	/** The colour mask is per item and comes from the row, not from a constant. */
+	@Test
+	public void gearWritesThePerItemColourMask() {
+		var items = List.of(new CharacterService.OwnedGear(0x04, 0xffffffffL),
+			new CharacterService.OwnedGear(0x0B, 0x00000003L));
+		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize(items.size()));
+		LoadoutWriter.writeGear(buffer, items);
+
+		assertThat(buffer.getByte(4)).isEqualTo((byte) 0x04);
 		assertThat(buffer.getInt(5)).isEqualTo(0xffffffff);
+		assertThat(buffer.getByte(9)).isEqualTo((byte) 0x0B);
+		assertThat(buffer.getInt(10)).isEqualTo(3);
+	}
+
+	/**
+	 * A duplicated item id is emitted twice, not collapsed. The catalogue holds 0x86 twice, and
+	 * dropping one would take 0x4124 from its known-good 651 bytes to 646.
+	 */
+	@Test
+	public void gearDoesNotDeduplicate() {
+		var items = gear(0x85, 0x86, 0x86, 0x87);
+		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize(items.size()));
+		LoadoutWriter.writeGear(buffer, items);
+
+		assertThat(buffer.getInt(0)).isEqualTo(4);
+		assertThat(buffer.getByte(9)).isEqualTo((byte) 0x86);
+		assertThat(buffer.getByte(14)).isEqualTo((byte) 0x86);
+	}
+
+	/** A character that owns nothing sends a count of zero, not a full catalogue. */
+	@Test
+	public void gearCanBeEmpty() {
+		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize(0));
+		LoadoutWriter.writeGear(buffer, List.of());
+
+		assertThat(buffer.readableBytes()).isEqualTo(36);
+		assertThat(buffer.getInt(0)).isZero();
 	}
 
 	@Test
 	public void gearTerminatorIsAllBitsSet() {
-		var buffer = Unpooled.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
+		var items = gear(0x04);
+		var size = LoadoutWriter.gearPayloadSize(items.size());
+		var buffer = Unpooled.buffer(size);
+		LoadoutWriter.writeGear(buffer, items);
 
-		for (var i = LoadoutWriter.gearPayloadSize() - 32; i < LoadoutWriter.gearPayloadSize(); i++) {
-			assertThat(buffer.getByte(i)).as("terminator byte %d", i).isEqualTo((byte) 0xff);
+		for (var i = size - 32; i < size; i++) {
+			assertThat(buffer.getByte(i)).as("trailer byte %d", i).isEqualTo((byte) 0xff);
 		}
 	}
 
