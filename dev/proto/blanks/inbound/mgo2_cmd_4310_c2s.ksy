@@ -153,9 +153,25 @@ seq:
       exactly against the `0x4313` reply's `0x10c | 68 bytes | u32 x17 per-rule timers and
       rounds`. Which index is which rule is **[UNKNOWN]** from the writer — the source array is
       contiguous, so the order is the client's internal rule enumeration, not something the
-      call sites label. Echo's ordering (SNE t/r, CAP t/r, RES t/r, TDM t/r/tickets, DM
-      t/tickets, BASE t/r, BOMB t/r, TSNE t/r) is a **tier-4 guess** and is recorded here only
-      as the hypothesis to test, one timer at a time, against this array.
+      call sites label. The ordering (SNE t/r, CAP t/r, RES t/r, TDM t/r/tickets, DM
+      t/tickets, BASE t/r, BOMB t/r, TSNE t/r) was recorded as a **tier-4 guess** to be tested
+      one timer at a time.
+
+      **Corroborated 2026-07-28 by two independent lines, and no longer tier 4.**
+
+      (1) ELF: the client's post-create cache at `0x8CA470` multiplies exactly **eight** of the
+      seventeen by 60 and stores the other **nine** as bytes. The scaled indices are 0, 2, 4, 6,
+      9, 11, 13, 15 — which under this ordering are precisely the eight *time* fields, with no
+      unscaled value being a time and no scaled value being a count. The 2/2/2/3/2/2/2/2 shape
+      is what makes that alignment possible at all.
+
+      (2) Observed: an automatching TDM match ran round time 5 min, round limit 4, tickets 25 —
+      landing on indices 6, 7 and 8 in that order. An SNE match ran round time 7 min, round
+      limit 4, which fits indices 0 and 1.
+
+      **Still open:** the SNE match also showed a third figure, "kill Snake 3 times", and this
+      ordering gives SNE only two slots. Either the third value lives outside this block, or the
+      rule that carries three fields is not TDM alone. Do not treat SNE as fully mapped.
   - id: unique_characters
     size: 2
     doc: |

@@ -269,6 +269,37 @@ Timer units, **inferred**: the post-create cache at `0x8CA470` multiplies eight 
 by 60 and stores the other nine as bytes — so blocks 100–167 are eight `{minutes, count}` pairs plus
 a lone value at 132.
 
+### What an automatch game actually looked like (observed 2026-07-28)
+
+From YouTube captures of real Konami-era automatch sessions. **Tier 2-3**: observed behaviour of the
+retail service, not read from our artifacts, and only two rules have been seen.
+
+| | |
+| --- | --- |
+| **Map** | random from a pool that **does not change**. One observed: Blood Bath |
+| **Rules** | assembled from the **union of the searchers' requested rules** — e.g. a session with TDM, SNE and BASE requests ran a rotation of all three |
+| **Common settings** | nothing special; no unusual toggles |
+| **TDM** | round limit 4, round time 5 min, tickets 25 |
+| **SNE** | round limit 4, round time 7 min, "kill Snake" 3 |
+
+**Two consequences for the server, and the first is a correction.**
+
+1. **The rotation is multi-entry, not a single elected rule.** The natural implementation — force the
+   one elected rule into entry 0 and truncate — is wrong. Build one rotation entry per distinct rule
+   the group asked for, still contiguous from index 0 and still with rotation index 0.
+2. **The per-rule timers are fixed automatch values, not the host's.** Combined with the block being
+   the host's settings object (above), this is the strongest argument yet that the original server
+   authored the whole block rather than letting the elected host's saved settings through.
+
+The TDM figures also **decoded the 68-byte timer block**, which had been one undecoded line in
+`PROTOCOL.md`. See `dev/proto/blanks/inbound/mgo2_cmd_4310_c2s.ksy`: the ordering `SNE t/r, CAP t/r,
+RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r` was a tier-4 guess; it is now
+corroborated by the client scaling exactly the eight *time* indices by 60 (`0x8CA470`) and by TDM's
+observed 5/4/25 landing on indices 6, 7, 8 in order.
+
+**Open:** SNE showed a third figure ("kill Snake 3") and this ordering gives SNE two slots. Either
+that value lives outside the block or the three-field rule is not TDM alone.
+
 ### Two things outside the server's control
 
 - **The game name is client-side.** `0x93D354` reads it from the player's own saved record, and the
