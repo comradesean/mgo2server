@@ -26,6 +26,14 @@ x-server-env: &server-env
   MGO2SERVER_DB_URL: jdbc:postgresql://postgres:5432/mgo2server
   MGO2SERVER_DB_USER: mgo2server
   MGO2SERVER_DB_PASSWORD: ${MGO2SERVER_DB_PASSWORD:-mgo2server}
+  # The address each lobby advertises in the gate list -- what the client is told to dial next.
+  # It MUST be reachable from the console or RPCS3, so 127.0.0.1 only works when the emulator runs
+  # on this host. Override per deployment: MGO2SERVER_ADVERTISE_IP=192.168.1.200 docker compose up
+  #
+  # Unset it entirely to stop the servers writing their own lobby rows, leaving whatever
+  # dev/tools/seed.sql put there. Setting it wrong breaks login for everyone, so it has no default
+  # beyond the one below.
+  MGO2SERVER_ADVERTISE_IP: ${MGO2SERVER_ADVERTISE_IP:-192.168.1.200}
 
 services:
   postgres:
@@ -74,6 +82,7 @@ services:
       MGO2SERVER_LOBBY_TYPE: "0"
       MGO2SERVER_LOBBY_ID: "1"
       # Observed from a real client: MGO2 dials the gate on 15731, not 5730.
+      MGO2SERVER_LOBBY_NAMES: "Gate"
       MGO2SERVER_GAME_PORT: "15731"
       # Host networking loses the "postgres" service DNS name; reach it via the published host port.
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
@@ -99,6 +108,7 @@ services:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "1"
       MGO2SERVER_LOBBY_ID: "2"
+      MGO2SERVER_LOBBY_NAMES: "Account"
       MGO2SERVER_GAME_PORT: "15732"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -119,7 +129,7 @@ services:
   #
   # MGO2SERVER_LOBBY_ID must be the row's id and MGO2SERVER_LOBBY_SUBTYPE its subtype: hosted
   # games are inserted against that id, and the game list filters on it.
-  gamelobby:
+  freebattle1:
     env_file: *server-env-file
     build: .
     image: mgo2server:local
@@ -131,6 +141,9 @@ services:
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "4"
       MGO2SERVER_LOBBY_SUBTYPE: "1"
+      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
+      # so three of these starting together get three different names.
+      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL,SNAKE,LIQUID"
       MGO2SERVER_GAME_PORT: "15733"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -138,6 +151,68 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15733"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  freebattle2:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "7"
+      MGO2SERVER_LOBBY_SUBTYPE: "1"
+      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
+      # so three of these starting together get three different names.
+      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL,SNAKE,LIQUID"
+      MGO2SERVER_GAME_PORT: "15734"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15734"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  freebattle3:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "8"
+      MGO2SERVER_LOBBY_SUBTYPE: "1"
+      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
+      # so three of these starting together get three different names.
+      MGO2SERVER_LOBBY_NAMES: "VAMP,JOHNNY"
+      # Beginners-only. WARNING: the client refuses entry to a lobby with this bit
+      # set unless the player's own profile+13097 byte is nonzero, and nothing sets
+      # that yet -- so today this lobby shows in the list and rejects EVERYONE with
+      # "You cannot login to this lobby." (dialog 2355). Set to false to make it an
+      # ordinary Free Battle lobby until the profile byte is wired.
+      MGO2SERVER_LOBBY_BEGINNERS_ONLY: "true"
+      MGO2SERVER_GAME_PORT: "15735"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15735"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -155,6 +230,7 @@ services:
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "3"
       MGO2SERVER_LOBBY_SUBTYPE: "2"
+      MGO2SERVER_LOBBY_NAMES: "Automatching"
       MGO2SERVER_GAME_PORT: "15740"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -179,6 +255,7 @@ services:
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "5"
       MGO2SERVER_LOBBY_SUBTYPE: "7"
+      MGO2SERVER_LOBBY_NAMES: "Basic Training"
       MGO2SERVER_GAME_PORT: "15737"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -206,6 +283,7 @@ services:
       # CURRENT lobby's subtype exactly — 7 renders the basic-training rows, 8 the combat-training
       # rows. The 7/8 grouping applies only to listing, not to contents.
       MGO2SERVER_LOBBY_SUBTYPE: "8"
+      MGO2SERVER_LOBBY_NAMES: "Combat Training"
       MGO2SERVER_GAME_PORT: "15738"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:

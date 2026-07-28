@@ -6,11 +6,11 @@ results screen shows and how it weights them into the score. Confirmed by a two-
 and a Rescue Mission round (2026-07-22) — see dev/docs/OBSERVED.md, "The 0x4390 scoreboard".
 
 Usage:
-    # paste the hex the gamelobby logs at DEBUG right after "In  - command 4390":
+    # paste the hex the freebattle1 logs at DEBUG right after "In  - command 4390":
     python3 decode_stats.py 000000010000050002...           # one payload
     python3 decode_stats.py <hex1> <hex2>                   # several, side by side
     # or pipe hex lines in:
-    docker logs mgo2server-gamelobby-1 | grep -A1 'command 4390' | ... | python3 decode_stats.py -
+    docker logs mgo2server-freebattle1-1 | grep -A1 'command 4390' | ... | python3 decode_stats.py -
 
 Correlate the printed A/B slots against the results screen: report each player's per-category
 counts (Kill/Death/Headshot/Stun/Assist/... plus mode objectives like Goal/Team Win/Target

@@ -14,7 +14,7 @@ OUT="${1:-$(dirname "$0")/../analysis/logs}"
 mkdir -p "$OUT"
 
 CONTAINERS=(
-    mgo2server-gamelobby-1
+    mgo2server-freebattle1-1
     mgo2server-automatching-1
     mgo2server-basictraining-1
     mgo2server-combattraining-1

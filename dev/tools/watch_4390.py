@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Live-capture and decode 0x4390 stat reports (or any command) from the gamelobby log.
+"""Live-capture and decode 0x4390 stat reports (or any command) from the freebattle1 log.
 
-Follows `docker logs -f` on the gamelobby container, extracts every payload of the chosen
+Follows `docker logs -f` on the freebattle1 container, extracts every payload of the chosen
 command id, pretty-prints it with the field labels established in dev/proto/mgo2_cmd_4390.ksy,
 and archives each hit into a samples folder as:
 
@@ -20,7 +20,7 @@ Usage:
 By default every game-lobby container is followed at once and each hit is labelled with the lobby
 it came from, so a report cannot be missed by watching the wrong one.
 
-Requires the gamelobby at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are hex-dumped.
+Requires the freebattle1 at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are hex-dumped.
 Stop with Ctrl-C. Decoders are labels-as-of 2026-07-27; see the ksy for evidence status.
 Timestamps in filenames and log.txt are the container's local log clock, not UTC.
 A header whose payload cannot be recovered is reported and counted, never dropped quietly.
@@ -39,7 +39,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 # in the lobby it was played in. Watching a single container silently misses everything else --
 # a 0x4390 from a training session went unnoticed that way on 2026-07-26.
 DEFAULT_CONTAINERS = [
-    "mgo2server-gamelobby-1",
+    "mgo2server-freebattle1-1",
     "mgo2server-automatching-1",
     "mgo2server-basictraining-1",
     "mgo2server-combattraining-1",

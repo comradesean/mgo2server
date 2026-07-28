@@ -428,9 +428,32 @@ Current layout (2026-07-25):
 | 1 | 0 | 0 | Gate | 15731 | `gate` |
 | 2 | 1 | 0 | Account | 15732 | `account` |
 | 3 | 2 | 2 | Automatching | 15740 | `automatching` |
-| 4 | 2 | 1 | Game | 15733 | `gamelobby` |
+| 4 | 2 | 1 | *from pool* | 15733 | `freebattle1` |
 | 5 | 2 | 7 | Basic Training | 15737 | `basictraining` |
 | 6 | 2 | 8 | Combat Training | 15738 | `combattraining` |
+| 7 | 2 | 1 | *from pool* | 15734 | `freebattle2` |
+| 8 | 2 | 1 | *from pool*, beginners only | 15735 | `freebattle3` |
+
+**Rows are written by the servers themselves as of 2026-07-28**, not by `dev/tools/seed.sql`. Each
+instance upserts its own row on startup from `MGO2SERVER_LOBBY_ID`, `MGO2SERVER_LOBBY_SUBTYPE`,
+`MGO2SERVER_GAME_PORT` and `MGO2SERVER_ADVERTISE_IP`, and takes its display name from
+`MGO2SERVER_LOBBY_NAMES` — a comma-separated pool, not a value. A registering lobby skips names
+another row already holds, under an advisory lock, so the three Free Battle lobbies starting in
+parallel get three different names. An exhausted pool reuses rather than failing, since the
+sub-list separates lobbies by id and a duplicate name is only cosmetic.
+
+With `MGO2SERVER_ADVERTISE_IP` unset nothing registers and the seeded rows stand. That default
+matters: the `ip` column is what the client dials next, so a wrong value breaks login for everyone.
+
+**The three subtype-1 rows are one category and three sub-list entries.** Lobby Select emits at
+most one row per subtype, so there is a single "Free Battle" category; the sub-list at `0x89147C`
+splits by lobby id, which is the same mechanism that already made two subtype-7 rows both appear.
+
+**Lobby 8's beginners-only bit is set and currently rejects everyone.** See the restriction-bit
+section below: the client gates entry on its own `profile+13097`, nothing sets that byte yet, and
+the refusal is dialog 2355, *"You cannot login to this lobby."* Set
+`MGO2SERVER_LOBBY_BEGINNERS_ONLY=false` on that service to make it an ordinary Free Battle lobby
+until the profile byte is wired.
 
 Automatching sits first deliberately: it has its own instance on 15740, so the ordinal-0 dial lands
 on a live server. The 2026-07-25 failure above was that row existing **without** an instance behind
@@ -466,7 +489,18 @@ it, not the ordering itself.
 - The meaning of the `0x43d1` values, and which screens send `0x43d0`.
 - Hub entry fields `0x05`, `0x06` (outside the subtype-5 check) and the eight-bit flags byte at
   `0x07`: parsed into distinct booleans, no consumer identified.
-- The gate list's restriction bits (`0x2003` offset `0x2d`) have never been exercised — we always
-  send 0.
+- ~~The gate list's restriction bits have never been exercised.~~ **Resolved 2026-07-28.** Wire
+  offset `0x2d` of a `0x2003` entry is a u8 of restriction bits, and **bit 0 is beginners-only**,
+  traced rather than inherited: the predicate at `0x884300` takes a lobby id, requires `type == 2`,
+  matches `entry+46` (the id) and tests `entry+48` with `rldicl. r9,r0,63,63` — bit 0 exactly. Its
+  caller at `0x892220` then reads the *local* profile (`0xD3A094`, i.e. `session+22488`) at
+  `profile+13097` and, if that byte is zero, raises dialog **2355** with code **-404**: *"You
+  cannot login to this lobby."*
+
+  So the lobby half works and the player half does not: **nothing sets `profile+13097`**. The only
+  place we touch that offset is `0x4103` wire 301, which is the *remote* profile slot and is sent
+  as 0 and marked `[UNKNOWN]`. Until the local byte has a source, a beginners-only lobby lists
+  normally and refuses every player. Three further callers of the predicate (`0x935b08`,
+  `0xAC80C0`, `0xACCEAC`) have not been read, so the entry gate may not be its only consequence.
 - What reads the hub entry's 16-byte **name**. Lobby Select uses the string table, and the
   sub-list separates by id; the name's presentation surface is unidentified.

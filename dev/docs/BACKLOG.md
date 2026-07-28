@@ -349,7 +349,7 @@ signature failure mode.
 To settle it:
 
 1. Tier 1: find the game-browser screen's state machine in the ELF and see what drives `0x4300`.
-2. Tier 2: run the gamelobby at debug logging, hold an open game list on one client for 60
+2. Tier 2: run the freebattle1 at debug logging, hold an open game list on one client for 60
    seconds while the other creates a game. Nothing sent → snapshot model confirmed, the empty
    first list was a request/creation race, and this entry closes. Anything sent and unanswered →
    promote to a bug.
@@ -588,7 +588,7 @@ to count). Neither slot is a plain sum.
 *Pinned 2026-07-23 (evening), from deliberately triggering concurrent logins on one account.*
 One session token per account, so a second login overwrites the first; the first client
 discovers it only on its next session-bearing command ("Check session: no account holds the
-presented session", five across gamelobby/account that session) and errors on whatever screen
+presented session", five across freebattle1/account that session) and errors on whatever screen
 it happens to be on. No unhandled packets are involved — the whole exchange is known commands.
 
 If smoother flow is ever wanted: on a login that overwrites an existing session, actively

@@ -2826,7 +2826,7 @@ max-players bump 16→17, at 17:54:09 / 18:05:50 / 18:14:18) were run to test sl
 Dedicated Host" (struct-B **index 14**). **The host's client emitted no `0x4390` for its own
 character in any of them** — the host connection (the same one that sent `0x4310`) reported only
 the two participants, ch2 and ch3, and the hosting character has no report of any kind after
-17:39:41. **Not a capture miss:** 189 `In - command 4390` frames in the gamelobby log against 189
+17:39:41. **Not a capture miss:** 189 `In - command 4390` frames in the freebattle1 log against 189
 archived `.bin` files in `dev/proto/samples/4390` — `watch_4390.py` dropped nothing (its one silent
 drop path, an interleaved log line between the DEBUG header and its hex line, would have shown as a
 count divergence).

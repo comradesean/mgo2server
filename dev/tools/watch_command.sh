@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Watch the gamelobby DEBUG log for a given command id and capture its payload the moment it
+# Watch the freebattle1 DEBUG log for a given command id and capture its payload the moment it
 # arrives. Baseline-count based, so it is immune to the --since timezone bug (docker logs --since
 # reads a bare timestamp as host-local while the container logs UTC).
 #
-# Requires the gamelobby to be running at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are
+# Requires the freebattle1 to be running at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are
 # hex-dumped. Run it in the background of an agent session (run_in_background) so the agent is
 # notified when the command fires.
 #
 # Usage:
 #   dev/tools/watch_command.sh 4390            # watch for end-of-round stat reports
-#   dev/tools/watch_command.sh 4310 20 mgo2server-gamelobby-1   # id, minutes, container
+#   dev/tools/watch_command.sh 4310 20 mgo2server-freebattle1-1   # id, minutes, container
 set -euo pipefail
 
 CMD="${1:?usage: watch_command.sh <cmd-hex> [minutes] [container]}"
 MINUTES="${2:-25}"
-CONTAINER="${3:-mgo2server-gamelobby-1}"
+CONTAINER="${3:-mgo2server-freebattle1-1}"
 NEEDLE="In  - command ${CMD}"
 
 baseline() { docker logs "$CONTAINER" 2>&1 | grep -c "$NEEDLE" || true; }

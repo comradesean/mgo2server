@@ -1,6 +1,7 @@
 package mgo2server.common;
 
 import mgo2server.common.service.AccountService;
+import mgo2server.common.service.AwardService;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
@@ -20,7 +21,8 @@ public class ServicesFactory {
 		var newsService = new NewsService(jdbi);
 		var rankingService = new RankingService(jdbi);
 		var statsService = new StatsService(jdbi, characterService);
+		var awardService = new AwardService(jdbi, statsService);
 		return new Services(accountService, characterService, clanService, gameService, lobbyService,
-			newsService, rankingService, statsService);
+			newsService, rankingService, statsService, awardService);
 	}
 }
