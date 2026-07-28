@@ -7,7 +7,7 @@ An MGO2 server targeting the retail MGS4 disc **BLUS30109** on RPCS3.
 This is the most important convention in the project, and the one that has been violated most
 expensively. When deciding what the server should do, sources rank:
 
-1. **`MGO2.elf`** — the decrypted game binary, at
+1. **`MGO2.elf`** — the decrypted game binary (address index: `dev/docs/ADDRESSES.md`), at
    `PS3_GAME/USRDIR/o/MGO2.elf`. The only actual specification. Everything else is somebody's
    reading of it.
 2. **A real client** — bytes observed from `BLUS30109` on RPCS3, or captures of the original
@@ -54,6 +54,9 @@ not an elimination if the thing varied could not have mattered.
 
 ## Documentation
 
+- `dev/docs/ADDRESSES.md` — **the address index**: where every load-bearing finding lives in
+  `MGO2.elf`, by subsystem, plus the PPC64/OPD gotchas and the methodology notes that survived
+  three wrong readings. Start here before opening a disassembler.
 - `dev/docs/GATES.md` — **the switches**, on one page: feature bits we send that hold client
   features closed (Team Sneaking is ours to open), the per-round Headshots-Only / Drebin-Points
   flag, player-count thresholds, what the client computes for itself and must never be sent, and
