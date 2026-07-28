@@ -3750,3 +3750,54 @@ The practical warning it generated stays valid, and b45 is the case that proves 
 Time" was inferred from the rule, sat in the field NAME for weeks, and was wrong — it is a Team
 Sneaking goal counter. An inferred label is a hypothesis. The difference now is that we know
 *where* the rule mislands rather than merely that it sometimes does.
+
+## The Team Sneaking gate is a byte we send — 2026-07-28
+
+Rule 7 does not appear in the client's create-game selector, and the reason is now traced end to
+end: **the rule list is the AND of two gates, and only the server-side one refuses.**
+
+**The disc already permits it.** GCX native command hash `0xAB3201` (OPD `0x101B740`, function
+`0x8E0A64`) loads a 32-bit `rule_bit` mask from the decrypted lobby stage script
+`o/stage/lobby/scenerio.gcx`, `proc17`:
+
+    command [ab3201] -rule_bit 191 -map_bit 4252 ×9 -ruleopt_bit 6 6 6 6 4 6 0
+
+`191 = 0xBF` = rules {0, 1, 2, 3, 4, 5, **7**}. The loader's store offsets skip the rule-6 and rule-8
+slots entirely but DO allocate `map_bit[7]` and `ruleopt_bit[7]`, and `countSelectableRules()`
+(`0x8E0824`) returns **7**, not 6.
+
+**The veto is `0x4101` payload byte `0x12A`, bit 0.** The create-game menu builder at `0x8AFD84`
+special-cases rule 7 alone:
+
+    008afd84  cmpwi r9, 7          ; rule 7 only
+    008afd88  bne   -> emit row
+    008afd98  lwz   r3, 0x60(r9)   ; network context
+    008afd9c  bl    0xd382f8       ; featureBit(ctx, 0)
+    008afdac  bne   -> emit row    ; bit clear -> skip Team Sneaking
+
+`0xD382F8` computes `(ctx[0x117D0 + bit/8] >> (bit & 7)) & 1` and rejects any bit above 5 — six
+feature flags in a single byte. `ctx+0x117D0` has **exactly one writer in the whole binary**:
+`0xD3C348`, a 16-byte raw read inside the `0x4101` parser (`0xD3C120`). Walking that parser's reads
+reproduces PROTOCOL.md's 322-byte grid exactly and places the block at offset **`0x12A`** — inside
+the 25-byte tail this server currently zero-fills (`CharacterConnectController`,
+`BLOCKED_END = 0x129`). The same gate is enforced at four further sites (`0x8996DC`, `0x89ADB8`,
+`0x8AD794`, `0x8ADC78`), so it is a genuine feature flag, not menu cosmetics.
+
+Bit 0 also unlocks one Sneaking-Mission rule option (`ruleopt_bit[4] = 4`). One bit turning on Team
+Sneaking *and* a new rule option is exactly the shape of the tier-3 community account of the
+2008-07-04 server-side maintenance — an independent corroboration of that story from the binary,
+which is as close as we will get without a capture.
+
+**Consequence:** the five TSNE struct-B slots are unexercised **by policy, not by limitation**, and
+a future version toggle is a known one-byte change rather than a research project. We are not
+enabling it (CLAUDE.md, "Target version: release day"). The falsifiable test, if it is ever wanted,
+is to set `0x4101[0x12A] = 0x01` and watch a seventh selector row appear.
+
+**Rules 6 (BOMB) and 8 (COOP) are a different answer: hardcoded off, unreachable from the server.**
+All three enumerators carry literal `cmpwi 6` / `cmpwi 8` skips *before* the mask is consulted, and
+the GCX loader has no storage slot for their map or option data. They would need a client patch —
+which settles the open question of whether BOMB Mission arrived server-side. It did not.
+
+Dead ends closed in the same pass: `0xE13BB8` / `0xE1B834` are hash caches of string bank
+`0x654515` (labels come from `0x8E15E8` → `0x240708(bank, 2*rule)`) and are referenced by nothing;
+`0x9C2708` is a widget text setter with no rule argument; and `0x4902` carries no rule mask.
