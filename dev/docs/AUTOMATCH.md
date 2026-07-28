@@ -324,7 +324,12 @@ Known real automatch values so far, **two of the six rules we serve**:
 | rule | time | rounds | extra |
 | --- | --- | --- | --- |
 | TDM (1) | 5 | 4 | tickets 25 |
-| SNE (4) | 7 | 4 | SNAKE 3 |
+| SNE (4) | 7 | 4 | **SNAKE 3** |
+
+SNE's SNAKE value is 3, which is *also* the client default — so it is written explicitly by the
+server anyway. The bytes are identical either way; leaving it implicit would make an observed figure
+indistinguishable from a placeholder, and regenerating the default block from a different capture
+would silently drop it.
 
 Still needed: DM, RES, CAP, BASE. Each is one observed automatch game of that rule.
 

@@ -21,8 +21,8 @@ import java.util.Set;
  * Three tiers, and the code keeps them apart on purpose:
  *
  * <ol>
- * <li><b>Observed retail values</b> — {@link #AUTOMATCH_TIMERS}. Captured from recordings of real
- * Konami-era automatch games. Two rules only.</li>
+ * <li><b>Observed retail values</b> — {@link #AUTOMATCH_TIMERS} and {@link #AUTOMATCH_SNAKE}.
+ * Captured from recordings of real Konami-era automatch games. Two rules only.</li>
  * <li><b>Client defaults</b> — {@link #DEFAULT_BLOCK}. Everything else. <b>These are
  * placeholders.</b> They are what a fresh character's own create-game screen offers, not what
  * automatching served.</li>
@@ -64,6 +64,9 @@ public final class AutomatchSettingsBlock {
 	 */
 	private static final int SNAKE = 189;
 
+	/** Sneaking Mission. The one rule whose third setting lives outside the timer array. */
+	private static final int RULE_SNEAKING = 4;
+
 	/**
 	 * Timer-array index of each rule's first slot, and how many slots it owns.
 	 *
@@ -93,6 +96,18 @@ public final class AutomatchSettingsBlock {
 	private static final Map<Integer, int[]> AUTOMATCH_TIMERS = Map.of(
 		1, new int[] {5, 4, 25},   // TDM: 5 min, 4 rounds, 25 tickets (default is 3/4/15)
 		4, new int[] {7, 4});      // SNE: 7 min, 4 rounds            (default is 8/4)
+
+	/**
+	 * Sneaking's third observed value: SNAKE 3, the number of times Snake must be killed.
+	 *
+	 * <p>Written explicitly even though it is <b>identical to the client default</b> already sitting
+	 * in {@link #DEFAULT_BLOCK}. The emitted bytes do not change; the provenance does. Left implicit,
+	 * an observed figure would be indistinguishable from a placeholder, and regenerating the default
+	 * block from a different capture would silently drop a value we actually confirmed. It lives here
+	 * rather than in {@link #AUTOMATCH_TIMERS} because it is not in the timer array at all — see
+	 * {@link #SNAKE}.
+	 */
+	private static final int AUTOMATCH_SNAKE = 3;
 
 	/**
 	 * A settings block as a fresh character's client offers it, captured from a stored
@@ -177,6 +192,9 @@ public final class AutomatchSettingsBlock {
 	 * placeholder story, and why {@link #AUTOMATCH_TIMERS} is the file's one place to edit.
 	 */
 	private static void applyObservedTimers(byte[] block, int rule) {
+		if (rule == RULE_SNEAKING) {
+			block[SNAKE] = (byte) AUTOMATCH_SNAKE;
+		}
 		var observed = AUTOMATCH_TIMERS.get(rule);
 		var slots = RULE_TIMERS.get(rule);
 		if (observed == null || slots == null) {
