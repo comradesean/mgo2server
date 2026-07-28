@@ -36,6 +36,13 @@ import static org.assertj.core.api.Assertions.*;
  * constants whose meaning is unknown. Everything else legitimately differs.
  */
 public class CapturedPayloadTest {
+
+	/**
+	 * No worn title. The byte at wire {@code 0xef} is the animal-rank index the in-game scorecard
+	 * draws, 1-based, with 0 meaning none — these tests pin the layout, not the value.
+	 */
+	private static final int NO_TITLE = 0;
+
 	private static byte[] capture(String name) {
 		try (var stream = CapturedPayloadTest.class.getClassLoader()
 				.getResourceAsStream("captures/" + name)) {
@@ -56,7 +63,7 @@ public class CapturedPayloadTest {
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
-			mgo2server.common.service.ClanService.Membership.NONE, false, skill -> 0);
+			mgo2server.common.service.ClanService.Membership.NONE, false, NO_TITLE, skill -> 0);
 
 		var bytes = new byte[buffer.readableBytes()];
 		buffer.getBytes(0, bytes);

@@ -175,7 +175,7 @@ public final class PersonalInfoWriter {
 	 *     whoever's session was recorded.
 	 */
 	public static void write(ByteBuf buffer, Chara chara, CharaAppearance a, EquippedSkills skills,
-			int savedInstructor, ClanService.Membership clan, boolean clanHasEmblem,
+			int savedInstructor, ClanService.Membership clan, boolean clanHasEmblem, int wornTitle,
 			java.util.function.IntUnaryOperator skillExperience) {
 		var start = buffer.writerIndex();
 
@@ -220,7 +220,24 @@ public final class PersonalInfoWriter {
 		BufferUtil.writeString(buffer, chara.getComment() == null ? "" : chara.getComment(),
 			StandardCharsets.ISO_8859_1, COMMENT_LENGTH);
 
-		buffer.writeByte(chara.getRank());
+		// The WORN TITLE, 1-based, 0 for none — the animal-rank badge on the in-game scorecard, and
+		// the same value 0x4103 wire 541 carries for the Personal Stats screen.
+		//
+		// This byte was `chara.getRank()` until 2026-07-28, and `chara.rank` is dead — always 0,
+		// written by nothing — so the badge never appeared in a session while Personal Stats showed
+		// it correctly. The two screens read different blocks: 0x4103 fills a scratch record, while
+		// this fills the LOCAL character record at charBlock+0x1EA5, and only the local one is
+		// published to peers.
+		//
+		// From there the client copies it into the P2P player-announce struct at +3 (0x8842A4) and
+		// RecordSets it into its own per-slot blob (record slot+1, key 358, len 1, at 0x276374);
+		// peers receive it at 0x2780E4. The scorecard's sprite reader 0x9BFA68 then resolves
+		// title_32_01_alp..title_32_22_alp from it. Note the announce struct puts title, emblem flag
+		// and clan id adjacent — which is why the badge sits immediately left of the emblem.
+		//
+		// Must stay within 1..22: the reader's match loop runs 21 iterations over a 22-entry table,
+		// so 0 means "none" and anything larger falls through with no sprite drawn.
+		buffer.writeByte(wornTitle);
 		buffer.writeByte(clanHasEmblem ? EMBLEM_ON_DISPLAY : NO_EMBLEM);
 
 		buffer.writeInt(savedInstructor);

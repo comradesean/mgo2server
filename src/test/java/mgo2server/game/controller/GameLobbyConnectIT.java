@@ -267,12 +267,29 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(info.getInt(0)).isZero();
 	}
 
+	/**
+	 * Wire {@code 0xef} of {@code 0x4122} carries the worn title — the animal-rank badge the in-game
+	 * scorecard draws — and it has to arrive in the <b>connect burst</b>, not only when the player
+	 * opens Personal Stats.
+	 * <p>
+	 * That is the whole bug this pins. The byte used to carry {@code chara.rank}, which is dead
+	 * (always 0), so the badge never appeared in a session while the stats screen showed the title
+	 * correctly: {@code 0x4103} fills a scratch block, this fills the local character record at
+	 * charBlock+{@code 0x1EA5}, and only the local one is published to peers as record slot+1 key
+	 * 358. Asserting a title the character actually holds is what makes this test able to catch a
+	 * regression rather than just observe a zero.
+	 */
 	@Test
-	public void personalInfoCarriesCommentAndRank() {
+	public void personalInfoCarriesCommentAndWornTitle() {
 		givenSelectedCharacter("Snake");
-		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update chara set comment = 'Hello', rank = 4 where id = :id")
-				.bind("id", charaId).execute());
+		TestDatabase.get().jdbi().useHandle(handle -> {
+			handle.createUpdate("update chara set comment = 'Hello' where id = :id")
+				.bind("id", charaId).execute();
+			// Bit 0 is the lowest-ranked title in awards.json, so it is the one worn, and the wire
+			// value is 1-based — bit 0 goes out as 1.
+			handle.createUpdate("insert into chara_title (chara_id, title_bit) values (:id, 0)")
+				.bind("id", charaId).execute();
+		});
 
 		var info = connect(charaId, BURST_REPLIES).get(5).getPayload();
 
@@ -280,7 +297,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		info.getBytes(111, comment);
 		assertThat(new String(comment, StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Hello");
-		assertThat(info.getByte(239)).isEqualTo((byte) 4);
+		assertThat(info.getByte(239)).as("wire 0xef, the worn title, 1-based").isEqualTo((byte) 1);
 	}
 
 	@Test

@@ -636,12 +636,16 @@ public class HostGameController implements IGameController {
 		var charaId = account != null && account.getCurrentCharaId() != null
 			? account.getCurrentCharaId() : 0L;
 
-		var rank = 0;
+		// The WORN TITLE, not chara.rank — this byte lands in the SAME slot as 0x4122 wire 0xef
+		// (charBlock+0x1EA5, via this parser at 0xD3CA30). Sending rank here would reset the
+		// scorecard's animal-rank badge to nothing after the first match, undoing what the connect
+		// burst set. Both packets must carry the same value.
+		var wornTitle = 0;
 		var experience = 0;
 		if (account != null && charaId != 0L) {
 			var chara = characterService.get(charaId).orElse(null);
 			if (chara != null) {
-				rank = chara.getRank();
+				wornTitle = awardService.wornTitle(charaId);
 				experience = charaId == (account.getMainCharaId() != null
 					? account.getMainCharaId() : 0L)
 					? account.getMainExp() : account.getAltExp();
@@ -656,7 +660,7 @@ public class HostGameController implements IGameController {
 
 		var buffer = ctx.buffer(POST_GAME_INFO_FIXED + skills.size() * SKILL_RECORD_SIZE);
 		buffer.writeInt(GameError.NONE.result()) // result
-			.writeByte(rank)
+			.writeByte(wornTitle)
 			.writeInt(experience)
 			.writeByte(0)
 			.writeInt(skills.size()); // skill count
