@@ -58,6 +58,28 @@ Identified so far:
 
 The other ~37 fields are unidentified because nothing has needed them.
 
+## 3a. Records 1–24: the scoreboard row, and the keys that build it
+
+The per-slot player blobs are what the in-game scorecard draws each row from. Identified
+2026-07-28 while chasing a missing animal-rank badge:
+
+| key | len | what |
+| --- | --- | --- |
+| 350 | 1 | a 4-bit field from `0x4101` wire `0x028` (charBlock + `0x3328`), low nibble plus a bit from `0x9066FC` |
+| 356 | 2 | announce +0 |
+| **358** | **1** | **the worn title / animal rank**, 1-based. Byte `0x166` of the blob, i.e. `0x1610568 + slot*0x510 + 0x166` — a link-time constant, so a usable RPCS3 watchpoint |
+| 359 | 23 | announce +16 |
+
+The publishing chain, all read: `0x4122` wire `0xef` → charBlock + `0x1EA5` → the 356-byte
+player-announce struct at +3 (`0x88407C`, store at `0x8842A4`) → `RecordSet(rec slot+1, 358, 1)` at
+`0x276374` for your own slot, `0x2780E4` for peers. Readers are `0x9BFA68` (the `title_32_NN_alp`
+sprite) and `0x9BF618` (the title text), both doing `RecordGet(rec slot+1, 358, 1)` then matching
+against a 22-entry table.
+
+**The announce struct puts title (+3), clan-emblem flag (+4) and clan id (+8) adjacent**, which is
+why the badge sits immediately left of the emblem on a row — and why the emblem rendered while the
+badge did not: we filled the emblem's source byte correctly and the title's with a dead field.
+
 ## 4. The hosted-game name, and why automatch depends on it
 
 - **Read** at `0x93D354` — automatch screen state 12 does `GET(rec25, 140, 16)` into the

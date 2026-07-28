@@ -866,90 +866,34 @@ documented anywhere we have.
 | `0x6a` | 1 | u8 | appearance struct +60. Meaning unknown, but **round-tripped**: `0x4130` sends it back (`0xD3BD88`) and `0x4131` reads it (`0xD3C6AC`). Send 0 — and preserve whatever came back |
 | `0x6b` | 4 | u32 | character id again — "the original sends the character id here; its purpose is not documented" |
 | `0x6f` | 128 | ISO-8859-1 | comment |
-| `0xef` | 1 | u8 | rank |
-| `0xf0` | 1 | u8 | emblem flag — 3 when the clan has one. **Still hardcoded 0 here**, which is now wrong: emblems are modelled and `0x4b47` reports the flag correctly, so a character whose clan has an emblem is told so on refresh but not in the connect burst |
-| `0xf1` | 4 | u32 | **saved instructor** marker; 0 = none. Nonzero suppresses the post-graduation recognition prompt on every peer (see below). Was wrongly reproduced as a fixed `00 A7 00 0D` |
+| `0xef` | 1 | u8 | **worn title (animal rank), 1-based, 0 = none** — the badge on the in-game scorecard. Corrected 2026-07-28; was labelled "rank" and we sent `chara.rank`, which is dead. See below |
 
-**There are five skill slots, not four** (ELF 2026-07-26, single-source trace). The parser's three
-loops are each bounded `cmpdi 5` — `0xD3D500` (skills), `0xD3D530` (levels), `0xD3D560`
-(experience). The `0x4c`–`0x6a` region was previously written here as "4 skills / zero / 4 levels
-/ zero / 4 × u32 / 5 zero". That covers **the same 31 bytes** — the byte counts were right and the
-wire is unchanged — but it put the padding in the wrong places and named the fifth element of each
-array as padding. `0x4103`'s traced tail agrees with five. `0x4131` carries the identical mistake
-and the identical correction; see its table.
+### The worn title at `0xef`, and why the scorecard was blank
 
-The 25-byte prefix:
+**This byte is the animal-rank index, not a separate "rank" quantity.** Traced end to end
+2026-07-28:
 
-```
-01 00 00 00 0C 00 01 00  00 00 00 00 00 00 00 00
-01 00 01 00 00 00 00 00  01
-```
+1. Parser `0xD3D078` stores it to **charBlock + `0x1EA5`** (`0xD3D5EC`), the *local* character record
+   at `ctx + 0x57D8`.
+2. `0x88407C` copies it into the **P2P player-announce struct at +3** (`0x8842A4`), immediately
+   beside the clan emblem flag (+4) and clan id (+8) — which is why the badge renders directly left
+   of the emblem on a scorecard row.
+3. `0x2762A0` publishes that as **`RecordSet(record slot+1, key 358, len 1)`** into the per-slot
+   player blob (see [CLIENT_STORE.md](CLIENT_STORE.md)); peers receive it at `0x2780E4`.
+4. The scorecard's sprite reader `0x9BFA68` resolves `title_32_01_alp` … `title_32_22_alp` from it,
+   and `0x9BF618` resolves the title text.
 
-Undocumented; reproduced byte for byte.
+**Values must be 1..22.** The readers' match loop runs 21 iterations over a 22-entry table, so 0 is
+"none" and anything above 22 falls through with no sprite drawn.
 
-### `0x4124` — gear catalogue, 651 bytes
+**`0x4129` writes the same slot.** Its parser `0xD3C9A8` stores its first payload byte to
+charBlock + `0x1EA5` at `0xD3CA30`. So the post-round reply must carry the same value — sending
+`rank` there resets the badge to nothing after the first match, which presents as a different bug
+entirely.
 
-**The 123 item ids are a data table, not a derivable sequence.** They are listed in
-`nomad.game.LoadoutWriter` and are not reproduced here; a reimplementation needs that table, which
-was taken from the original server's gear catalogue. Note `0x86` appears twice in it — unchecked
-whether that is faithful or a transcription slip.
-
-| offset | size | type | meaning |
-| --- | --- | --- | --- |
-| `0x00` | 4 | u32 | item count — 123 |
-| `0x04` | 615 | 123 × 5 | per item: `u8 item id`, `u32 colour mask` |
-| `0x26b` | 32 | 16 × 2 | **not a terminator** — 16 `{u8 item_id, u8 bit_index}` colour-unlock pairs, the same trailing block `0x4133` carries |
-
-Not per-character state: every item is advertised as owned, in every colour (`0xffffffff`).
-Progression does not exist, and a partial invented one would be worse than granting everything.
-The item ids come from `LoadoutWriter.GEAR_ITEMS` and their meaning lives in the game's own tables.
-
-**Flagged:** the list contains `0x86` **twice** (`0x85, 0x86, 0x86, 0x87`). Whether that is a
-faithful copy of the original or a transcription slip in this project has not been checked.
-
-**The 32 trailing bytes are not a terminator** (ELF 2026-07-26, single-source trace). This file
-previously called them one while flagging the call as a guess; the guess was wrong. They are
-**16 `{u8 item_id, u8 bit_index}` colour-unlock pairs**, the same block `0x4133` ends with. Our
-`0xff` filler works by accident: item id 255 is greater than the parser's 128-entry bound, so
-every pair is skipped rather than applied. It is inert, not correct — anything that starts
-populating colour unlocks must write real pairs here, and the arithmetic that makes `0x4124` come
-to 651 bytes only balances at 16 pairs (4 + 615 + 32).
-
-### `0x4125` — skill catalogue, 104 bytes
-
-| offset | size | type | meaning |
-| --- | --- | --- | --- |
-| `0x00` | 4 | u32 | skill count — 25 |
-| `0x04` | 100 | 25 × 4 | per skill: `u8 skill id` (1..25), `u16 experience`, `u8` zero |
-
-Experience is `0x6000` for every skill except ids **17, 20 and 22**, which get `0x2000`. Why those
-three are lower is **unknown**; it is what the original advertises.
-
-### `0x4140` — skill sets, 3 × `0x4d` = 231 bytes
-
-| offset | size | type | meaning |
-| --- | --- | --- | --- |
-| +0 | 4 | u32 | modes bitmask — which game modes this set applies to. Bit meanings not documented here |
-| +4 | 4 | 4 × u8 | skills 1–4 |
-| +8 | 1 | u8 | zero, purpose unknown |
-| +9 | 4 | 4 × u8 | levels 1–4 |
-| +13 | 1 | u8 | zero, purpose unknown |
-| +14 | 63 | **UTF-8** | set name |
-
-Three sets per character, materialised empty on first use. Note the charset: set names are the only
-UTF-8 strings in the protocol, which is why `BufferUtil.writeString` has a separate path that
-truncates on a character boundary.
-
-### `0x4142` — gear sets, 3 × `0x57` = 261 bytes
-
-| offset | size | type | meaning |
-| --- | --- | --- | --- |
-| +0 | 4 | u32 | stages bitmask — which maps/stages this set applies to |
-| +4 | 20 | 20 × u8 | face, head, upper, lower, chest, waist, hands, feet, accessory 1, accessory 2, head colour, upper colour, lower colour, chest colour, waist colour, hands colour, feet colour, accessory 1 colour, accessory 2 colour, face paint |
-| +24 | 63 | **UTF-8** | set name |
-
-Note the field order differs from every other appearance block in the protocol — colours are
-grouped at the end and face paint is last.
+**Why Personal Stats worked while the scorecard did not:** `0x4103` and `0x4221` write their own
+`+0x1EA5` into a *scratch* block (`*(ctx+0x11904)`), not the local character record. Only the local
+one is published to peers. Two blocks, two screens, one of them wrong.
 
 ## `0x4130` — update personal info
 

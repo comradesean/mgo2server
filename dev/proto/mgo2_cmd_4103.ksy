@@ -185,6 +185,16 @@ types:
           [CONFIRMED 2026-07-28] The title the character is wearing, **1-based** — 0 for none.
           Previously `unk_u8_d`, sent as the fingerprint 45, which is out of range for the
           22-title table.
+          **This is not the only place the worn title goes.** 0x4103 writes its copy into a SCRATCH
+          block (`*(ctx+0x11904)`), which the Personal Stats screen renders from and which is never
+          published to peers. The in-game scorecard's animal-rank badge reads a different byte
+          entirely — 0x4122 wire 0xef — which lands in the LOCAL character record at
+          charBlock+0x1EA5 and is replicated over P2P as record slot+1 key 358.
+
+          So both must carry the same value. Until 2026-07-28 this one was correct and 0x4122 sent
+          `chara.rank` (dead, always 0), which is why the badge showed on the stats screen and
+          nowhere else. See PROTOCOL.md's 0x4122 section.
+
       - id: unk_u8_block_e
         type: u1
         repeat: expr

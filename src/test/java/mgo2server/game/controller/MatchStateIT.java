@@ -896,11 +896,20 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(totals.student()).isZero();
 	}
 
+	/**
+	 * {@code 0x4129}'s first byte writes the <b>same slot</b> as {@code 0x4122} wire {@code 0xef} —
+	 * charBlock+{@code 0x1EA5}, via this parser at {@code 0xD3CA30}.
+	 * <p>
+	 * So it must carry the worn title too. Sending {@code chara.rank} here would reset the in-game
+	 * scorecard's animal-rank badge to nothing after the first match, undoing what the connect burst
+	 * set — a regression that would present as an entirely different bug from the original one.
+	 */
 	@Test
-	public void postGameInfoCarriesTheCharactersRankAndExperience() {
+	public void postGameInfoCarriesTheWornTitleAndExperience() {
 		givenSelectedCharacter("Snake");
 		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update chara set rank = 7 where id = :id")
+			// Bit 0 is the lowest-ranked title, so it is worn; the wire value is 1-based.
+			handle.createUpdate("insert into chara_title (chara_id, title_bit) values (:id, 0)")
 				.bind("id", charaId).execute());
 
 		var replies = exchange(new GamePacket(HostGameController.GET_POST_GAME_INFO));
@@ -912,7 +921,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		// rows, and a new character is granted 1..16.
 		assertThat(payload.readableBytes()).isEqualTo(39 + CharaSkill.STARTING_MAX_ID * 4);
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
-		assertThat(payload.getByte(4)).isEqualTo((byte) 7);        // rank
+		assertThat(payload.getByte(4)).as("the worn title, not chara.rank").isEqualTo((byte) 1);
 		assertThat(payload.getInt(5)).isEqualTo(500);              // main-pool experience
 		// Skill 1's experience, from the character's own row — the starting grant is level 1.
 		assertThat(payload.getShort(0x0E + 1))

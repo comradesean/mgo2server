@@ -362,7 +362,7 @@ public class CharacterConnectController implements IGameController {
 
 		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
 		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor, membership,
-			clanHasEmblem, characterService.skillExperience(chara.getId()));
+			clanHasEmblem, awardService.wornTitle(chara.getId()), characterService.skillExperience(chara.getId()));
 
 		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}
