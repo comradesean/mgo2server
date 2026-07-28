@@ -300,6 +300,42 @@ observed 5/4/25 landing on indices 6, 7, 8 in order.
 **Open:** SNE showed a third figure ("kill Snake 3") and this ordering gives SNE two slots. Either
 that value lives outside the block or the three-field rule is not TDM alone.
 
+### The map pool, and why the masks do not constrain us (2026-07-28)
+
+The lobby stage script's `-rule_bit 191 -map_bit 4252 ×9 -ruleopt_bit 6 6 6 6 4 6 0` is consumed by
+GCX native `0x8E0A64` (hash `0xAB3201`), which writes a single struct at **`0x166E944`**: `rule_bit`
+at `+0`, `map_bit[rule]` at `+4`, `ruleopt_bit[rule]` at `+0x30`.
+
+**Nine `map_bit` values because there are nine selectable rules.** `countSelectableRules`
+(`0x8E0824`) walks 0–10 with hardcoded skips at 6 and 8, giving `{0,1,2,3,4,5,7,9,10}` — exactly the
+nine unrolled store offsets. Rules 6 (BOMB) and 8 (COOP) have no slot at all, which is why they are
+unreachable from the server regardless of any mask.
+
+**`map_bit 4252` = bits 2, 3, 4, 7, 12 = the five stages on this disc.** Bit index is the map id
+(the counter at `0x8E09AC` excludes bit 0; the name helpers bound `mapId-1 ≤ 14`). The ELF holds
+exactly five stage-directory literals — `n002a`, `n003a`, `n004a`, `n007a`, `n012a` — and the disc
+extract has exactly those five directories. Map 12 is capture-confirmed as Midtown Maelstrom.
+**All nine rules carry the same mask**, so the pool is rule-independent.
+
+That matches the observed behaviour above — *"random map from a pool that never changes"* — from a
+completely different direction.
+
+**The masks are create-game menu construction only.** The address `0x166E944` appears exactly once
+in the 17 MB binary; all 21 dereferences live in `0x8E0824`–`0x8E2100`, and the complete caller list
+of those eight accessors is inside `0x899000`–`0x8B6000` — the Create Game, rule-select, map-select
+and rule-options screens. Nothing in the netcode, round setup, or the automatch screen consults them.
+**So they will not refuse anything we author**, and they are evidence of intent rather than a
+validator. We follow them anyway: rules `{0,1,2,3,4,5}` and maps `{2,3,4,7,12}`.
+
+**`ruleopt_bit` is a whitelist of legal values for a per-rule option byte**, not a count: `0x8E0A2C`
+tests `(ruleopt[rule] & value) != 0` and every one of its ten call sites passes a literal 2 or 4. So
+rules 0,1,2,3,5 accept `{0,2}`, rule 4 (Sneaking) accepts `{0}` unless the Team Sneaking feature bit
+is set, and rule 7 accepts `{0}`.
+
+*Inferred:* the create form's rule byte sits at `+752` and its option byte at `+784` — the same
+offsets as `rules[0]` and `flags[0]` in the settings struct — so **the rotation's `flags[]` is that
+option byte**. Sending 0 is legal for every rule, and that is what we send.
+
 ### Two things outside the server's control
 
 - **The game name is client-side.** `0x93D354` reads it from the player's own saved record, and the
