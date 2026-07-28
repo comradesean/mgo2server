@@ -7,6 +7,7 @@ import mgo2server.common.service.CharacterService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
+import mgo2server.game.LoadoutWriter;
 import mgo2server.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,22 +37,6 @@ public class PersonalInfoController implements IGameController {
 	public static final int COMMIT_OUTFIT = 0x4132;
 
 	public static final int COMMIT_OUTFIT_RESULT = 0x4133;
-
-	/**
-	 * The fixed tail of the {@code 0x4133} reply: sixteen {@code {u8 slot, u8 bit}} pairs the
-	 * parser at {@code 0xd3c77c} always reads, setting equipped bits in the loadout table it has
-	 * just zeroed. All-zero pairs redundantly touch bit 0 of slot 0 — no distinct no-op encoding
-	 * is known, and what the original filled these with awaits a capture.
-	 * <p>
-	 * <strong>Corrected 2026-07-26 from 15.</strong> The loop bound at {@code 0xd3c8d4} is tested
-	 * <em>before</em> the increment at {@code 0xd3c8dc}, so the client reads sixteen pairs and the
-	 * reply is {@code 36 + 5·count}, not {@code 34 + 5·count}. Corroborated by {@code 0x4124},
-	 * whose known-good 651 bytes ({@code 4 + 615 + 32}) only balance at sixteen. At fifteen the
-	 * client read its last pair out of stale receive buffer; those bytes usually failed the
-	 * {@code slot <= 128} / {@code bit <= 31} guards and were skipped, which is why it never
-	 * surfaced — but nothing bounded them.
-	 */
-	private static final int COMMIT_TRAILER_PAIRS = 16;
 
 	private static final int COMMENT_LENGTH = 128;
 
@@ -87,13 +72,25 @@ public class PersonalInfoController implements IGameController {
 	 * the outfit screen closes, and blocked on. The reply is not a result code — the parser at
 	 * {@code 0xd3c77c} reads a u32 <em>entry count</em>, {@code count × {u8 slot, u32 value}}
 	 * loadout entries, then the fixed sixteen-pair trailer; a nonzero first u32 would be read as
-	 * a count, not an error. Zero entries is the honest reply until the entry semantics are
-	 * captured: the client zeroes its loadout table first either way.
+	 * a count, not an error.
+	 * <p>
+	 * <strong>This is the same table {@code 0x4124} fills, and sending zero entries wiped it.</strong>
+	 * [ELF] Both parsers address it with the identical {@code addi r9,r9,9888} ({@code +0x26a0}) —
+	 * {@code 0xD3CF10}/{@code 0xD3CFC0} in the {@code 0x4124} parser, {@code 0xD3C85C}/{@code
+	 * 0xD3C90C} in this one — and the shapes agree: {@code 4 + 5·count + 32} at 123 items is 651
+	 * bytes, exactly what {@code 0x4124} sends. The parser <em>zeroes the whole {@code 0x60c}-byte
+	 * table before applying entries</em>, so a count of 0 did not mean "no change", it meant
+	 * "forget every item you own". A character logged in with the full catalogue, opened the
+	 * outfit screen, and closed it with nothing unlocked — not even starter gear.
+	 * <p>
+	 * So the reply repeats the catalogue verbatim. This is a readback, not per-character state:
+	 * ownership is not modelled anywhere, and {@code 0x4124} already advertises every item in
+	 * every colour, so the honest readback of "what you own" is that same list. When ownership
+	 * becomes real, both writers have to narrow together or this bug returns inverted.
 	 */
 	private void commitOutfit(GameControllerContext ctx) {
-		var buffer = ctx.buffer(Integer.BYTES + COMMIT_TRAILER_PAIRS * 2);
-		buffer.writeInt(0);
-		buffer.writeZero(COMMIT_TRAILER_PAIRS * 2);
+		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize());
+		LoadoutWriter.writeGear(buffer);
 		ctx.write(new GamePacket(COMMIT_OUTFIT_RESULT, buffer));
 	}
 
