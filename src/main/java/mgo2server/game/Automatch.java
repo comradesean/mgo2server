@@ -382,6 +382,8 @@ public class Automatch {
 	 */
 	public void tick() {
 		reap();
+		// No slot-in pass: joining an existing game is parked as a future project, and
+		// AutomatchPolicy refuses to start in SLOT_IN_ONLY so this cannot silently do nothing.
 		if (policy.forms()) {
 			releaseCreatedMatches();
 			formMatches();
