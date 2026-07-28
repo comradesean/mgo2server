@@ -34,6 +34,12 @@ only ours refuses. The menu builder special-cases rule 7 against this bit at `0x
 further sites enforce it (`0x8996DC`, `0x89ADB8`, `0x8AD794`, `0x8ADC78`), so it is a real feature
 flag rather than menu cosmetics.
 
+**Five more enforcement sites, in the automatching screen** (found 2026-07-28, see
+[AUTOMATCH.md](AUTOMATCH.md) §5): `0x93B7D8` drops the Team Sneaking row from the automatch rule
+list, `0x93B894` swaps the panel art, and `0x93C9C4`/`0x93CB30`/`0x93CC30` choose between two
+background resources. All read the same bit 0. So the release-day automatch rule list has **seven
+rows, not eight**, and that already falls out of the zero byte we send — no extra work.
+
 **Where it is in our code:** the byte falls inside the tail that
 `CharacterConnectController.getCharacterInfo` zero-fills — `padTo(buffer, BLOCKED_END)` at `0x129`,
 then `padTo(buffer, INFO_PAYLOAD_SIZE)` to `0x142`. Setting `0x4101[0x12A] = 0x01` would make a
