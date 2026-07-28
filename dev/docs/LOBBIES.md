@@ -456,7 +456,7 @@ the database.
 
 | candidate | tested | result |
 | --- | --- | --- |
-| gate list `0x2003` entry `0x2d` bit 0 | `01` confirmed on the wire | no icon; a level 23 character entered freely |
+| gate list `0x2003` entry `0x2d` bit 0 | `01` confirmed on the wire | no icon. **Entry was never tested** — see below |
 | hub list `0x4902` entry `0x07`, all bits | `ff` confirmed on the wire | no icon, no change of any kind |
 
 The second is the stronger result. Setting **every** bit of the flags byte at once means no single
@@ -470,7 +470,14 @@ client-side from the player rather than the lobby, or absent from this build. An
 is open. Do not add a third "restriction" field on the strength of a name until something is
 actually observed to change.
 
-**Lobby 8's beginners-only bit is set and currently rejects everyone.** See the restriction-bit
+**The entry gate has never been exercised, and an earlier version of this file said otherwise.**
+It recorded that "a level 23 character entered freely" with bit 0 set, and treated the conflict
+with `0x892220` as an unexplained contradiction. That was not an observation: the tester was
+looking for the icon and never attempted a restricted entry. Absence of a complaint is not a
+successful join. The test still to do is to join the beginners-only lobby *by name* with
+`profile+13097` at 0 and see whether dialog 2355 appears.
+
+**Lobby 8's beginners-only bit is set and, if the gate works, rejects everyone.** See the restriction-bit
 section below: the client gates entry on its own `profile+13097`, nothing sets that byte yet, and
 the refusal is dialog 2355, *"You cannot login to this lobby."* Set
 `MGO2SERVER_LOBBY_BEGINNERS_ONLY=false` on that service to make it an ordinary Free Battle lobby
@@ -519,9 +526,10 @@ it, not the ordering itself.
   cannot login to this lobby."*
 
   **Superseded in part, 2026-07-28.** That chain is real but is not what marks a newbie lobby: with
-  bit 0 confirmed on the wire, the icon did not appear and a level 23 character entered without an
-  error. So `0x884300`/`0x892220` exist and do what is described, and are simply not the mechanism
-  we were looking for — filing them as though they were is the mistake this note exists to record.
+  bit 0 confirmed on the wire the icon did not appear, so `0x884300`/`0x892220` exist and do what is
+  described and are simply not the *visual* mechanism — filing them as though they were is one of
+  the two mistakes this note records. The other is that the entry half was written up as tested and
+  contradictory when it had never been run at all.
 
   So the lobby half works and the player half does not: **nothing sets `profile+13097`**. The only
   place we touch that offset is `0x4103` wire 301, which is the *remote* profile slot and is sent
