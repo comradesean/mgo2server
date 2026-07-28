@@ -1291,7 +1291,7 @@ cross-checked with the `0x4313` layout and, where marked, with the ELF):
 | `0xA3` | 48 | rotation: `[rule, map, flags]` × **16**, stride 3; `rule==0 && map==0` ends it |
 | `0xE5` | 1 | max players |
 | `0xE6` | 4 | briefing time |
-| `0xFC`… | … | per-rule timers/rounds/tickets, then uniques, commonA/B bitfields, kicks |
+| `0xFC` | 68 | **seventeen u32s, decoded 2026-07-28.** SNE t/r, CAP t/r, RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r. Times are minutes (the client ×60s exactly those eight indices at `0x8CA470`). Confirmed against client defaults in four stored blobs — full table in [AUTOMATCH.md](AUTOMATCH.md). Then uniques, commonA/B bitfields, kicks |
 
 **Partly stored now.** `HostGameController.checkHostSettings` parses **round 0** of the rotation
 (`rule, map, flags` at `0xA3`) into the connection, and `createGame` writes them onto the game, so
