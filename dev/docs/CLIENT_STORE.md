@@ -66,70 +66,109 @@ The other ~37 fields are unidentified because nothing has needed them.
   `0x946F5C`, OPD `0x101CC48`), copying from `session + 0x57D8 + 4`.
 - **Gated** at `0xD44730`: the `0x4310` builder refuses to send when the name's `strlen` is outside
   3..16, and `0xD44744` additionally runs a charset check (`0xD32DD0`). The refusal returns `-24`,
-  which `0x8CA180` routes to error 3845 — but on the automatch path the screen falls back to state 1
-  **with no dialog at all**.
+  which the builder's only caller `0x8CA178` routes to **error dialog 3845** — see below; this was
+  previously recorded as failing with no dialog, which was wrong.
 
-**Open, and load-bearing:** what `session + 0x57D8 + 4` actually is. Two investigations disagree —
-one traced the `0x4101` parser writing the **character id** at `+0x57D8` and the **character name**
-at `+0x57DC`; the other called the same region the current-game block with a **game name** at `+4`.
+**Settled 2026-07-28: it is the CHARACTER NAME.** `0xD3A094` returns `session + 0x57D8`, and the
+`0x4101` parser (`0xD3C120`) fills that base with the character id at `+0` and a **16-byte character
+name at `+4`** (`+0x57DC`), matching `PROTOCOL.md` field for field with one base register and one
+contiguous payload. An earlier reading of this region as a "current game block with a game name at
++4" was wrong.
 
-If it is the character name, the hosted-game name defaults to it, can never be under three
-characters, and **automatch cannot fail this way** — which is the only reading consistent with the
-retail service, since players demonstrably went straight into automatching. A live capture supports
-it: a real automatch-initiated `0x4310` carried the game name `"Sean"`, which is that character's
-name. Do not build on the pessimistic reading until this is settled.
+So `0x947B94` copies **the character name** into the hosted-game-name record, and it can never be
+under three characters or fail the charset check. A live capture agrees: a real automatch-initiated
+`0x4310` carried `"Sean"`, that character's own name — a client-side seed, not something typed and
+nothing to do with what the server sent in `0x4305`.
 
-## 5. Persistence — genuinely unresolved
+The `0x4310` linkage is three-point verified: `0x93D354` writes `obj+116`; `0x93D440` spawns the
+builder coroutine with `r3 = obj+112`; the builder uses `args+4`, `+19`, `+21`, `+150/151`, `+168`,
+and `obj+116/131/280` line up with `args+4/19/168` exactly.
 
-An investigation concluded the store is never persisted, on the grounds that the buffer address
-`0x16181A0` appears nowhere but its own descriptor. **That does not prove it**: a save or load
-routine would iterate the descriptor table and use `desc->buffer` / `desc->size` indirectly, never
-naming the buffer.
+**The refusal is not silent.** `0xD44730` gates on `strlen` 3..16 and `0xD44D14` returns `-24`; the
+builder's only caller `0x8CA178` routes a nonzero result to **error dialog 3845**. Earlier notes in
+this project said this path fails with no dialog at all — that was wrong.
 
-Evidence pointing at persistence:
+**What remains open** is narrower: key 140 is zeroed at boot, `0x946F00` state 4 is its only filler,
+and **the automatch menu item does not spawn `0x946F00`**. The two screens are siblings — automatch's
+constructor `0x93B4D0` is installed as a confirm callback by the menu builder and constructs nothing
+of `0x946F00`'s. So a player who reaches automatching without having passed through the Create-Game
+settings screen this session has an empty name.
 
-- Each descriptor carries a **dirty bitmap**, and `RecordSet` `memcmp`s so it only dirties on a real
-  change. Dirty tracking is write-back machinery; there is no reason for it in a store discarded at
-  exit.
-- The game demonstrably writes savedata during play — `helpdisp.sav` was observed changing mid-session.
+The next thing to settle: `0x946D70` (the `0x946F00` constructor) has five callers — `0x890DCC`,
+`0x892E44`, `0x8936A0`, `0x9363C8`, `0xAC7D14`. Four write `RecordSet(rec25, key 254, 2)` first, an
+entry-mode selector; **`0x890DCC` does not**, and it is reached from state dispatch `0x893C10` of the
+55-state lobby coroutine `0x892B08`. If that state is an automatic lobby-entry step rather than a
+menu selection, the gap closes completely.
 
-Evidence against:
+## 5. Persistence — settled: it is NOT persisted
 
-- The five files under `o/online/` are **ac.sav 960, helpdisp.sav 16, mgof.sav 28, opt.sav 28,
-  scradj.sav 36** bytes. None is 276, and none is an obvious container for a 276-byte record.
-- No PS3 savedata directory exists for the title in the observed RPCS3 install.
+A first investigation concluded this by searching for the buffer address `0x16181A0` and finding it
+only in its own descriptor. **That reasoning was invalid** — a save routine would walk the descriptor
+table and use `desc->buffer` indirectly, never naming the buffer. The conclusion was nevertheless
+right, and here is the argument that holds:
 
-So the question is open and the honest position is "not established either way". What would settle
-it: find code that walks the descriptor table at `0x103BC18`, or reads a dirty bitmap at `desc+12`.
+- **Exactly 15 instructions in the whole text section** reach the record array base (`lwz rX,
+  -31408(r2)` → `0x16182C8`), and every one is inside `0x27EE00`–`0x281000`. That is the entire
+  subsystem, enumerated.
+- The static descriptor addresses (`0x103BC18`, `0x103BC34`, `0x103BC4C`, `0x103BED4`) appear in the
+  binary **only** as stored pointers at `0xFC2E80`–`0xFC2E8C`. No instruction materialises them as an
+  immediate, so there is no descriptor walker outside the subsystem.
+- The subsystem's complete external call list contains `memset`, `memcpy`, `memcmp` and a set of
+  bit-cursor and peer helpers — and **none of the file primitives** (`0x280F0` open, `0x258E0` close,
+  `0x26A90` write, `0x26ED8` read) that the `.sav` module uses.
+- No `cellSaveData`, `savedata` or `SAVEDATA` string exists anywhere in the ELF.
+
+Lazy loading is excluded by the same evidence: the subsystem contains no file I/O at all.
+
+### What the dirty bitmap is actually for
+
+It is **not** disk write-back. `0x27FDC8` iterates all 26 descriptors; `0x280838` walks 24 handles at
+`regArray+104..200` building 256-byte bit buffers; `0x26E9C0` resolves a **peer** id against a 24×116
+table, with 255 meaning broadcast; `0x27F428` closes all 24 handles and clears every dirty bitmap.
+
+So the bitmap is a **per-peer delta mask for replicating the record store across the 24 P2P player
+connections** — write-back over the network. That is why records 1–24 are the per-slot player blobs:
+this store *is* the peer-to-peer state layer.
 
 ## 6. The single-player unlock question
 
-**MGS4 unlocks items based on time played in MGO.** The unlock is driven by *real* play time, so
-something MGO writes must be read by the single-player game — which makes this store, or the files
-beside it, the natural place to look.
+**MGS4 unlocks items based on time played in MGO**, and the unlock is driven by real play time — so
+something MGO writes must be read by the single-player game.
 
-Nothing here is established yet. Starting points, in rough order of promise:
+**Three candidates are now eliminated** (2026-07-28):
 
-- **`mgof.sav`, 28 bytes.** The name suggests "MGO flags", the size suggests a handful of counters,
-  and it sits in the game's own `o/online/` directory rather than in PS3 savedata — i.e. somewhere
-  both halves of the disc can reach.
-- **`ac.sav`, 960 bytes.** Larger, and the only file big enough to hold structured per-item state.
-- **The record store itself**, if §5 resolves toward persistence.
-- The server's own play-time accounting is a **separate** thing and must not be confused with it:
-  `chara_training_time` and the `seconds_in_game` column of the `0x4105` grid are what *we* track for
-  the stats screens. The unlock is client-side and needs no server involvement, so it will not appear
-  in any packet.
+- **Not this record store.** It is not persisted at all (§5), and its dirty bitmap turned out to be
+  P2P replication rather than write-back to disk.
+- **Not `mgof.sav`.** Its module at `0x7F6CA8`/`0x7F6D98`/`0x7F6E58` moves exactly **4 bytes** — a
+  single u32 flag. `scradj.sav` (`0x7F64B8`, `0x7F6528`) is likewise 4 bytes.
+- **Not PS3 savedata.** There is no `cellSaveData`, `savedata` or `SAVEDATA` string anywhere in the
+  ELF, and no savedata directory for the title in an observed RPCS3 install.
 
-Worth knowing before starting: the observed file timestamps show these files are written at
-different times (`helpdisp` today, `mgof` a week ago, `opt`/`scradj` older still), so they are
-written by different subsystems on different triggers rather than as one blob at exit.
+What is left: **`ac.sav`**, whose writer at `0x7F91C0` uses a **936-byte** stack buffer — by far the
+largest of the five and the only one big enough for structured per-item state. It is also the only
+one of the five whose purpose is unguessed. That is where to look next.
+
+The whole `.sav` module lives at `0x7F6000`–`0x7F9300` with its own open/read/write/close, entirely
+separate from the record store.
+
+Two cautions for whoever picks this up:
+
+- **The server cannot help.** The unlock is client-side and will never appear in a packet. Our
+  `chara_training_time` and the `seconds_in_game` column are what *we* track for the stats screens
+  and are a different quantity; do not conflate them.
+- **The observed files are written at different times** (`helpdisp` mid-session, `mgof` days apart,
+  `opt`/`scradj` older), so they are written by different triggers rather than dumped together at
+  exit. Timestamps are evidence about which subsystem wrote what.
 
 ---
 
 ## Addresses, for the index
 
 `0x27DD38` boot registration · `0x27EF90` RecordBuffer · `0x27F0E0` register one · `0x27F160`
-RecordGet · `0x27F258` RecordSet · `0x103BC18` descriptor table · `0x103C544` record 25's field
-table · `0x16182C8` the 26 buffer pointers · `0x16181A0` record 25's buffer · `0x161822C` the
-hosted-game name · `0x93D354` automatch reads it · `0x947B94` the sole writer · `0x946F00` the
-screen containing that writer · `0xD44730` the length gate · `0xD32DD0` the charset check.
+RecordGet · `0x27F258` RecordSet · `0x27F428` close peers and clear dirty masks · `0x27FDC8`
+iterate all 26 descriptors · `0x280838` build per-peer bit buffers · `0x103BC18` descriptor table ·
+`0x103C544` record 25's field table · `0x16182C8` the 26 buffer pointers · `0x16181A0` record 25's
+buffer · `0x161822C` the hosted-game name · `0x93D354` automatch reads it · `0x947B94` the sole
+writer · `0x946F00` the Create-Game settings screen containing it · `0x946D70` its constructor ·
+`0xD3A094` the character block · `0xD3C120` the `0x4101` parser · `0xD44730` the length gate ·
+`0xD32DD0` the charset check · `0x7F6000`-`0x7F9300` the `.sav` module.

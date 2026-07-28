@@ -427,10 +427,15 @@ option byte**. Sending 0 is legal for every rule, and that is what we send.
 
 ### Two things outside the server's control
 
-- **The game name is client-side.** `0x93D354` reads it from the player's own saved record, and the
-  create is refused when it is shorter than three characters (`0xD44730`). The failure is state 13 →
-  state 1 with **no dialog**. A character that has never named a hosted game will fail automatch
-  silently and nothing we send can fix it — check this first when a live test does nothing.
+- **The game name is client-side, and it is the CHARACTER NAME.** `0x93D354` reads record 25 key
+  140; the only writer, `0x947B94`, copies `session+0x57DC` — which the `0x4101` parser fills with the
+  16-byte character name. So the name is never a stray short string and the player never types it.
+  See [CLIENT_STORE.md](CLIENT_STORE.md) §4.
+  <br>The real constraint is narrower: that record is **zeroed at boot and never persisted**, and only
+  state 4 of the Create-Game settings screen (`0x946F00`) fills it — a screen the automatch menu item
+  does **not** spawn. So a player who reaches automatching without passing through it this session
+  has an empty name, and the create is refused with **error 3845**. Whether some lobby-entry step
+  spawns that screen automatically is the open question; `0x890DCC` is the candidate caller.
 - **Comment, password flag and password are never written on the automatch path** and come from the
   raw screen allocation. *Inferred* that the allocator zeroes them; if it does not, the first
   automatch `0x4310` we receive will carry a garbage comment or a spurious password flag. Cheap to
@@ -568,7 +573,11 @@ is what you want when a cancel races a match push already in flight.
 **4928, 4944 and 4946 are unreachable.** A sweep of every instruction in `0x10230..0xDE9328` for
 those immediates found 4946 zero times, and every hit for the other two is a struct displacement in
 graphics code. The failure *paths* they describe do exist — host create failure at `0x93D578`, join
-failure at `0x93D52C` — but **both return to state 1 with no dialog at all.** Same dead-string
+failure at `0x93D52C` — but **both return to state 1 with no dialog of their own.** (Refined
+2026-07-28: the create *coroutine* can still raise its own dialog before that. A name-length refusal
+returns `-24` from the builder and `0x8CA178` routes it to **error 3845**, so that particular failure
+is visible even though the automatch state machine says nothing. What is silent is the state
+machine, not necessarily the whole path.) Same dead-string
 mechanism as the five clan sentences in `ERRORS.md` arm 29.
 
 ### The three silent failures, which is what will actually cost debugging time
