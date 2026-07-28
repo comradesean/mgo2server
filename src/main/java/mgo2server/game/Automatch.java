@@ -4,6 +4,7 @@ import io.netty.channel.Channel;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.Level;
 import mgo2server.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -143,6 +144,16 @@ public class Automatch {
 
 		public State state() {
 			return state;
+		}
+
+		/** The level the client will draw this searcher's window around. */
+		public int level() {
+			return Level.of(experience);
+		}
+
+		/** How long this searcher has been waiting. */
+		Duration waited() {
+			return Duration.between(joinedAt, Instant.now());
 		}
 
 		/** Stops this entry's close listener from firing once the entry is no longer in the queue. */
@@ -387,12 +398,27 @@ public class Automatch {
 	 * way a small server ever reaches the minimum.
 	 */
 	private void formMatches() {
-		var waiting = searchers.values().stream()
+		var queued = searchers.values().stream()
 			.filter(searcher -> searcher.state() == State.SEARCHING)
 			.filter(searcher -> searcher.channel().isActive())
 			.sorted(java.util.Comparator.comparing(Searcher::joinedAt))
 			.toList();
+		if (queued.size() < policy.minPlayers()) {
+			return;
+		}
+
+		// The longest-waiting searcher anchors the group, and everyone whose window TOUCHES theirs
+		// joins it. Touching, not containment: each searcher carries their own window that widens
+		// with their own wait, so a player who has waited ten minutes reaches out to a newcomer
+		// rather than both having to fit inside one shared band. That is also exactly what each
+		// client draws for itself.
+		var anchor = queued.get(0);
+		var waiting = queued.stream()
+			.filter(searcher -> windowsTouch(anchor, searcher))
+			.toList();
 		if (waiting.size() < policy.minPlayers()) {
+			logger.debug("{} searching but only {} within reach of level {} (band {}); waiting.",
+				queued.size(), waiting.size(), anchor.level(), band(anchor));
 			return;
 		}
 
@@ -543,6 +569,19 @@ public class Automatch {
 		channel.writeAndFlush(new GamePacket(command, buffer));
 	}
 
+	/** This searcher's half-width right now, which is also what we send them. */
+	public int band(Searcher searcher) {
+		return policy.bandAfter(searcher.waited());
+	}
+
+	/**
+	 * Whether two searchers can see each other: the gap between their levels is no wider than the
+	 * sum of the two half-widths.
+	 */
+	private boolean windowsTouch(Searcher a, Searcher b) {
+		return Math.abs(a.level() - b.level()) <= band(a) + band(b);
+	}
+
 	private void reap() {
 		var cutoff = Instant.now().minus(MAX_WAIT);
 		var dropped = new ArrayList<Long>();
@@ -587,10 +626,17 @@ public class Automatch {
 		if (searchers.isEmpty()) {
 			return;
 		}
-		// Both series are zero until matching lands and there is something real to count. An all-zero
-		// panel renders a flat graph, which is honest and cannot stall anything.
+		// One column per level, counted from the queue itself. The client draws A[i] + B[i], so a
+		// searcher sees the real shape of who is waiting near them.
 		var matching = new int[AutomatchPackets.COLUMNS];
 		var inGame = new int[AutomatchPackets.COLUMNS];
+		for (var searcher : searchers.values()) {
+			if (searcher.state() != State.SEARCHING || !searcher.channel().isActive()) {
+				continue;
+			}
+			var level = Math.min(Math.max(searcher.level(), 0), AutomatchPackets.COLUMNS - 1);
+			matching[level]++;
+		}
 		var needed = playersNeeded();
 
 		for (var searcher : searchers.values()) {
@@ -605,7 +651,9 @@ public class Automatch {
 				continue;
 			}
 			var buffer = channel.alloc().buffer(AutomatchPackets.SEARCH_PANEL_SIZE);
-			AutomatchPackets.writeSearchPanel(buffer, matching, inGame, 0, needed);
+			// The band is per recipient: it is that searcher's own window, so the lit range on their
+			// gauge widens visibly the longer they wait.
+			AutomatchPackets.writeSearchPanel(buffer, matching, inGame, band(searcher), needed);
 			channel.writeAndFlush(new GamePacket(AutomatchPackets.SEARCH_PANEL, buffer));
 		}
 	}

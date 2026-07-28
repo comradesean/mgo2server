@@ -148,9 +148,10 @@ public class AutomatchGameController implements IGameController {
 
 		var buffer = ctx.buffer(SUCCESS_SIZE);
 		buffer.writeInt(GameError.NONE.result())
-			// The level band. Zero until grouping exists to define one — the client lights only the
-			// player's own column, which is honest about a search that is not yet spanning levels.
-			.writeByte(0)
+			// The starting band — this searcher's own window, which widens with their wait and is
+			// re-sent on every 0x43e4. The client lights [myLevel - band, myLevel + band] around a
+			// centre it computes itself, so this is the literal truth about their search.
+			.writeByte(policy.bandAfter(java.time.Duration.ZERO))
 			.writeByte(automatch.playersNeeded());
 		ctx.write(new GamePacket(START_AUTOMATCH_RESULT, buffer));
 	}

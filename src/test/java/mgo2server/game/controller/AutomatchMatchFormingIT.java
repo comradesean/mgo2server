@@ -71,7 +71,11 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 	 */
 	private static final AutomatchPolicy ALWAYS_OPEN = new AutomatchPolicy(true,
 		List.of(new AutomatchPolicy.Window(LocalTime.MIN, LocalTime.MAX)), ZoneId.of("UTC"),
-		AutomatchPolicy.Mode.BOTH, 2, TICK, Set.of());
+		AutomatchPolicy.Mode.BOTH, 2, TICK, Set.of(),
+		// The widest band from the outset, so level never decides whether these tests match. Level
+		// windowing has its own coverage; here it would only make the outcome depend on whatever
+		// experience the fixtures happen to give a character.
+		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX);
 
 	/** Team Deathmatch, menu row 2. */
 	private static final int RULE_TDM = 1;
