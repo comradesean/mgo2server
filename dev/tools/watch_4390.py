@@ -21,7 +21,7 @@ By default every game-lobby container is followed at once and each hit is labell
 it came from, so a report cannot be missed by watching the wrong one.
 
 Requires the gamelobby at DEBUG (MGO2SERVER_LOG_LEVEL=DEBUG) so payloads are hex-dumped.
-Stop with Ctrl-C. Decoders are labels-as-of 2026-07-26; see the ksy for evidence status.
+Stop with Ctrl-C. Decoders are labels-as-of 2026-07-27; see the ksy for evidence status.
 Timestamps in filenames and log.txt are the container's local log clock, not UTC.
 A header whose payload cannot be recovered is reported and counted, never dropped quietly.
 """
@@ -60,39 +60,44 @@ A_FIELDS = [  # (offset, size, fmt, name) — fmt: B=u8, h=s16, H=u16, I=u32
     (0x13, 2, "h", "headshot_deaths"),
     (0x15, 2, "h", "headshots_stun"),
     (0x17, 2, "h", "headshots_stun_received"),
-    (0x19, 2, "h", "unknown_0x19"),
+    (0x19, 2, "h", "lockon_stuns_dealt"),
     (0x1B, 2, "h", "lockon_deaths"),
-    (0x1D, 2, "h", "unknown_0x1d"),
+    (0x1D, 2, "h", "lockon_stuns_received"),
     (0x1F, 2, "h", "round_completed"),
     (0x21, 2, "h", "flawless_win"),
-    (0x23, 2, "H", "team_slot"),
+    (0x23, 2, "H", "team_win"),
     (0x25, 2, "H", "seconds_in_game"),
     (0x27, 4, "I", "experience_total"),
     (0x2B, 4, "I", "detail_present"),
 ]
 
 B_NAMES = {
-    0: "consecutive_kills", 1: "consecutive_deaths", 2: "consecutive_headshots", 3: "suicides",
-    4: "self_stuns", 5: "friendly_kills", 6: "friendly_stuns", 7: "salutes",
-    8: "preset_radio_uses", 9: "text_chat_uses", 10: "cqc_given", 11: "cqc_taken",
+    0: "consecutive_kills", 1: "consecutive_deaths", 2: "consecutive_headshots",
+    3: "suicides", 4: "self_stuns", 5: "friendly_kills",
+    6: "friendly_stuns", 7: "salutes", 8: "preset_radio_uses",
+    9: "text_chat_uses", 10: "cqc_given", 11: "cqc_taken",
     12: "rolls", 13: "envg_time_s", 15: "catapult_uses",
-    16: "boosts_given", 17: "falling_deaths", 18: "triggered_trap", 19: "sop_scans",
-    20: "box_time_s", 21: "box_uses", 22: "melee_hits_dealt", 23: "melee_hits_taken",
-    24: "tdm_consecutive_survivals", 25: "bases_conquered", 26: "sop_destabilizer_uses",
-    27: "gako_saved", 28: "gako_defended", 29: "gako_pickups", 30: "fully_defended_matches",
-    34: "capture_goals", 35: "wakes", 36: "combo", 37: "assists",
-    40: "base_capture_time_points", 39: "kill_1st_place", 41: "rescue_carry_marker",
-    42: "rescue_carry_magnitude", 46: "capture_put_count",
+    16: "boosts_given", 17: "falling_deaths", 18: "triggered_trap",
+    19: "sop_scans", 20: "box_time_s", 21: "box_uses",
+    22: "melee_hits_dealt", 23: "melee_hits_taken", 24: "tdm_consecutive_survivals",
+    25: "bases_conquered", 26: "sop_destabilizer_uses", 27: "gako_saved",
+    28: "gako_defended", 29: "gako_pickups", 30: "fully_defended_matches",
+    31: "rescue_solo_team_wipe", 32: "tsne_spots_made", 33: "tsne_times_spotted",
+    34: "capture_goals", 35: "wakes", 36: "combo",
+    37: "assists", 39: "kill_1st_place", 40: "base_capture_time_points",
+    41: "rescue_carry_marker", 42: "rescue_carry_magnitude", 43: "tsne_first_pickup",
+    44: "tsne_carry_time", 45: "tsne_goals", 46: "capture_put_count",
     47: "sne_bodysearches", 48: "sne_dogtags_collected", 49: "wins_as_snake",
-    50: "holdup_count", 51: "snake_kills", 53: "times_spotted_snake",
-    54: "times_spotted_as_snake", 55: "first_to_spot_snake_per_life", 56: "rounds_as_snake",
+    50: "holdup_count", 51: "snake_kills", 52: "mk2_kills",
+    53: "times_spotted_snake", 54: "times_spotted_as_snake", 55: "first_to_spot_snake_per_life",
+    56: "rounds_as_snake", 57: "mk2_knockouts_dealt",
 }
 
 # Slots whose label is still [PREDICTED] in the ksy — printed with a trailing '?' so the
 # output never presents a hypothesis as a settled label.
-# Empty as of 2026-07-27: b09 text_chat_uses was confirmed live (three-player single-variable
-# round), and b45's `training_mode_time_s` name was withdrawn rather than confirmed — it is
-# now unnamed, so there is no label left to hedge.
+# Empty as of 2026-07-27: b09 text_chat_uses was confirmed live, and b45's
+# `training_mode_time_s` was not confirmed but REFUTED — the score table makes it a rule-7
+# scoring category, not a duration. Nothing else carries a bare hypothesis as its name.
 B_PREDICTED: set[int] = set()
 
 

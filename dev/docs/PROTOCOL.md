@@ -1723,11 +1723,29 @@ trailing word each log a WARN with payload hex — if either fires, these truths
 round end and on kick teardown. **Confirmed against a live client 2026-07-22** — this build sends
 **167-byte** reports, and two rounds of captures pinned the fields against known ground truth:
 
+**TRACED END TO END, 2026-07-27.** The caveat that used to sit here — "the positions are read
+from the binary, the labels are not" — no longer applies: the gameplay writers have now been
+found, and `dev/proto/mgo2_cmd_4390.ksy` is the authority for every field. What changed:
+
+- **The frame's source is one 152-byte per-player blob** of 76 u16 counters (index `n`), live at
+  blob `+0x1a + 2n`, baseline at `+0xb2 + 2n`, blob base `0x1610568 + slot*0x510`. Struct A
+  carries n00..n15, struct B carries n17..n74 **through a permutation**. The serializer
+  `0xD42178` is dumb; the semantics live in its only caller `0x27D5B0`.
+- **Gameplay bumps counters through a wrapper `0x6A9758(base, key, len, u16)`** whose key is a
+  constant one frame up — which is why earlier constant-key sweeps of the record API found
+  nothing. Every bump computes `min(v+1, 0xFFFF)`: **counters SATURATE, they do not wrap.**
+- **`0x19`/`0x1d` are lock-on stuns dealt/received** (handler `0x6EDC90`, `hitClass==2`; the
+  enum is pinned by four already-confirmed labels). The "rounds played" guess on `0x1d` is dead.
+- **`0x23` is a TEAM WIN flag, not a team slot index** — see its row below.
+- **`0xa3` is a hardcoded zero** (`li r7, 0` at the sole call site). Closed.
+- **The score is not a bank**: `ComputeScore` (`0x6FA408`) recomputes it every tick from the
+  other counters and `0x71B470` clamps to [0, 65535].
+- **Five struct-B slots are Team Sneaking** (rule 7, named from the UI jump table at `0x9C2864`),
+  which is why they read 0 across the whole archive.
+- **b14 has no writer anywhere** — permanently zero on this build, not merely unexercised.
+
 The full 167-byte frame, from the ELF builder `0xD42178` (the `statB`-present path, cross-checked
-against the three live-pinned offsets). The counter *positions* are read from the binary; their
-*labels* (which u16 is kills vs deaths vs score) are **not** — that needs tracing where the stat
-structs are incremented during gameplay, which has not been done, so the block is documented as
-structure, not meaning.
+against the three live-pinned offsets):
 
 | offset | size | type | meaning | confidence |
 | --- | --- | --- | --- | --- |
@@ -1743,16 +1761,17 @@ structure, not meaning.
 | `0x13` | 2 | s16 | **headshot deaths** — across three rounds (two TDM, one Rescue) it exactly equalled the enemy's headshot count (5/5/1); strong, but a 3+ player match would make it airtight | medium-high |
 | `0x15` | 2 | s16 | **stun headshots dealt** (non-lethal headshots — tranq darts to the head): 5/2/1 in the dart-headshot rounds, **0 in a 3-body-dart-stun round** (2026-07-24, the discriminator — so it is the hit location, not the weapon class; the interim "ranged/tranq knockouts dealt" label was wrong). The screen's HEADSHOTS row = `0x11` + this, both ·2. (An earlier OBSERVED.md note claimed this stayed 0 on the dealer; the wire falsified that too) | live-confirmed |
 | `0x17` | 2 | s16 | **stun headshots received** — mirror of `0x15`: 2 on the dart-headshot victim, 0 on the body-dart victim (whose `0x0f` still counted 3), 0 in melee-slam rounds. The sleep-stab round's 1 suggests the neck syringe counts as one (or that round had an unnoticed dart headshot) | live-confirmed |
-| `0x19` | 2 | s16 | zero in every observed round | — |
+| `0x19` | 2 | s16 | **lock-on stuns dealt** — live n10. Stun handler `0x6EDC90` switches on a hit-class arg: `==1` writes the confirmed stun-headshot pair, `==2` writes this and `0x1d`. The same enum in the kill handler `0x6EEAF0` selects headshot vs lock-on, so four confirmed labels pin it. 0/517 archived (no round combined a lock-on with a stun weapon) | ELF-traced |
 | `0x1b` | 2 | s16 | **deaths to lock-on** — received mirror of `0x09`, as `0x13` mirrors `0x11` (3 in the lock-on round, zero elsewhere) | live-confirmed |
-| `0x1d` | 2 | s16 | rounds played? — **never observed nonzero across 9 live reports 2026-07-23**; the capture-era label is doubtful | low |
+| `0x1d` | 2 | s16 | **lock-on stuns received** — live n12, the victim side of `0x19`, same handler. **Retires the capture-era "rounds played" label**, which was already implausible: a once-per-round counter would wire 1 in every report under delta semantics, not 0 in all 517 | ELF-traced |
 | `0x1f` | 2 | s16 | 1 for every player of a normally-completed round, 0 in mid-game teardown reports — "round completed" | medium |
 | `0x21` | 2 | s16 | **zero-death round flag, mode-scoped condition**: TDM/DM = did not lose AND died zero times (won-but-died-twice 0; survive-but-lose 0; draws flag both zero-death players); **Rescue, Base and Capture = simply died zero times** (10/10 incl. losing-team survivors). Refits every prior anomaly | live-confirmed |
-| `0x23` | 4 | 2 × u16 | **two fields, not one u32** (decoded 2026-07-23 late): hi u16 = **team slot index** (0/1; constant per player per game, 0 for everyone in DM, grouped killers correctly in a 3-player TDM — the "garbage seconds" were this bit); lo u16 = **seconds in game/round** (equal for both players of a fully-played round) | live-confirmed |
-| `0x27` | 4 | u32 | **experience, absolute total** | live-pinned |
+| `0x23` | 2 | u16 | **TEAM WIN flag — CORRECTED 2026-07-27, previously "team slot index"**. Live n15, an ordinary delta. It is column 5 of the score table, worth **5 in Rescue/Capture/Sneaking/Base/TSNE** and 0 in DM/TDM — the wire source for the "TEAM WIN ×5" category every mode table already listed. The old reading is refuted twice: a slot index is constant per player per game, but this flips 50/22/32 times for ch1/ch2/ch3 over 239 rounds, and in the 105 rounds where players disagree the top scorer holds the 1 in **96 cases against 5**. Both readings predict 0 in DM (no teams), which is how the old one survived | ELF + archive |
+| `0x25` | 2 | u16 | **seconds in game/round** — not a counter: elapsed ms from `0x26DE10` divided by 1000 at send time (`0x27D80C`..`0x27D828`) | live-confirmed |
+| `0x27` | 4 | u32 | **experience, absolute total** — but a **zero-extended u16** from blob key `0x164`, so the top two bytes are structurally 0 and the value wraps at 65535 (archive max already 49900). Read straight through, no baseline subtraction | ELF-traced |
 | `0x2b` | 4 | u32 | extra-block flag/count (1 when the detail block is present) | high |
 | `0x2f` | 116 | 58 × s16 | detailed stat block (struct B) — an itemised event breakdown, **not** the scoreboard categories, which live in struct A above. Partially mapped by the 2026-07-23 single-variable rounds (OBSERVED.md, "The OTHER-field experiment"); slot table below | positions high, labels per slot |
-| `0xa3` | 4 | u32 | trailing value | low |
+| `0xa3` | 4 | u32 | **hardcoded zero — closed 2026-07-27.** The serializer emits it from arg5; the sole call site in the binary passes `li r7, 0` (`0x27DC44`). No data path exists behind it. The WARN-if-nonzero tripwire can stay as a mis-parse guard, but it cannot fire from this client | ELF-traced |
 
 **The running-max family (cracked 2026-07-24 against 66 stored reports + the server's own stage
 rotation log).** Several B slots are not per-round counts. The client keeps a **per-stage
@@ -1801,6 +1820,37 @@ no-duplicates rule, "matched X" means exact correlation in N/N observed rounds, 
 | B37 | **= assists, screen-confirmed ·3** (2026-07-24): screen ASSIST row 3×3 with B37=3 on the wire, total exact; previous round's B37=2 (two tranq setups before teammate kills) decomposes its score exactly at ·3 too. Stun-setups earn it; two pure health-damage setups earned nothing (B37=0, score 0) — damage alone may not qualify | **assists** |
 | B39 | matched the KILL 1ST PC screen line 4/4 (incl. a 0) | **kill-1st-place count** |
 
+**Slots named 2026-07-27 by finding their gameplay writers** (all previously `[UNKNOWN]`, all
+0/517 on the wire — which turned out to mean "the mode was never played" or, for B14, "no writer
+exists"). Full evidence per slot in the `.ksy`:
+
+| slot | writer evidence | reading |
+| --- | --- | --- |
+| B14 | **no writer anywhere** — exhaustive sweep of all 152 `bl 0x6a9758` bump sites finds none targeting key `0x58` | **permanently zero on this build.** Not "unexercised" — impossible. The old "dedicated host time" label was already falsified live; the slot 15 label on the stats screen genuinely *is* "Time as Dedicated Host", but nothing on this wire feeds it |
+| B31 | round-end award code, else-branch of B30 fully_defended | **Rescue solo team wipe** — every member of a losing team of 4+ last killed by the same player |
+| B32 / B33 | `0x6FB8A0(spotter, spotted)`, keys `0x8c`/`0x8e`, reached from the melee/spot handler `0x6ED088` under `cmpwi 7`; the sibling arm is the Snake-spotting writer of B53/B54 | **Team Sneaking spot / spotted pair** — the TSNE twins of B53/B54. B32 scores ×3; B33 scores nothing |
+| B38 | one writer, guarded only by a per-mode flag, inside a script-bound listener with no caller, no string and no notifier id | **mechanism found, event NOT named.** Needs the GCX layer or a live watchpoint. Deliberately left unnamed |
+| B43 | `0x706BB8` key `0x90` at `0x706E90` under `cmpwi 7`, against the mode-2 arm's key `0x88` = B41 | **TSNE first pickup**, ×5 |
+| B44 | `0x7070CC`/`0x707174`/`0x708584`/`0x70862C` key `0x92`, quantum `0x1770` = 6000 | **TSNE carry time**, in 2-second ticks. Scores nothing |
+| B45 | `0x706A10` key `0x94` at `0x706BAC` under `cmpwi 7`, against the mode-2 arm's key `0x7e` = B27 gako_saved | **TSNE goal delivered**, ×3. **Kills the `training_mode_time_s` label** — it is a per-goal count, not a duration |
+| B52 / B57 | same role-tested path as B51 snake_kills, different role byte | **kills of / knockouts dealt while holding the second Sneaking special unit.** Mechanism confirmed; the Mk.II identity is `[PREDICTED]` from the ×4 score column matching the screen's `MK.II KILL ×4`, the `%d Mk.II destructions` award family and the `MK2_SKILL` string |
+
+**Rule 7 is Team Sneaking**, read from the UI's rule-name jump table at `0x9C2864` (cases land on
+`Rule_Eng_DM`/`_TDM`/`_RESCUE`/`_CAP`/`_SNEAK`/`_BASE`/`_TSNE`/`_COOP`), which also gives
+2 = Rescue — independently corroborated by the mode-2 branch writing B27.
+
+**Two Rescue slots gained mechanisms in the same pass.** The "objective picked up" method
+`0x706BB8` keeps a per-round latch (bit `0x100` of `[this+0x668]`): the **first** grab bumps B41,
+and once latched every later grab bumps B29 instead. So **B41 = first grab, B29 = subsequent
+grabs** — they partition pickups rather than duplicating them, which is the mechanism behind the
+old "per-carry-run marker candidate" guess. And **B42's units are 2-second ticks, not seconds**
+(quantum 6000 against the 3000-per-second used by the confirmed durations B13/B20/B40), so the
+archived 7 and 21 are **14 s and 42 s**.
+
+**The SNE dogtag scoring question is answered**: both of the pair feed it, at different rates —
+**B47 ×3 and B48 ×5** in Sneaking. The old note expected to settle this with a round where the
+two differ; the score table settles it without one.
+
 **Formula scope (2026-07-24):** the formula below is confirmed for **TDM and DM only**;
 each mode retunes multipliers over shared categories. **Sneaking's table is named but not
 fully decomposed** (screens + partial wire confirmation): `DOGTAG SCORE×1 (per-tag values
@@ -1830,14 +1880,30 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 
 `kills·3 − deaths·2 + (headshots 0x11+0x15)·2 + hacking·5 + assist(B37)·3 + stun·M + wake(B35)·2 + other(B36)·1`
 
-> **Not settled after all — a deduction for BEING stunned is missing (2026-07-26).** The
-> formula is exact for every round in which the scorer was not knocked out, but frame 319
-> (stuns dealt 2, stun headshots 2, `0x0F` received 1, B4 self-stun 1) predicts 8 and wires
-> **4**. `− received·2 − B4·2` fits that frame exactly and contradicts nothing archived, but
-> its partner frame 320 (received 2, dealt 0) wires −2 where the term predicts a raw −4,
-> reconcilable only via the clamp-at-0 store, which was not independently checked. Treat the
-> deduction coefficients as an open hypothesis. Settling round: one player stunned, zero
-> self-stuns, nothing else scored.
+> **SETTLED 2026-07-27 — the table itself was found, and the formula above is superseded.**
+> `ComputeScore(rule, playerSlot)` at `0x6FA408` walks a **37-column × 11-row table of s8
+> coefficients** (row = game rule, `mulli r25,r3,37` at `0x6FA448`; a jump table at `0x6FA4C4`
+> maps each column to the live counter it reads). The table is **not static in the ELF** — its
+> base is `*(0xFDE2AC) = 0x1659F24` in `.bss`, filled at runtime by the GCX native command at
+> `0x6FA1B8` from `-rule N -score <37 ints>` directives in the stage script. The values were
+> read off the disc (`o/stage/n002a|n003a|n004a/scenerio.gcx`, `proc23`) and are byte-identical
+> across stages. Rows: 0 DM, 1 TDM, 2 Rescue, 3 Capture, 4 Sneaking, 5 Base, 7 Team Sneaking;
+> rules 6, 8, 9, 10 are never emitted and score nothing.
+>
+> **The missing stun deduction exists, and the guess was half right.** The term is on
+> `knockouts_received` — **−2 in DM, −1 in TDM, −1 in Sneaking, 0 elsewhere** — and **B4
+> self-stuns have NO coefficient in any row**, so that half is refuted. Frame 319 needs no
+> extra term: TDM raw = 2·2 + 2·2 − 1 = 7, wired 4 because the clamped total was at its floor.
+> **165 of 172 nonzero-score frames in the archive reproduce exactly**; the residuals are clamp
+> effects and the off-wire OTHER column.
+>
+> **The OTHER row is not reconstructable from the wire.** Column 36 reads live **n75**, which
+> the 0x4390 frame does not serialise anywhere, and pays ×1 in Rescue, Capture and Team
+> Sneaking. Every attempt to decompose OTHER as "B36 + knockouts-received + mode extras" was
+> fitting around a counter that is not present. B42, long suspected of feeding the Rescue OTHER
+> row, has a coefficient of **zero in every rule**.
+>
+> Full coefficient table: `dev/proto/mgo2_cmd_4390.ksy` header doc.
 
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
@@ -1860,13 +1926,26 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
   real, resolving the capture-era ambiguity. **A successful hack also credits an assist** (B37
   ticked 3 alongside B19=3 in a 1v1 round with no teammate to earn them otherwise).
 
-**The wire score is the delta of a clamped store whose bank resets per game or per stage** (see
-the `0x0b` row): a losing round wires 0 with nothing banked in the current scope, a true negative
-with a same-scope bank (a −10 round on a +7 bank wires −7). **Suicide-class deaths deduct −2 like
-any death** (settled 2026-07-24, catapult-fall decomposition). No round-win bonus exists. Each report is one round for one player; a kill-less round sends
-the frame with these slots zero. When stat struct B is absent the builder emits a **short
-~51-byte** form (`u32=0` at `0x2b`, then the trailing word). Counters are u32 values truncated
-to u16 on the wire, so any above 65535 wrap.
+**The wire score is the delta of live n03, and n03 is NOT an accumulator** (corrected
+2026-07-27; the "banked store, resets per game or per stage?" question was malformed and is
+retired). `ComputeScore` recomputes the whole score from the player's other live counters each
+tick, and `0x71B470` clamps it to **[0, 65535]** at `0x71B510`..`0x71B534` before the single
+store into n03 — the only write to that field in the binary. A negative on the wire therefore
+means the recomputed clamped total came out below where it stood at the last baseline, not that
+a bank absorbed a loss. **Suicide-class deaths deduct −2 like any death** (settled 2026-07-24,
+catapult-fall decomposition). No round-win bonus exists in DM/TDM; the other five rules pay 5 for
+a team win via `0x23`.
+
+Each report is one round for one player; a kill-less round sends the frame with these slots zero.
+A **short 51-byte** form exists in the serializer (selected by a NULL struct-B pointer at
+`0xD42400`), but it is **unreachable from the only caller**, which always passes a stack address
+— 517/517 archived frames are the 167-byte long form. Parse it, never expect it.
+
+**Counters saturate, they do not wrap.** Every gameplay bump goes through `0x6A9758` and computes
+`min(v+1, 0xFFFF)`, so the previous note here ("u32 values truncated to u16, so any above 65535
+wrap") is wrong: a wrapped low word is not a possible wire value. The wire value is
+`(s16)(u16)(live − baseline)` over zero-extending loads, so a counter that goes *down* still
+wires negative.
 
 **What we consume (since 2026-07-23):** experience is applied to the account pool (main/alt
 split) with the aborted-dock policy, and the **whole decoded frame is stored as one

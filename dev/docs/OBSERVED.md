@@ -3293,3 +3293,76 @@ The client fetches `help/<category>_<id>.txt` over HTTP and parses exactly two t
 `page-breaks + 1`, parsed from the document — so serving one page per file yields a single page
 with no counter and no L1/R1, which was the symptom. The caption is chosen by category alone, so
 the server cannot change the word "TIPS"; only the title node is ours.
+
+## The 0x4390 frame traced end to end — 2026-07-27
+
+Five parallel ELF/disc passes closed the command. Field-by-field evidence lives in
+`dev/proto/mgo2_cmd_4390.ksy`; the narrative and the score table are in `PROTOCOL.md`. What
+follows is what *changed*, including the readings that turned out to be wrong.
+
+**The storage model.** The frame is built by a dumb serializer at `0xD42178` — 58 identical
+`lwz`/`sth`/`put_u16` triples, no logic — whose single caller `0x27D5B0` holds every semantic
+decision. Both structs are views of one 152-byte per-player blob of 76 u16 counters (index `n`),
+live at blob `+0x1a + 2n`, baseline at `+0xb2 + 2n`, base `0x1610568 + slot*0x510`. Struct A
+carries n00..n15, struct B carries n17..n74 **through a permutation**. n16 is dead at both ends;
+**n75 is alive but never transmitted** — it is the result screen's OTHER row.
+
+**Why the writers were hard to find, and the correction that unblocked them.** The first pass
+concluded the counters were bumped by direct stores, because a sweep of constant keys at the
+record-API call site found only the whole-block zero and two running-max updates. That was half
+wrong. Gameplay reaches the blob through a thin wrapper `0x6A9758(base, key, len, u16)`; the
+constant key is one frame up, at the `bl 0x6a9758` site. Enumerating all 152 of those sites is
+what named the remaining slots. **Every bump computes `min(v+1, 0xFFFF)` — counters saturate,
+they do not wrap**, so PROTOCOL.md's old "any above 65535 wrap" was wrong.
+
+**Readings that were wrong and are now corrected:**
+
+- **`0x23` was never a team slot index.** It is a **team win flag** — column 5 of the score table,
+  worth 5 in Rescue/Capture/Sneaking/Base/TSNE, the long-missing wire source for the "TEAM WIN ×5"
+  category. A slot index is constant per player per game; this flips 50/22/32 times for ch1/ch2/ch3
+  across 239 archived rounds, and where players disagree the round's top scorer holds the 1 in
+  **96 cases against 5**. Both readings predict 0 in DM, which is how the wrong one survived.
+  *The server's `round_report.team_slot` column still carries the old name and now stores a win
+  flag under it.*
+- **B45 was not `training_mode_time_s`.** It is the Team Sneaking goal-delivered count. The trap
+  was well set: slot 46 on the stats screen genuinely IS one of exactly six time-formatted slots
+  (14, 15, 21, 46, 47, 48), so every check short of finding the writer would have confirmed it.
+  Fifth failure of the "B-index = slot − 1" rule in that region.
+- **The score is not a banked store.** It is recomputed every tick by `ComputeScore` (`0x6FA408`)
+  and clamped to [0, 65535] by `0x71B470`. "Does the bank reset per game or per stage?" was a
+  malformed question and is retired.
+- **The missing stun deduction was half guessed correctly.** It is on `knockouts_received`
+  (−2 DM, −1 TDM, −1 SNE) and **B4 self-stuns have no coefficient at all**.
+- **The OTHER row cannot be reconstructed from the wire** — it is n75, which the frame omits.
+  Years of fitting it to B36 + knockouts-received + "mode extras" were fitting around an absent
+  counter. B42, the prime suspect for Rescue's OTHER, scores zero in every rule.
+- **A blanket "exclude round_completed=0 frames" rule was wrong for counters.** Right for role
+  fields, wrong for everything else — and it was manufacturing the anomalies this file recorded as
+  unexplained. Frame 058's "unexplained residual" was simply frame 056, an excluded teardown
+  report from the dealer one second earlier. Including teardown frames takes four separate
+  conservation laws to exact (deaths 97/98 → 100/100, headshot deaths 85/86 → 86/86, b53/b54
+  23/23 → 25/25, knockouts 25/26 → 26/26).
+- **The dealt/received pairs are round-level conservation laws, not pairwise mirrors.** Pairwise
+  they hold only in 1v1 (5/14 in three-player rounds). The knockout law needed a third term
+  nobody had noticed: `Σreceived == Σdealt + Σb04 + Σb06`, where b06 is friendly stuns.
+
+**A hypothesis raised and killed the same day.** The struct-B permutation looked like the
+explanation for the slot-rule exceptions at b35/b46/b47/b48 — wire order vs storage order. Tracing
+the 0x4107 parser `0xD3DB1C` killed it: that record follows the same slot order as struct B for
+slots 1..63, and its only permutation is above slot 63 (wire 64 → mem 71, 65 → mem 72,
+66..73 → mem 63..70, confirmed live because Knife Kills is drawn from `rec+0x11C`). The two
+permutations never interact. **The exceptions are genuine and still unexplained.**
+
+**Five slots are Team Sneaking, which is why they read 0 across the whole archive.** Rule 7 is
+identified from the UI's rule-name jump table at `0x9C2864`, and each slot's writer sits in a
+`cmpwi 7` branch whose sibling `cmpwi 2` arm writes a confirmed Rescue slot: B45/B27 goal,
+B43/B41 first pickup, B44/B42 carry time, B32/B53 and B33/B54 the spot pair. Nothing was wrong
+with these slots — the mode had simply never been played.
+
+**One slot is provably inert.** B14 has no writer anywhere in the binary. That is a stronger
+statement than "never observed nonzero", and it is the only slot in the frame that earns it.
+
+**Still open:** B38 (writer found, but it is a script-bound listener with no caller, no string and
+no notifier id — naming it needs the GCX layer or a live watchpoint); the b35/b46/b47/b48
+slot-rule exceptions; and the `experience_total` anomaly, now known to be a **u16** (blob key
+`0x164`, writers at `0x276340`/`0x2780BC`) that will wrap — the archive maximum is already 49900.
