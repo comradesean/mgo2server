@@ -1947,6 +1947,21 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 > Worked example, live DM round 2026-07-27 (game 226, chara 1): 5 kills, 2 lethal headshots,
 > B36 = 10, B39 = 1, no deaths or knockouts → `5·3 + 2·2 + 10·1 + 1·5 = 34`, wire score **34**.
 > The same round's loser wired **0** against a raw −10 (5 deaths, nothing banked) — the clamp.
+>
+> **Decompose against CUMULATIVE counters, not round counters (live-confirmed 2026-07-27).**
+> `ComputeScore` reads the LIVE counters, which accumulate across the whole game — only the
+> baseline is rewritten per report. So the wire score is
+> `clamp(ComputeScore(cumulative)) − clamp(ComputeScore(as of last report))`, and a per-round
+> decomposition is right only for a game's first round. Base game 229 round 2, a player with
+> 3 kills, 3 headshots, 1 team-kill, 2 captures, capture-time 8, who had also team-killed in
+> round 1: per-round (B05 = 1) predicts `3·3 + 1·5 − 1·5 + 2·5 + 8·1 = 27`; cumulative
+> (B05 = 2) predicts **22**, and the wire says 22. Round 1 wired 0 from a raw −5 clamped at 0,
+> so the delta is 22 − 0. The other two players in that round reproduce identically
+> (`1·5 + 1·5 + 4·1 = 14`, wire 14; and all-zero, wire 0).
+>
+> That round also **confirms the friendly-kill −5** — the two readings differ by exactly one
+> application of it — and shows **headshots scoring nothing in Base** (column 4 is 0 for
+> rule 5; three headshots contributed zero).
 
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the

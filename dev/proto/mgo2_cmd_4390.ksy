@@ -62,6 +62,25 @@ doc: |
   (n03 now − n03 at baseline), which is why a round that lowers a previously-clamped total
   can wire a negative.
 
+  **DECOMPOSE AGAINST CUMULATIVE COUNTERS, NOT ROUND COUNTERS — live-confirmed 2026-07-27.**
+  The inputs `ComputeScore` reads are the LIVE counters, which accumulate across the whole
+  game; only the baseline is rewritten per report. So
+
+      wire score = clamp(ComputeScore(cumulative counters))
+                 − clamp(ComputeScore(counters as of the last report))
+
+  and a per-round decomposition is correct ONLY for a game's first round, where cumulative
+  equals round. This is not a subtlety that can be skipped: it is what made the friendly-kill
+  penalty finally visible. Worked example, Base game 229 round 2 — a player with 3 kills,
+  3 headshots, 1 team-kill, 2 captures and capture-time 8, who had already team-killed once in
+  round 1:
+
+      per-round  (b05 = 1):  3*3 + 1*5 − 1*5 + 2*5 + 8*1  =  27    wire 22   WRONG
+      cumulative (b05 = 2):  3*3 + 1*5 − 2*5 + 2*5 + 8*1  =  22    wire 22   exact
+
+  Round 1 had wired 0 from a raw −5 clamped at 0, so the delta is 22 − 0. Both other players
+  in the same round reproduce exactly the same way.
+
   SCORE FORMULA — the actual table (ELF + disc, 2026-07-27). `ComputeScore` walks a
   37-column x 11-row table of s8 coefficients, row = game rule (`mulli r25,r3,37` at
   `0x6FA448`), with a jump table at `0x6FA4C4` mapping each column to the live counter it
@@ -553,15 +572,21 @@ types:
           0. So a team-killer is penalised in the objective modes and merely uncredited in the
           deathmatch modes.
 
-          THE PENALTY IS STILL NOT DIRECTLY OBSERVED, and the reason is instructive. A Base
-          round was played on 2026-07-27 specifically to see it: the team-killer wired b05 = 1,
-          kills 0 (friendly kills do not count as kills — confirmed again), and a score of **0**.
-          Raw would be −5, and the clamp at 0 swallowed it, so 0 is equally consistent with a
-          coefficient of −5 and one of 0. Consistent, not confirming.
+          **THE −5 IS LIVE-CONFIRMED (2026-07-27), on the second attempt.** The first Base round
+          could not show it: the team-killer wired b05 = 1, kills 0 and a score of 0, because
+          raw −5 clamps to 0 and 0 is equally consistent with a coefficient of zero. The
+          second round put him in credit — 3 kills, 2 captures, capture-time 8, one team-kill —
+          and the arithmetic only closes with the penalty applied twice, once for each round's
+          team-kill, against his CUMULATIVE b05 of 2:
 
-          To actually see it the killer must bank enough to stay positive: capture one base and
-          team-kill once in the same round, and the score should read `5*5 − 5 = 20` instead of
-          25. Any round where the team-killer would otherwise score zero cannot show it.
+              3*3 + 1*5 − 2*5 + 2*5 + 8*1 = 22, wire 22.   (b05 = 1 gives 27; wire says 22)
+
+          So the penalty is real, it is −5, and it applies per friendly kill. Note this doubles
+          as the confirmation of the cumulative-counter model — see the header — since the two
+          readings differ by exactly one application of this coefficient.
+
+          Friendly kills again did NOT count as kills in the same report (kills 3 against three
+          enemy kills, with the team-kill excluded).
       - id: friendly_stuns
         type: s2
         doc: "slot 7. [CONFIRMED] friendly stuns (FF round: 2/2). Not counted in A knockouts_dealt; score-neutral."

@@ -3518,3 +3518,36 @@ b38's chain reproduces instruction for instruction: `cmpwi 0xbf` at `0x7787DC`, 
 `bl 0x6ef930(slot,slot,0,0)` at `0x778D0C`, `li r3,8; bl 0x6ed650` at `0x778D18`/`0x778D20`; the
 arm at `0x6ED9B8` consults `0x6A9948` bit `0x4`, `li r4,0x72` at `0x6EDA00` with a matching
 `lhz r9,0x58(r3)`, then `b 0x6ed760` into `bl 0x6a9758` at `0x6ED784`.
+
+## The friendly-kill penalty and the cumulative-score model, in one round — 2026-07-27
+
+A three-player Base round (game 229, round 2) engineered to beat the clamp: sean team-killed rawr
+once, killed poop three times, and captured two points. All three reports reproduce exactly, and
+the round settles two open questions at once because the two candidate models differ by precisely
+one application of the disputed coefficient.
+
+**Decompose against CUMULATIVE counters, not round counters.** `ComputeScore` reads the LIVE
+counters, which accumulate across the whole game — only the baseline is rewritten per report. So
+
+    wire = clamp(ComputeScore(cumulative)) − clamp(ComputeScore(as of the last report))
+
+and a per-round decomposition is correct only for a game's first round. Sean had already
+team-killed once in round 1, so his cumulative b05 was 2, not the 1 on the wire:
+
+    per-round  (b05 = 1):  3*3 + 1*5 − 1*5 + 2*5 + 8*1 = 27     wire 22   wrong
+    cumulative (b05 = 2):  3*3 + 1*5 − 2*5 + 2*5 + 8*1 = 22     wire 22   exact
+
+Round 1 wired 0 from a raw −5 clamped at 0, so the round-2 delta is 22 − 0 = 22. Rawr reproduces
+the same way (`team_win 1*5 + b25 1*5 + b40 4*1 = 14`, wire 14) and poop, with three deaths and
+nothing else, wires 0 — deaths score nothing in Base.
+
+**The friendly-kill −5 is therefore live-confirmed**, after escaping three earlier rounds. Every
+previous attempt had the killer at or below zero, where the clamp makes −5 and 0 indistinguishable.
+The fix was to put him in credit: two captures and three kills kept the total positive, so the
+deduction had somewhere to show. That is the general lesson for any negative coefficient in this
+game — **a deduction can only be observed by a player who stays positive**, and engineering that is
+part of designing the round.
+
+**Also confirmed:** headshots score nothing in Base (three headshots contributed zero, matching
+column 4 = 0 for rule 5); friendly kills again do not count in A kills (3 enemy kills wired 3);
+and the streak-record slots b00/b02 contributed nothing, as expected for slots with no column.
