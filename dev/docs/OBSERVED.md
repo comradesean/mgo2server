@@ -3366,3 +3366,52 @@ statement than "never observed nonzero", and it is the only slot in the frame th
 no notifier id — naming it needs the GCX layer or a live watchpoint); the b35/b46/b47/b48
 slot-rule exceptions; and the `experience_total` anomaly, now known to be a **u16** (blob key
 `0x164`, writers at `0x276340`/`0x2780BC`) that will wrap — the archive maximum is already 49900.
+
+## A confident negative about b14 was overstated — 2026-07-27, later
+
+The 0x4390 write-up above published b14 (live n31, blob key `0x58`) as **structurally incapable of
+ever being nonzero**: an exhaustive sweep of all 152 `bl 0x6a9758` bump sites had found no site
+carrying `li r4, 0x58`, and the conclusion drawn was "no experiment will ever move it; treat as a
+permanent zero". That went further than the evidence supported, and it is retracted pending a
+re-audit.
+
+**What broke it.** Chasing b38 through the GCX layer found that its supposed sole writer — a
+"script-bound listener with no caller" — is **dead code**: the block at `0x6EC250`..`0x6ECA98` has
+a descriptor (`0x1014868`) absent from the native-command registry, its byte pattern occurs nowhere
+in the 17 MB binary at any alignment, and no branch targets it. The real writer is **event 8 of a
+host-only player-event dispatcher `0x6ED650`**, storing key `0x72` at `0x6ED784` from a `li r4,114`
+at `0x6EDA00`.
+
+The dispatcher routes ~15 events through **one shared increment tail** at `0x6ED760`. That is
+fatal to the method the sweep used: recovering a key by scanning backwards for the nearest
+preceding `li r4, KEY` cannot distinguish keys that converge on a single store, and it
+demonstrably missed `0x72` entirely. A method that missed one key can have missed `0x58`, and the
+dispatcher's higher event ids are precisely where a lone writer would sit unseen.
+
+**The rule this violated is already written down** in CLAUDE.md: *an elimination is only valid if
+you can state the observation that would have confirmed it, and check that the experiment actually
+produced that observation.* The sweep's confirming observation would have been "a site carrying
+`li r4, 0x58`" — but the search could not reliably produce that observation for any key behind a
+shared tail, so its absence proved nothing. The negative was accepted because the sweep was
+described as exhaustive over call sites, which it was; exhaustive over call sites is not the same
+as sound about keys.
+
+Both "no writer" negatives — b14 (`0x58`) and the unwired n16 (`0x3a`) — are therefore back to
+[UNKNOWN] until each `bl 0x6a9758` key is re-derived by following control flow into the call.
+Nothing else from that pass is affected: the slots named by mode-guarded twin branches
+(`cmpwi 2` Rescue against `cmpwi 7` Team Sneaking) were each read from their own branch, not from
+a shared tail.
+
+**b38 itself came out well.** It is host-side, fires on a self-inflicted death in player state 191
+(sole raiser `0x778D20`, preceded by a kill whose victim is the killer, on the `player->[0x90] ==
+191` branch of the death-cause classifier `0x778380`), and is gated on bit `0x4` of the round flags
+byte the host pushes in `0x4310`. State 191 and bit `0x4` are attached to no string, hash, error
+code or script token anywhere, so it stays deliberately unnamed. Falsifiable prediction: b38 and
+b03 (suicides) must move together on the same player in the same report.
+
+**Also settled, exhaustively:** the score table's missing rows do not exist. Only five stages carry
+real scripts (n002a, n003a, n004a, n007a, n012a — r_sneak_n and r_sna01_n are stubs with a single
+print statement), each emits exactly seven `command [35706d]` blocks, and the seven rows are
+byte-identical across all five. No hidden BASE variant behind rule 6, no COOP table behind rule 8.
+And the GCX layer binds no stat keys at all — the only stat-adjacent directive in any `.gcl` is
+`-rule/-score`, so "targets captured" is not named there either.
