@@ -126,6 +126,11 @@ u8  band          ; level half-width, clamped [0,22] — the lit window on the g
 u8  playersNeeded ; nonzero → printed via string 917 "%d"; zero → string 48
 ```
 
+**`playersNeeded` confirmed live 2026-07-28.** A search with one player queued and `MIN_PLAYERS = 2`
+sent `0x01` in this byte, and the client displayed **"Players Needed: 1"**. Until then the field was
+an inference from crossing the ELF read at `0x93D7A8` against disc strings 916/917; it is now
+observed. The `band` byte is still inference only — nothing has yet sent a nonzero one.
+
 Result 0 does two things nothing else does: it sets the **loaded flag** (§4) and it **registers push
 channel 60**. Anything pushed before that is parsed into memory and dropped.
 
@@ -196,12 +201,57 @@ u8  rotationIdx
 live game object and was wrong. If it names you, you go to state 12 and create the game. If it does
 not, you park at state 18 and wait. Get it wrong and either nobody hosts or two clients do.
 
-The 204-byte block is the same one the lobby and game-list parsers use — `0xD4364C` has 9 callers.
-Note that `PROTOCOL.md` calls this block **159 bytes** (under `0x4905`, and used by `0x4313`); an
-itemised trace of every read in `0xD4364C..0xD43BF4` totals **204**, corroborated by two
-`memcpy(…, 204)` sites at `0x93D398` and `0xD5B810`. **Unresolved, and out of scope here** — our
-`0x4313` parser is `0xD44388`, so the relationship needs checking before anyone edits anything. If
-159 is wrong then `0x4905`'s documented 822 bytes is wrong too.
+**Settled 2026-07-28: the block is 204 bytes.** An itemised trace of every read in
+`0xD4364C..0xD43BF4` totals exactly 204 with **no gaps in the destination offsets**, which
+independently confirms every field width. Three further checks agree: `19 + 204 = 223`, the parser's
+own size; `obj+148 + 204 = obj+352`, where the trailing u8 lands; and the `0x4310` builder emits this
+same block minus eight fields (22 bytes), giving `163 + 182 = 345` — the known `0x4310` size.
+**`PROTOCOL.md`'s 159 is a stale figure and should be corrected.**
+
+### The six scalars before the block
+
+Identified by structural identity: `obj = 0xD3F7B0(net)` has five writers, and the four
+non-automatch ones say what each slot holds.
+
+| wire | size | meaning |
+| --- | --- | --- |
+| `0x00` | u32 | **host character id.** Compared at `0xD5B7F4` against `net+0x57D8`; never stored |
+| `0x04` | u32 | **lobby id** (`lobbyObj+0x25C` in all four siblings) |
+| `0x08` | u8 | **lobby subtype** — the same field as `0x4310[0xA2]` and `0x4316`'s u8 |
+| `0x09` | u8 | subtype's sibling, `lobbyObj+0x261`. Meaning not established |
+| `0x0A` | u32 | **zeroed by all four sibling writers.** Send 0 |
+| `0x0E` | u32 | likewise. Send 0 |
+| `0x12` | u8 | **rotation index** — which of the 16 rotation entries the match starts on |
+
+**The rotation index has a silent fallback the server must respect.** At `0x93D3BC`–`0x93D414`, in
+state 12 immediately before the create task, the client reads `rules[idx]`, `maps[idx]` and
+`flags[idx]` out of the block — and **if `maps[idx] == 0` or `rules[idx] > 10` it discards the index
+and uses entry 0.** So naming an index only works when that entry is populated with a nonzero map.
+
+**`0x43f1` carries no game id, no timestamp and no player count.** Rule, map and flags live *inside*
+the block, selected by the rotation index. The game id arrives separately in `0x43f2`.
+
+### The block's field map
+
+Block offset *N* is `0x4313` wire `0xA8 + N`. Every `0x4313` name in `PROTOCOL.md` drops straight in,
+and the three capture-proven `0x4310` anchors land where they should.
+
+| block | size | meaning | `0x4310` wire |
+| --- | --- | --- | --- |
+| 0–47 | 48 | rotation: **rules[16] @0, maps[16] @16, flags[16] @32** — read as 16 interleaved triples | `0xA3` |
+| 50 | 16 | weapon restrictions | `0xD5` |
+| 66 / 67 | 1 / 1 | max players / **current player count** | `0xE5` / *omitted* |
+| 68 | 4 | briefing time | `0xE6` |
+| 94 / 95 / 96 | 1 / 1 / 4 | stance / level-limit tolerance / level-limit base | `0xF6` / `0xF7` / `0xF8` |
+| 100–167 | 68 | per-rule timers, rounds, tickets | `0xFC` |
+| 168 | 2 | unique characters red/blue | `0x140` |
+| 177 / 178 | 1 / 1 | commonA / commonB | `0x142` / `0x143` |
+| 180 / 182 | 2 / 2 | idle kick u16 / team-kill kick u16 | `0x145` / `0x147` |
+| 188 / 189 | 1 / 1 | capture extra time / sneaking Snake side | `0x149` / `0x14A` |
+| 190–203 | 14 | byte timers, extra-time flags | `0x14B` |
+
+**One off-by-one to re-check, not resolved here:** `PROTOCOL.md` puts non-stat at `0x4310` wire
+`0x155` bit 1; this arithmetic puts block 199 at wire `0x154`. One of the two is wrong.
 
 ### `0x43f2` — 4 bytes
 
@@ -237,10 +287,27 @@ automatch screen:
 | `0xD435E4` | clears the block on a nonzero `0x4311` result |
 | `0xD44318` | clears the block on a nonzero `0x4317` result |
 
-So the flag is a **mode bit**: it tags the create-game handshake as automatch-originated, and any
-failure in that handshake tears it down. `PROTOCOL.md` records `0x4316`'s u8 as a byte "we do not
-read at all" — **its meaning is "this game is being created for automatching"**, and our handler
-must accept `2` there.
+So the flag is a **mode bit**, and any failure in the create handshake tears it down.
+
+**But it is NOT an automatch tag, and the earlier reading of it here was wrong** (corrected
+2026-07-28). Both overridden bytes are the **lobby subtype**:
+
+- `0x4310`'s is at **wire `0xA2` (162), not 168** — the 168 in `0xD44828` is a *client-structure*
+  offset, and `0xD448FC` emits that same struct byte at wire `0xA2`, immediately before
+  `ROTATION_OFFSET = 163`. Nothing lands inside rotation entry 1. The builder's full put sequence
+  from `0xD446C8` sums to **345 bytes**, matching `PROTOCOL.md`, and hits every known anchor exactly.
+- Three proofs it is genuinely the subtype: it shares slot `+0x294` with the hub menu's subtype
+  (`0x88EDD4` and `0x890640` write the same field); the builder validates it against **{1, 2, 7, 8}**
+  at `0xD44834`, which is exactly the set of subtypes a player can host in — Free Battle, Automatching,
+  Basic and Combat Training, with Tournament/Survival/Official excluded; and `0xD4C250` dispatches on
+  it through a 7-arm jump table for subtypes 3–9.
+- **`0x4316`'s single u8 is the same field** (`0xD43C94` loads it from `lobbyObj+0x260`, `0xD43CB4`
+  overrides). So is `0x4320`'s trailing u8.
+
+**Consequence: there is no server-side signal that a create is automatch-originated.** In the
+automatching lobby the subtype is already 2, so the override is redundant there and the byte tells us
+only which lobby the game is being created in — which the connection already tells us. Accept
+`{1, 2, 7, 8}` and do not infer anything from the value 2.
 
 ---
 
@@ -324,7 +391,10 @@ on this screen instead, the fault is upstream of `0x43e0`.
 6. Announce with `0x43f1` whose leading u32 is the **chosen host's character id**.
 7. Send `0x43f2` with the game id *after* the host's `0x4310`+`0x4316` have landed — too early and
    the host quits with 4945.
-8. Accept `2` in `0x4316`'s u8 and at `0x4310+168` from an automatch host.
+8. ~~Accept `2` in `0x4316`'s u8 and at `0x4310+168` from an automatch host.~~ **Withdrawn
+   2026-07-28.** Both bytes are the **lobby subtype**, at wire `0xA2`, and carry 2 in this lobby
+   whether or not automatching is involved. Accept `{1, 2, 7, 8}` and infer nothing from the value.
+   See §4 — this was the one signal the design hoped to use, and it does not exist.
 9. Answer `0x43e2` with `0x43e3` result 0 within ~40 s. This is also the **only** way the player
    ever sees "Unable to find opponent" — 4934 fires on a *successful* cancel whose search had
    already expired.
@@ -366,7 +436,17 @@ where an env change needs a restart, and its process-wide `static CURRENT` canno
 start without `_SLOT_IN_LOBBIES`, because this lobby only ever contains games automatching itself
 formed and that mode never forms one.
 
-Still unimplemented: the queue, the scheduler, and all four pushes.
+**Step 4: the queue and the first push — confirmed live 2026-07-28.** A search for rule 0
+(Deathmatch) enqueued, was answered `0x43e1` result 0 with `playersNeeded = 1`, and received a
+36-byte `0x43e4` every five seconds. The client accepted every push silently, displayed "Players
+Needed: 1", and **cancelled cleanly with no error** — the cancel path returns result 0 and the client
+drops back to the menu, since its own search timer had not expired.
+
+That run is the first server→client push this project has made: until now every byte the server sent
+was a reply to something. It also settles, by observation rather than argument, that pushing to a
+client that has been answered result 0 works at all.
+
+Still unimplemented: matching itself — `0x43f1`, `0x43f2`, `0x43f3` and `0x43f4`.
 
 ## 8. Release-day scope
 
@@ -466,6 +546,5 @@ This also names three lobby subtypes `LOBBIES.md` left unnamed: **3 = Tournament
 - **Byte `+0x04` of the status block**, and the four tail bytes of each nibble array. Written, never
   read.
 - **The wire meaning of `0x43f1`'s fields between the host id and the settings block.**
-- **Whether the 204-byte reading of `0xD4364C` or `PROTOCOL.md`'s 159 is right** (§3).
 - **The 150 units/s calibration**, which is anchored on a tier-2 observation. If the ~40 s figure is
   loose, the 20-minute search window moves with it.

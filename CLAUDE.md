@@ -137,7 +137,7 @@ docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
   maven:3.9-eclipse-temurin-25 mvn -B verify
 ```
 
-Expect two counts in the summary — currently **192 unit and 185 integration** (2026-07-28). One
+Expect two counts in the summary — currently **211 unit and 188 integration** (2026-07-28). One
 number means the integration tests did not run.
 
 Running it alongside a live stack is safe: the suite spins up its own `PostgreSQLContainer` on a

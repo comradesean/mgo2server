@@ -1,6 +1,8 @@
 package mgo2server.game.controller;
 
 import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.model.Account;
+import mgo2server.game.Automatch;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
@@ -84,8 +86,11 @@ public class AutomatchGameController implements IGameController {
 
 	private final AutomatchPolicy policy;
 
-	public AutomatchGameController(AutomatchPolicy policy) {
+	private final Automatch automatch;
+
+	public AutomatchGameController(AutomatchPolicy policy, Automatch automatch) {
 		this.policy = policy;
+		this.automatch = automatch;
 	}
 
 	@Override
@@ -136,16 +141,32 @@ public class AutomatchGameController implements IGameController {
 			return;
 		}
 
-		logger.info("Chara {} started automatching for rule {}.", account.getCurrentCharaId(),
-			rule == ANY_RULE ? "any" : rule);
+		// The channel is captured here on purpose rather than resolved from ChannelRegistry later:
+		// answering result 0 below is the very thing that registers the client's push channel 60, so
+		// taking the channel at this moment makes our record and its record the same event.
+		automatch.enqueue(account.getCurrentCharaId(), rule, experience(account), ctx.channel());
 
 		var buffer = ctx.buffer(SUCCESS_SIZE);
 		buffer.writeInt(GameError.NONE.result())
-			// Band and players-needed. Zero renders an empty panel, which is honest while there is
-			// no queue to count: the client draws a flat graph and the placeholder string.
+			// The level band. Zero until grouping exists to define one — the client lights only the
+			// player's own column, which is honest about a search that is not yet spanning levels.
 			.writeByte(0)
-			.writeByte(0);
+			.writeByte(automatch.playersNeeded());
 		ctx.write(new GamePacket(START_AUTOMATCH_RESULT, buffer));
+	}
+
+	/**
+	 * The experience this character's level is derived from.
+	 * <p>
+	 * The main/alt split is the same one the stats screen uses: a character that is its account's
+	 * main spends and shows the main pool, everyone else the alt pool. The client computes its own
+	 * level from the u32 we send at {@code 0x4101 + 0x1C}, which is this number, so grouping
+	 * searchers on it groups them the way the client will draw them.
+	 */
+	private static int experience(Account account) {
+		var charaId = account.getCurrentCharaId();
+		return charaId != null && charaId.equals(account.getMainCharaId())
+			? account.getMainExp() : account.getAltExp();
 	}
 
 	/**
@@ -159,6 +180,13 @@ public class AutomatchGameController implements IGameController {
 	 * four bytes of stale receive buffer as its result, the trap {@code 0x4399} fell into.
 	 */
 	private void cancelAutomatch(GameControllerContext ctx) {
-		ctx.write(CANCEL_AUTOMATCH_RESULT, GameError.NONE);
+		var account = ctx.connection().account();
+		if (account == null || account.getCurrentCharaId() == null) {
+			ctx.write(CANCEL_AUTOMATCH_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+		var outcome = automatch.cancel(account.getCurrentCharaId());
+		ctx.write(CANCEL_AUTOMATCH_RESULT, outcome == Automatch.CancelOutcome.TOO_LATE
+			? GameError.AUTOMATCH_CANCEL_TOO_LATE : GameError.NONE);
 	}
 }
