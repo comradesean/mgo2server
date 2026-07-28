@@ -1287,7 +1287,7 @@ cross-checked with the `0x4313` layout and, where marked, with the ELF):
 | `0x90` | 1 | password enabled |
 | `0x91` | 15 | password |
 | `0xA1` | 1 | dedicated |
-| `0xA2` | 1 | subtype byte — a standalone u8 read at `0xD448FC`, confirming the rotation starts at `0xA3` |
+| `0xA2` | 1 | **lobby subtype** — a standalone u8 read at `0xD448FC`, confirming the rotation starts at `0xA3`. The builder validates it against **{1, 2, 7, 8}** at `0xD44834` — exactly the subtypes a player can host in. `0x4316`'s single u8 and `0x4320`'s trailing u8 are the same field. Confirmed 2026-07-28; it is **not** an automatch marker, see [AUTOMATCH.md](AUTOMATCH.md) §4 |
 | `0xA3` | 48 | rotation: `[rule, map, flags]` × **16**, stride 3; `rule==0 && map==0` ends it |
 | `0xE5` | 1 | max players |
 | `0xE6` | 4 | briefing time |
@@ -3001,9 +3001,14 @@ taught once:
   anywhere in `src/main/java`, connections held only as Netty channel attributes. Note also
   `BufferUtil.writeString` is fixed-width NUL-*padded* only — there is no variable-length
   terminated-string writer, so `0x4401` needs one written by hand.
-- **`0x4905` is an 822-byte record**, not a result single: 46 bytes, then a 159-byte block through
-  the standalone reader `0xD4364C` (the same one `0x4313`'s settings block uses), then 617 bytes
-  including a 512-byte text block. It also **discards the entire packet** unless its echo id
+- **`0x4905` is an 822-byte record**, not a result single: 46 bytes, then a **204-byte** block
+  through the standalone reader `0xD4364C` (the same one `0x4313`'s settings block uses), then the
+  remainder including a 512-byte text block. **The block was documented here as 159 bytes until
+  2026-07-28; that was stale.** An itemised trace of every read in `0xD4364C..0xD43BF4` totals 204
+  with no gaps in the destination offsets, and three independent sums agree: `0x43f1` is `19 + 204 =
+  223`, `0x4313` is `0xA8 + 204 = 372`, and the `0x4310` builder emits the same block minus eight
+  fields for `163 + 182 = 345`. The field map is in [AUTOMATCH.md](AUTOMATCH.md) §3. If 822 was
+  derived using 159, the leftover figure needs re-deriving too. It also **discards the entire packet** unless its echo id
   equals the u32 at `ctx+0x6D04` (`0xD4820C`) — so a reply must echo the request's id or it is
   dropped in silence.
 - **`0x4841`** — see the `0x4820` mailbox section; 708 bytes of body on a zero result, and a bare

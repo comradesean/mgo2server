@@ -1,0 +1,249 @@
+package mgo2server.game;
+
+import io.netty.channel.embedded.EmbeddedChannel;
+import mgo2server.common.AutomatchPolicy;
+import mgo2server.game.controller.AutomatchGameController;
+import mgo2server.game.packet.GamePacket;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+/**
+ * The automatch queue: who is in it, who leaves it, and what a tick does to them.
+ *
+ * <p>Almost none of this is protocol — the client sends a rule filter and then goes silent for
+ * twenty minutes, so the queue's shape is entirely ours ({@code AUTOMATCH.md} §1). What it is
+ * guarding is a set of properties whose absence is invisible from outside: a searcher who never
+ * leaves the map is a slow leak, and a searcher removed by the wrong event is a player whose panel
+ * stops updating with no error anywhere.
+ *
+ * <p>{@link EmbeddedChannel} rather than a mock because the disconnect path is one of those
+ * properties. It is a real {@link io.netty.channel.Channel}, it is active until closed, and its
+ * {@code closeFuture} completes on close, so the listener {@code enqueue} registers is exercised for
+ * real instead of being asserted about.
+ *
+ * <p><b>Not covered:</b> the {@link Automatch#MAX_WAIT} reap. It is 25 minutes and {@code Instant.now}
+ * is read inside the class, so there is no seam to move the clock through, and adding one purely for
+ * a test would put test scaffolding in the server. The other half of {@code reap} — the searcher
+ * whose socket is dead — is covered below, and it is the half that actually fires: the client gives
+ * up on its own at ~20 minutes, so {@code MAX_WAIT} is a backstop that a healthy client never
+ * reaches.
+ */
+public class AutomatchTest {
+
+	/** The "do not specify rules" sentinel, and what a live client actually sends. */
+	private static final int ANY_RULE = AutomatchGameController.ANY_RULE;
+
+	/**
+	 * A queue whose policy wants {@code minPlayers} before it forms a game.
+	 * <p>
+	 * Built through {@code from} rather than the canonical constructor so the defaults stay the ones
+	 * a deployment would get. It parses as disabled, which skips {@code validate} — the queue never
+	 * asks whether the window is open, because by the time anything is enqueued the controller has
+	 * already decided that.
+	 */
+	private static Automatch queueNeeding(int minPlayers) {
+		return new Automatch(AutomatchPolicy.from(
+			Map.of("MGO2SERVER_AUTOMATCH_MIN_PLAYERS", String.valueOf(minPlayers))::get));
+	}
+
+	@Test
+	public void enqueueAddsOneSearcher() {
+		var automatch = queueNeeding(2);
+
+		automatch.enqueue(7, ANY_RULE, 1234, new EmbeddedChannel());
+
+		assertThat(automatch.size()).isEqualTo(1);
+		assertThat(automatch.searchers()).singleElement().satisfies(searcher -> {
+			assertThat(searcher.charaId()).isEqualTo(7);
+			assertThat(searcher.ruleFilter()).isEqualTo(ANY_RULE);
+			assertThat(searcher.experience()).isEqualTo(1234);
+			assertThat(searcher.state()).isEqualTo(Automatch.State.SEARCHING);
+		});
+	}
+
+	/**
+	 * A second {@code 0x43e0} from one character replaces the first.
+	 * <p>
+	 * The client can produce this: cancel returns it to state 1 with the lobby still open, so it can
+	 * confirm a different rule immediately, and a reconnect can land a fresh {@code 0x43e0} before
+	 * the old socket's close has been noticed. Two entries would mean two seats held for one player,
+	 * and pushes down a channel nobody is reading.
+	 * <p>
+	 * The last assertion is the reason {@code enqueue} removes by key <em>and</em> value: the stale
+	 * channel closing must not evict the entry that replaced it.
+	 */
+	@Test
+	public void enqueuingTheSameCharacterTwiceReplacesRatherThanDuplicates() {
+		var automatch = queueNeeding(2);
+		var first = new EmbeddedChannel();
+		var second = new EmbeddedChannel();
+
+		automatch.enqueue(7, ANY_RULE, 0, first);
+		automatch.enqueue(7, 3, 0, second);
+
+		assertThat(automatch.size()).isEqualTo(1);
+		assertThat(automatch.searchers()).singleElement().satisfies(searcher -> {
+			assertThat(searcher.ruleFilter()).isEqualTo(3);
+			assertThat(searcher.channel()).isSameAs(second);
+		});
+
+		first.close();
+
+		assertThat(automatch.size())
+			.as("the replaced channel closing must not evict the entry that replaced it")
+			.isEqualTo(1);
+	}
+
+	/** Cancelling a live search is the ordinary path, and answers {@code 0x43e3} result 0. */
+	@Test
+	public void cancellingASearchingEntryRemovesIt() {
+		var automatch = queueNeeding(2);
+		automatch.enqueue(7, ANY_RULE, 0, new EmbeddedChannel());
+
+		assertThat(automatch.cancel(7)).isEqualTo(Automatch.CancelOutcome.CANCELLED);
+		assertThat(automatch.size()).isZero();
+	}
+
+	/**
+	 * Cancelling nothing succeeds. The client sends {@code 0x43e2} from state 7 whether or not we
+	 * still hold a record — its own 180000-tick timeout drives it there — and a nonzero result would
+	 * print "Unable to cancel automatching" (4932) for a search that is, in fact, cancelled.
+	 */
+	@Test
+	public void cancellingSomethingNeverQueuedStillSucceeds() {
+		var automatch = queueNeeding(2);
+
+		assertThat(automatch.cancel(7)).isEqualTo(Automatch.CancelOutcome.CANCELLED);
+		assertThat(automatch.size()).isZero();
+	}
+
+	/**
+	 * The precise-removal guarantee, and the reason the channel is captured at {@code 0x43e0} rather
+	 * than looked up in {@link ChannelRegistry} later. Nothing else tells us a searcher has gone:
+	 * while searching the client sends nothing at all, so a dropped connection is only ever visible
+	 * as its channel closing.
+	 */
+	@Test
+	public void closingTheChannelRemovesTheSearcher() {
+		var automatch = queueNeeding(2);
+		var channel = new EmbeddedChannel();
+		automatch.enqueue(7, ANY_RULE, 0, channel);
+
+		channel.close();
+
+		assertThat(automatch.size()).isZero();
+	}
+
+	/**
+	 * The figure the client prints through disc string 917, floored at zero because zero selects the
+	 * placeholder string 48 instead — "no figure yet" rather than "zero more players".
+	 */
+	@Test
+	public void playersNeededIsTheShortfallAgainstMinPlayers() {
+		var automatch = queueNeeding(4);
+
+		assertThat(automatch.playersNeeded()).isEqualTo(4);
+
+		automatch.enqueue(1, ANY_RULE, 0, new EmbeddedChannel());
+		assertThat(automatch.playersNeeded()).isEqualTo(3);
+
+		automatch.enqueue(2, ANY_RULE, 0, new EmbeddedChannel());
+		automatch.enqueue(3, ANY_RULE, 0, new EmbeddedChannel());
+		automatch.enqueue(4, ANY_RULE, 0, new EmbeddedChannel());
+		assertThat(automatch.playersNeeded()).isZero();
+
+		// Past the minimum it must not go negative: the field is one unsigned byte on the wire, so a
+		// -1 would arrive as 255 players needed.
+		automatch.enqueue(5, ANY_RULE, 0, new EmbeddedChannel());
+		assertThat(automatch.playersNeeded()).isZero();
+	}
+
+	/**
+	 * The overwhelmingly common case — the matchmaker runs every few seconds forever, and almost
+	 * every run has nobody to look at. A throw here would be worse than useless: a scheduled task
+	 * that throws is cancelled permanently, so one bad tick would stop matchmaking for the life of
+	 * the process (see {@code GameServerSchedulerTest}).
+	 */
+	@Test
+	public void tickOnAnEmptyQueueDoesNothing() {
+		var automatch = queueNeeding(2);
+
+		assertThatCode(automatch::tick).doesNotThrowAnyException();
+
+		assertThat(automatch.size()).isZero();
+	}
+
+	/**
+	 * The reap that actually fires: a searcher whose socket died without a close event.
+	 * <p>
+	 * An unregistered {@link EmbeddedChannel} is exactly that shape — never active, and its
+	 * {@code closeFuture} never completes — so the {@code closeFuture} listener cannot be what
+	 * removes this one. It has to be the tick, or the entry stays in the map forever and is counted
+	 * into every other searcher's "players needed".
+	 */
+	@Test
+	public void tickDropsASearcherWhoseChannelIsNotActive() {
+		var automatch = queueNeeding(2);
+		var dead = new EmbeddedChannel(false, false);
+		assertThat(dead.isActive()).as("an unregistered channel stands in for a dead socket").isFalse();
+		automatch.enqueue(7, ANY_RULE, 0, dead);
+		assertThat(automatch.size()).isEqualTo(1);
+
+		automatch.tick();
+
+		assertThat(automatch.size()).isZero();
+	}
+
+	/**
+	 * The push nothing asked for, which is the whole feature: the client repaints its panel only when
+	 * {@code 0x43e4} arrives and never requests one, so a tick that pushes nothing leaves the player
+	 * watching a stopwatch.
+	 */
+	@Test
+	public void tickPushesASearchPanelToALiveSearcher() {
+		var automatch = queueNeeding(4);
+		var channel = new EmbeddedChannel();
+		automatch.enqueue(7, ANY_RULE, 0, channel);
+
+		automatch.tick();
+
+		// A GamePacket, not a ByteBuf: the encoder is part of the real server's pipeline and an
+		// EmbeddedChannel has none, so what comes back off the queue is the message as written.
+		Object pushed = channel.readOutbound();
+		assertThat(pushed).isInstanceOf(GamePacket.class);
+		var packet = (GamePacket) pushed;
+
+		assertThat(packet.getCommand()).isEqualTo(AutomatchPackets.SEARCH_PANEL);
+		assertThat(packet.getPayload().readableBytes()).isEqualTo(AutomatchPackets.SEARCH_PANEL_SIZE);
+		// Players-needed is relative to the recipient — four wanted, one searching — which is why each
+		// searcher gets its own buffer rather than one being broadcast.
+		assertThat(packet.getPayload().getUnsignedByte(0x11)).isEqualTo((short) 3);
+
+		// Bound to Object first: readOutbound() infers its own return type, which leaves the assertJ
+		// overloads ambiguous.
+		Object second = channel.readOutbound();
+		assertThat(second).as("one panel per searcher per tick").isNull();
+
+		packet.getPayload().release();
+		channel.finishAndReleaseAll();
+	}
+
+	/** A cancelled searcher is not pushed to, which is the observable half of "removed". */
+	@Test
+	public void tickPushesNothingToACancelledSearcher() {
+		var automatch = queueNeeding(2);
+		var channel = new EmbeddedChannel();
+		automatch.enqueue(7, ANY_RULE, 0, channel);
+		automatch.cancel(7);
+
+		automatch.tick();
+
+		Object pushed = channel.readOutbound();
+		assertThat(pushed).isNull();
+		channel.finishAndReleaseAll();
+	}
+}

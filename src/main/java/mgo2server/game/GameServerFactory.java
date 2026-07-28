@@ -44,6 +44,10 @@ public class GameServerFactory {
 			long lobbyId, int lobbySubtype, AutomatchPolicy automatchPolicy) {
 		var controllers = new ArrayList<IGameController>();
 
+		// The queue lives here rather than behind Services: it holds channels and per-lobby state,
+		// while Services is lobby-agnostic and shared across a process.
+		var automatch = new Automatch(automatchPolicy);
+
 		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
 		// the character-id to channel map current. Anything that has to reach a client other than the
 		// one currently asking takes this.
@@ -79,7 +83,7 @@ public class GameServerFactory {
 				controllers.add(new ChatGameController(services.getGameService(), channels));
 				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
-				controllers.add(new AutomatchGameController(automatchPolicy));
+				controllers.add(new AutomatchGameController(automatchPolicy, automatch));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),
 					services.getClanService(), services.getGameService()));
@@ -93,6 +97,12 @@ public class GameServerFactory {
 			}
 		}
 
-		return new GameServer(controllers, port);
+		// Only game lobbies run the matchmaker; a gate or account server has no searchers and no
+		// reason to hold a thread open.
+		var task = lobbyType == LobbyType.GAME
+			? new GameServer.PeriodicTask("automatch", automatchPolicy.tick(), automatch::tick)
+			: null;
+
+		return new GameServer(controllers, port, task);
 	}
 }

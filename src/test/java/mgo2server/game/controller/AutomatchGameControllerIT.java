@@ -7,6 +7,7 @@ import mgo2server.GameClient;
 import mgo2server.TestDatabase;
 import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.crypto.SessionField;
+import mgo2server.game.AutomatchPackets;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
 import mgo2server.game.GameServerFactory;
@@ -22,6 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,6 +55,24 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 	private static final int RESULT_ONLY_SIZE = 4;
 
 	/**
+	 * A tick short enough to test against. The deployed default is five seconds, which is chosen for
+	 * a client whose search runs twenty minutes; a test that waited for it would spend most of its
+	 * life asleep. Nothing here asserts the interval itself — {@code GameServerSchedulerTest} owns
+	 * that — only that a push happens at all.
+	 */
+	private static final Duration TICK = Duration.ofSeconds(1);
+
+	/** Long enough for three ticks, which is what "no push arrived" is worth asserting over. */
+	private static final long WATCH_MS = 3500;
+
+	/**
+	 * A push already handed to the event loop when a cancel is processed is legitimately in flight —
+	 * the tick runs on the scheduler thread and the cancel on the channel's — so one tick is allowed
+	 * to drain before the absence of pushes starts counting.
+	 */
+	private static final long DRAIN_MS = 1500;
+
+	/**
 	 * Open at every instant a wall clock can actually hold.
 	 * <p>
 	 * Built directly rather than parsed from a window string so the test does not depend on the
@@ -60,10 +82,17 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 	 */
 	private static final AutomatchPolicy ALWAYS_OPEN = new AutomatchPolicy(true,
 		List.of(new AutomatchPolicy.Window(LocalTime.MIN, LocalTime.MAX)), ZoneId.of("UTC"),
-		AutomatchPolicy.Mode.BOTH, 2, Duration.ofSeconds(5), Set.of());
+		AutomatchPolicy.Mode.BOTH, 2, TICK, Set.of());
 
-	/** What an operator who has configured nothing gets, and therefore the default deployment. */
-	private static final AutomatchPolicy CLOSED = AutomatchPolicy.from(Map.<String, String>of()::get);
+	/**
+	 * What an operator who has configured nothing gets, and therefore the default deployment — with
+	 * the tick shortened, which is the only deviation and cannot change any answer. A closed window
+	 * refuses before anything is queued, so the matchmaker has nothing to look at however often it
+	 * runs; the short interval only means a test asserting that it pushes nothing does not have to
+	 * wait fifteen seconds to have watched three ticks.
+	 */
+	private static final AutomatchPolicy CLOSED = AutomatchPolicy.from(
+		Map.of("MGO2SERVER_AUTOMATCH_TICK_SECONDS", String.valueOf(TICK.toSeconds()))::get);
 
 	private long charaId;
 
@@ -154,6 +183,13 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 					return;
 				}
 
+				// An accepted 0x43e0 queues this character, so the matchmaker may push a panel into
+				// the gap between the reply and this connection closing. It is not the reply this
+				// method is waiting for; the tests that care about it are the ones that stay open.
+				if (packet.getCommand() == AutomatchPackets.SEARCH_PANEL) {
+					return;
+				}
+
 				replies.add(packet);
 				ctx.close();
 			}
@@ -162,6 +198,163 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(1);
 		return replies.get(0);
+	}
+
+	/**
+	 * Logs in, sends one request and then <b>stays connected</b>, handing every later packet to
+	 * {@code onPacket} until that closes the channel.
+	 * <p>
+	 * This is the shape a searching client actually has, and {@link #exchange} cannot express it: from
+	 * state 6 the client sends nothing whatsoever — no heartbeat, no poll — and everything that
+	 * reaches it after {@code 0x43e1} is unsolicited. A test that closes on the first reply can never
+	 * see a push. {@code GameClient.run} blocking until the handler closes is exactly the right
+	 * primitive, and the timeout is a failure rather than an end condition: if the handler never
+	 * closes, the push never came.
+	 */
+	private void searching(long timeoutSeconds, GamePacket request,
+			BiConsumer<ChannelHandlerContext, GamePacket> onPacket) {
+		var session = Unpooled.buffer();
+		session.writeInt((int) charaId);
+		session.writeBytes(SessionField.of(TOKEN));
+
+		client = new GameClient(server.boundPort());
+		client.run(timeoutSeconds, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, session));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
+					assertThat(packet.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+					ctx.writeAndFlush(request);
+					return;
+				}
+				onPacket.accept(ctx, packet);
+			}
+		});
+		client.disconnect(0L, 0L, TimeUnit.SECONDS).join();
+	}
+
+	/**
+	 * The first push the server has ever sent unprompted, and the one that cannot go wrong quietly.
+	 * <p>
+	 * Nothing solicits it: after {@code 0x43e1} result 0 the client registers push channel 60
+	 * ({@code 0x93CF04}) and then sends nothing at all, so if the matchmaker does not push, the panel
+	 * never changes and the player watches a twenty-minute stopwatch. The 36 bytes are the parser's
+	 * fixed read at {@code 0xD5BDCC}; the contents are pinned in {@code AutomatchPacketsTest}.
+	 */
+	@Test
+	public void aSearchPanelIsPushedWithoutBeingAskedFor() {
+		givenSelectedCharacter();
+
+		var panels = new ArrayList<GamePacket>();
+		searching(15, start(AutomatchGameController.ANY_RULE), (ctx, packet) -> {
+			if (packet.getCommand() == AutomatchGameController.START_AUTOMATCH_RESULT) {
+				assertThat(packet.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+				// And then nothing is sent back, exactly as the client does in state 6.
+				return;
+			}
+			assertThat(packet.getCommand()).isEqualTo(AutomatchPackets.SEARCH_PANEL);
+			panels.add(packet);
+			ctx.close();
+		});
+
+		assertThat(panels).hasSize(1);
+		assertThat(panels.get(0).getPayload().readableBytes())
+			.isEqualTo(AutomatchPackets.SEARCH_PANEL_SIZE);
+	}
+
+	/**
+	 * Cancelling leaves the queue, observed the only way this end of the socket can observe it: the
+	 * pushes stop.
+	 * <p>
+	 * The first panel is waited for deliberately, so that the silence afterwards is evidence rather
+	 * than a coincidence — without it, a server that never pushed at all would pass. One tick is
+	 * allowed to drain first, because a panel handed to the event loop before the cancel was
+	 * processed is in flight through no fault of the queue.
+	 */
+	@Test
+	public void cancellingStopsTheSearchAndThePushes() {
+		givenSelectedCharacter();
+
+		var cancelReplies = new ArrayList<GamePacket>();
+		var panelsBeforeCancel = new AtomicInteger();
+		var panelsAfterDrain = new AtomicInteger();
+		var counting = new AtomicBoolean();
+		var cancelSent = new AtomicBoolean();
+		var unexpected = new ArrayList<String>();
+
+		searching(30, start(AutomatchGameController.ANY_RULE), (ctx, packet) -> {
+			switch (packet.getCommand()) {
+				case AutomatchGameController.START_AUTOMATCH_RESULT ->
+					assertThat(packet.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+				case AutomatchPackets.SEARCH_PANEL -> {
+					if (counting.get()) {
+						panelsAfterDrain.incrementAndGet();
+					} else if (cancelSent.compareAndSet(false, true)) {
+						panelsBeforeCancel.incrementAndGet();
+						ctx.writeAndFlush(new GamePacket(AutomatchGameController.CANCEL_AUTOMATCH));
+					}
+				}
+				case AutomatchGameController.CANCEL_AUTOMATCH_RESULT -> {
+					cancelReplies.add(packet);
+					ctx.executor().schedule(() -> counting.set(true), DRAIN_MS, TimeUnit.MILLISECONDS);
+					ctx.executor().schedule((Runnable) ctx::close, DRAIN_MS + WATCH_MS,
+						TimeUnit.MILLISECONDS);
+				}
+				// Collected rather than thrown: an exception on the event loop goes to exceptionCaught
+				// and would hang the run rather than fail it.
+				default -> unexpected.add(Integer.toHexString(packet.getCommand()));
+			}
+		});
+
+		assertThat(unexpected).as("nothing else is sent to a searching client").isEmpty();
+		assertThat(panelsBeforeCancel.get()).as("the queue must have been pushing to begin with")
+			.isEqualTo(1);
+		assertThat(cancelReplies).hasSize(1);
+		assertThat(cancelReplies.get(0).getPayload().readableBytes()).isEqualTo(RESULT_ONLY_SIZE);
+		assertThat(cancelReplies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(panelsAfterDrain.get())
+			.as("a cancelled searcher is out of the queue, so nothing more is pushed to it")
+			.isZero();
+	}
+
+	/**
+	 * A refusal must be the end of it. Pushing after a nonzero {@code 0x43e1} is not merely useless —
+	 * the client only registers push channel 60 on a zero result, so anything sent afterwards is
+	 * parsed into memory and dropped ({@code AUTOMATCH.md} §7 rule 4). A server that queued the
+	 * searcher anyway would be holding a seat for a player who was told the feature is closed.
+	 */
+	@Test
+	public void aRefusedStartIsNeverFollowedByAPush() {
+		restartWith(CLOSED);
+		givenSelectedCharacter();
+
+		var refusals = new ArrayList<GamePacket>();
+		var panels = new AtomicInteger();
+
+		searching(30, start(AutomatchGameController.ANY_RULE), (ctx, packet) -> {
+			if (packet.getCommand() == AutomatchPackets.SEARCH_PANEL) {
+				panels.incrementAndGet();
+				return;
+			}
+			refusals.add(packet);
+			if (refusals.size() == 1) {
+				ctx.executor().schedule((Runnable) ctx::close, WATCH_MS, TimeUnit.MILLISECONDS);
+			}
+		});
+
+		assertThat(refusals).hasSize(1);
+		assertThat(refusals.get(0).getCommand())
+			.isEqualTo(AutomatchGameController.START_AUTOMATCH_RESULT);
+		assertThat(refusals.get(0).getPayload().getInt(0))
+			.isEqualTo(GameError.AUTOMATCH_NOT_OPEN.result());
+		assertThat(panels.get()).as("a refused searcher was never queued").isZero();
 	}
 
 	private static GamePacket start(int ruleFilter) {
@@ -203,10 +396,14 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 		assertThat(reply.getCommand()).isEqualTo(AutomatchGameController.START_AUTOMATCH_RESULT);
 		assertThat(reply.getPayload().readableBytes()).isEqualTo(SUCCESS_SIZE);
 		assertThat(reply.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
-		// Band and players-needed. Zero is a flat graph and the placeholder string, which is honest
-		// while there is no queue to count — not a value read from the binary.
+		// The band is still zero: nothing groups searchers by level yet, and lighting only the
+		// player's own column is honest about a search that does not span any.
 		assertThat(reply.getPayload().getUnsignedByte(4)).isEqualTo((short) 0);
-		assertThat(reply.getPayload().getUnsignedByte(5)).isEqualTo((short) 0);
+		// Players-needed was zero while there was no queue to count. There is one now, and this
+		// caller is in it — two wanted, one searching — so the honest answer is 1, which the client
+		// prints through disc string 917. Zero would select the placeholder 48 instead and say
+		// nothing at all. Policy, not protocol: the 2 is MIN_PLAYERS on ALWAYS_OPEN.
+		assertThat(reply.getPayload().getUnsignedByte(5)).isEqualTo((short) 1);
 	}
 
 	/**

@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import mgo2server.game.packet.GamePacket;
 
@@ -27,6 +28,17 @@ public class GameControllerContext {
 	/** Per-connection state, including the authenticated account. */
 	public GameConnection connection() {
 		return GameConnection.of(channelHandlerContext.channel());
+	}
+
+	/**
+	 * This request's channel, for a handler that needs to keep hold of it past the reply.
+	 * <p>
+	 * Only for <em>storing</em>. Writing a reply still goes through {@link #write}, and a push to a
+	 * different client must allocate from that client's own channel — the encoders are per-channel
+	 * and carry sequence counters, so neither a buffer nor a context may be shared across channels.
+	 */
+	public Channel channel() {
+		return channelHandlerContext.channel();
 	}
 
 	/**
