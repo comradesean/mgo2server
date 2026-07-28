@@ -251,8 +251,8 @@ announce itself as a `No handler for command …` line once players have collect
 | `0x43C9` | parses | 8 B | Start-round reply (reply to 0x43c8) | served |
 | `0x43D0` | sends | 1 B | Training parameter fetch | served † |
 | `0x43D1` | parses | variable | Training parameters (reply to 0x43d0) | served † |
-| `0x43E0` | sends | 1 B | **START automatching**, u8 = rule filter (11 = any). Renamed 2026-07-28 — see [AUTOMATCH.md](AUTOMATCH.md) | served |
-| `0x43E1` | parses | 6 B | Start reply: u32 result, then (result 0 only) u8 level band, u8 players-needed | served |
+| `0x43E0` | sends | 1 B | **START automatching**, u8 = rule filter (11 = any). `AutomatchGameController`; validates the filter and refuses outside the window | served |
+| `0x43E1` | parses | 6 B | Start reply: u32 result, then (result 0 only) u8 level band, u8 players-needed. **4 bytes on refusal** | served |
 | `0x43E2` | sends | empty | **CANCEL automatching** | served |
 | `0x43E3` | parses | 4 B | Cancel reply, u32 result. **Must send** — unanswered gives 4933 | **gap** |
 | `0x43E4` | parses | 36 B | Search panel push: 23-column level histogram + band + players-needed. Cosmetic; cannot stall | unsent |

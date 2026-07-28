@@ -37,6 +37,31 @@ public enum GameError {
 	/** Game */
 	GAME_PLACEHOLDER(0x30),
 
+	/**
+	 * Automatching. Every one of these is {@code official}, and that is not a detail — a masked
+	 * {@code 0xC0FFEExx} matches nothing in the client's table, so it would fall through to the
+	 * generic arm and print the wrong sentence with our number inside it. This is exactly the trap
+	 * {@link #CHARACTER_CANNOT_DELETE_YET} above records.
+	 * <p>
+	 * The codes are a <em>discriminated set</em>, read from the client at the sites named in
+	 * {@code dev/docs/AUTOMATCH.md} §6. Anything nonzero that is not in the set still produces a
+	 * dialog; there is no benign nonzero result here.
+	 */
+	AUTOMATCH_NOT_OPEN(-970, true),
+
+	/** {@code 0x43e1}: "Unable to start automatching." [0x93CF50] */
+	AUTOMATCH_CANNOT_START(-950, true),
+
+	/** {@code 0x43e3}: "Unable to cancel automatching." [0x93D208] */
+	AUTOMATCH_CANNOT_CANCEL(-952, true),
+
+	/**
+	 * {@code 0x43e3}: the only code that <b>parks the client silently</b> — no dialog, straight to
+	 * the dormant state [0x93D1EC]. For a cancel that arrives after a match has already been
+	 * assigned, where erroring would be a lie and succeeding would strand the match.
+	 */
+	AUTOMATCH_CANCEL_TOO_LATE(-953, true),
+
 	/** Clan */
 	CLAN_DOES_NOT_EXIST(0x40),
 	CLAN_NOT_A_MEMBER(0x41),
