@@ -1,5 +1,6 @@
 package mgo2server.game.controller;
 
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -394,8 +395,19 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getPayload().getInt(0)).isNotEqualTo(0);
 	}
 
+	/**
+	 * The outfit commit must read the gear catalogue back, not an empty table.
+	 * <p>
+	 * This replaces {@code outfitCommitGetsTheEmptyReadback}, which guarded the bug. [ELF] The
+	 * {@code 0x4133} parser zeroes the whole {@code 0x60c}-byte loadout table before applying
+	 * entries, and it addresses that table with the same {@code addi r9,r9,9888} ({@code +0x26a0})
+	 * the {@code 0x4124} parser uses — {@code 0xD3C85C}/{@code 0xD3C90C} against
+	 * {@code 0xD3CF10}/{@code 0xD3CFC0}. So a count of 0 does not mean "unchanged", it means
+	 * "forget every item you own": the character logged in with the full catalogue and left the
+	 * outfit screen with nothing unlocked.
+	 */
 	@Test
-	public void outfitCommitGetsTheEmptyReadback() {
+	public void outfitCommitReadsTheGearCatalogueBack() {
 		givenSelectedCharacter("Snake");
 
 		var replies = loginThen(new GamePacket(PersonalInfoController.COMMIT_OUTFIT),
@@ -403,10 +415,15 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 
 		assertThat(replies).hasSize(1);
 		var payload = replies.get(0).getPayload();
-		// 36 = 4 + 16 pairs x 2, corrected 2026-07-26 from 34 (fifteen pairs). The loop bound at
-		// 0xd3c8d4 is tested before the increment at 0xd3c8dc, so the client reads sixteen; at
-		// fifteen it took its last pair from stale receive buffer.
-		assertThat(payload.readableBytes()).isEqualTo(36);
-		assertThat(payload.getInt(0)).isEqualTo(0); // entry count, not a status
+
+		// Byte-identical to what 0x4124 sends: 4 + 123x5 + 32 = 651. The trailing 32 bytes are
+		// sixteen {u8 item_id, u8 bit_index} pairs, not a terminator, and the size only balances
+		// at sixteen.
+		var catalogue = io.netty.buffer.Unpooled.buffer(mgo2server.game.LoadoutWriter.gearPayloadSize());
+		mgo2server.game.LoadoutWriter.writeGear(catalogue);
+
+		assertThat(payload.readableBytes()).isEqualTo(mgo2server.game.LoadoutWriter.gearPayloadSize());
+		assertThat(payload.getInt(0)).isNotZero();  // an entry count, not a status
+		assertThat(ByteBufUtil.equals(payload, catalogue)).isTrue();
 	}
 }

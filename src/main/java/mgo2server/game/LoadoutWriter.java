@@ -63,7 +63,15 @@ public final class LoadoutWriter {
 			buffer.writeByte(item).writeInt(ALL_COLOURS);
 		}
 
-		// Terminator is all bits set, like the colour masks.
+		// [ELF] Not a terminator, despite the name: these 32 bytes are sixteen
+		// {u8 item_id, u8 bit_index} colour-unlock pairs, read by both the 0x4124 parser and the
+		// 0x4133 one into the same table. Sixteen, not fifteen — the bound at 0xD3C8D4 is tested
+		// before the increment at 0xD3C8DC — and 4 + 615 + 32 = 651 only balances at sixteen.
+		//
+		// The 0xff filler works by accident rather than by design: item id 255 exceeds the
+		// parser's 128-entry bound, so every pair is skipped instead of applied. That is inert,
+		// not correct. Anything that starts granting colours per character has to write real
+		// pairs here, in both packets.
 		for (var i = 0; i < GEAR_TERMINATOR_LENGTH; i++) {
 			buffer.writeByte(0xff);
 		}
