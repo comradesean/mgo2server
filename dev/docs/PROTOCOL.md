@@ -1462,7 +1462,7 @@ result slot and trips the error branch — so it targets some other build and wa
 | `0x15c` | 2 | u16 | idle kick |
 | `0x15e` | 2 | u16 | team-kill kick |
 | `0x160` | 4 | u32 | echo writes `0x2e` verbatim; meaning unknown — **regression guard only** |
-| `0x164` | 2 | u8, u8 | capture extra time; sneaking-mission Snake side. Zeros until stored |
+| `0x164` | 2 | u8, u8 | capture extra time; **sneaking-mission SNAKE count** — how many times Snake must be killed, default 3. Was "Snake side" until 2026-07-28; corrected against the client's own default and four stored blobs. Zeros until stored |
 | `0x166` | 8 | u8 ×8 | byte-sized timers (echo: SDM t/r, INT t, DM r, SCAP t/r, RACE t/r); zeros until stored |
 | `0x16e` | 1 | u8 | zero |
 | `0x16f` | 1 | u8 | extra-time flags; bit 1 = non-stat game (echo) |

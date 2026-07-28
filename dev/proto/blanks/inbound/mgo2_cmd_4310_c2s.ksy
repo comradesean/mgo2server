@@ -169,9 +169,16 @@ seq:
       landing on indices 6, 7 and 8 in that order. An SNE match ran round time 7 min, round
       limit 4, which fits indices 0 and 1.
 
-      **Still open:** the SNE match also showed a third figure, "kill Snake 3 times", and this
-      ordering gives SNE only two slots. Either the third value lives outside this block, or the
-      rule that carries three fields is not TDM alone. Do not treat SNE as fully mapped.
+      (3) **Confirmed outright, same day, against client defaults.** Four stored blobs from
+      characters that had never edited their timers all read `[0]=8 [1]=4` and
+      `[6]=3 [7]=4 [8]=15`, matching the client's own documented defaults for Sneaking
+      (time 8, rounds 4) and Team Deathmatch (time 3, rounds 4, tickets 15) at exactly the
+      predicted indices. Two rules, two defaults, four independent rows.
+
+      The SNE "kill Snake" figure is **not** in this array: it is the byte at `0x14a`, which
+      this schema and PROTOCOL.md both labelled "sneaking Snake side". That label was wrong — the
+      byte reads 3 in every blob, which is the client's default SNAKE setting. Sneaking has
+      three settings on screen and two slots here; the third is that byte.
   - id: unique_characters
     size: 2
     doc: |
