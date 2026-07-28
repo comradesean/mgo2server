@@ -3415,3 +3415,36 @@ print statement), each emits exactly seven `command [35706d]` blocks, and the se
 byte-identical across all five. No hidden BASE variant behind rule 6, no COOP table behind rule 8.
 And the GCX layer binds no stat keys at all — the only stat-adjacent directive in any `.gcl` is
 `-rule/-score`, so "targets captured" is not named there either.
+
+## One GA-KO pickup moved two slots, and the partition reading died — 2026-07-27
+
+Two live Rescue rounds (game 227, one pickup by the same player in each) wired **b41 = 1 and
+b29 = 1 in both**. That refutes the partition published hours earlier — "b41 = the round's first
+grab, b29 = every grab after it" — which predicts b29 = 0 when there is only one pickup.
+
+The ELF trace behind the partition was real as far as it went: `0x706BB8` keeps a per-round latch
+(bit `0x100` of `[this+0x668]`, tested `0x706CA8`, set `0x706D08`); the first grab takes the
+unlatched path to b41's writer at `0x706E30`, later grabs fall to `0x706D7C` and reach b29's at
+`0x706DD0`. The error was reading those two arms as mutually exclusive. A fall-through — the first
+grab bumping both, later grabs bumping only b29 — fits the counts, gives 1 grab -> (1,1) and
+2 grabs -> (1,2), and restores the original capture-era note that b29 shows "1 on the picking-up
+attacker in both pickup rounds". The control flow has not been re-read, so the counts are the
+established fact and the mechanism is open.
+
+**This is the second time in one day that the same failure mode has produced a wrong reading**:
+two arms of a branch treated as exclusive when they share a continuation. The other was the
+`0x6ED650` dispatcher's shared increment tail, which mis-attributed keys and put b14's "no writer
+anywhere" claim under re-audit. Worth naming as a pattern for whoever traces the next slot — when
+a trace concludes "X or Y, never both", the cheap live check is a round that produces exactly one
+of the triggering events and sees whether both counters move.
+
+Also recorded from those rounds, as a testing rule rather than a finding: **the Rescue score could
+not be validated and never can be.** Score-table column 36 reads live n75, which the 0x4390 frame
+does not serialise, and it is nonzero in exactly Rescue, Capture and Team Sneaking. The two rounds
+left residuals of 2 and 19 against otherwise-exact predictions, and both land where an invisible
+counter absorbs them. Coefficient tests belong in DM, TDM, Sneaking or Base, where column 36 is
+zero and every scoring input is on the wire — the friendly-kill −5 in particular belongs in Base.
+
+Neither round tested the team_win rename: the same character won both, so a constant team-slot
+index and a per-round win flag predict identical output. That test wants a round the *other* side
+wins.

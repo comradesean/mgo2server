@@ -1839,11 +1839,17 @@ exists"). Full evidence per slot in the `.ksy`:
 `Rule_Eng_DM`/`_TDM`/`_RESCUE`/`_CAP`/`_SNEAK`/`_BASE`/`_TSNE`/`_COOP`), which also gives
 2 = Rescue — independently corroborated by the mode-2 branch writing B27.
 
-**Two Rescue slots gained mechanisms in the same pass.** The "objective picked up" method
-`0x706BB8` keeps a per-round latch (bit `0x100` of `[this+0x668]`): the **first** grab bumps B41,
-and once latched every later grab bumps B29 instead. So **B41 = first grab, B29 = subsequent
-grabs** — they partition pickups rather than duplicating them, which is the mechanism behind the
-old "per-carry-run marker candidate" guess. And **B42's units are 2-second ticks, not seconds**
+**Two Rescue slots gained mechanisms in the same pass, and one reading was then refuted live.**
+The "objective picked up" method `0x706BB8` keeps a per-round latch (bit `0x100` of
+`[this+0x668]`): the **first** grab takes the unlatched path and bumps B41, later grabs fall to
+`0x706D7C` and bump B29. That was published as a partition — B41 = first grab, B29 = subsequent
+grabs. **Two live Rescue rounds with exactly one pickup each wired B41 = 1 AND B29 = 1**, where a
+partition predicts B29 = 0, so it is not a partition: the first pickup feeds both, and B29 counts
+every pickup including the first (restoring the original capture-era note). A fall-through fits
+the counts; the control flow has not been re-read to confirm it, so the counts are the fact and
+the mechanism is open. Same failure mode as the `0x6ED650` shared-tail mis-attribution — two arms
+of a branch read as exclusive when they share a continuation.
+And **B42's units are 2-second ticks, not seconds**
 (quantum 6000 against the 3000-per-second used by the confirmed durations B13/B20/B40), so the
 archived 7 and 21 are **14 s and 42 s**.
 
