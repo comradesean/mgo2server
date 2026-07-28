@@ -189,11 +189,20 @@ The same function is a **real gate elsewhere**: `0x8BA560` admits a player to a 
 `base − tolerance <= level <= base + tolerance`, behind bit 12 of the flags word — so
 `level_limit_base` and `level_limit_tolerance` are in **level units**, not experience.
 
-**What A and B are** — the ELF cannot distinguish them (nothing reads them apart; the only consumer
-sums them), but the disc names the panel: **"Entry Status"** (915) with two values, **"Matching"**
-(924) and **"In Game"** (923). So one series is players queued and the other players already in a
-game, per level band. *Which array is which is undetermined* — and because the client only ever
-displays the sum, no client behaviour can tell us. Pick one, and say in the code that it is a guess.
+**What A and B are is UNKNOWN, and the earlier reading here was withdrawn 2026-07-28.**
+
+This file previously said one series is players queued and the other players in a game, from the
+disc's **"Entry Status"** (915) with values **"Matching"** (924) and **"In Game"** (923). That was an
+inference from three nearby strings, not a reading — and reference footage of a real Konami-era
+automatch session refutes it: filling the first array with a per-level count of searchers draws a
+visible bar above the player's own column, and **no such bar appears in the footage**.
+
+Those three strings are at least as plausibly a status field showing the player's *own* state
+("Entry Status: Matching") as a legend for this graph.
+
+What the ELF actually establishes is only that the client draws `A[i] + B[i]` as a bar per level
+column, clamped to 15. It never establishes what the numbers count. **The server therefore sends
+zeros in both arrays**, which renders the flat graph the footage shows. Pick one, and say in the code that it is a guess.
 
 **`0x43e4` can never cause a stall.** It uses the fire-and-forget event path `0xD33CD8`, not the
 request-status completion path `0x43e1` (slot 50) and `0x43e3` (slot 51) use. Nothing waits on it,
@@ -717,6 +726,17 @@ disc, so searchers appear in their own columns.
 
 Defaults: start ±1, widen one level every 30 s, cap 22 — reaching "anyone" in about eleven minutes,
 inside the client's own ~20-minute search timeout. `MGO2SERVER_AUTOMATCH_BAND_*` in `server.env`.
+
+**The mechanism is protocol; the schedule is ours.** That the band is a server-sent byte the client
+lights around a centre it computes itself is read from the ELF. The starting width, the widening
+interval and the cap are **operator policy** — reference footage of a real session matched too
+quickly to show any widening at all, so there is nothing to compare them against. It looked right in
+live testing, which is worth something and is not evidence.
+
+One consequence of the shared schedule, observed live: both searchers widen on the same clock, so
+the *sum* of two bands grows by two per step. A pair four levels apart goes from unreachable to
+overlapping in a single tick, which on one client's gauge can look like a premature match. Staggering
+each searcher's schedule from their own join time would smooth it, and has not been done.
 
 ### Slot-in: parked as a future project (2026-07-28)
 

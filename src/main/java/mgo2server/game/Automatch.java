@@ -654,17 +654,25 @@ public class Automatch {
 		if (searchers.isEmpty()) {
 			return;
 		}
-		// One column per level, counted from the queue itself. The client draws A[i] + B[i], so a
-		// searcher sees the real shape of who is waiting near them.
+		// BOTH ARRAYS ARE ZERO, DELIBERATELY — reverted 2026-07-28 after reference footage.
+		//
+		// We briefly filled the first array with a per-level count of queued searchers, on the
+		// reading that the panel's two series are the disc's "Matching" (string 924) and "In Game"
+		// (923) beneath the "Entry Status" label (915). That produced a visible bar above the
+		// player's own level column. Footage of a real Konami-era automatch session shows NO such
+		// bar, so whatever the original sent, it was not this.
+		//
+		// The honest position: the ELF establishes only that the client draws A[i] + B[i] as a bar
+		// per level column, clamped to 15. It never establishes what the numbers COUNT. The
+		// "Matching / In Game" reading was an inference from two nearby strings, and those strings
+		// are at least as likely to be the values of a status field showing the player's OWN state
+		// than a legend for this graph.
+		//
+		// Zeros render a flat graph, which is what the footage shows, and cannot mislead. The
+		// packing and clamping are still exercised by AutomatchPacketsTest, so re-enabling this is
+		// a two-line change once someone knows what the arrays mean.
 		var matching = new int[AutomatchPackets.COLUMNS];
 		var inGame = new int[AutomatchPackets.COLUMNS];
-		for (var searcher : searchers.values()) {
-			if (searcher.state() != State.SEARCHING || !searcher.channel().isActive()) {
-				continue;
-			}
-			var level = Math.min(Math.max(searcher.level(), 0), AutomatchPackets.COLUMNS - 1);
-			matching[level]++;
-		}
 		for (var searcher : searchers.values()) {
 			// Only clients still searching. Once a match has been announced the client has left state
 			// 6 for state 12 or 18, and while event 42 is documented as repainting in place, nothing
