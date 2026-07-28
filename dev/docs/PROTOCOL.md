@@ -1907,7 +1907,40 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 > fitting around a counter that is not present. B42, long suspected of feeding the Rescue OTHER
 > row, has a coefficient of **zero in every rule**.
 >
-> Full coefficient table: `dev/proto/mgo2_cmd_4390.ksy` header doc.
+> Full coefficient table by wire field: `dev/proto/mgo2_cmd_4390.ksy` header doc. The raw rows as
+> the stage script emits them, verbatim from `o/stage/n002a/scenerio.gcx` `proc23` (identical in
+> `n003a` and `n004a`), 37 s8 columns each:
+>
+> ```
+> rule 0 DM    3 -2  3 -2 2 0  0 0 0 5 0 0 5 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+> rule 1 TDM   3 -2  2 -1 2 0  0 5 2 5 3 0 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+> rule 2 RES   7  0  7  0 3 5 -5 0 0 0 5 0 0 0 0  0 3 3 2 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3
+> rule 3 CAP   5  0  5  0 3 5  0 3 5 0 3 0 0 0 0  0 0 0 0 0 0 0 0 0 0 0 5 1 0 0 0 0 0 0 0 0 3
+> rule 4 SNE   3 -2  2 -1 2 5  0 5 2 2 3 0 0 0 0  0 0 0 0 0 0 0 0 0 0 0 0 0 3 5 5 3 0 6 4 2 0
+> rule 5 BASE  3  0  3  0 0 5 -5 0 3 0 3 0 0 1 5 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+> rule 7 TSNE  5  0  5  0 0 5  0 0 5 0 0 0 0 0 0  0 0 0 0 0 0 3 0 5 0 3 0 0 0 0 0 0 0 0 0 0 5
+> ```
+>
+> Column → live counter → wire field (`—` = not on this wire):
+>
+> ```
+>  0 n00 kills      1 n01 deaths     2 n04 ko_dealt   3 n05 ko_recv
+>  4 n06+n08 headshots (summed)      5 n15 team_win   6 n22 B05      7 n36 B19
+>  8 n37 B35        9 n42 B36 *     10 n43 B37       11 n44 B38     12 n45 B39
+> 13 n47 B40       14 n48 B25       15 n49 B26       16 n50 B27     17 n51 B28
+> 18 n52 B29       19 n55 B41       20 n56 B42       21 n57 B32     22 n58 B33
+> 23 n59 B43       24 n60 B44       25 n61 B45       26 n62 B34     27 n63 B46
+> 28 n64 B47       29 n65 B48       30 n66 B49       31 n74 B57     32 dead column
+> 33 n68 B51       34 n69 B52       35 n67 B50       36 n75 —  OTHER, off-wire
+> ```
+>
+> `*` Columns 9 and 36 are special: the loader clamps their coefficient to 0/1 and stores the raw
+> value into a side array. Column 9's raw is the *step size* for B36 (`0x6EEE4C`), which then
+> scores ×1 — which is why DM/TDM show 5 in the row above but pay 1 per combo point.
+>
+> Worked example, live DM round 2026-07-27 (game 226, chara 1): 5 kills, 2 lethal headshots,
+> B36 = 10, B39 = 1, no deaths or knockouts → `5·3 + 2·2 + 10·1 + 1·5 = 34`, wire score **34**.
+> The same round's loser wired **0** against a raw −10 (5 deaths, nothing banked) — the clamp.
 
 - **Stun multiplier M is mode-specific: 2 in TDM (screen-confirmed), 3 in DM** (DM round
   8 = 3+1·3+2 exact). The 2026-07-23 `stun·3` revision came from DM-only rounds and the
