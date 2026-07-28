@@ -413,8 +413,34 @@ public class HostGameController implements IGameController {
 
 	private final int lobbySubtype;
 
+	/**
+	 * Told when a game has been created and its settings applied.
+	 * <p>
+	 * Exists for automatching, which must not release its joiners until the elected host's game is
+	 * both committed <em>and</em> configured — {@code createGame} commits the row and
+	 * {@code applyHostSettings} runs after it, so a matchmaker watching only for the row can hand
+	 * joiners a game whose rule and map are still zero.
+	 */
+	@FunctionalInterface
+	public interface GameCreatedListener {
+		void gameCreated(long hostCharaId, long gameId);
+
+		/** For every lobby that is not automatching. */
+		GameCreatedListener NONE = (hostCharaId, gameId) -> { };
+	}
+
+	private final GameCreatedListener gameCreatedListener;
+
 	public HostGameController(GameService gameService, CharacterService characterService,
 			ClanService clanService, AwardService awardService, long lobbyId, int lobbySubtype) {
+		this(gameService, characterService, clanService, awardService, lobbyId, lobbySubtype,
+			GameCreatedListener.NONE);
+	}
+
+	public HostGameController(GameService gameService, CharacterService characterService,
+			ClanService clanService, AwardService awardService, long lobbyId, int lobbySubtype,
+			GameCreatedListener gameCreatedListener) {
+		this.gameCreatedListener = gameCreatedListener;
 		this.clanService = clanService;
 		this.gameService = gameService;
 		this.characterService = characterService;
@@ -1332,6 +1358,15 @@ public class HostGameController implements IGameController {
 			gameService.applyHostSettings(gameId, ctx.connection().hostSettings());
 		} catch (RuntimeException e) {
 			logger.warn("Failed to apply host settings to game {}; keeping defaults.", gameId, e);
+		}
+
+		// After the settings, not merely after the row: a listener told at createGame time could act
+		// on a game whose rule and map are still zero.
+		try {
+			gameCreatedListener.gameCreated(charaId, gameId);
+		} catch (RuntimeException e) {
+			// A listener must never cost the host their game — the reply below is what unblocks them.
+			logger.warn("Game-created listener threw for game {}.", gameId, e);
 		}
 
 		logger.info("Character {} created game {} in lobby {}.", charaId, gameId, lobbyId);

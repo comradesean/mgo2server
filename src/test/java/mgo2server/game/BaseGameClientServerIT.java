@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import mgo2server.GameClient;
+import mgo2server.TestClient;
 import mgo2server.TestDatabase;
 import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.model.CharaSkill;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -20,9 +22,45 @@ public abstract class BaseGameClientServerIT {
 
 	protected GameClient client;
 
+	/**
+	 * Connections opened by {@link #connect}, closed on the way out.
+	 * <p>
+	 * Separate from {@link #client} because the two have different shapes rather than different
+	 * counts: {@code GameClient.run} blocks the calling thread until its handler closes the channel,
+	 * so it can only ever drive one connection per test thread. Anything needing two clients
+	 * simultaneously present — which is every automatch match — needs {@link TestClient} instead.
+	 */
+	private final List<TestClient> testClients = new ArrayList<>();
+
+	/**
+	 * Opens a second, third or n-th connection to the server under test.
+	 *
+	 * <p>Not authenticated: {@link TestClient#login} is a separate call because several tests care
+	 * about the order two clients check in, and folding the login in here would hide it.
+	 *
+	 * @param name used in that client's failure messages
+	 */
+	protected TestClient connect(String name) {
+		var testClient = new TestClient(name, server.boundPort());
+		testClients.add(testClient);
+		return testClient;
+	}
+
 	/** Which lobby the server under test is serving; override per test class. */
 	protected LobbyType lobbyType() {
 		return LobbyType.ACCOUNT;
+	}
+
+	/**
+	 * The subtype the server under test is built with, and the subtype its lobby row carries;
+	 * override per test class.
+	 * <p>
+	 * Zero is not a real subtype — it is "unset", which is what every test that has no opinion wants.
+	 * A class that asserts on a subtype the server puts <em>on the wire</em> should name a real one
+	 * instead, or the assertion is only checking that zero equals zero.
+	 */
+	protected int lobbySubtype() {
+		return 0;
 	}
 
 	/** Id of the lobby row created for this test, which hosted games reference. */
@@ -54,15 +92,16 @@ public abstract class BaseGameClientServerIT {
 		lobbyId = lobbyType() != LobbyType.GAME ? 0 : database.jdbi().withHandle(handle ->
 			handle.createUpdate("""
 					insert into lobby (type, subtype, name, ip, port)
-					values (:type, 0, 'Test', '127.0.0.1', 5730)
+					values (:type, :subtype, 'Test', '127.0.0.1', 5730)
 					""")
 				.bind("type", lobbyType().id())
+				.bind("subtype", lobbySubtype())
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
 
 		// Port 0 lets the OS pick, so parallel test classes never fight over a port.
-		server = GameServerFactory.createGameServer(services, 0, lobbyType(), lobbyId, 0,
+		server = GameServerFactory.createGameServer(services, 0, lobbyType(), lobbyId, lobbySubtype(),
 			automatchPolicy());
 		server.start().join();
 
@@ -113,6 +152,12 @@ public abstract class BaseGameClientServerIT {
 
 	@AfterEach
 	public void teardown() {
+		// Before the server, so a matchmaker tick cannot be writing to a channel that is going away.
+		// close() is idempotent, which matters because a test may have closed one deliberately.
+		for (var testClient : testClients) {
+			testClient.close();
+		}
+
 		// Null-guarded so a failure in setup surfaces its own cause instead of an NPE from here.
 		var futures = new ArrayList<CompletableFuture<Void>>();
 		if (client != null) {

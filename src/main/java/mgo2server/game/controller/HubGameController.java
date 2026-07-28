@@ -220,16 +220,21 @@ public class HubGameController implements IGameController {
 	}
 
 	private static void writeEntry(io.netty.buffer.ByteBuf buffer, int index, Lobby lobby) {
-		// Wire 0x04 subtype, 0x05 and 0x06 unknown, 0x07 the flags byte. This was one u32 with the
-		// subtype in its top byte and "the rest is unused" — which was wrong, and silently: 0x07 is
-		// the byte the hub menu expands one bit per field at 0xD47F40, so every lobby has always
-		// advertised no flags at all. That is why beginners_only produced no icon and no gate.
+		// Written byte by byte rather than as one u32 with the subtype in its top byte, because
+		// "the rest is unused" was wrong: 0x07 is a flags byte the client expands one bit per struct
+		// field at 0xD47F40, reversed (wire bit 0 becomes its internal 0x80).
+		//
+		// It is nonetheless sent as ZERO, and that is now a finding rather than an omission. All
+		// eight bits were set at once against a live client (0xff, confirmed on the wire) and
+		// nothing changed, which matches the static read: no call site of the hub-entry getter
+		// 0xD49040 reads offset 7 at all. The byte is parsed and never used. Do not re-add a knob
+		// for it — see V48 and dev/docs/LOBBIES.md.
 		buffer.writeByte(index >>> 24).writeByte(index >>> 16)
 			.writeByte(index >>> 8).writeByte(index);
 		buffer.writeByte(lobby.getSubtype() & 0xff)
-			.writeByte(0)
-			.writeByte(0)
-			.writeByte(lobby.getHubFlags() & 0xff);
+			.writeByte(0)      // 0x05 — read, latched to state +661 on selection, echoed back to us
+			.writeByte(0)      // 0x06 — read only for subtype 5, which wants the value 3
+			.writeByte(0);     // 0x07 — the flags byte; see below
 		buffer.writeShort((int) lobby.getId());
 		BufferUtil.writeString(buffer, lobby.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 

@@ -54,6 +54,63 @@ public final class AutomatchPackets {
 	/** The band and the centre column are both clamped to this by the client ({@code 0x93C348}). */
 	public static final int MAX_LEVEL = 22;
 
+	/**
+	 * {@code 0x43f1}: 19 bytes of scalars then the 204-byte settings block.
+	 * <p>
+	 * Goes to the <b>whole group</b>, not just the elected host. Every recipient compares the leading
+	 * id against its own ({@code 0xD5B7F4}); the one that matches goes to state 12 and creates the
+	 * game, everyone else parks at state 18 and waits for {@link #MATCH_GAME}.
+	 *
+	 * @param hostCharaId the elected host's character id — the id we send at {@code 0x4101 + 0x00}
+	 * @param lobbyId this lobby's id, which the four sibling parsers all fill from the lobby object
+	 * @param lobbySubtype likewise. 2 here, and the same field as {@code 0x4310}'s byte at `0xA2`
+	 * @param settings exactly {@link AutomatchSettingsBlock#SIZE} bytes
+	 */
+	public static void writeMatchFound(ByteBuf buffer, long hostCharaId, long lobbyId,
+			int lobbySubtype, byte[] settings) {
+		buffer.writeInt((int) hostCharaId);
+		buffer.writeInt((int) lobbyId);
+		buffer.writeByte(lobbySubtype);
+		// The subtype's sibling, lobbyObj+0x261. Meaning not established; zero is what the four
+		// non-automatch writers of this slot leave when they have nothing.
+		buffer.writeByte(0);
+		// Both zeroed by every sibling writer in the binary, so zero is the read value, not a guess.
+		buffer.writeInt(0);
+		buffer.writeInt(0);
+		// The rotation index. ALWAYS 0: the client copies entry idx into entry 0 without clearing
+		// entry idx (0x93D3BC), so any other value makes that rule play twice per cycle. We put the
+		// elected rules at entry 0 upward ourselves instead.
+		buffer.writeByte(0);
+		AutomatchSettingsBlock.write(buffer, settings);
+	}
+
+	/** Bytes in {@code 0x43f1}: the scalars plus the block. */
+	public static final int MATCH_FOUND_SIZE = 19 + AutomatchSettingsBlock.SIZE;
+
+	/**
+	 * {@code 0x43f2}: the game id, which releases the joiners.
+	 * <p>
+	 * Sent to the <b>whole group including the host</b>. The client's 4945 path proves the host's
+	 * handler expects it, and the failure is asymmetric: a spurious push to a host who has already
+	 * left the screen is dropped, while omitting it risks the host parking forever.
+	 * <p>
+	 * <b>One-shot.</b> Processing this unregisters the client's push channel ({@code 0x93DDA0}), so
+	 * nothing can reach that client afterwards — {@link #MATCH_FAILED} is only useful before it.
+	 */
+	public static void writeMatchGame(ByteBuf buffer, long gameId) {
+		buffer.writeInt((int) gameId);
+	}
+
+	/**
+	 * {@code 0x43f3}: the elected host could not create the game.
+	 * <p>
+	 * Raises error 4945, <em>"The host was unable to create game for automatching"</em> — the
+	 * sentence Konami shipped for exactly this. Its u32 is echoed into the dialog's detail code.
+	 */
+	public static void writeMatchFailed(ByteBuf buffer, int detail) {
+		buffer.writeInt(detail);
+	}
+
 	private AutomatchPackets() {
 	}
 

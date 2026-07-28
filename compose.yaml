@@ -143,7 +143,7 @@ services:
       MGO2SERVER_LOBBY_SUBTYPE: "1"
       # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
       # so three of these starting together get three different names.
-      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL,SNAKE,LIQUID"
+      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL"
       MGO2SERVER_GAME_PORT: "15733"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -171,7 +171,21 @@ services:
       MGO2SERVER_LOBBY_SUBTYPE: "1"
       # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
       # so three of these starting together get three different names.
-      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL,SNAKE,LIQUID"
+      MGO2SERVER_LOBBY_NAMES: "VAMP:BEGINNER,JOHNNY:BEGINNER"
+      # Beginners-only. WARNING: the client refuses entry to a lobby with this bit
+      # set unless the player's own profile+13097 byte is nonzero, and nothing sets
+      # that yet -- so today this lobby shows in the list and rejects EVERYONE with
+      # "You cannot login to this lobby." (dialog 2355). Set to false to make it an
+      # ordinary Free Battle lobby until the profile byte is wired.
+      # Beginners-only. The lobby half of the restriction: it sets bit 0 of the gate list's
+      # restriction byte (0x2003 wire 0x2d), which IS delivered and IS read by the client.
+      #
+      # It does not currently restrict anything. Observed 2026-07-28: a character joined this
+      # lobby with the bit confirmed on the wire and no refusal, and the connect burst was logged
+      # server-side, so the client's own gate (0x884300 -> 0x892220 -> dialog 2355) does not fire
+      # on this path. Enforcement, if we want it, belongs on the server -- refuse the join rather
+      # than trust the client to.
+      MGO2SERVER_LOBBY_BEGINNERS_ONLY: "true"
       MGO2SERVER_GAME_PORT: "15734"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
@@ -179,50 +193,6 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15734"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
-  freebattle3:
-    env_file: *server-env-file
-    build: .
-    image: mgo2server:local
-    command: ["game"]
-    # Host networking — see the gate service for why.
-    network_mode: host
-    environment:
-      <<: *server-env
-      MGO2SERVER_LOBBY_TYPE: "2"
-      MGO2SERVER_LOBBY_ID: "8"
-      MGO2SERVER_LOBBY_SUBTYPE: "1"
-      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
-      # so three of these starting together get three different names.
-      MGO2SERVER_LOBBY_NAMES: "VAMP,JOHNNY"
-      # Beginners-only. WARNING: the client refuses entry to a lobby with this bit
-      # set unless the player's own profile+13097 byte is nonzero, and nothing sets
-      # that yet -- so today this lobby shows in the list and rejects EVERYONE with
-      # "You cannot login to this lobby." (dialog 2355). Set to false to make it an
-      # ordinary Free Battle lobby until the profile byte is wired.
-      MGO2SERVER_LOBBY_BEGINNERS_ONLY: "true"
-      # The hub entry's flags byte (0x4902 wire 0x07) -- what the MENU reads, as opposed to
-      # beginners_only above, which rides in the gate list and the menu ignores. Which bit means
-      # "beginners" is unknown, so this is a decimal byte to SWEEP:
-      #
-      #   FREEBATTLE3_HUB_FLAGS=128 docker compose up -d --force-recreate freebattle3
-      #
-      # Try one bit at a time: 1, 2, 4, 8, 16, 32, 64, 128. Note the parser REVERSES the byte
-      # (0xD47F40): wire bit 0 becomes the client's internal 0x80 and wire bit 7 its 0x01, so both
-      # ends are worth trying before concluding a bit does nothing.
-      MGO2SERVER_LOBBY_HUB_FLAGS: ${FREEBATTLE3_HUB_FLAGS:-0}
-      MGO2SERVER_GAME_PORT: "15735"
-      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15735"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -240,7 +210,7 @@ services:
       MGO2SERVER_LOBBY_TYPE: "2"
       MGO2SERVER_LOBBY_ID: "3"
       MGO2SERVER_LOBBY_SUBTYPE: "2"
-      MGO2SERVER_LOBBY_NAMES: "Automatching"
+      MGO2SERVER_LOBBY_NAMES: "RAIDEN,SNAKE,LIQUID"
       MGO2SERVER_GAME_PORT: "15740"
       MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:

@@ -3,6 +3,7 @@ package mgo2server.game.controller;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.LobbyService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
@@ -38,11 +39,53 @@ public class AccountGameController implements IGameController {
 
 	private final LobbyType lobbyType;
 
+	private final LobbyService lobbyService;
+
+	private final long lobbyId;
+
 	public AccountGameController(AccountService accountService,
-			CharacterService characterService, LobbyType lobbyType) {
+			CharacterService characterService, LobbyType lobbyType,
+			LobbyService lobbyService, long lobbyId) {
 		this.characterService = characterService;
 		this.accountService = accountService;
 		this.lobbyType = lobbyType;
+		this.lobbyService = lobbyService;
+		this.lobbyId = lobbyId;
+	}
+
+	/**
+	 * Whether a beginners-only lobby should turn this character away.
+	 * <p>
+	 * <b>Enforced here, on the server, because the client does not enforce it.</b> The client has
+	 * the whole mechanism — {@code 0x884300} matches a lobby id against the gate list's restriction
+	 * bit, and its callers raise dialog 2355 when the player's {@code profile+13097} is zero — and
+	 * observed 2026-07-28 it simply does not fire: a character joined a lobby with the bit
+	 * confirmed on the wire and no refusal, with the connect burst logged server-side. Rather than
+	 * keep guessing at why, the refusal is made where it cannot be ignored. That is also how the
+	 * original service would have had to do it: a client cannot be trusted to keep itself out.
+	 * <p>
+	 * <b>Level is experience.</b> The client displays one more than the number of thresholds
+	 * cleared, and {@link CharacterService#LEVEL_4_EXPERIENCE} is measured rather than derived —
+	 * 499 displays as level 3 and 500 as level 4 on a live client. So "above level 3" is exactly
+	 * "experience at or past that threshold", with no rounding to argue about.
+	 * <p>
+	 * Operator policy, not protocol: the game has no opinion about who counts as a beginner, only
+	 * that a lobby can be marked and that a connect can be refused.
+	 */
+	private boolean refusedAsTooExperienced(long charaId) {
+		if (lobbyType != LobbyType.GAME) {
+			return false;
+		}
+
+		var lobby = lobbyService.getLobbies().stream()
+			.filter(l -> l.getId() == lobbyId)
+			.findFirst()
+			.orElse(null);
+		if (lobby == null || !lobby.isBeginnersOnly()) {
+			return false;
+		}
+
+		return characterService.experienceOf(charaId) >= CharacterService.LEVEL_4_EXPERIENCE;
 	}
 
 	@Override
@@ -89,6 +132,13 @@ public class AccountGameController implements IGameController {
 				logger.warn("Check session: account {} claimed character {}, which it does not own.",
 					account.getId(), claimedId);
 				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+				return;
+			}
+
+			if (refusedAsTooExperienced(claimedId)) {
+				logger.info("Refusing character {} entry to beginners-only lobby {}: {} experience.",
+					claimedId, lobbyId, characterService.experienceOf(claimedId));
+				ctx.write(CHECK_SESSION_RESULT, GameError.LOBBY_ENTRY_REFUSED);
 				return;
 			}
 

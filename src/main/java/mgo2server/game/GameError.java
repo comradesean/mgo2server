@@ -31,6 +31,22 @@ public enum GameError {
 	 */
 	CHARACTER_CANNOT_DELETE_YET(-268, true),
 
+	/**
+	 * Refuses a lobby connect: <em>"You cannot login to this lobby."</em>
+	 * <p>
+	 * [ELF] The lobby-connect state machine compares the completed request's result at
+	 * {@code 0x947198} onward — {@code -240} to dialog 2340, {@code -402} to 2640, and both
+	 * {@code -403} and {@code -404} to dialog <b>2355</b>, which is this sentence. Anything else it
+	 * does not name falls through to 2339, "Unable to connect to lobby."
+	 * <p>
+	 * {@code -404} is chosen over {@code -403} because it is the code the client's own beginner
+	 * check passes when it raises the same dialog itself ({@code li r4,-404} at {@code 0x892250}),
+	 * so a refusal from us is indistinguishable from the one the client would have made.
+	 * <p>
+	 * Unmasked: this is the client's own code, not one of ours.
+	 */
+	LOBBY_ENTRY_REFUSED(-404, true),
+
 	/** Character */
 	CHARACTER_DOES_NOT_EXIST(0x20),
 
