@@ -1888,7 +1888,11 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 > `0x6FA1B8` from `-rule N -score <37 ints>` directives in the stage script. The values were
 > read off the disc (`o/stage/n002a|n003a|n004a/scenerio.gcx`, `proc23`) and are byte-identical
 > across stages. Rows: 0 DM, 1 TDM, 2 Rescue, 3 Capture, 4 Sneaking, 5 Base, 7 Team Sneaking;
-> rules 6, 8, 9, 10 are never emitted and score nothing.
+> rules 6, 8, 9, 10 are never emitted and score nothing. **The six playable rule ids are
+> live-confirmed (2026-07-27)**: one game created per mode in a known order, reading the rule
+> byte from the client's own host settings (`0x4310`) — TDM 1, Rescue 2, Capture 3, Sneaking 4,
+> Base 5, DM 0 (games 219-224). Six single-variable observations; the earlier "identified by
+> matching coefficients to decomposed mode tables" is retired for rows 0-5.
 >
 > **The missing stun deduction exists, and the guess was half right.** The term is on
 > `knockouts_received` — **−2 in DM, −1 in TDM, −1 in Sneaking, 0 elsewhere** — and **B4

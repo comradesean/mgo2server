@@ -82,6 +82,13 @@ doc: |
   by `cmpwi 7` in functions whose sibling branch tests `cmpwi 2` and writes a confirmed
   Rescue slot.
 
+  **LIVE-CONFIRMED 2026-07-27 for all six playable rules.** One game created per mode in a
+  known order, reading the rule byte the client sends in its host settings (`0x4310`): Team
+  Deathmatch 1, Rescue 2, Capture 3, Sneaking 4, Base 5, Deathmatch 0 (games 219-224). Six
+  single-variable observations, no inference. This retires "identified by coefficient match"
+  for rows 0-5 and, by elimination over the eight named rules, leaves rule 7 = Team Sneaking
+  as the only reading consistent with both the jump table and the writer guards.
+
   Coefficients by wire field (0 omitted). r0=DM r1=TDM r2=RES r3=CAP r4=SNE r5=BASE r7=?:
 
     kills            r0 3  r1 3  r2 7  r3 5  r4 3  r5 3  r7 5
