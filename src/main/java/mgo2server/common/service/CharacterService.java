@@ -184,8 +184,24 @@ public class CharacterService {
 	}
 
 	/**
-	 * Seconds, as {@code 0x4107} slots 46, 47 and 48 want them, plus the total that feeds the
-	 * play-time line ({@code 0x4105} column 17).
+	 * Seconds from {@code chara_training_time}.
+	 *
+	 * <p><b>{@code total} is not the sum of the other three, and the table's name is misleading.</b>
+	 * The three named fields only accrue in the training lobbies — subtype 7 for
+	 * {@code trainingMode}, subtype 8 split by whether you hosted for {@code instructor} and
+	 * {@code student}. {@code total} accrues on <em>every</em> game in <em>every</em> lobby, Free
+	 * Battle included, so it is strictly larger for anyone who plays normally and <b>cannot be
+	 * reconstructed</b> from the other three.
+	 *
+	 * <p>That distinction is the whole point of the field: Konami's instructor requirement is "20 or
+	 * more hours of gameplay", not twenty hours sitting in a training lobby.
+	 * {@link #awardPendingInstructorSkill} therefore gates on {@code total}, and it is right to.
+	 *
+	 * <p>{@code trainingMode}, {@code instructor} and {@code student} are what {@code 0x4107} slots
+	 * 46, 47 and 48 display. <b>{@code total} feeds no screen</b> — an earlier version of this
+	 * comment said it fed the play-time line at {@code 0x4105} column 17, which is wrong: that
+	 * column is per-mode {@code play_seconds} derived from {@code round_report}, and the client sums
+	 * rows 0..6 into the header total itself.
 	 */
 	public record TrainingSeconds(long trainingMode, long instructor, long student, long total) {
 	}

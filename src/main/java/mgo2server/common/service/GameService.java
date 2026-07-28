@@ -792,7 +792,13 @@ public class GameService {
 	 * as instructor when they are the host and as student otherwise.
 	 * <p>
 	 * Only the three training columns are subtype-dependent; {@code total_seconds} accrues for
-	 * every game, because the graduation award is gated on total play time. Deliberately a no-op
+	 * every game, because the graduation award is gated on total play time.
+	 * <p>
+	 * <b>So the table's name undersells it.</b> {@code chara_training_time} holds one column that is
+	 * not training time at all: {@code total_seconds} is total play time across every lobby. Reading
+	 * the name and assuming {@code total_seconds} is the sum of the three training columns is an easy
+	 * mistake and a wrong one — it is strictly larger for anyone who plays outside the training
+	 * lobbies, and the 20-hour instructor gate depends on that. Deliberately a no-op
 	 * for a character with no row, so callers do not have to check first. Runs on the caller's
 	 * handle so it shares their transaction: the credit and the delete must not come apart.
 	 */
