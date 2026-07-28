@@ -17,6 +17,26 @@ Two wire fields carry them, both in `0x4103`:
 **Never set title bit 22 or above.** The client's popcount loop runs 23 iterations over a 22-entry
 table and corrupts the scrollbar.
 
+### The model, as far as it is understood
+
+Operator account, 2026-07-28: *"you unlock the animal rank and it goes into your history"*, and
+*"you wear it on the scorecard"*. That gives three distinct things, and only two of them are wired:
+
+| | field | meaning |
+| --- | --- | --- |
+| **Collection** | wire 563 mask | every title this character has unlocked |
+| **Worn** | wire 541, 1-based | the ONE title on display; 0 = none |
+| **History** | — | not fed by any command we know (see Granting policy) |
+
+The worn title is not private: its readers are the title tab, **the name plate**, and two clan
+surfaces (`0x916AFC`, `0x915D3C`, `0x906270`, `0x906320`, `0x8842A4`). Other players see it.
+
+**Which implies a command we have never seen.** Choosing which title to wear must send something,
+and no unhandled command has ever appeared in a live log — for the simple reason that no character
+has ever had a title unlocked, so the selection UI has never been reachable. Granting even one
+title makes that command discoverable the first time somebody equips it. Storing the choice is then
+a per-character column, and 541 serves it back.
+
 ---
 
 ## Titles — all 22, with the game's own descriptions
