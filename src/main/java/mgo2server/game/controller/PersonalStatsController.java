@@ -233,7 +233,11 @@ public class PersonalStatsController implements IGameController {
 		// value makes the next look at that screen a test rather than another fingerprint.
 		info.writeInt(instructor != null ? instructor.generation() : 0);
 		info.writeInt(0);              // [UNKNOWN]
-		BufferUtil.writeString(info, "", StandardCharsets.ISO_8859_1, NAME_LENGTH);
+		// Wire 615: the MEDAL BITFIELD, 16 bytes. Not a string — the ksy called it a string and
+		// this server sent the literal text "FP-STR-C" into it, whose byte 4 ('T' = 0x54, bit 6)
+		// is medal id 65, "500 Mk.II destructions". That one word awarded 17 medals to every
+		// character. See StatsService.medalBits and AWARDS.md.
+		info.writeBytes(statsService.medalBits(charaId));
 		// [ELF] The clan emblem flag, not a spare byte. T+0x1AD8 is 6816 + 56, and the 0x4103
 		// parser writes this u8 with `addi r4,r24,56` off `r24 = profile+6816` (0xD3F3FC), so it
 		// lands in profile+6872 — the same slot 0x4122 fills for the local player. It sat here
