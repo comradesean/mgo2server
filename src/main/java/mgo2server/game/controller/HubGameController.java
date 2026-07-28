@@ -277,10 +277,17 @@ public class HubGameController implements IGameController {
 	}
 
 	private static void writeEntry(io.netty.buffer.ByteBuf buffer, int index, Lobby lobby) {
-		// The subtype rides in the top byte of the attribute word; the rest is unused.
-		var attributes = (lobby.getSubtype() & 0xff) << 24;
-
-		buffer.writeInt(index).writeInt(attributes).writeShort((int) lobby.getId());
+		// Wire 0x04 subtype, 0x05 and 0x06 unknown, 0x07 the flags byte. This was one u32 with the
+		// subtype in its top byte and "the rest is unused" — which was wrong, and silently: 0x07 is
+		// the byte the hub menu expands one bit per field at 0xD47F40, so every lobby has always
+		// advertised no flags at all. That is why beginners_only produced no icon and no gate.
+		buffer.writeByte(index >>> 24).writeByte(index >>> 16)
+			.writeByte(index >>> 8).writeByte(index);
+		buffer.writeByte(lobby.getSubtype() & 0xff)
+			.writeByte(0)
+			.writeByte(0)
+			.writeByte(lobby.getHubFlags() & 0xff);
+		buffer.writeShort((int) lobby.getId());
 		BufferUtil.writeString(buffer, lobby.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 
 		// The text block. Only the survival-host category renders it; the rest read past it.

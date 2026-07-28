@@ -67,6 +67,7 @@ public final class Main {
 			lobby.setIp(config.advertiseIp());
 			lobby.setPort(config.gamePort());
 			lobby.setBeginnersOnly(config.lobbyBeginnersOnly());
+			lobby.setHubFlags(config.lobbyHubFlags());
 			lobby.setName("Lobby " + config.lobbyId());
 
 			var name = services.getLobbyService().register(lobby, config.lobbyNames());
