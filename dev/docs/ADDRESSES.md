@@ -215,6 +215,39 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 
 ---
 
+## 9. Server addressing — hostnames, ports, region
+
+Full write-up in [HOSTS.md](HOSTS.md). **The addresses are not in the binary**; these are the
+addresses of the code that *fetches* them from disc string resources, and of the override that
+replaces them.
+
+| VA | what it is |
+| --- | --- |
+| `0x7F9310` | the GCX `addrs` native — the whole consumer. Registry entry `0x1031568` = `{hash 0x00CEA915, opd 0x1018CA8}`; called from `lobby/scenerio.gcl` `proc17` as `command [cea915] -addrs $strres:28654` |
+| `0x7F9330` | opens `d/testhk` **before** the disc path, with flags `0x80000000` set — the developer override |
+| `0x7F9368` | `cmpdi cr7,r3,16` — the **only** validation on the override file. No magic, version, count or checksum |
+| `0x7F93A4` | `0xDB178` reads the base strres id as a little-endian s16 out of the script stream — why 28654 appears nowhere as an instruction immediate |
+| `0x7F9440` | `r29 <= 1`, the test that gives only slots 0 and 1 a port |
+| `0x7F9460` | selects `id + 12` and ORs its integer into the flag word. The 13th record is a **field, not a delimiter** |
+| `0x7F95C0` | `lhz r4,112(r1)` — the override file's port is **big-endian**, opposite to the strres path's little-endian reader at `0xDF9A8` |
+| `0x7F9504` | `cmpwi cr6,r31,255` — the string loop exits without terminating the buffer, and `0xDCC680` then `strcpy`s it. 255 chars is an overrun boundary, not a truncation |
+| `0x28AB00` / `0x28AAB0` | `SetHostString(i, s)` → `0x016188C8 + i*0x100`; `SetPort(i, v)` → `0x016194C8 + i*2`. 12 × 256 = 3072 lands exactly on the port array, which is what **proves** the slot count |
+| `0x00FC2F20` | holds the host-table base `0x016188C8` |
+| `0x016194CC` | the flag word. Bit 1 read at `0xBB1538`, `0xBB2260`, `0xBB92AC`, `0xBBC9A8`; **bit 0 has no reader** |
+| `0x7F4A78` | the `varbuf[4]` region native (hash `0x009BA0AC`, OPD `0x1018958`) — body is `lbz r3,42(r9)` |
+| `0x2FB28` / `0x2FBD8` | the `o/di` loader (64 bytes to `0x01698E04`) and its fallback, which writes **byte 42 = 0** → JP. BLUS30109's disc byte 42 is `0x01` → US |
+| `0x2EE48` | the path-keyed encrypted-asset opener, reached from `0x280F0` at `0x28154` on flag bit 31. Truncates the path at its **last** `/` to derive the key — `d`, `stage/lobby`, `online` |
+| `0x8849E8` / `0x9462C0` | builds the 688-byte network context (gate host `+0xEE`, port `+0x16E`) and the connect that consumes it |
+| `0xBB1BB4` / `0xBB6938` | the auth URL copy (`uaccount.cc`, TOC base `0xFFA2B0`) and the version-check URL copy (`uupdate.cc`, `0xFFA350`) |
+| `0xFF2338` / `0xFF233C` | the `'https'` / `'http'` scheme strings. **The scheme comes from the stored URL, not from a flag** — there is no code switch to patch |
+
+> **Correction, 2026-07-29.** `0x7A5AA8` was briefly read as the network transport/port selector on
+> the strength of `li r0,443` at `0x7A5C18`. It is not: that function is `f(obj, eventCode)`, the
+> `li r4,3` beside it is the second argument to the flag API at `0x305A60`, and the arm contains no
+> socket call. The 443 is an object field value that happens to equal the HTTPS port.
+
+---
+
 ## What actually worked, methodologically
 
 Worth keeping, because three readings were wrong before they were right:

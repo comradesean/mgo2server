@@ -67,6 +67,10 @@ not an elimination if the thing varied could not have mattered.
   flag, player-count thresholds, what the client computes for itself and must never be sent, and
   the values it refuses outright. Read this before wondering why a feature is missing or a screen
   is stalling.
+- `dev/docs/HOSTS.md` — **the server addresses**: where the client actually gets the five hostnames,
+  the gate port and the STUN port (disc string resources, *not* `MGO2.SELF`), the region byte that
+  picks US/EU/JP, and the three ways to repoint them. The `d/testhk` override is the supported
+  route and is confirmed live; read this before touching game data or the emulator's IP swap list.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
