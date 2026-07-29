@@ -170,9 +170,19 @@ something MGO writes must be read by the single-player game.
 - **Not PS3 savedata.** There is no `cellSaveData`, `savedata` or `SAVEDATA` string anywhere in the
   ELF, and no savedata directory for the title in an observed RPCS3 install.
 
-What is left: **`ac.sav`**, whose writer at `0x7F91C0` uses a **936-byte** stack buffer — by far the
-largest of the five and the only one big enough for structured per-item state. It is also the only
-one of the five whose purpose is unguessed. That is where to look next.
+**`ac.sav` is answered, 2026-07-29: it is a flat 936-byte snapshot of record 25** — the local
+player's settings record. So the answer to "is any of the store persisted" is *one record is, the
+other 25 are not*, and the write-back the dirty bitmap was once suspected of doing really is only
+P2P replication.
+
+Decrypted (key `online`, see [ASSETS.md](ASSETS.md)) it is **19 non-zero bytes** in 936: `+0x001`
+= 01, `+0x004` the account id as ASCII digits, `+0x048` a four-digit ASCII string, `+0x08F` = 03,
+`+0x194` = `16 62 02`, `+0x1A1` = 01. The layout lines up with record 25's own field table —
+`RecordGet(key 0, len 140)` at `+100` and `(key 176, len 24)` at `+496`.
+
+*Inferred, not yet checked:* the remaining fields are nameable cheaply by diffing — change one
+setting in game, re-dump, compare. Nothing else in the file is understood, and 917 zero bytes means
+most of the record is simply unused on a fresh profile rather than hidden.
 
 The whole `.sav` module lives at `0x7F6000`–`0x7F9300` with its own open/read/write/close, entirely
 separate from the record store.

@@ -212,6 +212,10 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 | `0xE0D548`–`0xE0DBF0` | a **developer name table**, English, naming those screens and fields (`FILTER HOST LIST`, `SORT KEY`, `MATCH CASE`, `PASSWORD LOCK`, …). Better field-naming material than the player-facing disc labels, and worth trying for other subsystems |
 | `0x9B9DF0` | the **loadout availability predicate** — 85-entry table at `0xE1812C`, gates each item against `(0x3049 trailer[3] & 1) << 4`. 32 entries gate on 16, 23 on 0, 27 defer to the ownership check `0x9C0600`/`0x9C2C90` |
 | `0xD48D40` | the `0x4991` parser — four 57-byte **tournament entry** records, loop bound hardcoded to four. `rec+0x00` is the slot-occupied test, so all-zero means "no pending entries" |
+| `0xD40E2C` | the **sole sender of `0x43c4`**, the host-rating vote — `f(session, stars)`, range-checked 1..5 at `0xD40E44`. Called only from the three star-picker screens |
+| `0xA30A38` | initialises the **star picker** and defaults the rating to 3 (`stw r0,204(r3)` at `0xA30A50`). Exactly **four** call sites — `0x9DCB28`, `0x9DCD68`, `0xA12C14`, `0xA13710` — two end-of-game state machines, two states each. **Those four states are the gate that decides whether "rate this host" appears**, and which is which is unresolved |
+| `0xA322A8` / `0xA3310C` / `0xA33F70` | the three `bl 0xD40E2C` sites, inside pickers `0xA30BF0` / `0xA327F4` / `0xA3313C`; `0xA33AC4` is the up/down clamp |
+| `0xA35F70` / `0xA36050` | the **only** two posters of dialog event `0x150022` ("Choose a rating"), both inside the *combat-training* end-of-session machine at `0xA35788`. The in-game host rating does not use this event — do not reason from one flow to the other |
 
 ---
 
