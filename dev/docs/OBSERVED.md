@@ -3992,3 +3992,44 @@ and b6lo is genuinely three-state, cycling 0..2 at `0x90C4C0`, with b6hi a live 
 **Future feature:** these are per-player preferences and we push one set to everybody. The client does
 not send them back in `0x4110` — its write-back is 304 bytes, exactly this packet minus these 32 — so
 whatever persisted them used another path, and that path is not yet identified.
+
+
+## The Rankings card's PLAY TIME — two triggers, one fixed, one open (2026-07-29)
+
+**Symptom.** The Rankings → Player Rankings card showed PLAY TIME as `00:00:00` while More Details
+showed the correct `16:43:20`.
+
+**Not a delay, and not the stats grid.** `0x4105` column 17 is correct — it sums to exactly **60200
+seconds**, which *is* 16:43:20, the figure More Details renders from the client's own per-column sum.
+
+**Two separate triggers, and they were conflated at first:**
+
+1. **Clicking yourself on a fresh Rankings load.** Zeroed before the 2026-07-29 deploy; correct
+   after it. **Which change fixed it is not established** — that deploy carried the whole cleanup
+   batch, and no single change in it obviously touches play time. Recorded as observed rather than
+   attributed, because a plausible-sounding attribution here would be exactly the kind of guess this
+   file exists to prevent.
+2. **Opening More Details and backing out.** Still zeroes, and this is the deterministic trigger.
+
+**Mechanism for the remaining one.** The card reads the **local** record until `0x4103` populates the
+**viewed-player** struct, after which it reads that instead — which is why backing out of More
+Details is the moment the zero appears. `0x4103` writes the same struct `0x4221` does
+(`T = *(obj+0x11904)` is `*(session+0x10000+6404)`, the same base under two names), and we send zero
+for the slot that holds this. Same defect as `0x4129` and the emblem: a packet sharing another's
+destination slots and zeroing a field the other fills.
+
+`0x4221` carries the real figure, which is why selecting *Player Details* from the context menu on
+another character populates it.
+
+**Which of `0x4103`'s unknown u32 slots holds it is not yet known.** Probe wired behind
+`MGO2SERVER_EXPERIMENT_PROBE_4103_PLAYTIME`; the four candidates get distinct clock values, so one
+look after backing out of More Details names the field. Deliberately not filled by guesswork — these
+slots feed award logic, and a fingerprint value in one of them once minted 17 unearned medals.
+
+### ELIMINATED: the shared viewed-player struct is not leaking between players
+
+There is exactly one viewed-player struct, so a natural worry was that one character's total was
+being written onto another's card. **It is not.** Opening one character's Player Details populated
+both cards, and **both showed their own correct figure** — the confirming observation would have
+been both showing the *same* number, and it did not happen. The struct is repopulated per view
+rather than shared across simultaneously-displayed rows.
