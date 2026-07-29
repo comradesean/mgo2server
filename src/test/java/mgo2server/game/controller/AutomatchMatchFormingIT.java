@@ -266,15 +266,16 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 
 		automatch().gameCreated(hostCharaId, GAME_ID);
 
-		// Only the JOINERS are released. The host created the game and is already in it; pushing
-		// 0x43f2 to it sends it down the joiner branch of its own state machine — observed live on
-		// 2026-07-28, where the host received the push, never sent 0x4320, and reported 0x4322 six
-		// seconds later while stuck on the match-found screen.
-		var host = clients.stream().filter(c -> charaIdOf(c) == hostCharaId).findFirst().orElseThrow();
-		var joiners = clients.stream().filter(c -> charaIdOf(c) != hostCharaId).toList();
-		assertThat(joiners).as("one host, the rest joiners").hasSize(clients.size() - 1);
-
-		for (var client : joiners) {
+		// EVERYONE is released, the elected host included, and this test exists partly to stop that
+		// being "tidied" away again. 0x43f2 is what moves a client off the match-found screen; the
+		// host has just finished creating the game and is parked at state 18 with nothing else to
+		// advance it.
+		//
+		// Excluded briefly on 2026-07-28 on the strength of a live host reporting 0x4322 after this
+		// push, which looked like the push putting it in the joiner branch. Excluding it produced a
+		// host that never left the match-found screen at all, with no error — the 0x4322 had been its
+		// join genuinely failing for a peer-to-peer reason, not a state-machine mistake.
+		for (var client : clients) {
 			var released = client.await(AutomatchPackets.MATCH_GAME, TIMEOUT);
 			assertThat(released.getPayload().readableBytes())
 				.as("%s's 0x43f2", client.name())
@@ -283,12 +284,6 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 				.as("%s must be sent to the game the host actually created", client.name())
 				.isEqualTo(GAME_ID);
 		}
-
-		// And the host is left alone to hand off into its own game.
-		TestClient.letTicksPass(QUIET);
-		assertThat(host.received(AutomatchPackets.MATCH_GAME))
-			.as("the host must not be told to join the game it just created")
-			.isEmpty();
 	}
 
 	/**

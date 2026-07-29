@@ -544,27 +544,20 @@ public class Automatch {
 				}
 				logger.info("Automatch releasing {} players into game {} ({}).",
 					match.members.size(), match.gameId, name);
-				// The HOST IS EXCLUDED. It created the game and is already in it; pushing 0x43f2
-				// sends it down the joiner branch of its own state machine.
+				// THE HOST IS INCLUDED, and that is load-bearing rather than incidental.
 				//
-				// Observed live 2026-07-28: the host received 0x43f2, never sent 0x4320, and reported
-				// 0x4322 (join failed) six seconds later while sitting on the match-found screen. The
-				// other client, which is a genuine joiner, advanced on its own and asked us for the
-				// endpoint correctly.
+				// 0x43f2 is what moves a client off the match-found screen: event 45 takes it to
+				// state 11, through the join stagger, and into the game. The host needs that as much
+				// as a joiner does — it has just finished creating the game and is parked at state
+				// 18 with nothing else to advance it.
 				//
-				// This reverses an earlier reading. Error 4945 fires when 0x43f2 names me as host
-				// "after my create had failed", and I took that as proof the host's handler expects
-				// the packet in the normal flow. It only proves the host can RECEIVE it — on a
-				// failure path.
+				// Excluded briefly on 2026-07-28 and immediately reverted, because the evidence was
+				// misread. The host had been seen reporting 0x4322 after receiving this push, which
+				// looked like the push putting it in the wrong branch; excluding it produced a host
+				// that never left the match-found screen at all. The 0x4322 was its join genuinely
+				// failing, for the same peer-to-peer reason the joiner's did — not a state-machine
+				// error.
 				for (var charaId : match.members) {
-					if (charaId == match.hostCharaId) {
-						var host = searchers.get(charaId);
-						if (host != null) {
-							host.state = State.MATCHED;
-							forget(charaId);
-						}
-						continue;
-					}
 					var searcher = searchers.get(charaId);
 					if (searcher != null) {
 						searcher.state = State.MATCHED;
@@ -756,6 +749,16 @@ public class Automatch {
 			for (var other : searchers.values()) {
 				if (other == searcher || other.state() != State.SEARCHING
 					|| !other.channel().isActive()) {
+					continue;
+				}
+				// Only searchers this player could actually be matched with right now. Someone
+				// holding out for Rescue is not a candidate for someone holding out for Base, and
+				// showing them would promise a match the matchmaker will not make.
+				//
+				// This is the same predicate the grouping uses, so the graph fills out on its own as
+				// the mode relaxation opens up — the column count and the matching rule cannot drift
+				// apart, because they are one rule.
+				if (!modesCompatible(searcher, other)) {
 					continue;
 				}
 				var level = Math.min(Math.max(other.level(), 0), AutomatchPackets.COLUMNS - 1);
