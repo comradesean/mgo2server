@@ -71,6 +71,22 @@ public class MessageGameController implements IGameController {
 	 * 1023-byte receive buffer rather than the payload length, so sending fewer than 708 bytes
 	 * copies stale buffer into the mail object and reports success.
 	 */
+	/**
+	 * "Unable to locate designated mail." — the letter-view and delete screens both discriminate it.
+	 * <p>
+	 * [ELF sweep 2026-07-29] Read: chain {@code 0x8E9DEC} -> dialog 6150 -> string 23749, appended
+	 * to "Unable to acquire mail." Delete: chain {@code 0x8EF750} -> dialog 6154 -> string 23767,
+	 * appended to "Unable to delete mail." Both 4352/4352 verified, both on wait slot {@code 0x55}.
+	 * <p>
+	 * <b>Not in {@code ERRORS.md}</b>, and that is a gap in the generator rather than a missing
+	 * code: these are inline chains outside any jump table, and {@code ERRORS.md} says so itself,
+	 * pointing at {@code dev/analysis/dialog_paths.json}. Verified there before use.
+	 * <p>
+	 * Written unmasked through {@link #writeCode} — masked it would become {@code 0xC0FFEExx} and
+	 * fall through to the generic sentence.
+	 */
+	private static final int MAIL_NOT_FOUND = -800;
+
 	private static final int READ_BODY_LENGTH = 708;
 
 	public static final int SEND_MESSAGE = 0x4800;
@@ -442,9 +458,22 @@ public class MessageGameController implements IGameController {
 		var letter = index < list.size() ? list.get(index) : null;
 
 		if (letter == null) {
+			// "Unable to locate designated mail." — which is precisely the condition, and the client
+			// has had a sentence for it all along. [ELF sweep 2026-07-29: chain 0x8E9DEC, raise
+			// 0x8E9E14, slot 0x55, 4352/4352 verified; -800 -> dialog 6150 -> string 23749. The row
+			// lives in dev/analysis/dialog_paths.json, which is why ERRORS.md does not list it.]
+			//
+			// A FOUR-BYTE FAILURE IS THE CORRECT SHAPE, and answering NONE here was not merely
+			// uninformative, it was unsafe: the parser reads the 708-byte body ONLY when the result
+			// is zero, and its reader bound-checks against the 1023-byte packet buffer rather than
+			// the payload. A short success reply therefore copies stale buffer into the mail object
+			// and reports it as a letter. Nonzero skips the read entirely.
 			logger.warn("Read mail: category {} index {} is not in this character's list of {}; "
-				+ "answering with an empty body.", category, index, list.size());
-		} else {
+				+ "refusing with -800.", category, index, list.size());
+			writeCode(ctx, READ_MESSAGE_RESULT, MAIL_NOT_FOUND);
+			return;
+		}
+		{
 			// Opening is the only "mark as read" signal the protocol has — there is no command
 			// for it. The client sets its own copy's read byte at 0x8E2CD8, but 0x4821 zeroes the
 			// category counters and the list is rebuilt from our entries, so an unrecorded read
@@ -500,8 +529,14 @@ public class MessageGameController implements IGameController {
 			logger.info("Delete mail: category {} index {}, subject \"{}\" removed from the {} list.",
 				category, index, letter.subject(), sent ? "sent" : "received");
 		} else {
+			// Nothing was removed, so saying NONE claimed a deletion that did not happen — the
+			// letter stayed in the list the player had just been shown. "Unable to locate designated
+			// mail." says what actually occurred. [ELF sweep 2026-07-29: chain 0x8EF750, raise
+			// 0x8EF778, slot 0x55, 4352/4352 verified; -800 -> dialog 6154 -> string 23767.]
 			logger.warn("Delete mail: category {} index {} is not in this character's list of {}; "
-				+ "nothing removed.", category, index, list.size());
+				+ "nothing removed, refusing with -800.", category, index, list.size());
+			writeCode(ctx, DELETE_MESSAGE_RESULT, MAIL_NOT_FOUND);
+			return;
 		}
 
 		ctx.write(DELETE_MESSAGE_RESULT, GameError.NONE);
@@ -513,4 +548,17 @@ public class MessageGameController implements IGameController {
 		var end = raw.indexOf(0);
 		return (end < 0 ? raw : raw.substring(0, end)).trim();
 	}
+	/**
+	 * Writes a bare four-byte result, unmasked.
+	 * <p>
+	 * {@code GameError} would mask anything not marked official into {@code 0xC0FFEExx}, which
+	 * matches nothing in the client's table; these mail codes are real values from the client's own
+	 * chains and must go out verbatim.
+	 */
+	private void writeCode(GameControllerContext ctx, int command, int code) {
+		var buffer = ctx.buffer(Integer.BYTES);
+		buffer.writeInt(code);
+		ctx.write(new GamePacket(command, buffer));
+	}
+
 }
