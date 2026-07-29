@@ -96,10 +96,26 @@ seq:
       always emits all 16).
   - id: unknown_0d3
     type: u1
-    doc: "[UNKNOWN] wire 0x0d3, src+800. Position exact, meaning unestablished."
+    doc: |
+      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
+      guessed. Parsed and pushed into the client's own property store (record 0, key 86 byte 1), and the only consumer is the accessor `0x7F4C98`, which has no callers and whose OPD word appears nowhere in the image.
+
+      The server stores it in a typed column so the settings round-trip is exact. Two decoys make
+      any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
+      produces a false hit at essentially every offset in this range, and the create-game screen
+      embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
+      registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
   - id: unknown_0d4
     type: u1
-    doc: "[UNKNOWN] wire 0x0d4, src+801. Position exact, meaning unestablished."
+    doc: |
+      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
+      guessed. As `unread_800`: store record 0 key 86 byte 5, dead accessor `0x7F4C50`.
+
+      The server stores it in a typed column so the settings round-trip is exact. Two decoys make
+      any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
+      produces a false hit at essentially every offset in this range, and the create-game screen
+      embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
+      registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
   - id: weapon_restrictions
     size: 16
     doc: |
@@ -134,13 +150,37 @@ seq:
       (13671-13820) has nothing between briefing time and friendly fire, so no UI label matches it.
   - id: unknown_0ee
     type: u2
-    doc: "[UNKNOWN] wire 0x0ee, src+832. Note src+828..831 are not sent."
+    doc: |
+      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
+      guessed. No reader anywhere in the binary.
+
+      The server stores it in a typed column so the settings round-trip is exact. Two decoys make
+      any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
+      produces a false hit at essentially every offset in this range, and the create-game screen
+      embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
+      registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
   - id: unknown_0f0
     type: u4
-    doc: "[UNKNOWN] wire 0x0f0, src+836."
+    doc: |
+      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
+      guessed. No reader anywhere in the binary.
+
+      The server stores it in a typed column so the settings round-trip is exact. Two decoys make
+      any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
+      produces a false hit at essentially every offset in this range, and the create-game screen
+      embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
+      registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
   - id: unknown_0f4
     type: u2
-    doc: "[UNKNOWN] wire 0x0f4, src+844. Note src+840..843 are not sent."
+    doc: |
+      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
+      guessed. No reader anywhere in the binary.
+
+      The server stores it in a typed column so the settings round-trip is exact. Two decoys make
+      any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
+      produces a false hit at essentially every offset in this range, and the create-game screen
+      embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
+      registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
   - id: host_stance
     type: u1
     doc: |
@@ -260,25 +300,40 @@ seq:
     doc: |
       [ELF] wire 0x147..0x148, src+934, u16 (`bl 0xd5c918`). Gated by commonB bit 7. Note
       src+936..939 are not sent. Same low-byte truncation as `idle_kick`, fixed the same day.
-  - id: unknown_149
+  - id: capture_extra_time
     type: u1
     doc: |
-      [UNKNOWN] wire 0x149, src+940. Candidate on position (via the +0x10 relation to the
-      `0x4313` reply): capture extra time or the sneaking-mission Snake side. Untested.
-  - id: unknown_14a
+      [CONFIRMED 2026-07-29] wire 0x149, src+940. **Capture Mission "EXTRA TIME"** — extend the round
+      until a victor emerges. A plain toggle: the handler at `0x8A02B4` is `x = x ? 0 : 1`, drawn as
+      disc string 33 "ON" / 34 "OFF".
+
+      Named from the disc: row label 507 "EXTRA TIME" under header 498 "Capture Mission", help text
+      541 *"Enabling this adds extra time to the end of the round until a victor emerges."*
+  - id: sneaking_snake_kills
     type: u1
-    doc: "[UNKNOWN] wire 0x14a, src+941. Same candidate pair as unknown_149."
-  - id: unknown_14b
+    doc: |
+      [CONFIRMED 2026-07-29] wire 0x14a, src+941. **Sneaking Mission "SNAKE"** — how many times Snake
+      must be defeated for Red and Blue to win. Rendered as a number at `0x89D7B8`, clamped to [1,5]
+      by the create-game adjuster at `0x8A1AC8`.
+
+      Named from the disc: row label 508 "SNAKE", units 520 "times", help 542 *"Set the number of
+      times Snake must be defeated (victory condition for Red and Blue Teams)."*
+
+      **This independently confirms the 2026-07-28 correction** that renamed the byte from
+      "sneaking-Snake side" to a count — that reading came from the clamp and the numeric render;
+      this one comes from the disc, by a different route.
+  - id: unread_tail
     size: 14
     doc: |
-      [UNKNOWN] wire 0x14b..0x158, src+942, one 14-byte blob write — so **the ELF gives no
-      internal boundaries for this region**; no u8/u16/u32 writer touches it. Ends the payload
-      at 345 bytes. On the +0x10 relation this covers the reply's `0x166 | 8 | byte-sized
-      timers` plus its trailing flag bytes (`0x16e` zero, `0x16f` extra-time flags with bit 1 =
-      non-stat game), which is 10 of the 14; the remaining 4 are unaccounted for and that
-      mismatch is a reason to treat the whole mapping as a hypothesis rather than a layout.
-      Note our `applyHostSettings` reads the non-stat flag from the host-options byte at
-      `0x155`, which falls inside this blob.
+      [PARTIAL] wire 0x14b..0x158, src+942 — **one 14-byte raw block write**, so the ELF gives no
+      field boundaries inside it and any split would be invented.
+
+      No CLIENT reader exists for any byte of the range. **That is not the same as inert**: the
+      server decodes the host-options flags out of byte 10 of this block (wire `0x155`), which is
+      where `non_stat` comes from and is capture-proven. So "the client never reads it back" is
+      established; "nothing uses it" is not.
+
+      Round-tripped whole. Splitting it needs live divergence testing, not disassembly.
 types:
   rotation_entry:
     doc: "One round of the rotation. Three parallel source arrays, interleaved on the wire."
