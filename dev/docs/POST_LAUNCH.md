@@ -119,3 +119,53 @@ The labels live in the language resource, not the binary, so the ELF cannot sett
 one-shot experiment is written down in `MessageGameController`: four letters, categories 0/1/2/3,
 each with a distinct subject, then read the tabs. `MGO2SERVER_MAIL_CATEGORY_*` exists to run it in
 one restart.
+
+---
+
+## Paid content we currently grant unconditionally
+
+### The 32 loadout items behind the `0x3049` trailer — GRANTED
+
+`0x3049` carries a 32-byte trailer whose **index 3 bit 0** is the only meaningful bit in it. We
+send `0x03` there, and that bit unlocks **32 of the 91 selectable loadout items**: the availability
+predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any item whose gate exceeds
+`(byte & 1) << 4` — 0 or 16 — and exactly 32 entries gate on 16. Clear the bit and those 32
+disappear from the loadout screen. 23 entries gate on 0 and are always available; 27 defer to a
+separate ownership check.
+
+**This is an entitlement, and we grant it to everyone by default.** That is *operator policy*, not
+protocol, and it has never been a deliberate decision — the value was inherited. Whether those 32
+are the day-one shop items has not been established. Two positions are defensible and the choice
+should be made rather than drifted into:
+
+- **Grant (current).** A private server with no shop cannot sell them, and withholding content the
+  player can see referenced elsewhere is its own kind of wrong.
+- **Withhold behind a flag.** Closer to release-day fidelity, and the bit is trivially per-account
+  once the trailer stops being a constant.
+
+If it becomes a toggle, it is one bit sourced per account, not a new packet.
+
+### The MGO Codec Pack — WHERE IT IS GATED IS UNKNOWN
+
+A day-one paid item on the Konami shop: **32 additional voice phrases** for the preset-message
+slots (`Personal Data -> Game Play Options -> Preset Message Slot`, 16 slots settable). Per the
+product notes the entitlement attaches to the **Konami ID**, i.e. the account, not the character —
+so if it is server-gated at all, the natural carrier is an account-scoped field.
+
+**Not established, and not guessed at here.** What is ruled out:
+
+- **Not the `0x3049` trailer.** Only index 3 bit 0 has readers; indices 0, 2 and 4..31 have none,
+  so there is no spare bit there for it.
+- **Not the login perks field.** `0xBB16B0` `strtol`s it and *discards the result* — only the
+  syntax matters, so it cannot carry an entitlement.
+
+Open questions for whoever picks this up: does the preset-message list builder consult any
+availability predicate at all, or are all phrases simply present in this build (as turned out to be
+the case for face paint)? The phrase text lives in the disc string resources, so the list itself is
+readable — the question is whether anything filters it.
+
+**Caution — a citation that needs checking.** The `0x3049` trailer note cites `0x9C0600` as part of
+a "separate ownership/expansion check" for 27 loadout items. A separate investigation of the
+host-rating path described `0x9C0600` as returning nonzero only when `roundMode() == 10 &&
+amHost()`. Those two descriptions cannot both be right about the same function. One of them is
+mis-attributed, and it should be resolved before either is built on.
