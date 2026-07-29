@@ -26,6 +26,18 @@ doc: |
       +8  u1  flag
   +1..+3 and +9..+11 are stack padding the 12-byte copy carries along; nothing reads them.
 
+  **This array is server-authoritative, and it seeds progression.** Nothing in the client copies
+  accrued experience back into `profile+11444`; the announce builder `0x8841A8` serialises whatever
+  we put here into `announce+50`, and the receivers `0x2764E0`/`0x278230` write it into record-store
+  keys 392 (live) and 648 (baseline). So this packet sets each skill's starting point for the next
+  match, and the client reports the result back in `0x43a4`. Send a stale value and the player
+  watches their skills regress.
+
+  **The legal maximum is 24576, and exceeding it is destructive, not cosmetic.** The validator at
+  `0x93E418` (`cmpwi cr7,r0,24576; ble+`) **zeroes** any record above it — the skill disappears
+  rather than clamping. The minimum that renders at all is 8192: the list builder at `0x8DD5F0`
+  rejects anything at or below 8191, confirmed live with 8191 invisible and 8192 visible.
+
   **Level is derived, never sent.** `0x6FC580` computes `min(exp >> 13, 3)` from the u2 at
   record+6 — the low half of the widened u32 — so only four levels exist, at exp 0 / 8192 / 16384
   / 24576. In-match code compares that level against a per-entry requirement byte.
@@ -47,6 +59,14 @@ doc: |
   ids are pinned anyway, because 0x6FCD48 maps weapon id to the skill that earns its experience:
   1 Handgun (weapons 2-16), 2 SMG (17-23), 3 Assault Rifle (24-31), 4 Shotgun (36-38),
   5 Sniper Rifle (39-45), 11 Knife (weapon 1). LMGs (32-35) feed no skill.
+
+  **All 17 names were recovered from the disc on 2026-07-29** (V60), and every one of those six
+  agrees. The labels are message ids in resource set `[40eff4]`, `name = 100 + 2*id` and level
+  descriptions `179 + 3*id`, exactly as V20 predicted: HANDGUN+, SMG+, ASSAULT RIFLE+, SHOTGUN+,
+  SNIPER RIFLE+, HAWKEYE, SURVEYOR, QUARTERBACK, TRICKSTER, CQC+, BLADES+, RUNNER, MONOMANIA,
+  SIXTH SENSE, NARC, SCANNER, INSTRUCTOR. Note id 11 is labelled **BLADES+**, not "Knife" — its own
+  description reads "Skill wielding knives", so it is the same skill under the disc's name. Id 18
+  reads `NONE`, which confirms the run ends at 17 independently of the ELF bound.
 
   ## This arm is the burst's terminal packet
 

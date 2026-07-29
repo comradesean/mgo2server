@@ -361,6 +361,26 @@ code from memory, so the tracer declined it rather than guessing. (call to 0x281
 | `-160` | 24107 | A network server error has occurred.\nUnable to apply to join clan. |
 | _(any other)_ | 24101 | Unable to apply to join clan. |
 
+### Other sentences that cannot be raised at all (added 2026-07-29)
+
+Four more carried-but-dead entries, found while looking for a code that would produce
+*"Game rules and map have not been set."*:
+
+| dialog | sentence | why it matters |
+| --- | --- | --- |
+| 2944 | Game rules and map have not been set.\nPlease set game rules and map. | the obvious refusal for an empty game rotation — **unavailable**, so that refusal keeps the generic code |
+| 2945 | Other characters will not be able to join if you "Create Game" with the current network environment. | |
+| 2826 | You do not own the map this host is using.\nUnable to connect to host. | |
+| 2833 | This Combat Training session is not currently\naccepting applicants. | |
+
+Method: the raiser convention is `li r3,<dialogId>` followed by a branch to the display path (e.g.
+`0x944768: li r3,2816`). For each of the four there is **no `li` into any argument register**
+anywhere in the image — every `li r0,2944` hit is an AltiVec stack offset feeding `stvx`/`lvx` —
+and no `addi`/`ori`/`subfic` form produces the value either. So they are reachable neither from a
+server result code nor from a client-side check.
+
+Check this list before designing a refusal around a sentence found in a string dump.
+
 **Five of this screen's sentences cannot be reached through a result code.** DialogIds
 6454, 6455, 6456, 6458 and 6460 are never loaded into `r3` anywhere in the binary — including
 *"A fixed amount of time must pass in order to apply to join a clan."* (6458) and *"You are on the

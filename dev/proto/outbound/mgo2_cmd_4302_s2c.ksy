@@ -117,7 +117,12 @@ types:
         doc: "[CONFIRMED] wire 0x28 -> T+0x2c. Average experience across current players."
       - id: host_score
         type: u4
-        doc: "[CONFIRMED] wire 0x2c -> T+0x30."
+        doc: |
+          [CONFIRMED] wire 0x2c -> T+0x30. The host's star NUMERATOR — the SUM of ratings, paired
+          with `host_votes` as the denominator; the client draws
+          `clamp(ceil(2 * numerator / denominator), 0, 10)` half-stars, so the ratio is the average.
+          Derived from `host_review` at query time since 2026-07-29; the `game.host_score` column
+          it used to read is dead and always zero.
       - id: host_votes
         type: u4
         doc: "[CONFIRMED] wire 0x30 -> T+0x34."

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_43a5_s2c
-  title: "MGO2 0x43A5 — server -> client: bare result ack for 0x43a4 (never observed; COMMANDS.md reachable-in-ordinary-flow gap)"
+  title: "MGO2 0x43A5 — server -> client: bare result ack for 0x43a4 (SENT since 2026-07-29)"
   endian: be
 doc: |
   Evidence: GAME reply dispatcher `0xD387C8` (the `0x41xx`-`0x4Exx` id space; compare tree head at `0xD38804`) matches
@@ -24,7 +24,11 @@ doc: |
   game/roster structure, and no field is rendered: the value only reaches the waiting
   request slot, where a nonzero code surfaces as the screen's error dialog.
 
-  COMMANDS.md files 0x43a5 under "result singles" — parsed but never sent.
+  **NOW SENT, and required.** COMMANDS.md filed this under "result singles" — parsed but never
+  sent — which was true only because `0x43a4` had no handler. `0x43a4` is the host's per-skill
+  experience report and its sender opens wait slot **53** (`li r4,53` / `bl 0xD32E08` at
+  `0xD41A78`), the very slot this parser completes. Leaving it unanswered is a latent `FFFFFF60`,
+  observed live on 2026-07-29 hanging a client mid-match. We answer `result(0)`.
 
   DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
   the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head

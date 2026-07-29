@@ -77,6 +77,51 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 
 ---
 
+## 1a. Skill experience — `0x43a4`
+
+The only route by which skill progression persists. Skills level by *use*, which the server cannot
+observe, so the client reports. Identified 2026-07-29 and confirmed live the same day.
+
+| address | what |
+| --- | --- |
+| `0xD41940` | serializer, `f(ctx, u32 charaId, void *entries, u32 count)`. `li r4,0x43A4` at `0xD419DC`; count cap 127 at `0xD419BC`; **opens wait slot 53 at `0xD41A78`**, so an unanswered report hangs the client |
+| `0x27D028` | **its only caller** (`bl` at `0xD41168`), and where the records are built |
+| `0x27D0D0` / `0x27D0E8` | `GET(key 392, 256)` live experience and `GET(key 648, 256)` its baseline shadow — 128 x u16 indexed by skill id |
+| `0x27D12C` → `0x27D140` | writes the delta, then **overwrites it with `live[id]`**. This is why the reported value is ABSOLUTE, and the single instruction that settles it |
+| `0x27D130` | zero delta ⇒ cursor does not advance, so unchanged skills are omitted |
+| `0x27D190` | rebaseline, `SET(key 648, 256, live)` — same pattern as `0x4390`'s at `0x27DC60` |
+| `0x27DF38` | `SubmitReport(slot, which)`; `which == 1` arms `0x43A4` (arm at `0x27DFC0`) |
+| `0x27E780` | `PollReportTasks(slot)` — drives the three tasks **in order**: `0x4390`, `0x43A4`, `0x43A2`. Confirmed live, all three in the same millisecond |
+| `0x7083C8`, `0x708800` | the two arming sites; each sweeps slots 0..23, so **the host reports for every player** and attribution must come from the payload's character id |
+| `0x6FCA40` | `addi r6,r6,1` — accrual, **one point per use** |
+| `0x6FCAD4` | level-up snap to `(level << 13) + 8192`, requirement table at `g + (min(id,17)*4 + level)*2` |
+| `0x6FC580` | level = `min(experience >> 13, 3)` |
+| `0x93E418` | **`cmpwi cr7,r0,24576; ble+` — zeroes any record above 24576.** A legal maximum, not a display ceiling: over-cap makes the skill vanish |
+| `0x8841A8` | announce builder — copies `profile+11444` (stride 12, u32 at +4) to `announce+50` |
+| `0x2764E0`, `0x278230` | announce receivers — `SET` that block into **both** key 392 and key 648, so the delta starts at zero on join |
+
+`profile+11444` is written only by the `0x4125` and `0x4129` parsers, so it is entirely
+server-authoritative — which is why nothing persisted before: experience accrued in the blob and
+was discarded at teardown.
+
+## 1b. The host-rating gate — `0x43c4`
+
+| address | what |
+| --- | --- |
+| `0xD40E2C` | the vote sender; range guard `cmplwi cr6, arg-1, 4` at `0xD40E44`, `li r4,0x43C4` at `0xD40EA4` |
+| `0xA322A8`, `0xA3310C`, `0xA33F70` | its three call sites, in three identical coroutine copies |
+| `0x9DCA18` / `0xA135AC` | picker predicate 1 — `0x26E958` must be 0, i.e. **not the host** (bit 0 of `gameObj+3020`). How self-rating is prevented |
+| `0x9DCA34` / `0xA135C4` | picker predicate 2 — `screen+344` must be nonzero, or the picker never opens |
+| `0x9D7F34`, `0x9DF0B4`, `0x9DFA84`, `0xA0C5D8`, `0xA0F6F8`, `0xA0FEC0` | the six sites that **snapshot** `details+964` into `screen+344` when the end-of-game screen is constructed |
+| `0xD44588` | writer 1 of `details+964` — the `0x4313` parser, wire `0x0a7` |
+| **`0xD441FC`** | **writer 2 — the `0x4321` join-result parser, wire `0x28`, only when `result == 0`. Lands last and wins.** We sent a hardcoded 0 here, which switched host rating off on every join |
+| `0xD44D00` | writer 3 — the `0x4310` create-game sender, a provable zero: the host suppressing its own |
+| `0xA31DB0` | where the slot is finally re-read — **after** the player has already chosen a rating, which is why fixing only `0x4313` changed nothing |
+| `0xA322BC`, `0xA31DC0` | the post-send latches (`flags |= 0x20`, zero `state+200`). **Client-local and cleared when the picker is re-armed**, so only the server can stop a repeat vote |
+
+Details cache base is `session+0x8EF8` (36600), proven at `0xD3F71C`; `36600 + 964 = 37564`, which
+is the `lbz r0,-27972(r9)` after `addis r9,r3,1` seen at each snapshot site.
+
 ## 2. Gameplay counter writers
 
 | VA | what it is |

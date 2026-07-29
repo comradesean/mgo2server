@@ -237,16 +237,16 @@ announce itself as a `No handler for command …` line once players have collect
 | `0x43A1` | parses | 4 B | Bare result ack for 0x43a0 pass host | served |
 | `0x43A2` | sends | variable | Per-player round weapon tallies *(verified spec)* | served |
 | `0x43A3` | parses | 4 B | Bare result ack for 0x43a2 per-player weapon tallies | served |
-| `0x43A4` | sends | variable | [UNKNOWN] In-match per-player list report | gap |
-| `0x43A5` | parses | 4 B | [UNKNOWN] Bare result ack for 0x43a4 (never observed; COMMANDS.md reachable-in-ordinary-flow gap) | unsent |
+| `0x43A4` | sends | 8 + 3n | **Per-skill experience report** — the only route by which skill progression persists. `{u32 chara, s32 count, count x {u8 skill, u16 experience}}`, absolute values, host reports for every player | handled |
+| `0x43A5` | parses | 4 B | Result ack for `0x43a4`. **Required** — the sender opens wait slot 53, so an unanswered report hangs the client | sent |
 | `0x43A6` | sends | 4 B | [UNKNOWN] In-match single-id command — our code names it PUT_CLIENT_SETTING; the spec title records only the shape | served † |
 | `0x43A7` | parses | 4 B | [UNKNOWN] Bare result ack for 0x43a6 (never observed; COMMANDS.md reachable-in-ordinary-flow gap) — our code names it PUT_CLIENT_SETTING_RESULT; shape is a bare u32 | served † |
 | `0x43B0` | sends | 29 B | [UNKNOWN] In-match eight-field report | gap |
 | `0x43B1` | parses | 4 B | [UNKNOWN] Bare result ack for 0x43b0 (never observed; COMMANDS.md reachable-in-ordinary-flow gap) | unsent |
 | `0x43C0` | sends | 162 B | In-game info / edit game settings | served |
 | `0x43C1` | parses | 4 B | Bare result ack for 0x43c0 in-game info (edit name/comment/password) | served |
-| `0x43C4` | sends | 4 B | [UNKNOWN] In-match enumerated command | gap |
-| `0x43C5` | parses | 4 B | [UNKNOWN] Bare result ack for 0x43c4 (never observed; COMMANDS.md reachable-in-ordinary-flow gap) | unsent |
+| `0x43C4` | sends | 4 B | **Host-rating vote, 1..5 stars**, cast by a player about the host as they leave. Gated by `0x4321` wire `0x28` / `0x4313` wire `0x0a7` | handled |
+| `0x43C5` | parses | 4 B | Result ack for `0x43c4` | sent |
 | `0x43C8` | sends | 5 B | Start round | served |
 | `0x43C9` | parses | 8 B | Start-round reply (reply to 0x43c8) | served |
 | `0x43D0` | sends | 1 B | Training parameter fetch | served † |
