@@ -870,7 +870,7 @@ documented anywhere we have.
 | `0x3e` | 14 | — | appearance bytes head … accessory-2 colour |
 | `0x4c` | 5 | 5 × u8 | equipped skills 1–**5** |
 | `0x51` | 5 | 5 × u8 | equipped skill levels 1–**5** |
-| `0x56` | 20 | 5 × u32 | per-skill experience for the equipped slots. **We still send a fixed `0x600000` here, and that is wrong** — it is 256x the client's legal maximum (`0x6000 << 8`), harmless only because `>> 13` clamps to 3. Skill progression **does exist**: see `0x43a4`. Should come from `chara_skill` |
+| `0x56` | 20 | 5 × u32 | per-skill experience for the equipped slots, from `chara_skill`. The old fixed `0x600000` was `0x6000 << 8`, 256x the client's legal maximum of 24576. Skill progression **does exist**: see `0x43a4` |
 | `0x6a` | 1 | u8 | appearance struct +60. Meaning unknown, but **round-tripped**: `0x4130` sends it back (`0xD3BD88`) and `0x4131` reads it (`0xD3C6AC`). Send 0 — and preserve whatever came back |
 | `0x6b` | 4 | u32 | character id again — "the original sends the character id here; its purpose is not documented" |
 | `0x6f` | 128 | ISO-8859-1 | comment |
@@ -942,7 +942,7 @@ strongest evidence that the creation-time skip is wrong.
 | `0x04` | 19 | — | the 19 clothing bytes, echoed |
 | `0x17` | 5 | 5 × u8 | skills 1–**5**, echoed |
 | `0x1c` | 5 | 5 × u8 | skill levels 1–**5**, echoed |
-| `0x21` | 20 | 5 × u32 | per-skill experience — still a fixed `0x600000`, as in `0x4122`, and wrong for the same reason |
+| `0x21` | 20 | 5 × u32 | per-skill experience for the equipped slots, from `chara_skill`, through the same floor-and-clamp helper `0x4122` uses. Was a fixed `0x600000` until 2026-07-29 |
 | `0x35` | 1 | u8 | zero, purpose unknown |
 | `0x36` | 128 | ISO-8859-1 | comment, echoed |
 | `0xb6` | 4 | u32 | **never read** — see below |
@@ -3156,11 +3156,11 @@ Collected so none of them get lost. Roughly in order of how likely they are to b
 
 8. **`0x4122`'s 25-byte prefix** (its 4-byte suffix is no longer unknown — it is the saved-instructor
    marker, see the `0x4122` table); and the character id repeated at `0x6b` for no documented
-   reason. The fixed per-skill experience `0x600000` is **no longer an unknown but an outstanding
-   bug**: skill progression exists and is reported by `0x43a4`, so this field should carry the
-   stored per-skill value. `0x600000` is `0x6000 << 8`, i.e. 256x the client's own legal maximum of
-   24576, and the validator at `0x93E418` zeroes any record above that — it has been harmless only
-   because it reaches a roster we do not send and because `>> 13` clamps to 3 anyway.
+   reason. ~~The fixed per-skill experience `0x600000`~~ — **resolved 2026-07-29 and no longer a
+   gap.** It was never an unknown so much as an inherited constant: `0x6000 << 8`, 256x the
+   client's own legal maximum of 24576, which the validator at `0x93E418` zeroes rather than
+   clamps. It was inert only because it reached a roster we do not send and because `>> 13` clamps
+   to 3. Both `0x4122` and `0x4131` now carry the stored per-skill value.
 
 9. ~~**`0x4990` answers `0, 1, then 0xa4 zero bytes`.**~~ — **superseded 2026-07-26, and it was a
    live bug.** The client reads **236 bytes**, not 172: a u32, a u32 it overwrites with 4 whatever

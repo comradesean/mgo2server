@@ -137,15 +137,20 @@ public final class PersonalInfoWriter {
 	 * level 2 does not display "level 2 with no progress" — it makes the skill vanish from the
 	 * character.
 	 *
-	 * <p>Skill progression is not modelled yet, so most characters have no {@code chara_skill} row
-	 * for what they have equipped. Without this floor, turning on real experience would have
-	 * silently stripped every equipped skill from every character on their next login.
-	 *
-	 * <p>Once progression exists the stored value will exceed the floor on its own and this becomes
-	 * inert. It is deliberately a {@code max} rather than a replacement so that it never lowers a
+	 * <p>The floor exists because a character can have no {@code chara_skill} row for something it
+	 * has equipped; without it, sending the raw stored value would silently strip that skill on the
+	 * next login. It is a {@code max} rather than a replacement precisely so it can never lower a
 	 * real total.
+	 *
+	 * <p><b>Progression now exists</b> ({@code 0x43a4}, 2026-07-29), so for any skill a player has
+	 * actually used the stored value exceeds the floor on its own and this is inert. It stays for
+	 * the rows that do not exist yet.
+	 *
+	 * <p>Shared with {@code 0x4131}, which echoed a fixed {@code 0x600000} until 2026-07-29 — both
+	 * paths must report the same number or the skill screen disagrees with itself between the
+	 * connect burst and a wardrobe change.
 	 */
-	static int reportedExperience(int stored, int level) {
+	public static int reportedExperience(int stored, int level) {
 		var supportsLevel = Math.min(level, 3) * EXPERIENCE_PER_LEVEL;
 		return Math.min(Math.max(Math.max(stored, 0), supportsLevel), MAX_SKILL_EXPERIENCE);
 	}
