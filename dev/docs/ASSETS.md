@@ -10,10 +10,28 @@ the binary says what feeds it. Confusing the two is how `training_mode_time_s` h
 
 ## The crypto
 
-Everything under `o/stage/<stage>/` — `.dar`, `.qar`, `.dlz`, `.vfp`, `.gcx`, even `data.cnf` — is
-encrypted with a **keystream derived from the stage's own path string**. The key for
-`o/stage/lobby/*` is the literal `stage/lobby`; for `o/stage/r_onlinelobby/*` it is
-`stage/r_onlinelobby`. No leading `o/`.
+**The key is the path with its last `/` component removed — the directory the file sits in.**
+Corrected 2026-07-29 from the opener itself (`0x2EE48` calls `strrchr(path, '/')` and truncates
+there); the earlier wording here, "the stage's own path string", happened to be right for stages
+and wrong as a general rule.
+
+The rule covers everything the game opens through this path, not just stages:
+
+| File the game opens | Key |
+| --- | --- |
+| `stage/lobby/cache.dar`, `.qar`, `.vfp`, `.gcx`, `data.cnf` | `stage/lobby` |
+| `stage/r_onlinelobby/*` | `stage/r_onlinelobby` |
+| `online/ac.sav`, `opt.sav`, `mgof.sav`, `scradj.sav` | `online` |
+| `clanemblem/emblem<N>.emb` | `clanemblem` |
+| `d/testhk` — the server-address override, see [HOSTS.md](HOSTS.md) | `d` |
+
+No leading `o/` in any of them: the game passes the path relative to its data root, and the VFS
+resolves that root per file (some to `/dev_bdvd`, some to `/dev_hdd0` — see HOSTS.md).
+
+**Encryption is opt-in per call site, not a property of the directory.** `helpdisp.sav` sits
+alongside the other four saves and is written **unencrypted**; the caller sets bit 31 of the open
+mode to request the encrypting stream (`0x280F0` diverts to `0x2EE48` at `0x28154`, and the handle
+is tagged `0x08000000` so `0x26ED8`/`0x258E0` dispatch to the decrypting reader and closer).
 
 `o/di` and `o/kit` are **not** key material. That lead was chased and is dead.
 

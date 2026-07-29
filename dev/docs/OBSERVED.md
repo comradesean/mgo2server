@@ -2065,6 +2065,53 @@ restarted). Findings:
 it is now unknown (pre-restart DEBUG logs were lost). Payload hex recorded in PROTOCOL.md;
 meaning unparsed everywhere.
 
+### The host-rating prompt fires when a JOINER quits a live game — `0x43c4` traced end to end
+
+*2026-07-29.* "Rate this host" had been seen exactly once in the project's history, and nobody knew
+what produced it. It is not the server, and it is not the instructor rating — those are two
+different flows that had been conflated.
+
+**The one sighting, reconstructed from the capture** (`dev/analysis/logs/mgo2server-gamelobby-1.log`,
+2026-07-28; the only `0x43c4` in the whole log corpus). Game 234 was created by **character 2**
+(`rawr`, .122) at 05:28:02; **character 1** (`Sean`, .100) joined:
+
+```
+05:43:52.466  host    0x4390 x2   round-end stats for both players
+05:44:31.695  joiner  0x4312  ->  game info for game 234
+05:44:31.729  joiner  0x43c4  ->  00000005      the vote, 34 ms after the reply
+05:44:36.651  joiner  0x4380  ->  QUIT_GAME     4.9 s AFTER the vote
+05:44:36.747  host    0x4390  ->  "character 1 ... left mid-round"
+05:45:09.081  host    game 234 advanced to rotation entry 0
+05:50:18.738  host    "Character 2 left game 234, which it hosted"
+```
+
+So: **the joiner quit first, out of a live round, while the host stayed in** — the host played on
+for six more minutes. And the vote goes out *before* `0x4380`, not after: the star picker is part of
+the quit sequence, and the quit only proceeds once it is answered.
+
+**Why it has never fired for a host.** Ending a session by quitting as host tears the game down and
+ejects everyone through teardown rather than through their own quit path, so no joiner ever enters
+the state that opens the picker. Nobody is asked because nobody chose to leave.
+
+**The code, so the trace is not re-derived.** `0x43c4` has one sender, `0xD40E2C` (`r3` session,
+`r4` stars, range-checked 1..5 at `0xD40E44`), called from three star-picker screens —
+`0xA322A8`, `0xA3310C`, `0xA33F70` inside `0xA30BF0` / `0xA327F4` / `0xA3313C`. The widget is
+initialised by `0xA30A38`, which defaults the rating to 3 (`stw r0,204(r3)` at `0xA30A50`), and
+`0xA33AC4` is its up/down clamp. `0xA30A38` has exactly **four** call sites — `0x9DCB28`,
+`0x9DCD68`, `0xA12C14`, `0xA13710` — two end-of-game state machines reaching it from two states
+each. Those four states are the gate; which is which is **not yet resolved**.
+
+**Do not reason from the instructor prompt to this one.** Dialog event `0x150022` ("Choose a
+rating") has only two posters in the entire binary, `0xA35F70` and `0xA36050`, and both are inside
+the *combat-training* end-of-session machine at `0xA35788` (see BACKLOG.md). The in-game host rating
+does not use that event at all.
+
+**Still open:** which of the four states corresponds to which exit path. The cheap experiment is
+four games varying only the teardown — host ends the round naturally, host quits, joiner quits from
+the results screen, joiner quits mid-round — since the gate is a branch on live session state, not
+on anything we send. Note also that `host_review` was **empty** as of 2026-07-29: the `0x43c4`
+handler only landed on 2026-07-28, so the one recorded sighting predates any storage.
+
 ### Voluntary quitters ARE reported — at quit time, with real stats; SaveMGO question closed
 
 2026-07-23 late, three-player game 109: character 3 ("poop", tester03) CQC-grabbed and
