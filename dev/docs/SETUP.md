@@ -58,6 +58,13 @@ cause.
 
 ### 1. IP swap list
 
+> **This is the emulator route, and it is no longer the only one.** It rewrites the resolver
+> *inside* RPCS3, so it changes nothing about the client and cannot help a real PS3. The client's
+> own addresses live in disc string resources and can be overridden with a single file,
+> `d/testhk` — confirmed live 2026-07-29. See [HOSTS.md](HOSTS.md) for that route and for where the
+> addresses actually come from. Either works for an RPCS3 setup; the swap list is the one with
+> fewer moving parts, so it stays the documented default here.
+
 Redirects Konami's hostnames to the server. **Settings → Network → IP swap list**, or in
 `config/config.yml`:
 
