@@ -25,7 +25,8 @@ public record Policy(
 	Duration clanDisbandCooldown,
 	Duration clanEmblemCooldown,
 	Duration clanJoinCooldown,
-	boolean zeroUnreadFields
+	boolean zeroUnreadFields,
+	boolean probePlayTimeFields
 ) {
 	/** A week. What all three cooldowns default to. */
 	public static final Duration DEFAULT_COOLDOWN = Duration.ofHours(168);
@@ -48,7 +49,8 @@ public record Policy(
 			hours(env, "MGO2SERVER_CLAN_DISBAND_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_JOIN_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
-			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS")
+			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS"),
+			flag(env, "MGO2SERVER_EXPERIMENT_PROBE_4103_PLAYTIME")
 		);
 	}
 

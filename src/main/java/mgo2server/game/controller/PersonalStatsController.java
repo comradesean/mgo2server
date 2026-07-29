@@ -183,11 +183,11 @@ public class PersonalStatsController implements IGameController {
 		for (var i = 0; i < 12; i++) {
 			info.writeShort(0);        // 12×u16 → T+0x1AB6.. — the privilege word must stay 0
 		}
-		info.writeInt(0);              // u32 → T+0x1AD0 [UNKNOWN]
+		info.writeInt(probe(1 * 3600)); // u32 → T+0x1AD0 [UNKNOWN] — probe candidate 1
 		for (var i = 0; i < 9; i++) {
 			info.writeByte(0);         // 9×u8 → T+0x1DE0.. [UNKNOWN]
 		}
-		info.writeInt(0);              // u32 → T+0x1DEC [UNKNOWN]
+		info.writeInt(probe(2 * 3600)); // u32 → T+0x1DEC [UNKNOWN] — probe candidate 2
 		for (var i = 0; i < 14; i++) {
 			info.writeByte(0);         // 14×u8 → T+0x1DF0.. [UNKNOWN]
 		}
@@ -198,7 +198,7 @@ public class PersonalStatsController implements IGameController {
 			info.writeInt(0);          // 5×u32 → T+0x1E08.. [UNKNOWN]
 		}
 		info.writeByte(0);             // u8 → T+0x1E1C [UNKNOWN]
-		info.writeInt(0);              // u32 → T+0x1E20 [UNKNOWN]
+		info.writeInt(probe(3 * 3600)); // u32 → T+0x1E20 [UNKNOWN] — probe candidate 3
 		BufferUtil.writeString(info, chara.get().getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);           // the confirmed 128-byte comment → T+0x1E24
 		// Wire 541: the WORN title, 1-based, 0 for none. The server picks it — the client has no
@@ -269,7 +269,7 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(instructorScore.ratingSum())  // wire 632 → instructor star numerator
 			.writeInt(instructorScore.votes())      // wire 636 → instructor star denominator
 			.writeInt(0);                           // wire 640 [UNKNOWN] — reads the LOCAL record
-		info.writeInt(0);              // trailing u32 → T+0x124 [UNKNOWN]
+		info.writeInt(probe(4 * 3600)); // trailing u32 → T+0x124 [UNKNOWN] — probe candidate 4
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 
 		// Both stats surfaces, both periods, all derived from round_report at query time.
@@ -344,4 +344,54 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(STATUS_NOT_FOUND);
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 	}
+	/**
+	 * A probe value for one of {@code 0x4103}'s unidentified u32 slots, or 0 when the probe is off.
+	 * <p>
+	 * <b>Why this exists.</b> The Rankings player card shows PLAY TIME as 00:00:00, and the operator's
+	 * observations pin the mechanism exactly:
+	 * <ul>
+	 * <li>selecting <em>Player Details</em> from the context menu on <b>another</b> character
+	 * populates the time — that path sends {@code 0x4220}, and our {@code 0x4221} carries the real
+	 * figure;</li>
+	 * <li>clicking <b>yourself</b> opens the card directly without that request, and it reads
+	 * zero;</li>
+	 * <li>opening <b>More Details</b> and backing out <b>zeroes it again</b>.</li>
+	 * </ul>
+	 * Both of the zeroing paths go through {@code 0x4102} → {@code 0x4103}, and {@code 0x4103} writes
+	 * the <b>same</b> viewed-player struct {@code 0x4221} does ({@code T = *(obj+0x11904)}, which is
+	 * {@code *(session+0x10000+6404)} — the same base by two names). So this is the
+	 * {@code 0x4129} defect a third time: a packet that shares another's destination slots and sends
+	 * zero for a field the other fills.
+	 * <p>
+	 * The fix is for {@code 0x4103} to carry the play time too. What is not yet known is <b>which</b>
+	 * of its {@code [UNKNOWN]} u32 slots holds it — hence this probe.
+	 * <p>
+	 * Rather than guess — filling every unknown u32 with a play time is exactly how a fingerprint
+	 * string once minted 17 unearned medals — each candidate gets a distinct, unmistakable clock
+	 * value. Whichever the card renders names the field:
+	 * <ul>
+	 * <li>01:00:00 → {@code T+0x1AD0}</li>
+	 * <li>02:00:00 → {@code T+0x1DEC}</li>
+	 * <li>03:00:00 → {@code T+0x1E20}</li>
+	 * <li>04:00:00 → {@code T+0x124}</li>
+	 * </ul>
+	 * If none renders, the field is elsewhere — the five-u32 block at {@code T+0x1E08} and the
+	 * {@code obj+0x30} slot are the next candidates.
+	 * <p>
+	 * This is the same method that pinned experience at {@code 0x4221} wire {@code 0x18}: send values
+	 * that land on distinguishable outputs and read which one appears.
+	 * <p>
+	 * <b>How to run it.</b> With the probe on, click <em>yourself</em> in the Rankings list — that is
+	 * the path that uses {@code 0x4103} alone, with no {@code 0x4221} to mask the result. Reading the
+	 * clock value there names the slot in one look.
+	 * <p>
+	 * <b>Worth checking while in there:</b> the operator saw one character's Player Details populate
+	 * <em>both</em> cards. If both then show the <em>same</em> figure, that is the single shared
+	 * viewed-player struct leaking one player's total onto another's card — a separate bug from this
+	 * one, and a more serious one.
+	 */
+	private static int probe(int seconds) {
+		return mgo2server.common.Policy.current().probePlayTimeFields() ? seconds : 0;
+	}
+
 }
