@@ -395,7 +395,14 @@ public class PersonalStatsController implements IGameController {
 	 * one, and a more serious one.
 	 */
 	private static int probe(int seconds) {
-		return seconds;
+		// DISABLED. Setting all four candidates at once BROKE a working path: clicking yourself in
+		// Player Rankings had been showing the correct time, and with these four slots non-zero it
+		// went back to 00:00:00 — while none of the four clock values ever appeared.
+		//
+		// That is information, not just a failed test: at least one of these slots is read, and it
+		// is not a seconds value. Probing four at once cannot say which, so the next attempt must do
+		// ONE slot per deployment.
+		return 0;
 	}
 
 }
