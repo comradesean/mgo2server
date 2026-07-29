@@ -71,6 +71,42 @@ doc: |
   server's. On success the flow state advances via `0xD32E08(session, 104, 1)`.
 
   This file stays a draft only because `mode` is not fully enumerated.
+  ## The 768 bytes are a decoded image format — and a blob we should KEEP
+
+  **`EMBD`, 32x32, 16 colours.** Decoder `0xA9B3E8`, the only one in the image (17 call sites):
+
+  | offset | size | meaning |
+  | --- | --- | --- |
+  | 0 | 4 | magic, `memcmp` against `"EMBD"` (string `0xE1E6A8`, compare `0xA9B458`) |
+  | 4 | 1 | must be **signed-negative**, i.e. high bit set (`extsb` / `bge -> fail`, `0xA9B470`) |
+  | 5 | 48 | **16 palette entries**, 3 bytes RGB each, expanded to `0xRRGGBBFF` (`0xA9B47C`-`0xA9B6E4`) |
+  | 53 | 512 | **packed 4-bit palette indices, high nibble first** (unrolled 512x at `0xA9B718`) |
+  | 565 | 203 | unused padding |
+
+  512 packed bytes are 1024 pixels, and the target texture width is asserted `== 32` at `0xA9B744`.
+  A block failing either check is dropped **silently** — the in-game path has no error dialog, only
+  a 6000-tick backoff at `0x9D4A34`. Verified against a live upload, which begins `45 4D 42 44 80`.
+
+  **Why this one stays a blob, deliberately.** The project's standing goal is no blobs and every byte
+  typed, and this is the documented exception rather than an oversight:
+
+  - It is an **image**, not a structure. Decoding it into palette and pixel columns would let us
+    validate an upload, but the bytes have no server-side meaning to reason about — nothing queries
+    a clan by its emblem's third palette entry.
+  - It is a true **round trip**: the client authors it in its own editor and the client renders it.
+    Neither side asks us to interpret it, and both parsers NUL-terminate at +768 into a 769-byte
+    buffer without inspecting the contents.
+  - Knowing the format is what makes keeping it a *choice*. The failure this project cares about is
+    storing bytes we cannot describe; these are fully described and simply not worth exploding.
+
+  If validation is ever wanted, the two cheap checks are the magic and the high bit at +4 — those are
+  exactly what the client tests, and a block failing them disappears with no diagnostic.
+
+  **Do not confuse the `"%s/%s%d.emb"` string (`0xE1E680`) with a network path.** It sits in the
+  emblem *editor*'s literal pool beside `"clanemblem"`, `"emblemeditor"` and `"brush_x1"`, with
+  "not enough space on the hard disk" errors around it — it is the local save path for the editor's
+  work in progress. There is no URL anywhere on the emblem path.
+
 seq:
   - id: mode
     type: u1
