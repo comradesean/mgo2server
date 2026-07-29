@@ -109,7 +109,7 @@ Potential `FFFFFF60` stalls *if the triggering menu is reached*; grouped by reac
   character-slot index [ELF, 2026-07-26].
 
 **Reachable in ordinary flow (priority):** ~~`0x4112`~~, `0x4210`, `0x4220`
-(connect-family write-backs / card) · `0x4348`, `0x4394`, `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
+(connect-family write-backs / card) · `0x4348`, `0x4394`, `0x43a6`, `0x43b0`,
 `0x43c8`, `0x43d0`, `0x43e0`, `0x43e2` (in-match / host family). ~~None has surfaced as a
 stall yet~~ — **`0x4112` did, 2026-07-27**: it fired after a player search, and unanswered it
 stalled the screen exactly as its wait slot predicted. It is answered now with a bare `0x4113`
@@ -131,7 +131,11 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 > (`li r4,24` at `0xD3BEDC`) — it therefore **blocks**, which was borne out live on 2026-07-27
 > when it stalled a player-search screen; the prediction from the wait slot was right (reply
 > `0x4113` is a bare u32 ack, parser `0xd3b148`, slot 24). `0x4394` is 203 bytes from 45
-> straight-line writes. `0x43a4` puts its record count **on the wire** (cap 127) whereas `0x4398`
+> straight-line writes. **`0x43a4` and `0x43c4` are no longer gaps — both were identified and
+> handled on 2026-07-29:** `0x43a4` is the host's per-skill experience report (the only route by
+> which skill progression persists) and `0x43c4` is the 1-to-5 host-rating vote. Both are now
+> answered; `0x43a4` in particular opens wait slot 53, so leaving it unanswered hung a client
+> live. `0x43a4` puts its record count **on the wire** (cap 127) whereas `0x4398`
 > carries **no count** at all — opposite conventions inside one family. `0x43c4` only ever sends
 > the values 1–5 (`0xD40E44` aborts otherwise), which rules out the character-id reading the rest
 > of the `0x43xx` family invites. Per-id layouts: `dev/proto/inbound/`.

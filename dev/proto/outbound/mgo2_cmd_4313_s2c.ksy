@@ -74,10 +74,19 @@ seq:
     doc: "[CONFIRMED] wire 0x09b. Average experience across current players. Note the field is **unaligned** — the parser reads bytewise, so alignment is irrelevant."
   - id: host_score
     type: u4
-    doc: "[CONFIRMED] wire 0x09f."
+    doc: |
+      [CONFIRMED] wire 0x09f. The host's star **NUMERATOR** — the SUM of ratings received, not an
+      average. With `host_votes` as the denominator the client draws
+      `clamp(ceil(2 * numerator / denominator), 0, 10)` half-stars, so the ratio is the average and
+      the gauge lands on the real star count.
+
+      Filled from `host_review` at query time since 2026-07-29. The `game.host_score` column it
+      used to read is dead — V43 kept the votes as history rather than accumulating into a row that
+      is deleted at teardown, and nothing reconciled the two, so every host read as unrated however
+      many votes they had.
   - id: host_votes
     type: u4
-    doc: "[CONFIRMED] wire 0x0a3."
+    doc: "[CONFIRMED] wire 0x0a3. The star DENOMINATOR — the COUNT of ratings received. Derived from `host_review` since 2026-07-29; see `host_score`."
   - id: can_rate_host
     type: u1
     doc: |
