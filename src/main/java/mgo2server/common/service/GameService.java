@@ -592,6 +592,47 @@ public class GameService {
 	 * matches {@code GameListEntry}'s packers bit for bit, so the list/details replies now
 	 * round-trip real toggles. See OBSERVED.md, "Where the Common Settings toggles live".
 	 */
+	/** {@code 0x4310} wire {@code 0x0a3}: sixteen {@code {rule, map, flags}} triples. */
+	private static final int ROTATION = 0xA3;
+
+	/** Entries in the rotation. Fixed at 16 by the client's own loop bound, not by the payload. */
+	private static final int ROTATION_ENTRIES = 16;
+
+	/** {@code 0x4310} wire {@code 0x0d5}: 16 bytes, one bit per item, 1 = locked. [CONFIRMED] */
+	private static final int WEAPON_RESTRICTIONS = 0xD5;
+
+	/** {@code 0x4310} wire {@code 0x0fc}: seventeen consecutive u32. */
+	private static final int RULE_TIMERS = 0xFC;
+
+	private static final int RULE_TIMER_SLOTS = 17;
+
+	/** {@code 0x4310} wire {@code 0x140}: red then blue. [INFERRED] */
+	private static final int UNIQUE_RED = 0x140;
+
+	/**
+	 * One column of the rotation — {@code offset} 0 rule, 1 map, 2 flags — as a 16-element array.
+	 * <p>
+	 * The whole rotation is stored, not just the round the game starts on. A zero map terminates
+	 * every walk the client makes over it, so trailing zeros are inert; keeping all sixteen means
+	 * the rotation survives a round trip instead of collapsing to its first entry.
+	 */
+	private static short[] rotationField(byte[] blob, int offset) {
+		var values = new short[ROTATION_ENTRIES];
+		for (var entry = 0; entry < ROTATION_ENTRIES; entry++) {
+			values[entry] = (short) (blob[ROTATION + entry * 3 + offset] & 0xff);
+		}
+		return values;
+	}
+
+	/** The seventeen rule timers, as unsigned values widened into ints. */
+	private static int[] ruleTimers(byte[] blob) {
+		var timers = new int[RULE_TIMER_SLOTS];
+		for (var slot = 0; slot < RULE_TIMER_SLOTS; slot++) {
+			timers[slot] = blobU32(blob, RULE_TIMERS + slot * Integer.BYTES);
+		}
+		return timers;
+	}
+
 	public void applyHostSettings(long gameId, byte[] blob) {
 		if (blob == null || blob.length < 0x156) {
 			return;
@@ -613,6 +654,11 @@ public class GameService {
 						enemy_nametags = :enemyNametags, voice_chat = :voiceChat,
 						non_stat = :nonStat,
 						idle_kick = :idleKick, team_kill_kick = :teamKillKick,
+						rotation_rules = :rotationRules, rotation_maps = :rotationMaps,
+						rotation_flags = :rotationFlags,
+						weapon_restrictions = :weaponRestrictions,
+						rule_timers = :ruleTimers,
+						unique_red = :uniqueRed, unique_blue = :uniqueBlue,
 						host_settings = :blob
 					where id = :id
 					""")
@@ -648,6 +694,17 @@ public class GameService {
 				.bind("nonStat", (blob[0x155] & 0b10) != 0)
 				.bind("idleKick", (commonA & 0b1) != 0 ? blobU16(blob, 0x145) : 0)
 				.bind("teamKillKick", (commonB & 0b10000000) != 0 ? blobU16(blob, 0x147) : 0)
+				// The 134 bytes that were understood and simply not stored. See V52 and BACKLOG,
+				// "The host-settings blob must go". The blob stays alongside until reconstruction
+				// from these columns is proven byte-identical to it.
+				.bind("rotationRules", rotationField(blob, 0))
+				.bind("rotationMaps", rotationField(blob, 1))
+				.bind("rotationFlags", rotationField(blob, 2))
+				.bind("weaponRestrictions",
+					java.util.Arrays.copyOfRange(blob, WEAPON_RESTRICTIONS, WEAPON_RESTRICTIONS + 16))
+				.bind("ruleTimers", ruleTimers(blob))
+				.bind("uniqueRed", blob[UNIQUE_RED] & 0xff)
+				.bind("uniqueBlue", blob[UNIQUE_RED + 1] & 0xff)
 				.bind("blob", blob)
 				.bind("id", gameId)
 				.execute());
