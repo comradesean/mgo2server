@@ -52,18 +52,6 @@ public final class GameDetails {
 	/** In echo's extra-time flags byte, bit 1 marks a non-stat game. */
 	private static final int EXTRA_NON_STAT = 0b10;
 
-	// Offsets into the raw 0x4310 host-settings blob for the blocks replayed here verbatim. Each
-	// block is the same field order and byte encoding as the 0x4313 slot it fills.
-	private static final int WEAPON_OFFSET = 0xD5;        // 16-byte weapon-restriction block
-
-	private static final int RULE_TIMERS_OFFSET = 0xFC;   // 17 u32: per-mode time/rounds/tickets
-
-	private static final int UNIQUES_OFFSET = 0x140;      // unique characters red/blue
-
-	private static final int CAP_EXTRA_OFFSET = 0x149;    // capture extra time, sneaking-Snake side
-
-	private static final int BYTE_TIMERS_OFFSET = 0x14B;  // SDM/INT/DM/SCAP/RACE byte-sized timers
-
 	private GameDetails() {
 	}
 
@@ -101,15 +89,15 @@ public final class GameDetails {
 			.writeZero((ROUNDS - 1) * 3)
 			.writeZero(2); // two u8s after the rotation; echo zeroes them, meaning unknown
 
-		// The per-mode timers/rounds/tickets and uniques are replayed verbatim from the stored
-		// 0x4310 blob (same field order and encoding as here), so the browser shows the host's real
-		// values instead of zeros. Everything else stays derived from the game columns.
-		var blob = game.getHostSettings();
+		// EVERYTHING HERE NOW COMES FROM TYPED COLUMNS. These five regions used to be copied
+		// verbatim out of the stored 0x4310 blob, which meant the browser could only show a host's
+		// real settings for as long as we kept bytes we could not describe. They are columns now,
+		// and the blob is on its way out — see BACKLOG, "The host-settings blob must go".
 
-		// Weapon restrictions, replayed opaquely from the blob (1 bit per item, 1 = locked).
-		// Byte-by-bit map in PROTOCOL.md, "Weapon restrictions": 19 bits capture-confirmed on
-		// this build, the remainder expansion-era gear transcribed from Nomad and unverifiable.
-		copyOrZero(buffer, blob, WEAPON_OFFSET, 16);
+		// Weapon restrictions: one bit per item, 1 = locked. Still a 16-byte field rather than 128
+		// booleans, because the client owns the bit assignment and no per-bit meaning is
+		// established — opaque by evidence, not by neglect.
+		writeOrZero(buffer, game.getWeaponRestrictions(), 16);
 		buffer.writeByte(game.getMaxPlayers())
 			.writeByte(players.size())
 			.writeInt(game.getBriefingTime())
@@ -117,8 +105,9 @@ public final class GameDetails {
 			.writeByte(game.getStance())
 			.writeByte(game.getLevelLimitTolerance())
 			.writeInt(UNKNOWN_INT_A);
-		copyOrZero(buffer, blob, RULE_TIMERS_OFFSET, 17 * Integer.BYTES); // per-rule times/rounds/tickets
-		copyOrZero(buffer, blob, UNIQUES_OFFSET, 2); // unique characters red/blue
+		writeTimers(buffer, game.getRuleTimers());
+		buffer.writeByte(game.getUniqueRed())
+			.writeByte(game.getUniqueBlue());
 		buffer.writeZero(7)
 			.writeByte(GameListEntry.commonA(game))
 			.writeByte(GameListEntry.commonB(game))
@@ -126,8 +115,12 @@ public final class GameDetails {
 			.writeShort(game.getIdleKick())
 			.writeShort(game.getTeamKillKick())
 			.writeInt(UNKNOWN_INT_B);
-		copyOrZero(buffer, blob, CAP_EXTRA_OFFSET, 2); // capture extra time, sneaking-Snake side
-		copyOrZero(buffer, blob, BYTE_TIMERS_OFFSET, 8); // per-rule byte-sized timers
+		buffer.writeByte(game.isCaptureExtraTime() ? 1 : 0)
+			.writeByte(game.getSneakingSnakeKills());
+		// The first eight bytes of the block the client writes raw and never reads back. Our own
+		// label for them is "per-rule byte-sized timers" for the post-launch modes, which is tier 4
+		// and unverified — they are replayed rather than interpreted.
+		writeOrZero(buffer, game.getUnreadTail(), 8);
 		buffer.writeZero(1)
 			.writeByte(game.isNonStat() ? EXTRA_NON_STAT : 0)
 			.writeZero(4);
@@ -143,12 +136,21 @@ public final class GameDetails {
 		}
 	}
 
-	/** Copies {@code count} bytes from the host-settings blob at {@code offset}, or zero-fills. */
-	private static void copyOrZero(ByteBuf buffer, byte[] blob, int offset, int count) {
-		if (blob != null && offset + count <= blob.length) {
-			buffer.writeBytes(blob, offset, count);
-		} else {
-			buffer.writeZero(count);
+	/** Writes the first {@code count} bytes of a stored field, zero-filling what is missing. */
+	private static void writeOrZero(ByteBuf buffer, byte[] value, int count) {
+		if (value != null) {
+			buffer.writeBytes(value, 0, Math.min(value.length, count));
+			buffer.writeZero(Math.max(0, count - value.length));
+			return;
+		}
+		buffer.writeZero(count);
+	}
+
+	/** The seventeen per-rule timers as u32, or zeros for a game whose settings never arrived. */
+	private static void writeTimers(ByteBuf buffer, int[] timers) {
+		for (var slot = 0; slot < 17; slot++) {
+			buffer.writeInt(timers != null && slot < timers.length ? timers[slot] : 0);
 		}
 	}
+
 }
