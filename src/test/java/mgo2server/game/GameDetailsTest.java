@@ -29,6 +29,8 @@ public class GameDetailsTest {
 		game.setIdleKick(300);
 		game.setTeamKillKick(3);
 		game.setHostScore(42);
+		game.setLevelLimitBase(1450);
+		game.setPing(83);
 		game.setHostVotes(7);
 		return game;
 	}
@@ -40,14 +42,14 @@ public class GameDetailsTest {
 
 	private static io.netty.buffer.ByteBuf written() {
 		var buffer = Unpooled.buffer();
-		GameDetails.write(buffer, game(), 4, 310, players());
+		GameDetails.write(buffer, game(), 4, 310, players(), false);
 		return buffer;
 	}
 
 	@Test
 	public void fixedPartIsExactly372Bytes() {
 		var buffer = Unpooled.buffer();
-		GameDetails.write(buffer, game(), 0, 0, List.of());
+		GameDetails.write(buffer, game(), 0, 0, List.of(), false);
 
 		assertThat(buffer.readableBytes()).isEqualTo(GameDetails.FIXED_SIZE);
 	}
@@ -119,15 +121,43 @@ public class GameDetailsTest {
 	}
 
 	/**
-	 * Two u32 slots carry constants taken verbatim from echo ({@code 0x16}, {@code 0x2e});
-	 * regression guards, not correctness checks — their meaning is unknown.
+	 * Two slots that were inherited constants carry real values.
+	 * <p>
+	 * They used to hold {@code 0x16} and {@code 0x2e}, transcribed from a reference server, and this
+	 * test asserted them as "regression guards, not correctness checks — their meaning is unknown".
+	 * Both are now identified from the client: struct {@code +848} is the <b>level-limit base</b> and
+	 * {@code +936} is the host's <b>ping</b>, and both are values {@code 0x4302} already sends from
+	 * the same columns.
+	 * <p>
+	 * Worth noting why they survived so long: {@code 0x16} is 22, a plausible level cap, and
+	 * {@code 0x2e} is 46, a plausible latency. A wrong constant that looks like a right answer is
+	 * the hardest kind to notice.
 	 */
 	@Test
-	public void reproducesEchosUnknownConstants() {
+	public void levelLimitBaseAndPingCarryRealValues() {
 		var buffer = written();
 
-		assertThat(buffer.getInt(264)).isEqualTo(0x16);
-		assertThat(buffer.getInt(352)).isEqualTo(0x2e);
+		assertThat(buffer.getInt(264)).as("level-limit base, not 0x16").isEqualTo(1450);
+		assertThat(buffer.getInt(352)).as("host ping, not 0x2e").isEqualTo(83);
+	}
+
+	/**
+	 * The host-rating gate: 1 for a game you may rate, 0 for your own.
+	 * <p>
+	 * Struct {@code +964}. The client copies it to its session state and only builds the
+	 * {@code 0x43C4} rating packet when it is nonzero, so a zero is what stops the prompt appearing.
+	 * The client's own hosted-game builder leaves this field zero — which is how it stops you rating
+	 * yourself — and we were sending 1 unconditionally.
+	 */
+	@Test
+	public void hostRatingGateIsClearedForYourOwnGame() {
+		var mine = Unpooled.buffer();
+		GameDetails.write(mine, game(), 0, 0, List.of(), true);
+		assertThat(mine.getByte(167)).as("your own game: no rating prompt").isZero();
+
+		var theirs = Unpooled.buffer();
+		GameDetails.write(theirs, game(), 0, 0, List.of(), false);
+		assertThat(theirs.getByte(167)).as("someone else's: rating allowed").isEqualTo((byte) 1);
 	}
 
 	@Test
@@ -136,7 +166,7 @@ public class GameDetailsTest {
 		game.setFriendlyFire(true);
 		game.setVoiceChat(true);
 		var buffer = Unpooled.buffer();
-		GameDetails.write(buffer, game, 0, 0, List.of());
+		GameDetails.write(buffer, game, 0, 0, List.of(), false);
 
 		assertThat(buffer.getByte(345)).isEqualTo((byte) GameListEntry.commonA(game));
 		assertThat(buffer.getByte(346)).isEqualTo((byte) GameListEntry.commonB(game));
@@ -149,7 +179,7 @@ public class GameDetailsTest {
 		var game = game();
 		game.setNonStat(true);
 		var buffer = Unpooled.buffer();
-		GameDetails.write(buffer, game, 0, 0, List.of());
+		GameDetails.write(buffer, game, 0, 0, List.of(), false);
 
 		assertThat(buffer.getByte(367)).isEqualTo((byte) 0b10);
 	}
