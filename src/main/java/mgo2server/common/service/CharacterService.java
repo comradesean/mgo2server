@@ -1038,6 +1038,27 @@ public class CharacterService {
 	}
 
 	/**
+	 * Stores a letter addressed to the Game Master ({@code 0x4800} with wire {@code 0x3C5} = 3).
+	 *
+	 * <p>It has no recipient character — the client zeroes the count and all eight name slots — so
+	 * it cannot go in {@code mail}, every column of which is about delivery between two characters.
+	 * See V61.
+	 */
+	public void sendGameMasterMail(long senderCharaId, String senderName, String subject,
+			String body) {
+		jdbi.useHandle(handle ->
+			handle.createUpdate("""
+					insert into gm_mail (sender_chara_id, sender_name, subject, body)
+					values (:sender, :name, :subject, :body)
+					""")
+				.bind("sender", senderCharaId)
+				.bind("name", senderName)
+				.bind("subject", subject)
+				.bind("body", body)
+				.execute());
+	}
+
+	/**
 	 * The skills a character owns — exactly what the table holds, with no top-up.
 	 * <p>
 	 * The starting set is granted once, at character creation, and V20 backfilled the characters

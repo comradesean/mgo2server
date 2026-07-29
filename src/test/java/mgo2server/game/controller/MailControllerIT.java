@@ -174,6 +174,55 @@ public class MailControllerIT extends BaseGameClientServerIT {
 			.toList();
 	}
 
+	/**
+	 * A letter To -> GM is stored, not silently dropped.
+	 * <p>
+	 * A GM letter carries NO recipient — count 0, all eight name slots zero — and marks itself with
+	 * a single byte at wire {@code 0x3C5}, immediately after the body. [ELF] the client writes 3
+	 * there at {@code 0x8EEAA8}, reached only when bit 17 of the compose screen's flags is set —
+	 * the same bit that greys out the recipient-list row, confirmed live.
+	 * <p>
+	 * Before 2026-07-29 this fell through the recipient loop as "0 of 0 delivered" and was answered
+	 * SUCCESS, so the player was told it sent and nothing was stored anywhere.
+	 */
+	@Test
+	public void aLetterToTheGameMasterIsStored() {
+		givenTwoCharacters();
+
+		var payload = Unpooled.buffer(SEND_SIZE, SEND_SIZE);
+		payload.writeByte(0);                 // no recipients
+		payload.writeZero(8 * 16);            // all name slots empty
+		payload.writeBytes(fixed("HELP", 128));
+		payload.writeBytes(fixed("AN ALLIGATOR GOT ME", 708));
+		payload.writeByte(3).writeByte(0);    // wire 0x3C5 = 3, Game Master
+
+		var replies = exchange(new GamePacket(MessageGameController.SEND_MESSAGE, payload));
+
+		assertThat(replies.get(0).getPayload().readableBytes())
+			.as("the ordinary 5-byte success shape")
+			.isEqualTo(5);
+		assertThat(replies.get(0).getPayload().getByte(4) & 0x01).isEqualTo(1);
+
+		var stored = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select subject, body, sender_chara_id from gm_mail")
+				.mapToMap().one());
+		assertThat(stored.get("subject")).isEqualTo("HELP");
+		assertThat(stored.get("body")).isEqualTo("AN ALLIGATOR GOT ME");
+		assertThat(((Number) stored.get("sender_chara_id")).longValue()).isEqualTo(charaId);
+	}
+
+	/** An ordinary letter is not mistaken for one: the destination byte is zero. */
+	@Test
+	public void anOrdinaryLetterDoesNotBecomeGameMasterMail() {
+		givenTwoCharacters();
+
+		exchange(sendMail("Otacon", "hi", "poop"));
+
+		var count = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from gm_mail").mapTo(Integer.class).one());
+		assertThat(count).isZero();
+	}
+
 	@Test
 	public void sendReplyIsFiveBytesAndSetsTheFlagsBit() {
 		givenTwoCharacters();
