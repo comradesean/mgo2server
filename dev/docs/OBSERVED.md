@@ -4021,10 +4021,21 @@ destination slots and zeroing a field the other fills.
 `0x4221` carries the real figure, which is why selecting *Player Details* from the context menu on
 another character populates it.
 
-**Which of `0x4103`'s unknown u32 slots holds it is not yet known.** Probe wired behind
-`MGO2SERVER_EXPERIMENT_PROBE_4103_PLAYTIME`; the four candidates get distinct clock values, so one
-look after backing out of More Details names the field. Deliberately not filled by guesswork — these
-slots feed award logic, and a fingerprint value in one of them once minted 17 unearned medals.
+**Which of `0x4103`'s unknown u32 slots holds it is not yet known, and a probe made things worse.**
+
+Four candidates (`T+0x1AD0`, `T+0x1DEC`, `T+0x1E20`, `T+0x124`) were given distinct clock values in
+one deployment. **None of them ever rendered**, and a path that had been showing the correct time
+started reading `00:00:00`. Two things follow:
+
+- **At least one of those slots is read**, and whatever it holds is *not* a seconds value — a
+  non-zero in it **suppresses** the display rather than changing it.
+- **Probing four at once was the design error.** With four variables changed together nothing can be
+  attributed, and one of them interfered with the rest. Any further probe does **one slot per
+  deployment**.
+
+The probe is disabled in code (`PersonalStatsController.probe` returns 0); there is no environment
+variable for it and never was. The open question moved to the ELF: find the code that formats this
+widget's `hh:mm:ss` and read which struct offset it takes.
 
 ### ELIMINATED: the shared viewed-player struct is not leaking between players
 
