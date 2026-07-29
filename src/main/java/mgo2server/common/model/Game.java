@@ -237,7 +237,12 @@ public class Game {
 
 	/**
 	 * The 14 bytes the client writes as one raw block. Its first eight are the byte-sized timers the
-	 * game-details reply replays; byte 10 carries the host-options flags {@code non_stat} comes from.
+	 * game-details reply replays.
+	 * <p>
+	 * <b>The client never writes any of it.</b> Its initialiser memsets the block to zero
+	 * ({@code 0x89B5E8}) and nothing reads or writes it thereafter — all 214 archived captures carry
+	 * it entirely zero. The {@code non_stat} bit we decode from byte 10 is therefore reading back
+	 * our own echo, not a host's choice.
 	 */
 	public byte[] getUnreadTail() {
 		return unreadTail;
