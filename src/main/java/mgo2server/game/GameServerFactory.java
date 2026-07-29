@@ -83,7 +83,8 @@ public class GameServerFactory {
 					services.getCharacterService(), lobbyType,
 					services.getLobbyService(), lobbyId));
 				controllers.add(new CharacterGameController(services.getAccountService(),
-					services.getCharacterService()));
+					services.getCharacterService(),
+					services.getClanService()));
 			}
 			case GAME -> {
 				controllers.add(new AccountGameController(services.getAccountService(),
