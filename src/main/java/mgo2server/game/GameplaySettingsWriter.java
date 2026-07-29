@@ -20,36 +20,65 @@ public final class GameplaySettingsWriter {
 	private static final int CODEC_NAME_LENGTH = 64;
 
 	/**
-	 * The 32 bytes closing {@code 0x4120}. <b>Bytes 0-7 are sixteen 4-bit fields; bytes 8-31 have no
-	 * reader at all.</b> [ELF 2026-07-29]
-	 * <p>
-	 * The region is reached only through the accessor {@code 0x907CE4} ({@code ctx+29265}, 139
-	 * callers), and bytes 0-7 have a generated getter/setter pair per nibble
-	 * ({@code 0x906BE8}..{@code 0x906E10}). The family stops at byte 7. Nothing touches bytes 8-31,
-	 * so the {@code 11 10} we send at indices 8-9 is inert.
-	 * <p>
-	 * <b>The client's own default for the whole region is zero</b> — the validator at
-	 * {@code 0x9472B4} memsets 33 bytes at {@code 0x9472E8} when bit 0 of settings byte 0 is clear,
-	 * which is the only consumer of that bit anyone has found and makes it an "already initialised"
-	 * flag. With the bit set it instead clamps each nibble, and <b>b0lo is forced to 0
-	 * unconditionally</b> ({@code 0x947540}), so our byte 0 of {@code 0x01} is inert too.
-	 * <p>
-	 * Of all 32 bytes, exactly two nibbles reach a consumer: b2hi and b7hi, both legal under the
-	 * clamps. The readers use them as <b>list sort/filter selectors</b> — {@code 0x8C6104} fetches
-	 * b6lo and b6hi and picks which field a list sorts by; the settings screen at
-	 * {@code 0x907F5C} copies ten nibbles into UI object bytes 112-121. Two nibbles (b0hi, b1lo) have
-	 * no callers at all.
-	 * <p>
-	 * Names are <b>not decidable from the ELF</b> — these are per-list display preferences whose
-	 * labels live in the disc assets. Kept as captured because two nibbles genuinely differ from the
-	 * client's default, and we have no evidence about which preference they express.
+	 * The 32 bytes closing {@code 0x4120} — the player's <b>Filter Host List</b>, <b>Sort Host
+	 * List</b> and <b>Player Search</b> preferences. All zeros: no filtering, sort by name ascending,
+	 * partial and case-insensitive search.
+	 *
+	 * <p><b>This used to be an inherited constant, and it was hiding games.</b> The old value
+	 * {@code 01 00 10 00 00 00 00 10 11 10 …} was reproduced byte for byte from the original server
+	 * with the note "undocumented", and once the disc labels were extracted (2026-07-29) it turned
+	 * out to say three things we would never have chosen:
+	 * <ul>
+	 * <li><b>Filter = Enabled</b> (b0lo) — the master switch on;</li>
+	 * <li><b>Password Lock = "Display Only Disabled"</b> (b2hi) — <b>every password-locked game
+	 * hidden from every player's browser</b>;</li>
+	 * <li><b>Match Case = Case Sensitive</b> (b7hi) — player search failing on the wrong capital.</li>
+	 * </ul>
+	 * Everything else was already neutral, which is what made the three stand out. The client's own
+	 * default for this whole region is zero — its validator memsets 33 bytes at {@code 0x9472E8} —
+	 * so zeros are the game's answer, not merely ours.
+	 *
+	 * <p><b>The map</b>, extracted from {@code lobby/scenerio.gcx} string set
+	 * {@code $strres:9789 $strres:11033} and confirmed against each nibble's own getter, help-string
+	 * ids and value labels — two independent code paths per field. Bytes 0..7 are sixteen 4-bit
+	 * fields; {@code 0} means "----", i.e. no filtering, for every filter row:
+	 *
+	 * <pre>
+	 * b0lo Filter (master)      0 Disabled | 1 Enabled
+	 * b0hi (no callers)         b1lo (no callers)      -- dead nibbles, not merely unnamed
+	 * b1hi Number of Players    0 ---- | 1 Display Only Open Games
+	 * b2lo Level Limit          0 ---- | 1 Only Not Restricted | 2 Only Restricted
+	 * b2hi Password Lock        0 ---- | 1 Only Disabled | 2 Only Enabled
+	 * b3lo Weapon Restrictions  0 ---- | 1 Only Not Restricted | 2 Only Restricted
+	 * b3hi Friendly Fire        0 ---- | 1 Only Disabled | 2 Only Enabled
+	 * b4lo Voice Chat           0 ---- | 1 Only Disabled | 2 Only Enabled
+	 * b4hi Network Quality      0 ---- | 1 Only Good | 2 Normal or Better
+	 * b5lo Friends              0 ---- | 1 Only When Present
+	 * b5hi Blocked Players      0 ---- | 1 Will Not Display
+	 * b6lo Sort key             0 Name | 1 Players Joined | 2 Network Quality
+	 * b6hi Sort order           0 Ascending | 1 Descending
+	 * b7lo Search match         0 Partial and Exact | 1 Exact Only
+	 * b7hi Search case          0 Case Insensitive | 1 Case Sensitive
+	 * </pre>
+	 *
+	 * <p>Screens: FILTERING SETTING ({@code 0x9084BC}), SORT HOST LIST ({@code 0x90C010}) and PLAYER
+	 * SEARCH ({@code 0x90E264}) — the last being the {@code ST1_ON-OFF}/{@code ST2_ON-OFF} widgets.
+	 * The ELF also carries a developer name table at {@code 0xE0D548}-{@code 0xE0DBF0} naming these
+	 * same fields.
+	 *
+	 * <p><b>Bytes 8..31 have no reader at all</b> and stay zero.
+	 *
+	 * <p><b>A correction to an earlier reading:</b> these nibbles were once documented with a clamp
+	 * table (b6lo ≤ 1, b6hi forced to 0). That was wrong — the setters {@code 0x906DC8} and
+	 * {@code 0x906DE0} contain no clamp, they mask to four bits; b6lo is genuinely three-state,
+	 * cycling 0..2 at {@code 0x90C4C0}, and b6hi is a live toggle at {@code 0x90C694}.
+	 *
+	 * <p>These are per-player preferences, so a future feature is persisting them per character
+	 * rather than pushing one set to everybody. The client does not send them back in
+	 * {@code 0x4110} — its write-back is 304 bytes, this packet minus exactly these 32 — so
+	 * whatever persistence existed used some other path.
 	 */
-		private static final byte[] TRAILER = {
-		(byte) 0x01, (byte) 0x00, (byte) 0x10, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x10,
-		(byte) 0x11, (byte) 0x10, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-	};
+	private static final byte[] TRAILER = new byte[32];
 
 	private GameplaySettingsWriter() {
 	}
@@ -182,14 +211,10 @@ public final class GameplaySettingsWriter {
 		BufferUtil.writeString(buffer, s.getCodec3Name(), StandardCharsets.ISO_8859_1, CODEC_NAME_LENGTH);
 		BufferUtil.writeString(buffer, s.getCodec4Name(), StandardCharsets.ISO_8859_1, CODEC_NAME_LENGTH);
 
-		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
-			// Bytes 0-7 are KEPT: two of their nibbles reach a consumer, so zeroing them would be a
-			// real behaviour change rather than a test of "is anything reading this". Only 8..31,
-			// which have no reader at all, are zeroed.
-			buffer.writeBytes(TRAILER, 0, 8).writeZero(TRAILER.length - 8);
-		} else {
-			buffer.writeBytes(TRAILER);
-		}
+		// All zeros now, deliberately — see TRAILER. The experiment switch no longer needs a branch
+		// here: bytes 0-7 are understood and neutral by choice rather than by accident, and 8..31
+		// have no reader.
+		buffer.writeBytes(TRAILER);
 
 		assert buffer.writerIndex() - start == PAYLOAD_SIZE
 			: "Gameplay settings payload must be " + PAYLOAD_SIZE + " bytes";

@@ -3938,3 +3938,57 @@ proven u32 while the hypothesis argues its *meaning* is a u8. Do not let either 
 the client, so no amount of ELF work will help: settings block `+72` and `+179`, the four `0x4101`
 u16, `0x4120` trailer bytes 8-31, seven of the eleven `0x4991` fields, and `0x4602`'s three unknown
 fields insofar as the client only stores them.
+
+
+## The inherited `0x4120` trailer was hiding every password-locked game (2026-07-29)
+
+The 32 bytes closing `0x4120` were carried over from the original server as an opaque constant —
+`01 00 10 00 00 00 00 10 11 10 …`, commented "undocumented; reproduced byte for byte". Extracting the
+disc labels named every field, and three of them were not neutral:
+
+| nibble | field | we were sending | effect |
+| --- | --- | --- | --- |
+| b0lo | Filter (master) | **Enabled** | filtering on for everyone |
+| b2hi | Password Lock | **"Display Only Disabled"** | **every password-locked game hidden from the browser** |
+| b7hi | Match Case | **Case Sensitive** | player search fails on the wrong capital |
+
+Every other filter row was already `----`, which is what made these three stand out rather than look
+like a coherent default.
+
+**The client's own default for the whole region is zero** — its validator memsets 33 bytes at
+`0x9472E8` — so zeros are the game's answer and not just ours. Changed to all zeros: no filtering,
+sort by name ascending, partial and case-insensitive search.
+
+**Worth verifying live**, because the symptom is an absence: host a password-locked game on one
+client and check it appears in another client's browser. Before this change it should not have.
+
+### The map, and how it was read
+
+`lobby/scenerio.gcx`, string set `-set [2f0293] $strres:9789 $strres:11033`; `string id = headerIndex
+− 9789`. Each nibble is pinned by **two independent paths** — its own getter, and its own help-string
+and value-label ids — so this is READ, not inferred from ordering.
+
+Bytes 0..7 are sixteen 4-bit fields across three screens: **FILTERING SETTING** (`0x9084BC`, nine
+rows), **SORT HOST LIST** (`0x90C010`) and **PLAYER SEARCH** (`0x90E264`, the `ST1_ON-OFF` /
+`ST2_ON-OFF` widgets). `0` means `----` on every filter row.
+
+```
+b0lo Filter (master)      b1hi Number of Players     b2lo Level Limit
+b2hi Password Lock        b3lo Weapon Restrictions   b3hi Friendly Fire
+b4lo Voice Chat           b4hi Network Quality       b5lo Friends
+b5hi Blocked Players      b6lo Sort key (3-state)    b6hi Sort order
+b7lo Search match         b7hi Search case
+b0hi, b1lo — dead, no callers anywhere
+```
+
+The ELF also carries a **developer name table** at `0xE0D548`–`0xE0DBF0` naming these same screens and
+fields (`FILTER HOST LIST`, `SORT KEY`, `MATCH CASE`, `PASSWORD LOCK`, …) — better field-naming
+material than the player-facing labels, and a resource worth remembering for other subsystems.
+
+**A prior reading is corrected.** These nibbles were documented with a clamp table (b6lo ≤ 1, b6hi
+forced to 0). The setters `0x906DC8`/`0x906DE0` contain no clamp at all — they mask to four bits —
+and b6lo is genuinely three-state, cycling 0..2 at `0x90C4C0`, with b6hi a live toggle at `0x90C694`.
+
+**Future feature:** these are per-player preferences and we push one set to everybody. The client does
+not send them back in `0x4110` — its write-back is 304 bytes, exactly this packet minus these 32 — so
+whatever persisted them used another path, and that path is not yet identified.
