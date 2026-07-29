@@ -4195,3 +4195,95 @@
   experience_total          = 428
   detail_present            = 1
   B24 tdm_consecutive_survivals= 2
+=== #554  2026-07-29 01:22:25  0x4390  167 bytes  [mgo2server-automatching-1]  -> 554_012225_ch3.bin
+  chara_id                  = 3
+  deaths                    = 1
+  score                     = 0
+  round_completed           = 1
+  seconds_in_game           = 327
+  experience_total          = 500
+  detail_present            = 1
+  B11 cqc_taken             = 1
+=== #555  2026-07-29 01:22:25  0x4390  167 bytes  [mgo2server-automatching-1]  -> 555_012225_ch1.bin
+  chara_id                  = 1
+  kills                     = 1
+  score                     = 3
+  round_completed           = 1
+  flawless_win              = 1
+  team_win                  = 1
+  seconds_in_game           = 327
+  experience_total          = 49225
+  detail_present            = 1
+  B10 cqc_given             = 1
+  B12 rolls                 = 4
+  B24 tdm_consecutive_survivals= 2
+=== #556  2026-07-29 01:27:53  0x4390  167 bytes  [mgo2server-automatching-1]  -> 556_012753_ch3.bin
+  chara_id                  = 3
+  deaths                    = 1
+  score                     = 0
+  round_completed           = 1
+  seconds_in_game           = 327
+  experience_total          = 500
+  detail_present            = 1
+  B11 cqc_taken             = 1
+=== #557  2026-07-29 01:27:53  0x4390  167 bytes  [mgo2server-automatching-1]  -> 557_012753_ch1.bin
+  chara_id                  = 1
+  kills                     = 1
+  score                     = 3
+  round_completed           = 1
+  flawless_win              = 1
+  team_win                  = 1
+  seconds_in_game           = 327
+  experience_total          = 49225
+  detail_present            = 1
+  B10 cqc_given             = 1
+  B12 rolls                 = 4
+  B24 tdm_consecutive_survivals= 3
+=== #558  2026-07-29 01:33:20  0x4390  167 bytes  [mgo2server-automatching-1]  -> 558_013320_ch3.bin
+  chara_id                  = 3
+  deaths                    = 1
+  score                     = 0
+  round_completed           = 1
+  seconds_in_game           = 327
+  experience_total          = 500
+  detail_present            = 1
+  B11 cqc_taken             = 1
+=== #559  2026-07-29 01:33:21  0x4390  167 bytes  [mgo2server-automatching-1]  -> 559_013321_ch1.bin
+  chara_id                  = 1
+  kills                     = 1
+  score                     = 3
+  round_completed           = 1
+  flawless_win              = 1
+  team_win                  = 1
+  seconds_in_game           = 327
+  experience_total          = 49225
+  detail_present            = 1
+  B10 cqc_given             = 1
+  B12 rolls                 = 2
+  B24 tdm_consecutive_survivals= 4
+=== #560  2026-07-29 01:46:40  0x4390  167 bytes  [mgo2server-automatching-1]  -> 560_014640_ch1.bin
+  chara_id                  = 1
+  kills                     = 2
+  score                     = 14
+  headshots_lethal          = 1
+  round_completed           = 1
+  flawless_win              = 1
+  seconds_in_game           = 433
+  experience_total          = 49225
+  detail_present            = 1
+  B0  consecutive_kills     = 2
+  B2  consecutive_headshots = 1
+  B7  salutes               = 1
+  B12 rolls                 = 4
+  B36 combo                 = 1
+  B39 kill_1st_place        = 1
+=== #561  2026-07-29 01:46:40  0x4390  167 bytes  [mgo2server-automatching-1]  -> 561_014640_ch3.bin
+  chara_id                  = 3
+  deaths                    = 2
+  score                     = 0
+  headshot_deaths           = 1
+  round_completed           = 1
+  seconds_in_game           = 433
+  experience_total          = 500
+  detail_present            = 1
+  B1  consecutive_deaths    = 2

@@ -73,6 +73,27 @@ the screen without claiming to know the command id.
 | `-160` | 24083 | A network server error has occurred.\nUnable to acquire clan information. |
 | _(any other)_ | 24077 | Unable to acquire clan information. |
 
+### `-1230` is clan-wide, not emblem-specific
+
+Worth stating once rather than re-deriving per arm: **`-1230` is a server-originated
+"this clan is barred from this operation" code**, compared in essentially every arm of the clan
+error dispatcher (`0xA7E3A4`, `0xA7E69C`, `0xA7EFC4`, `0xA7F344`, and ~20 sites from `0xA7E` to
+`0xA82`), each mapping it to that command's own sentence:
+
+| operation | id | sentence |
+| --- | --- | --- |
+| emblem acquire | 24065 | Use of the clan emblem is currently forbidden. |
+| clan create | 24036 | You are currently banned from creating a clan. |
+| `0x8EFD88` | 6416 | (alongside `-801`/`-802`/`-810`/`-820`/`-830`/`-831`/`-832`) |
+
+The client originates it exactly once, at `0x8C21CC`, and only to re-raise a `-1230` it already
+received from the poll at `0xD496D0`. So it is **the sanctioned way to refuse an emblem on purpose**
+rather than failing silently — a zero-filled 768-byte block is the "no emblem" answer, `-1230` is
+the "no emblem, deliberately" answer.
+
+Do not confuse it with **`-1215`**, which is `0x4b51` (upload)'s code for the same sentence, and
+which the *acquire* path at `0x905B80` deliberately treats as non-fatal along with `-1214`.
+
 ### Arm 2 — Unable to acquire clan emblem  <sub>0xA7E394</sub>
 
 | code | string | message |

@@ -42,6 +42,31 @@ public class AutomatchPolicyTest {
 	 * the client's own "Automatching is currently not open" (4929), which is true, rather than an
 	 * accepted search into a queue nobody is running.
 	 */
+	/**
+	 * The player requirement decays from its starting value to its floor, one player per step.
+	 *
+	 * <p>A search holds out for a full game at first and settles for fewer the longer it waits, which
+	 * is the same shape as the level band and the mode relaxation. It is also what the client's
+	 * "Players Needed" figure counts down, so the number a player watches is the real requirement.
+	 */
+	@Test
+	public void theePlayerRequirementDecaysToItsFloor() {
+		var policy = of(Map.of(
+			"MGO2SERVER_AUTOMATCH_ENABLED", "true",
+			"MGO2SERVER_AUTOMATCH_WINDOWS", "00:00-00:00",
+			"MGO2SERVER_AUTOMATCH_MIN_PLAYERS", "2",
+			"MGO2SERVER_AUTOMATCH_MIN_PLAYERS_START", "12",
+			"MGO2SERVER_AUTOMATCH_MIN_PLAYERS_STEP_SECONDS", "30"));
+
+		assertThat(policy.requiredPlayersAfter(Duration.ZERO)).isEqualTo(12);
+		assertThat(policy.requiredPlayersAfter(Duration.ofSeconds(29))).isEqualTo(12);
+		assertThat(policy.requiredPlayersAfter(Duration.ofSeconds(30))).isEqualTo(11);
+		assertThat(policy.requiredPlayersAfter(Duration.ofMinutes(5))).isEqualTo(2);
+		assertThat(policy.requiredPlayersAfter(Duration.ofHours(1)))
+			.as("it must never fall below the floor")
+			.isEqualTo(2);
+	}
+
 	@Test
 	public void defaultsToDisabledAndOpenAtNoInstant() {
 		var policy = of(Map.of());

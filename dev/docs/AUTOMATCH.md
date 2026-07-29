@@ -760,6 +760,96 @@ the *sum* of two bands grows by two per step. A pair four levels apart goes from
 overlapping in a single tick, which on one client's gauge can look like a premature match. Staggering
 each searcher's schedule from their own join time would smooth it, and has not been done.
 
+### Full live test, two clients, 2026-07-29
+
+Every path in the matchmaker was exercised against two RPCS3 clients (chara 1 "Sean", level 22;
+chara 3 "poop", level 4) in the automatching lobby. **All of it worked.** What the log recorded:
+
+| time | requests | formed | outcome |
+| --- | --- | --- | --- |
+| 01:35 | rule 0 + rule 0 | `rules [0], map 12`, host 1 | game 253 — **explicit agreement** |
+| 01:48 | any + any | `rules [4], map 12`, host 1 | game 254 — **wildcard pair, rolled Sneaking** |
+| 01:53 | any + any | `rules [3], map 2`, host 3 | game 255 — **wildcard pair, rolled Capture** |
+| 01:58 | rule 2 + rule 0 | *(no match)* | incompatible modes; poop re-picked |
+| 02:02 | rule 2 + any | `rules [2], map 2`, host 1 | game 256 — **wildcard follows the explicit request** |
+
+Four things this settles:
+
+1. **Rule 0 is a real rule filter, not a sentinel.** Two Deathmatch requests formed a Deathmatch
+   game. The earlier suspicion that passing 0 caused the loading hang was wrong — the hang was the
+   rotation encoding (below).
+2. **Wildcard + wildcard picks a mode at random**, and picked differently on consecutive attempts
+   (4, then 3).
+3. **Wildcard + explicit adopts the explicit request** rather than rolling. `----` falls in behind a
+   named mode; it does not compete with it.
+4. **Two incompatible explicit requests correctly do not match.** rule 2 against rule 0 sat unmatched
+   until one side changed, which is the mode grouping working rather than a stall.
+
+#### The bands are symmetric; the gauge is not
+
+A question this raised, worth recording because the screen is misleading. Both searchers widen on the
+same schedule, so at band 8 the level-4 player's window is `[-4, 12]` and the level-22 player's is
+`[14, 30]` — **both exactly ±8**. But the scale is clamped at 0 and at the level cap, so the low
+player's gauge appears to sweep 13 levels while the high player's shows 9. Nothing is asymmetric; the
+clamp is.
+
+Those two do not overlap at band 8 (the gap is level 13). With `|4 - 22| = 18` they first share a
+level at **band 9**, about 4 minutes in — which is the overlap rule working as specified: the
+condition is `|dLevel| <= band(a) + band(b)`, so searchers must genuinely share a level rather than
+merely sit adjacent.
+
+#### Observed and not yet explained
+
+At 01:57:45 game 255's host passed from chara 3 to chara 1, eight seconds before chara 1 quit and the
+game was torn down. **Host migration inside an automatch-formed game is not something the matchmaker
+does deliberately**, and it is not known whether this was the player leaving the host slot or
+something the server did. Not reproduced, not investigated.
+
+### The Sneaking "draw" is correct behaviour, not a defect (settled 2026-07-28)
+
+The first completed two-stage automatch game reported `team_win = 0` for **every** player in **every**
+Sneaking round, and the stage ended in a draw, despite one player winning all four rounds as Snake.
+**That is exactly what the binary says should happen, and nothing the server sends affects it.**
+
+`team_win` is live counter n15, reaching the wire as `0x4390`'s `0x23`. Sweeping all 152 call sites of
+the bump wrapper `0x6A9758` for its blob key (56) yields **one** writer: `0x6FC1F4`, inside
+`AwardTeamWin(teamId)` at `0x6FC140`, which walks slots 0..23 and bumps every occupied slot whose
+team byte matches `teamId`. Every one of its 20 call sites is host-guarded.
+
+The Sneaking round-end handler is vtable slot 4 of the rule-4 class — **`0x719D40`**, reached via the
+mode factory `0x7031A4` (jump table `0x7031D0`, case 4 → ctor `0x719B90`, vtable `0xFB5378`). It has
+five outcome arms:
+
+| reason | host awards | local result |
+| --- | --- | --- |
+| 2 | team-score key 86 + `AwardTeamWin(0)` | WIN if my team == 0, else LOSE |
+| 3 | team-score key 90 + `AwardTeamWin(1)` | WIN if my team == 1, else LOSE |
+| **4** — Snake side wins | **nothing** | WIN if my team == 2, else LOSE |
+| **5** — Snake side loses | **nothing** | LOSE if my team == 2, else WIN |
+
+**The omission is deliberate, and Team Sneaking is the control.** Its handler `0x6FAEB8` is the same
+shape, but its reason-4 arm *does* call `AwardTeamWin(2)` at `0x6FAFE4`. Team 2 is perfectly
+awardable; rule 4's class simply does not award it. So `team_win` **can** be nonzero in Sneaking — but
+only for players on team 0 or 1, and only on a reason 2/3 round.
+
+Corroborated from live data before the trace finished. In the same game, same host, minutes apart:
+
+| stage | rule | rounds | winner's `team_win` | loser's |
+| --- | --- | --- | --- | --- |
+| 1 | 4 — Sneaking | 4 | **0** | 0 |
+| 2 | 1 — TDM | 4 | **1** | 0 |
+
+**The draw follows from the same two omissions** (*inferred* — the counter path is READ, the stage
+result screen is not): reasons 4/5 also skip team-score keys 86/90, so after four Snake-won rounds
+both attacking teams sit on zero and the stage has no winning team to name.
+
+**No settings read appears anywhere in the win path** — not in `0x719D40`, not in `0x6FC140`, not at
+either call site (`0x704FBC`, `0x70773C`). The rotation's `flags` byte cannot reach it: `0x6A9948` is
+only ever tested for bits `0x2`/`0x4`. And Snake's side is not configured at all — it is the
+hardcoded literal 2 (`0x71CA0C`, and the `cmpwi r0,2` in both handlers).
+
+**Do not "fix" this.** A server that manufactured a Sneaking team win would diverge from the client.
+
 ### Slot-in: parked as a future project (2026-07-28)
 
 Dropping a searcher into a game **already running** is deliberately not built, and

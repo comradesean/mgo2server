@@ -641,7 +641,32 @@ public class ClanGameController implements IGameController {
 	 * This was briefly filled with pending applicant names on the theory that 768 = 48 x 16 made it
 	 * a name table. It is not — that was writing text into the client's emblem buffer.
 	 */
+	/**
+	 * {@code 0x4b48} and {@code 0x4b4c}: the two block fetches that are not the display fetch.
+	 * <p>
+	 * <b>Both name the clan they want, and both used to be answered with the requester's own.</b>
+	 * All three senders are built identically — {@code 0xD57838} ({@code 0x4b48}),
+	 * {@code 0xD56704} ({@code 0x4b4a}) and {@code 0xD56618} ({@code 0x4b4c}) each append a single
+	 * {@code u32} clan id before sending. `PROTOCOL.md` recorded {@code 0x4b4c} as having no request
+	 * payload; that was wrong, and this is the command the in-game emblem manager uses.
+	 * <p>
+	 * It matters because the in-game manager fetches <b>each peer's</b> emblem by that peer's clan
+	 * id, not the viewer's: {@code 0x9D4500} walks all 24 slots, and on a cache miss issues
+	 * {@code 0x4b4a} — or {@code 0x4b4c} when {@code 0x6A9A38} reports mode 9. Serving our own clan
+	 * for someone else's id hands every peer the wrong picture, and hands a clanless viewer nothing
+	 * at all.
+	 * <p>
+	 * The fallback to own membership is kept for the zero/absent case: {@code 0x4b48} is sent during
+	 * connect for the player's own clan, where the two agree anyway.
+	 */
 	private void writeBlock(GameControllerContext ctx, int command) {
+		var payload = ctx.packet().getPayload();
+		var requested = payload.readableBytes() >= Integer.BYTES
+			? payload.getUnsignedInt(0) : 0L;
+		if (requested != 0L) {
+			writeEmblem(ctx, command, requested);
+			return;
+		}
 		var account = ctx.connection().account();
 		var charaId = account != null ? account.getCurrentCharaId() : null;
 		var membership = charaId == null ? ClanService.Membership.NONE

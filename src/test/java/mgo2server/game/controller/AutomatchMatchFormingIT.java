@@ -79,7 +79,11 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 		// Zero relaxation: every searcher accepts any mode immediately, so rule filters never decide
 		// whether these tests match. Mode grouping has its own coverage; here it would only make the
 		// outcome depend on which filter a fixture happened to send.
-		Duration.ZERO);
+		Duration.ZERO,
+		// No decay: the requirement is MIN_PLAYERS from the outset, so these tests match as soon as
+		// enough clients are queued rather than waiting out a countdown. The decay has its own
+		// coverage.
+		2, Duration.ZERO);
 
 	/** Team Deathmatch, menu row 2. */
 	private static final int RULE_TDM = 1;
