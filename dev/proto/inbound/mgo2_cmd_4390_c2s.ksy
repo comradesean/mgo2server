@@ -512,12 +512,21 @@ seq:
       enough to the ceiling to matter. Whatever this counts, it is not an unbounded career
       total, and a long-lived character will wrap it.
 
-      ANOMALY, still unexplained: across frames 321/323/317/319 one character wired 49450,
-      49450, 49400, 49400 — it went DOWN by 50 and then held flat over two scoring rounds,
-      while the other character held 214, 214, 264, 264. The value appears to lag the round
-      it is reported with, and the decrease contradicts a monotonic total. Do not build
-      anything on this field until it is retested deliberately. The two writers of blob key
-      `0x164` are at `0x276340` and `0x2780BC` — that is where the retest should start.
+      NOT MONOTONIC, and that is correct — retested deliberately 2026-07-29, so the former
+      "anomaly, do not build on this field" note is withdrawn. Experience in this game goes up
+      and down: it moves one way for the winner of a round and the other for the loser, and a
+      round that resolves for nobody leaves it unchanged. A live TDM stage showed exactly that,
+      with the two players' totals moving in opposite directions by the same amount and holding
+      flat across an unresolved round. The archive frames that prompted the note (one character
+      at 49450, 49450, 49400, 49400 while the other held 214, 214, 264, 264) are the same
+      pattern, not a contradiction.
+
+      NO MAGNITUDE IS RECORDED HERE ON PURPOSE. One stage of one rule is not enough to pin a
+      constant, and the amount may well vary by rule, round length or player count. The server
+      does not need it: the value is an absolute total and is stored as sent.
+
+      The two writers of blob key `0x164` are at `0x276340` and `0x2780BC`, for whoever wants to
+      establish the amount properly.
   - id: detail_present
     type: u4
     doc: |
