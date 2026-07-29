@@ -1183,4 +1183,51 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(services.getGameService().getHostSettingsBlob(charaId, 2)).isEmpty();
 	}
 
+	/**
+	 * The inert-field watcher records what arrives, and flags a field that stops being constant.
+	 * <p>
+	 * The alert fires on the <b>second</b> distinct value rather than the first: the first is the
+	 * baseline being established, and warning about that would train everyone to ignore this.
+	 */
+	@Test
+	public void inertFieldWatcherNoticesAFieldThatChanges() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		// givenHostedGame already pushes one settings blob, so counts are asserted RELATIVE to
+		// whatever that established. An absolute assertion here silently depends on the fixture.
+		var baseline = distinctWatched("host_settings.824");
+		assertThat(baseline).as("the fixture's push is the baseline").isPositive();
+
+		var first = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		first[0xEA] = 0x02;
+		services.getGameService().applyHostSettings(gameId, first);
+		var afterFirst = distinctWatched("host_settings.824");
+
+		// A patched client sending something new in a field this build never reads.
+		var second = java.util.Arrays.copyOf(first, first.length);
+		second[0xEA] = 0x77;
+		services.getGameService().applyHostSettings(gameId, second);
+
+		assertThat(distinctWatched("host_settings.824"))
+			.as("a new value adds a row, which is the signal")
+			.isEqualTo(afterFirst + 1);
+
+		// Repeats accumulate against the existing value rather than creating rows.
+		services.getGameService().applyHostSettings(gameId, second);
+		assertThat(distinctWatched("host_settings.824")).isEqualTo(afterFirst + 1);
+		long repeats = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select observations from inert_field_watch "
+					+ "where field='host_settings.824' and value_hex='77000000'")
+				.mapTo(Long.class).one());
+		assertThat(repeats).as("repeats accumulate rather than adding rows").isEqualTo(2L);
+	}
+
+	private int distinctWatched(String field) {
+		return TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from inert_field_watch where field=:f")
+				.bind("f", field).mapTo(Integer.class).one());
+	}
+
 }

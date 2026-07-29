@@ -13,8 +13,11 @@ import java.util.Optional;
 public class GameService {
 	private final Jdbi jdbi;
 
+	private final InertFieldWatch inertFields;
+
 	public GameService(Jdbi jdbi) {
 		this.jdbi = jdbi;
+		this.inertFields = new InertFieldWatch(jdbi);
 	}
 
 	/** Games advertised in a lobby, newest last so the list does not reshuffle between requests. */
@@ -141,6 +144,8 @@ public class GameService {
 		if (blob == null || blob.length < 0x156) {
 			return;
 		}
+		inertFields.observeHostSettings(blob);
+
 		var passwordSet = (blob[0x90] & 0xff) != 0;
 		jdbi.useHandle(handle ->
 			handle.createUpdate("""
@@ -883,6 +888,10 @@ public class GameService {
 		if (blob == null || blob.length < 0x156) {
 			return;
 		}
+		// Record the fields believed unread, so a patched client using one shows up as a log line
+		// rather than as a bug report. See InertFieldWatch.
+		inertFields.observeHostSettings(blob);
+
 		var passwordSet = (blob[0x90] & 0xff) != 0;
 		var commonA = blob[0x142] & 0xff;
 		var commonB = blob[0x143] & 0xff;
