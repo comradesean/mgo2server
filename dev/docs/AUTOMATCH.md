@@ -380,6 +380,45 @@ by 60 at `0x8CA470`, which is what fixes the 2/2/2/3/2/2/2/2 shape.
 
 Deathmatch is the one rule with no rounds slot.
 
+### The block is composed, not replayed (2026-07-29)
+
+The server used to build this block by cloning a **204-byte captured `0x4310`** and patching four
+fields, so roughly 150 bytes went out as one player's client defaults with nothing recording what
+they were. That was the largest single piece of blob debt in the server: unlike a display field, these
+bytes **configure a live match**.
+
+Decoding the capture against the two schemas that describe this struct
+([`mgo2_cmd_43f1_s2c.ksy`](../proto/outbound/mgo2_cmd_43f1_s2c.ksy) and
+[`mgo2_cmd_4310_c2s.ksy`](../proto/inbound/mgo2_cmd_4310_c2s.ksy)) showed the alarming part was an
+illusion. **Almost the entire block is zero.** Every non-zero byte in all 204 is one of these:
+
+| offset | field | value |
+| --- | --- | --- |
+| 0..47 | rotation | overwritten per match |
+| 50..65 | weapon restrictions | all zero — nothing barred, and zero is the permissive value |
+| 66 | max players | 16 |
+| 68 | briefing time | 2 |
+| 95 | level-limit tolerance | 22 — the level cap, so the limit restricts nobody |
+| 100..167 | the 17 timers | `8 4 4 4 4 4 3 4 15 5 30 5 4 30 4 10 4` |
+| 169 | unique blue | 1 |
+| 177 | common toggle A | `0x24` |
+| 182 | team-kill kick | 3 |
+| 189 | SNAKE count | 3 |
+
+**Two bytes are still inherited without being understood**, and they are now the whole residue rather
+than being spread invisibly through a hex string:
+
+- **`+72`** — `0x02000000` read as a u32, i.e. a lone `2` then three zeros, so it may equally be a u8
+  with padding. `[UNKNOWN]` in both schemas, no reader traced.
+- **`+179`** — `0x20`. Sits beside the common-settings toggles but is not one of them.
+
+Both are non-zero in every capture, so zeroing them is a change with no evidence behind it.
+
+**The emitted bytes did not change.** `AutomatchSettingsBlockTest` keeps the original capture as a
+fixture and compares the composed output against it byte for byte, so this is provably a change of
+provenance rather than of behaviour — and if someone edits a named field later, that test fails and
+makes them say so on purpose.
+
 ### What the server sends today
 
 `AutomatchSettingsBlock` starts from a captured **client-default block** and overrides only what has
