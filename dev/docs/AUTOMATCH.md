@@ -671,7 +671,29 @@ That run is the first server→client push this project has made: until now ever
 was a reply to something. It also settles, by observation rather than argument, that pushing to a
 client that has been answered result 0 works at all.
 
-**Step 5: matching — built, and partly confirmed live.** A two-client search formed a match, elected
+**Step 5: matching — WORKING END TO END, confirmed live 2026-07-28.** Two clients searched for
+different modes, matched, formed a game, both loaded in, played four rounds of Sneaking, and the
+rotation cycled to Team Deathmatch on the same map. `round_report` carries rows with
+`lobby_subtype = 2` for the first time — the whole loop closes: search, match, elect, create, join,
+play, report.
+
+**The loading hang was the rotation encoding, and nothing else.** The rotation is **16 interleaved
+`[rule, map, flags]` triples** on the wire; the three parallel arrays are the client's in-memory form
+after its sequential reader scatters them. Writing the parallel form onto the wire meant a match of
+Sneaking and TDM on map 3 arrived as entry 0 = `rule 4, map 1` and entry 1 = `map 0` — a map that has
+no stage on this disc, and a zero map that terminates every loop walking the rotation. One black
+loading screen and a one-item "Rules:" list, from one mistake.
+
+Two explanations offered earlier are retired: **rule 0 was not the hang**, and **block 67 going out
+as zero was not the hang** either, though the latter was genuinely wrong and is still worth having
+fixed.
+
+*How it survived so long:* two test suites and a hand-decode of a live `0x43f1` all agreed the packet
+was correct, because all three used the same wrong layout as the encoder. The tests now read the
+rotation through accessors that mirror **the client's** wire order, and assert the map is one of the
+five real stages — which would have caught `map 1` on the first attempt.
+
+**Step 5 as first built — partly confirmed live.** A two-client search formed a match, elected
 a host, pushed a 223-byte `0x43f1` to both, saw the host create the game, and released both with
 `0x43f2`. Server-side the flow is complete and its packet was verified byte by byte on the wire.
 
