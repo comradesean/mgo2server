@@ -94,18 +94,36 @@ public class HostSettingsReplyTest {
 		assertThat(reply.getByte(0x155)).isEqualTo((byte) 0x52); // race rounds
 	}
 
-	/** The two constants Nomad writes verbatim, and the gaps it leaves zero. */
+	/**
+	 * The two fields that used to be inherited constants are echoed, and the gaps stay zero.
+	 * <p>
+	 * {@code 0x0ED} is struct +824 — the <b>top byte of a u32</b>, not a byte field — and
+	 * {@code 0x147} is struct +931, the low byte of the flags word whose bits 0-7 are never tested.
+	 * Neither is read anywhere in the client, so echoing the host's own bytes is both safe and
+	 * honest: an invented value would be indistinguishable from a real one and outlive its excuse.
+	 * <p>
+	 * The capture that appeared to justify the old constants was <b>circular</b> — Create Game entry
+	 * memcpys the saved object into the screen and the {@code 0x4310} builder re-emits it, so the
+	 * {@code 0x02} coming back was our own byte completing a round trip.
+	 */
 	@Test
-	public void writesNomadsConstantsAndZeroGaps() {
+	public void echoesTheUnreadFieldsAndLeavesTheGapsZero() {
 		var reply = written();
 
-		assertThat(reply.getByte(0x0ED)).isEqualTo((byte) 0x02);
-		assertThat(reply.getByte(0x147)).isEqualTo((byte) 0x20); // commonC constant, not echoed
+		// +824 is a u32: all four bytes come from the request, not just the first.
+		assertThat(reply.getByte(0x0ED)).isEqualTo((byte) 0xEA);
+		assertThat(reply.getByte(0x0EE)).isEqualTo((byte) 0xEB);
+		assertThat(reply.getByte(0x0EF)).isEqualTo((byte) 0xEC);
+		assertThat(reply.getByte(0x147)).isEqualTo((byte) 0x44); // struct +931, echoed
 		// Rotation entry 16 (wire 0x0D3..0x0D5) — copied since 2026-07-26. It used to be zero
 		// because we sent only 15 triples, which silently dropped a full rotation's last round.
 		assertThat(reply.getByte(0x0D5)).isEqualTo((byte) 0xD2);
 		assertThat(reply.getByte(0x0D6)).isZero(); // padding starts here now
-		assertThat(reply.getByte(0x0F0)).isZero(); // pre-stance padding
+		// 0x0F0 is the LAST byte of the +824 u32, not padding. The old code wrote a single 0x02 here
+		// and left three zeros after it, which produced exactly the 0x02000000 seen in captures —
+		// consistent, and consistently uninformative.
+		assertThat(reply.getByte(0x0F0)).isEqualTo((byte) 0xED);
+		assertThat(reply.getByte(0x0F1)).isZero(); // padding really starts here
 		assertThat(reply.getByte(0x156)).isZero();
 		assertThat(reply.getByte(0x15B)).isZero(); // last byte the parser reads
 	}
