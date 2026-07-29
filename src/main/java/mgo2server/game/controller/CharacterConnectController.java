@@ -293,25 +293,55 @@ public class CharacterConnectController implements IGameController {
 		return new String(bytes, 0, end, StandardCharsets.ISO_8859_1);
 	}
 
+	/**
+	 * Refuses {@code 0x4100} by answering nothing, because nothing is the only honest answer.
+	 *
+	 * <p><b>There is no way to say "no character" in this reply.</b> [ELF 2026-07-29] {@code 0x4101}
+	 * is a fixed 322-byte record with <b>no result or status word</b> — its first field is the
+	 * character id, and the parser at {@code 0xD3C120} branches only on its read primitive's return,
+	 * never on a field value. Nor is there a result channel behind it: {@code 0x4100} marks wait slot
+	 * {@code 0x15}, the status setter rejects any value above 2 so there is no failure state, and the
+	 * screen polls a boolean that never consults the result.
+	 *
+	 * <p><b>What we used to send was worse than silence.</b> A 4-byte reply carrying a masked error
+	 * set the character id to {@code 0xC0FFEE02} and zeroed the rest of the record: no read primitive
+	 * consults the payload length, and the receive buffer is memset before each packet. The client
+	 * then entered the lobby with a garbage id and put it in every subsequent packet. A full-length
+	 * reply with a zero id is no better — an empty name and id 0, carried onward the same way.
+	 *
+	 * <p>So the client sits on the connect screen and fails with {@code 1037:FFFFFF60} after its own
+	 * timeout. That is a real cost, and it is the smaller one.
+	 *
+	 * <p><b>The refusal belongs one step earlier, and already works there.</b> {@code 0x3003} /
+	 * {@code 0x3004} is the discriminating channel — {@code -240}, {@code -402}, {@code -403/-404} —
+	 * and {@code AccountGameController} already checks the account, the character's existence, its
+	 * ownership and that it is active. All three branches here are conditions {@code 0x3003} has
+	 * already cleared, so reaching one means a race or lost connection state, which is worth the log
+	 * line it now gets.
+	 */
+	private void refuseConnect(GameControllerContext ctx, String why) {
+		logger.warn("0x4100 cannot be served ({}). Answering nothing: 0x4101 has no result field, and"
+			+ " a short reply would hand the client a garbage character id. The client will time out"
+			+ " with 1037:FFFFFF60. This should be unreachable — 0x3003 refuses these first.", why);
+	}
+
 	private void connect(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {
-			ctx.write(CHARACTER_INFO, GameError.INVALID_SESSION);
+			refuseConnect(ctx, "no account on the connection");
 			return;
 		}
 
 		var charaId = account.getCurrentCharaId();
 		if (charaId == null) {
-			logger.warn("Account {} entered a game lobby with no character selected.", account.getId());
-			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			refuseConnect(ctx, "account " + account.getId() + " has no character selected");
 			return;
 		}
 
 		var chara = characterService.get(charaId).orElse(null);
 		if (chara == null) {
-			logger.warn("Account {} has a selected character {} that no longer exists.",
-				account.getId(), charaId);
-			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			refuseConnect(ctx, "account " + account.getId() + " selected character " + charaId
+				+ ", which no longer exists");
 			return;
 		}
 

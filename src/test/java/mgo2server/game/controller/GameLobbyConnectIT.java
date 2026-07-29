@@ -374,30 +374,46 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 			.isEqualTo("Enemy spotted");
 	}
 
-	/** The connect burst is only served to an authenticated connection. */
+	/**
+	 * The connect burst is only served to an authenticated connection — and an unauthenticated one
+	 * is answered with <b>nothing</b>.
+	 * <p>
+	 * This used to assert a 4-byte {@code 0x4101} carrying {@code INVALID_SESSION}. That reply was
+	 * worse than silence: {@code 0x4101} has no result field, its first field is the character id,
+	 * and no read primitive consults the payload length — so the masked code landed in the id and
+	 * the client entered the lobby as character {@code 0xC0FFEE02}, carrying it in every subsequent
+	 * packet. A zero id is no better.
+	 * <p>
+	 * There is no way to refuse this command; the refusal belongs to {@code 0x3003}/{@code 0x3004},
+	 * which discriminates properly and already rejects all of these conditions. Reaching here at all
+	 * means a race, so the server logs and drops, and the client times out with
+	 * {@code 1037:FFFFFF60}.
+	 */
 	@Test
-	public void refusesConnectBurstBeforeCheckIn() {
+	public void refusesConnectBurstBeforeCheckInBySayingNothing() {
 		givenSelectedCharacter("Snake");
 
 		var replies = new ArrayList<GamePacket>();
-		client.run(10, new ChannelInboundHandlerAdapter() {
+		client.run(3, new ChannelInboundHandlerAdapter() {
 			@Override
 			public void channelActive(ChannelHandlerContext ctx) {
 				ctx.writeAndFlush(new GamePacket(CharacterConnectController.CONNECT));
+				// Nothing will close this channel for us, because the whole point is that no reply
+				// arrives. Give the server long enough to have sent one, then close.
+				ctx.executor().schedule((Runnable) ctx::close, 1, java.util.concurrent.TimeUnit.SECONDS);
 			}
 
 			@Override
 			public void channelRead(ChannelHandlerContext ctx, Object msg) {
 				if (msg instanceof GamePacket packet) {
 					replies.add(packet);
-					ctx.close();
 				}
 			}
 		});
 
-		assertThat(replies).hasSize(1);
-		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+		assertThat(replies)
+			.as("a malformed 0x4101 would be parsed as a character record, not as an error")
+			.isEmpty();
 	}
 
 	/** A game lobby must not answer commands that belong to other lobby types. */
