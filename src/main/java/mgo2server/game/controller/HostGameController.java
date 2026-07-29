@@ -1011,7 +1011,7 @@ public class HostGameController implements IGameController {
 	 * The host cycling the rotation while staging ({@link #SET_GAME}). Request is a single byte:
 	 * the index into the rotation pushed via {@code 0x4310} (reference layout — Nomad reads one
 	 * byte and stores it as {@code currentGame}). The rule/map/flags the index resolves to come
-	 * from the game's stored blob, so the browser reflects the round actually being staged.
+	 * from the game's stored rotation columns, so the browser reflects the round being staged.
 	 */
 	private void setGame(GameControllerContext ctx) {
 		var game = hostedGame(ctx);
@@ -1019,17 +1019,21 @@ public class HostGameController implements IGameController {
 
 		if (game != null && payload.readableBytes() >= 1) {
 			var index = payload.readByte() & 0xff;
-			var blob = game.getHostSettings();
-			var offset = ROTATION_OFFSET + index * 3;
+			// The rotation is three typed arrays now, not an offset into a stored blob. The
+			// bounds check that used to guard a raw index into bytes is the arrays' own length.
+			//
 			// 16, not 15, corrected 2026-07-26: the 0x4310 writer emits sixteen triples
 			// (cmpdi cr7,r27,16 at 0xd44958) and the 0x4305/0x4313 parsers read sixteen. At 15 a
 			// host advancing to its last rotation entry was logged as "no stored rotation entry"
 			// and the browser kept showing the previous round.
-			if (index < ROTATION_ROUNDS && blob != null && blob.length >= offset + 3) {
+			var rules = game.getRotationRules();
+			var maps = game.getRotationMaps();
+			var flags = game.getRotationFlags();
+			if (index < ROTATION_ROUNDS && rules != null && index < rules.length) {
 				gameService.setCurrentGame(game.getId(), index,
-					blob[offset] & 0xff, blob[offset + 1] & 0xff, blob[offset + 2] & 0xff);
+					rules[index] & 0xff, maps[index] & 0xff, flags[index] & 0xff);
 				logger.info("Game {} advanced to rotation entry {} (rule={} map={}).",
-					game.getId(), index, blob[offset] & 0xff, blob[offset + 1] & 0xff);
+					game.getId(), index, rules[index] & 0xff, maps[index] & 0xff);
 			} else {
 				logger.warn("Game {}: set-game index {} has no stored rotation entry; ignoring.",
 					game.getId(), index);

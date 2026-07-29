@@ -79,13 +79,15 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		var jdbi = TestDatabase.get().jdbi();
 		var gameId = jdbi.withHandle(handle ->
 			handle.createUpdate("""
-					insert into game (lobby_id, host_chara_id, name, host_settings)
-					values (:lobby, :host, 'g', :blob)
+					insert into game (lobby_id, host_chara_id, name) values (:lobby, :host, 'g')
 					""")
 				.bind("lobby", lobbyId)
 				.bind("host", charaId)
-				.bind("blob", settingsBlob())
 				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		// Settings go in through the real parse path rather than being written straight to a
+		// column. That was a blob insert until the blob was dropped, and routing it through
+		// applyHostSettings is closer to what a host actually does anyway.
+		services.getGameService().applyHostSettings(gameId, settingsBlob());
 		jdbi.useHandle(handle ->
 			handle.createUpdate("insert into game_player (game_id, chara_id) values (:g, :c)")
 				.bind("g", gameId).bind("c", charaId).execute());
@@ -1030,17 +1032,18 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		exchange(new GamePacket(HostGameController.IN_GAME_INFO, Unpooled.wrappedBuffer(edit)));
 
 		var row = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createQuery("select name, comment, stance, host_settings from game where id=:id")
+			handle.createQuery("select name, comment, stance from game where id=:id")
 				.bind("id", gameId).mapToMap().one());
 
 		assertThat(row.get("name")).isEqualTo("Renamed");
 		assertThat(row.get("comment")).isEqualTo("New comment");
 		assertThat(row.get("stance")).isEqualTo(3);
 
-		// The stored blob must agree, or the next details refresh and the Create Game pre-fill hand
-		// back the value the host just changed away from.
-		assertThat(((byte[]) row.get("host_settings"))[0xF6])
-			.as("stance mirrored into the stored blob at its own offset")
+		// And the rebuilt block carries it, which is what the details refresh and the Create Game
+		// pre-fill are built from. While a blob sat beside the columns this had to be mirrored into
+		// it by hand, in two tables; the column is now the only copy.
+		assertThat(services.getGameService().rebuildHostSettings(gameId)[0xF6])
+			.as("stance reaches the rebuilt block")
 			.isEqualTo((byte) 3);
 	}
 
@@ -1110,15 +1113,74 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		}
 	}
 
-	/** A game with no stored settings rebuilds to null rather than to a block of zeros. */
+	/**
+	 * A game whose host never pushed settings rebuilds to null rather than to a block of zeros.
+	 * <p>
+	 * That state is real: a game row exists between {@code createGame} and {@code applyHostSettings},
+	 * and a block of zeros there would be indistinguishable from a host who genuinely chose every
+	 * default.
+	 */
 	@Test
 	public void rebuildingSettingsThatWereNeverSentGivesNull() {
 		givenSelectedCharacter("Snake");
-		var gameId = givenHostedGame();
+		var gameId = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createUpdate("insert into game (lobby_id, host_chara_id, name) "
+					+ "values (:lobby, :host, 'bare')")
+				.bind("lobby", lobbyId).bind("host", charaId)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 
-		assertThat(services.getGameService().rebuildHostSettings(gameId))
-			.as("a game exists between createGame and applyHostSettings; that is not zeros")
-			.isNull();
+		assertThat(services.getGameService().rebuildHostSettings(gameId)).isNull();
+	}
+
+	/**
+	 * The Create Game pre-fill rebuilds byte-for-byte from its typed columns.
+	 * <p>
+	 * Same structure as the game's copy, keyed per (character, lobby subtype) instead. Both share
+	 * one field map deliberately — two maps of the same bytes is how one silently stops matching the
+	 * other — so this test and its sibling guard the same code from opposite tables.
+	 */
+	@Test
+	public void charaHostSettingsRebuildExactly() {
+		givenSelectedCharacter("Snake");
+
+		var sent = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		System.arraycopy("Pre-fill".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x00, 8);
+		sent[0x90] = 1;
+		System.arraycopy("secret".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x91, 6);
+		sent[0xA1] = 1;
+		sent[0xA2] = 2;
+		sent[0xA3] = 2; sent[0xA4] = 7; sent[0xA5] = 2;
+		sent[0xD3] = 0x0A; sent[0xD4] = 0x0B;
+		sent[0xD5] = (byte) 0xFF;
+		sent[0xEA] = 0x02;
+		sent[0xF6] = 5;
+		sent[0xF7] = 11;
+		sent[0xFC + 3] = 6;
+		sent[0x140] = 1; sent[0x141] = 4;
+		sent[0x144] = 0x20;
+		sent[0x149] = 1;
+		sent[0x14A] = 2;
+		sent[0x155] = 0b10;
+		sent[0x158] = 0x5A;
+
+		services.getGameService().saveHostSettingsBlob(charaId, 2, sent);
+
+		var rebuilt = services.getGameService().getHostSettingsBlob(charaId, 2).orElseThrow();
+
+		for (var at = 0; at < sent.length; at++) {
+			assertThat(rebuilt[at]).as("byte 0x%s", Integer.toHexString(at)).isEqualTo(sent[at]);
+		}
+	}
+
+	/** A character that has never hosted has no pre-fill, rather than a block of zeros. */
+	@Test
+	public void charaWithNoStoredSettingsHasNoPrefill() {
+		givenSelectedCharacter("Snake");
+
+		assertThat(services.getGameService().getHostSettingsBlob(charaId, 2)).isEmpty();
 	}
 
 }

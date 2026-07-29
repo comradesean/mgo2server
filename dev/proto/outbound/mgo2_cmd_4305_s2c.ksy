@@ -202,11 +202,17 @@ seq:
       reference-server label, and nothing in OBSERVED.md moved this byte.
       **Follows team_kill_kick directly** — the u32 at block +184 (echo's verbatim 0x2e) is not
       on this wire.
-  - id: sneaking_snake_side
+  - id: sneaking_snake_kills
     type: u1
     doc: |
-      [ELF] wire 0x14d, block +189. Position exact; **the name is [UNKNOWN]**, same reason as
-      capture_extra_time.
+      [CONFIRMED 2026-07-29] **Sneaking Mission "SNAKE"** — how many times Snake must be defeated for
+      Red and Blue to win. Renamed from `sneaking_snake_side`, which was wrong.
+
+      Two independent routes settle it. The client **renders it as a number** (`0x89D7B8`) and clamps
+      it to `[1,5]` in the create-game adjuster (`0x8A1AC8`) — a side index would be 0/1/2 and drawn
+      as a name or sprite. And the disc names it directly: row label 508 "SNAKE", units 520 "times",
+      help 542 *"Set the number of times Snake must be defeated (victory condition for Red and Blue
+      Teams)."*
   - id: byte_timers_and_tail
     size: 14
     doc: |

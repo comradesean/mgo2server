@@ -138,28 +138,121 @@ public class GameService {
 	 * push arrives before create-game materialises the settings row on first use.
 	 */
 	public void saveHostSettingsBlob(long charaId, int type, byte[] blob) {
+		if (blob == null || blob.length < 0x156) {
+			return;
+		}
+		var passwordSet = (blob[0x90] & 0xff) != 0;
 		jdbi.useHandle(handle ->
 			handle.createUpdate("""
-					insert into chara_host_settings (chara_id, type, blob) values (:id, :type, :blob)
-					on conflict (chara_id, type) do update set blob = excluded.blob
+					insert into chara_host_settings (chara_id, type, name, comment, password,
+						dedicated, settings_lobby_subtype, rotation_rules, rotation_maps,
+						rotation_flags, weapon_restrictions, max_players, briefing_time, stance,
+						level_limit_tolerance, level_limit_base, rule_timers, unique_red,
+						unique_blue, common_a, common_b, idle_kick, team_kill_kick,
+						capture_extra_time, sneaking_snake_kills, unread_800, unread_801,
+						unread_824, unread_832, unread_836, unread_844, unread_931, unread_tail)
+					values (:id, :type, :name, :comment, :password, :dedicated, :subtype,
+						:rotationRules, :rotationMaps, :rotationFlags, :weaponRestrictions,
+						:maxPlayers, :briefingTime, :stance, :tolerance, :base, :ruleTimers,
+						:uniqueRed, :uniqueBlue, :commonA, :commonB, :idleKick, :teamKillKick,
+						:captureExtraTime, :snakeKills, :unread800, :unread801, :unread824,
+						:unread832, :unread836, :unread844, :unread931, :unreadTail)
+					on conflict (chara_id, type) do update set
+						name = excluded.name, comment = excluded.comment,
+						password = excluded.password, dedicated = excluded.dedicated,
+						settings_lobby_subtype = excluded.settings_lobby_subtype,
+						rotation_rules = excluded.rotation_rules,
+						rotation_maps = excluded.rotation_maps,
+						rotation_flags = excluded.rotation_flags,
+						weapon_restrictions = excluded.weapon_restrictions,
+						max_players = excluded.max_players, briefing_time = excluded.briefing_time,
+						stance = excluded.stance,
+						level_limit_tolerance = excluded.level_limit_tolerance,
+						level_limit_base = excluded.level_limit_base,
+						rule_timers = excluded.rule_timers, unique_red = excluded.unique_red,
+						unique_blue = excluded.unique_blue, common_a = excluded.common_a,
+						common_b = excluded.common_b, idle_kick = excluded.idle_kick,
+						team_kill_kick = excluded.team_kill_kick,
+						capture_extra_time = excluded.capture_extra_time,
+						sneaking_snake_kills = excluded.sneaking_snake_kills,
+						unread_800 = excluded.unread_800, unread_801 = excluded.unread_801,
+						unread_824 = excluded.unread_824, unread_832 = excluded.unread_832,
+						unread_836 = excluded.unread_836, unread_844 = excluded.unread_844,
+						unread_931 = excluded.unread_931, unread_tail = excluded.unread_tail
 					""")
 				.bind("id", charaId)
 				.bind("type", type)
-				.bind("blob", blob)
+				.bind("name", blobString(blob, 0x00, 16))
+				.bind("comment", blobString(blob, 0x10, 128))
+				.bind("password", passwordSet ? blobString(blob, 0x91, 16) : null)
+				.bind("dedicated", (blob[0xA1] & 0xff) != 0)
+				.bind("subtype", blob[0xA2] & 0xff)
+				.bind("rotationRules", rotationField(blob, 0))
+				.bind("rotationMaps", rotationField(blob, 1))
+				.bind("rotationFlags", rotationField(blob, 2))
+				.bind("weaponRestrictions",
+					java.util.Arrays.copyOfRange(blob, WEAPON_RESTRICTIONS, WEAPON_RESTRICTIONS + 16))
+				.bind("maxPlayers", blob[0xE5] & 0xff)
+				.bind("briefingTime", blobU32(blob, 0xE6))
+				.bind("stance", blob[0xF6] & 0xff)
+				.bind("tolerance", blob[0xF7] & 0xff)
+				.bind("base", blobU32(blob, 0xF8))
+				.bind("ruleTimers", ruleTimers(blob))
+				.bind("uniqueRed", blob[UNIQUE_RED] & 0xff)
+				.bind("uniqueBlue", blob[UNIQUE_RED + 1] & 0xff)
+				.bind("commonA", blob[0x142] & 0xff)
+				.bind("commonB", blob[0x143] & 0xff)
+				.bind("idleKick", blobU16(blob, 0x145))
+				.bind("teamKillKick", blobU16(blob, 0x147))
+				.bind("captureExtraTime", (blob[CAPTURE_EXTRA_TIME] & 0xff) != 0)
+				.bind("snakeKills", blob[SNEAKING_SNAKE_KILLS] & 0xff)
+				.bind("unread800", blob[0xD3] & 0xff)
+				.bind("unread801", blob[0xD4] & 0xff)
+				.bind("unread824", blobU32(blob, 0xEA) & 0xFFFFFFFFL)
+				.bind("unread832", blobU16(blob, 0xEE))
+				.bind("unread836", blobU32(blob, 0xF0) & 0xFFFFFFFFL)
+				.bind("unread844", blobU16(blob, 0xF4))
+				.bind("unread931", blob[0x144] & 0xff)
+				.bind("unreadTail", tailOf(blob))
 				.execute());
 	}
 
-	/** The last {@code 0x4310} blob a character pushed for a lobby subtype, if any. */
+	/**
+	 * The 14-byte raw block, padded if the payload stopped short.
+	 * <p>
+	 * A capture that ends at {@code 0x156} — the parser's own minimum — is three bytes shy of the
+	 * block's end, and {@code copyOfRange} zero-fills rather than throwing. Made explicit here
+	 * because a silently short tail would round-trip as a difference nobody could explain.
+	 */
+	private static byte[] tailOf(byte[] blob) {
+		return java.util.Arrays.copyOfRange(blob, UNREAD_TAIL, UNREAD_TAIL + 14);
+	}
+
+	/**
+	 * Rebuilds a character's stored Create Game settings from its typed columns.
+	 *
+	 * <p>The same reconstruction {@link #rebuildHostSettings} does for a game, against the same
+	 * field map — this table holds the identical structure keyed per lobby subtype.
+	 */
+	public Optional<byte[]> rebuildHostSettingsBlob(long charaId, int type) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("select * from chara_host_settings where chara_id=:id and type=:type")
+			.bind("id", charaId)
+			.bind("type", type)
+			.map((rs, ctx) -> rs.getBytes("unread_tail") == null ? null : blockOf(rs))
+			.findOne()
+			.filter(java.util.Objects::nonNull));
+	}
+
+	/**
+	 * The last {@code 0x4310} settings a character pushed for a lobby subtype, if any.
+	 * <p>
+	 * <b>Rebuilt from typed columns, not replayed from stored bytes.</b> The block that comes back
+	 * is byte-identical to what the client sent — {@code HostSettingsRoundTripIT} pins that — which
+	 * is what allows the stored blob to go.
+	 */
 	public Optional<byte[]> getHostSettingsBlob(long charaId, int type) {
-		return jdbi.withHandle(handle ->
-			handle.createQuery("""
-					select blob from chara_host_settings
-					where chara_id=:id and type=:type and blob is not null
-					""")
-				.bind("id", charaId)
-				.bind("type", type)
-				.mapTo(byte[].class)
-				.findOne());
+		return rebuildHostSettingsBlob(charaId, type);
 	}
 
 	/**
@@ -574,7 +667,7 @@ public class GameService {
 
 	/**
 	 * Applies a host's {@code 0x4310} settings blob to a game: the fields it genuinely carries into
-	 * their columns, plus the raw blob into {@code host_settings} (replayed by the details reply for
+	 * their columns (the details reply and the Create Game pre-fill are both rebuilt from them, for
 	 * the per-mode timer table at {@code 0xFC} and uniques).
 	 * <p>
 	 * Handled here: name(0x00), comment(0x10), password(flag 0x90 / text 0x91), dedicated(0xA1),
@@ -669,61 +762,72 @@ public class GameService {
 				if (rs.getBytes("unread_tail") == null) {
 					return null;
 				}
-				var blob = new byte[HOST_SETTINGS_SIZE];
-				putString(blob, 0x00, rs.getString("name"), 16);
-				putString(blob, 0x10, rs.getString("comment"), 128);
-
-				var password = rs.getString("password");
-				var locked = password != null && !password.isEmpty();
-				blob[0x90] = (byte) (locked ? 1 : 0);
-				if (locked) {
-					putString(blob, 0x91, password, 16);
-				}
-
-				blob[0xA1] = (byte) (rs.getBoolean("dedicated") ? 1 : 0);
-				blob[0xA2] = (byte) rs.getInt("settings_lobby_subtype");
-
-				var rules = shorts(rs, "rotation_rules");
-				var maps = shorts(rs, "rotation_maps");
-				var flags = shorts(rs, "rotation_flags");
-				for (var entry = 0; entry < ROTATION_ENTRIES; entry++) {
-					blob[ROTATION + entry * 3] = (byte) rules[entry];
-					blob[ROTATION + entry * 3 + 1] = (byte) maps[entry];
-					blob[ROTATION + entry * 3 + 2] = (byte) flags[entry];
-				}
-
-				blob[0xD3] = (byte) rs.getInt("unread_800");
-				blob[0xD4] = (byte) rs.getInt("unread_801");
-				System.arraycopy(rs.getBytes("weapon_restrictions"), 0, blob, WEAPON_RESTRICTIONS, 16);
-				blob[0xE5] = (byte) rs.getInt("max_players");
-				putU32(blob, 0xE6, rs.getLong("briefing_time"));
-				putU32(blob, 0xEA, rs.getLong("unread_824"));
-				putU16(blob, 0xEE, rs.getInt("unread_832"));
-				putU32(blob, 0xF0, rs.getLong("unread_836"));
-				putU16(blob, 0xF4, rs.getInt("unread_844"));
-				blob[0xF6] = (byte) rs.getInt("stance");
-				blob[0xF7] = (byte) rs.getInt("level_limit_tolerance");
-				putU32(blob, 0xF8, rs.getLong("level_limit_base"));
-
-				var timers = ints(rs, "rule_timers");
-				for (var slot = 0; slot < RULE_TIMER_SLOTS; slot++) {
-					putU32(blob, RULE_TIMERS + slot * Integer.BYTES, timers[slot] & 0xFFFFFFFFL);
-				}
-
-				blob[0x140] = (byte) rs.getInt("unique_red");
-				blob[0x141] = (byte) rs.getInt("unique_blue");
-				blob[0x142] = (byte) rs.getInt("common_a");
-				blob[0x143] = (byte) rs.getInt("common_b");
-				blob[0x144] = (byte) rs.getInt("unread_931");
-				putU16(blob, 0x145, rs.getInt("idle_kick"));
-				putU16(blob, 0x147, rs.getInt("team_kill_kick"));
-				blob[CAPTURE_EXTRA_TIME] = (byte) (rs.getBoolean("capture_extra_time") ? 1 : 0);
-				blob[SNEAKING_SNAKE_KILLS] = (byte) rs.getInt("sneaking_snake_kills");
-				System.arraycopy(rs.getBytes("unread_tail"), 0, blob, UNREAD_TAIL, 14);
-				return blob;
+				return blockOf(rs);
 			})
 			.findOne()
 			.orElse(null));
+	}
+
+	/**
+	 * Builds the 345-byte host-settings block from a row of typed columns.
+	 * <p>
+	 * <b>One field map, two callers.</b> The game row and the per-character Create Game pre-fill
+	 * hold the identical structure, so they share this rather than each carrying a copy — two maps
+	 * of the same bytes is how one of them silently stops matching the other.
+	 */
+	private static byte[] blockOf(java.sql.ResultSet rs) throws java.sql.SQLException {
+		var blob = new byte[HOST_SETTINGS_SIZE];
+		putString(blob, 0x00, rs.getString("name"), 16);
+		putString(blob, 0x10, rs.getString("comment"), 128);
+
+		var password = rs.getString("password");
+		var locked = password != null && !password.isEmpty();
+		blob[0x90] = (byte) (locked ? 1 : 0);
+		if (locked) {
+			putString(blob, 0x91, password, 16);
+		}
+
+		blob[0xA1] = (byte) (rs.getBoolean("dedicated") ? 1 : 0);
+		blob[0xA2] = (byte) rs.getInt("settings_lobby_subtype");
+
+		var rules = shorts(rs, "rotation_rules");
+		var maps = shorts(rs, "rotation_maps");
+		var flags = shorts(rs, "rotation_flags");
+		for (var entry = 0; entry < ROTATION_ENTRIES; entry++) {
+			blob[ROTATION + entry * 3] = (byte) rules[entry];
+			blob[ROTATION + entry * 3 + 1] = (byte) maps[entry];
+			blob[ROTATION + entry * 3 + 2] = (byte) flags[entry];
+		}
+
+		blob[0xD3] = (byte) rs.getInt("unread_800");
+		blob[0xD4] = (byte) rs.getInt("unread_801");
+		System.arraycopy(rs.getBytes("weapon_restrictions"), 0, blob, WEAPON_RESTRICTIONS, 16);
+		blob[0xE5] = (byte) rs.getInt("max_players");
+		putU32(blob, 0xE6, rs.getLong("briefing_time"));
+		putU32(blob, 0xEA, rs.getLong("unread_824"));
+		putU16(blob, 0xEE, rs.getInt("unread_832"));
+		putU32(blob, 0xF0, rs.getLong("unread_836"));
+		putU16(blob, 0xF4, rs.getInt("unread_844"));
+		blob[0xF6] = (byte) rs.getInt("stance");
+		blob[0xF7] = (byte) rs.getInt("level_limit_tolerance");
+		putU32(blob, 0xF8, rs.getLong("level_limit_base"));
+
+		var timers = ints(rs, "rule_timers");
+		for (var slot = 0; slot < RULE_TIMER_SLOTS; slot++) {
+			putU32(blob, RULE_TIMERS + slot * Integer.BYTES, timers[slot] & 0xFFFFFFFFL);
+		}
+
+		blob[0x140] = (byte) rs.getInt("unique_red");
+		blob[0x141] = (byte) rs.getInt("unique_blue");
+		blob[0x142] = (byte) rs.getInt("common_a");
+		blob[0x143] = (byte) rs.getInt("common_b");
+		blob[0x144] = (byte) rs.getInt("unread_931");
+		putU16(blob, 0x145, rs.getInt("idle_kick"));
+		putU16(blob, 0x147, rs.getInt("team_kill_kick"));
+		blob[CAPTURE_EXTRA_TIME] = (byte) (rs.getBoolean("capture_extra_time") ? 1 : 0);
+		blob[SNEAKING_SNAKE_KILLS] = (byte) rs.getInt("sneaking_snake_kills");
+		System.arraycopy(rs.getBytes("unread_tail"), 0, blob, UNREAD_TAIL, 14);
+		return blob;
 	}
 
 	private static short[] shorts(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
@@ -797,8 +901,7 @@ public class GameService {
 						unread_844 = :unread844, unread_824 = :unread824,
 						unread_931 = :unread931, unread_tail = :unreadTail,
 						settings_lobby_subtype = :settingsLobbySubtype,
-						common_a = :commonAByte, common_b = :commonBByte,
-						host_settings = :blob
+						common_a = :commonAByte, common_b = :commonBByte
 					where id = :id
 					""")
 				.bind("name", blobString(blob, 0x00, 16))
@@ -864,8 +967,7 @@ public class GameService {
 				// bits 1, 2 and 6 are not decoded, so rebuilding from the booleans alone drops them.
 				.bind("commonAByte", commonA)
 				.bind("commonBByte", commonB)
-				.bind("unreadTail", java.util.Arrays.copyOfRange(blob, UNREAD_TAIL, UNREAD_TAIL + 14))
-				.bind("blob", blob)
+				.bind("unreadTail", tailOf(blob))
 				.bind("id", gameId)
 				.execute());
 	}
@@ -913,33 +1015,10 @@ public class GameService {
 				.bind("host", hostCharaId)
 				.execute();
 
-			// KEEP THE STORED BLOBS IN STEP. Stance lives at 0x4310 wire 0xF6, and both the running
-			// game's copy and the per-character Create Game pre-fill are replayed from those bytes.
-			// Updating only the column would make the next details refresh or pre-fill hand back the
-			// value the host just changed away from — the same class of disagreement as an in-place
-			// edit that does not reach storage.
-			//
-			// This is exactly the cost of keeping a blob beside typed columns, and it goes away with
-			// the blob. See BACKLOG, "The host-settings blob must go".
-			handle.createUpdate("""
-					update game set host_settings = set_byte(host_settings, :at, :stance)
-					where lobby_id = :lobbyId and host_chara_id = :host
-						and host_settings is not null and length(host_settings) > :at
-					""")
-				.bind("at", HOST_STANCE)
-				.bind("stance", stance)
-				.bind("lobbyId", lobbyId)
-				.bind("host", hostCharaId)
-				.execute();
-
-			handle.createUpdate("""
-					update chara_host_settings set blob = set_byte(blob, :at, :stance)
-					where chara_id = :host and blob is not null and length(blob) > :at
-					""")
-				.bind("at", HOST_STANCE)
-				.bind("stance", stance)
-				.bind("host", hostCharaId)
-				.execute();
+			// The stance column is all there is now. While a blob sat beside these columns this
+			// also had to patch the byte inside it, in two tables, or the next details refresh and
+			// the Create Game pre-fill would hand back the value the host had just changed away
+			// from. Both rebuilds read the column, so that whole class of disagreement is gone.
 		});
 	}
 

@@ -24,7 +24,12 @@ public class Game {
 
 	private int flags;
 
-	private byte[] hostSettings;
+
+	private short[] rotationRules;
+
+	private short[] rotationMaps;
+
+	private short[] rotationFlags;
 
 	private byte[] weaponRestrictions;
 
@@ -158,6 +163,30 @@ public class Game {
 		this.flags = flags;
 	}
 
+	public short[] getRotationRules() {
+		return rotationRules;
+	}
+
+	public void setRotationRules(short[] rotationRules) {
+		this.rotationRules = rotationRules;
+	}
+
+	public short[] getRotationMaps() {
+		return rotationMaps;
+	}
+
+	public void setRotationMaps(short[] rotationMaps) {
+		this.rotationMaps = rotationMaps;
+	}
+
+	public short[] getRotationFlags() {
+		return rotationFlags;
+	}
+
+	public void setRotationFlags(short[] rotationFlags) {
+		this.rotationFlags = rotationFlags;
+	}
+
 	public byte[] getWeaponRestrictions() {
 		return weaponRestrictions;
 	}
@@ -218,13 +247,6 @@ public class Game {
 		this.unreadTail = unreadTail;
 	}
 
-	public byte[] getHostSettings() {
-		return hostSettings;
-	}
-
-	public void setHostSettings(byte[] hostSettings) {
-		this.hostSettings = hostSettings;
-	}
 
 	public int getMap() {
 		return map;
