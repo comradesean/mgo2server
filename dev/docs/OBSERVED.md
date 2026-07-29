@@ -3851,3 +3851,64 @@ one exception, b14, is not unknown but *proven identically zero* — nothing can
 baseline, so it can never carry a value. Three reusable finds came out of the same pass: the
 damage-source name table at `0x1035818` (which independently re-confirms b17 and b18), the
 per-object 896-bit flag API at `0x305A60`, and the labelled lobby menu table above.
+
+## Automatching, end to end with three clients — 2026-07-29
+
+The first three-client automatch. Three clients each requested a **different** rule and were matched
+into one game carrying all three:
+
+```
+02:24:27  Chara 1 -> rule 4  (Sneaking)
+02:25:16  Chara 2 -> rule 2  (Rescue)
+02:25:31  Chara 3 -> rule 1  (Team Deathmatch)
+02:29:18  Automatch formed: host 1 of 3 players, rules [4, 2, 1], map 2
+```
+
+Nobody sent the wildcard; the mode relaxation brought three explicit requests together after ~3m45s.
+Earlier the same evening, two-client runs settled the rest of the matrix: **rule 0 + rule 0** formed a
+Deathmatch game (so rule 0 is a real filter, not a sentinel), **wildcard + wildcard** rolled a mode at
+random and picked differently twice (4, then 3), **wildcard + explicit** adopted the explicit request
+rather than rolling, and **two incompatible explicit requests correctly did not match** until one side
+changed.
+
+**Why the three-rule case matters beyond the milestone.** One or two rotation entries cannot always
+distinguish the wire's interleaved `[rule, map, flags]` triples from the parallel-array form — which
+is exactly how the earlier loading hang survived two test suites and a hand-decode, all three of which
+shared the same wrong layout. Three distinct rules rendering as three modes is the case that only
+passes if the encoding is right.
+
+Full detail in [AUTOMATCH.md](AUTOMATCH.md).
+
+## The clan emblem was being cleared at the end of every round — 2026-07-29
+
+**Symptom:** emblems rendered after login and were gone later in the session. **Cause:** `0x4129`,
+the end-of-round results packet, writes thirteen fields of the local profile and clears none of them,
+into the same profile the connect burst filled. Its **last payload byte is the clan emblem flag**, and
+the server sent a hardcoded 0 there.
+
+`0` is not "no picture", it is **"never ask"** — the fetch is skipped and the emblem is silently
+absent, with no error dialog, only a 6000-tick backoff. Nothing in-game can correct it either: the
+flag reaches peers through the **P2P announce**, not from us.
+
+Confirmed fixed live: emblems and animal-rank badges both rendered in the three-client game above.
+
+**The generalisable finding is about `0x4129`, not about emblems.** It is a partial re-send of the
+connect-burst character record after a match, so *every* field in it must agree with what `0x4122`
+sent. The worn title was the same defect three lines earlier in the same function, already fixed once.
+Anything hardcoded there silently reverts the connect burst at the end of the first round.
+
+## `team_win = 0` in Sneaking is correct client behaviour — 2026-07-29
+
+A completed Sneaking stage reported `team_win = 0` for every player in every round and ended in a
+draw, despite one player winning all four rounds as Snake. **That is what the binary says should
+happen.** The Sneaking round-end handler awards the counter on reasons 2 and 3 (an attacking team
+winning) and **awards nothing on reasons 4 and 5, the Snake-axis outcomes**.
+
+It is deliberate: **Team Sneaking's handler is the control** — same shape, same team 2, but its
+reason-4 arm *does* award. One line different between two otherwise identical handlers.
+
+Corroborated from live data in the same game, same host, minutes apart: the TDM stage recorded
+`team_win = 1` for the winner and 0 for the loser; the Sneaking stage recorded 0 for both.
+
+**Do not "fix" this.** A server that manufactured a Sneaking team win would diverge from the client.
+

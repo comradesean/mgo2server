@@ -384,8 +384,8 @@ announce itself as a `No handler for command …` line once players have collect
 | `0x49A8` | parses | 8 B | [UNKNOWN] Clan notification — serial bump (u16 payload) | unsent |
 | `0x49B0` | sends | 8 B | [UNKNOWN] Game lobby request (two u4) | gap |
 | `0x49B1` | parses | variable | [UNKNOWN] Unmapped 0x49xx full-record reply, 420 bytes | unsent |
-| `0x49C0` | sends+parses | variable | [UNKNOWN] Game-lobby request with a counted id list — two unrelated layouts share this id, one per direction (see blanks/README.md) | gap |
-| `0x49C0` | sends+parses | variable | [UNKNOWN] Unmapped 0x49xx keyed-update reply — two unrelated layouts share this id, one per direction (see blanks/README.md) | unsent |
+| `0x49C0` | sends+parses | variable | [UNKNOWN] Game-lobby request with a counted id list — two unrelated layouts share this id, one per direction (see dev/proto/README.md) | gap |
+| `0x49C0` | sends+parses | variable | [UNKNOWN] Unmapped 0x49xx keyed-update reply — two unrelated layouts share this id, one per direction (see dev/proto/README.md) | unsent |
 | `0x49C1` | parses | 32 B | [UNKNOWN] Unmapped 0x49xx single-record reply | unsent |
 | `0x49C2` | sends | 5 B | [UNKNOWN] Game-lobby / roster request, u32 + small enum | gap |
 | `0x49C3` | parses | 9 B | [UNKNOWN] Unmapped 0x49xx reply | unsent |
