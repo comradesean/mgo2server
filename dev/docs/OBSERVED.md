@@ -40,6 +40,55 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Host rating: we switched it off on every join, in one hardcoded byte (fixed 2026-07-29)
+
+Only one host rating has ever been recorded on this server, and no `0x43c4` appears in any log.
+Three readings were eliminated by live testing first — it was not the successor taking the host
+role (the game never migrated), not a two-player dead end (the one success WAS two players), and
+not a requirement that the game end rather than be quit (a completed four-round stage produced
+nothing). A capture even showed the joiner receiving `0x4313` wire `0x0a7` = **1**, the gate open,
+and still no prompt.
+
+**The cause [ELF].** `0x4321`, the join reply, carries a byte at wire `0x28` that we sent as a
+hardcoded zero, justified in the comment as *"echo writes 0"*. The parser at `0xD441DC` reads it
+and `0xD441FC` stores it to `detailsBase + 964` — **the same slot `0x4313` wire `0x0a7` writes**,
+and the slot the star picker is gated on. The join reply lands *after* any pre-join `0x4313`, so
+it overwrote the open gate with zero on every single join.
+
+The gate is read further downstream than expected, which is why the `0x4313` byte looked
+sufficient:
+
+- the end-of-game screen **snapshots** `details+964` when it is *constructed*, into `screen+344`
+  (six identical sites, e.g. `0x9D7F34`, `0x9DF0B4`, `0xA0C5D8`)
+- `0x9DCA34` skips opening the star picker when that snapshot is zero — no picker, no `0x43c4`
+- the slot itself is only re-read at `0xA31DB0`, *after* the player has already chosen a rating
+
+So `0x4313` wire `0x0a7` is necessary but never sufficient. Both packets must carry the flag.
+
+**It also explains the single success.** That one needed a `0x4313` to arrive *after* the join and
+*before* the results screen was built — a details refresh from inside the game.
+
+**The operator's hypothesis was that we were sending an "already voted" flag.** That specific
+mechanism is a **negative**: the three latches (`flags` bits `0x1`/`0x10`/`0x20` and the zeroing of
+`state+200` at `0xA31DC0`) are all client-local, and `host_score` (details+956) and `host_votes`
+(details+960) have no reader anywhere in the send path. But the instinct — that something we send
+suppresses the prompt — was exactly right, and it is what got this looked at properly.
+
+**Seventh inherited constant.** Same shape as the other six: transcribed faithfully from a
+reference server, wrong for this client, invisible because nothing tested it.
+
+### Dialog 2944 cannot be raised at all
+
+*"Game rules and map have not been set. / Please set game rules and map."* is a carried-but-dead
+table entry at `0x106D714`. There is no `li r,2944` into any argument register anywhere in the
+image (the six `li r0,2944` hits are AltiVec stack offsets), and no `addi`/`ori`/`subfic` form
+produces it either. Neither a server result code nor a client-side check can show it.
+
+So the empty-rotation refusal keeps the generic code — there is no better one to find. Its
+neighbour **2945** is equally unraisable, as are **2826** ("You do not own the map this host is
+using") and **2833** ("This Combat Training session is not currently accepting applicants"). They
+belong with the five clan sentences `ERRORS.md` already lists as unreachable.
+
 ### Skill progression: `0x43a4` is how the client reports it, and we were dropping it (2026-07-29)
 
 Skills level by **use**. The server cannot observe use, so the client has to report — and it does,

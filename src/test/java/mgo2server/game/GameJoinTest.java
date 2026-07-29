@@ -26,8 +26,33 @@ public class GameJoinTest {
 
 	private static io.netty.buffer.ByteBuf written() {
 		var buffer = Unpooled.buffer();
-		GameJoin.write(buffer, host(), 2, 5);
+		GameJoin.write(buffer, host(), 2, 5, true);
 		return buffer;
+	}
+
+	/**
+	 * Wire 0x28 is the host-rating gate, and it must be set for a joiner.
+	 * <p>
+	 * [ELF] the 0x4321 parser stores this byte to {@code details+964} ({@code 0xD441FC}) — the slot
+	 * the end-of-game star picker is gated on. We hardcoded 0 here on the strength of "echo writes
+	 * 0", which switched host rating off on every join. It also overwrites whatever {@code 0x4313}
+	 * wire 0x0a7 set, because the join reply lands afterwards, so setting the flag there alone
+	 * could never have worked.
+	 */
+	@Test
+	public void theHostRatingGateIsSetForAJoiner() {
+		assertThat(written().getUnsignedByte(0x28))
+			.as("wire 0x28 permits the star picker; zero means no rating prompt ever appears")
+			.isEqualTo((short) 1);
+	}
+
+	/** And clear when the player must not rate, which is how self-rating stays impossible. */
+	@Test
+	public void theHostRatingGateIsClearWhenRatingIsNotPermitted() {
+		var buffer = Unpooled.buffer();
+		GameJoin.write(buffer, host(), 2, 5, false);
+
+		assertThat(buffer.getUnsignedByte(0x28)).isEqualTo((short) 0);
 	}
 
 	@Test
@@ -58,12 +83,19 @@ public class GameJoinTest {
 		assertThat(buffer.getUnsignedShort(38)).isEqualTo(5731);
 	}
 
-	/** The parser reads one byte at offset 40; echo's rule and map follow, read by no instruction. */
+	/**
+	 * The three trailing bytes: the host-rating gate at 40 (0x28), then rule and map.
+	 * <p>
+	 * This test used to assert byte 40 was ZERO, and named it "theZero" — pinning the bug in place.
+	 * The byte is the rating gate ({@code 0xD441FC} stores it to {@code details+964}), so a zero
+	 * here disables host rating for the joiner. Rule and map are read by no instruction in this
+	 * client; they are kept because they cost nothing and the reference sends them.
+	 */
 	@Test
-	public void trailingBytesCarryTheZeroThenRuleAndMap() {
+	public void trailingBytesCarryTheRatingGateThenRuleAndMap() {
 		var buffer = written();
 
-		assertThat(buffer.getByte(40)).isZero();
+		assertThat(buffer.getByte(40)).isEqualTo((byte) 1);
 		assertThat(buffer.getByte(41)).isEqualTo((byte) 2);
 		assertThat(buffer.getByte(42)).isEqualTo((byte) 5);
 	}

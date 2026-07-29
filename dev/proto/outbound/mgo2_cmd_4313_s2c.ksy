@@ -78,9 +78,22 @@ seq:
   - id: host_votes
     type: u4
     doc: "[CONFIRMED] wire 0x0a3."
-  - id: unknown_0a7
+  - id: can_rate_host
     type: u1
-    doc: "[UNKNOWN] wire 0x0a7. echo writes 1 verbatim; meaning unknown. Regression guard only."
+    doc: |
+      [ELF, RESOLVED 2026-07-29] wire 0x0a7. **The host-rating gate**, previously `unknown_0a7`
+      ("echo writes 1 verbatim; meaning unknown"). The parser at `0xD44588` stores it to
+      `detailsBase + 964`, which is what permits the client's star picker and therefore `0x43C4`.
+
+      **Necessary but NOT sufficient on its own.** `0x4321` wire `0x28` writes the SAME slot
+      (`0xD441FC`) and arrives after any pre-join `0x4313`, so a join overwrites whatever this
+      packet set. Both must carry the flag. A live capture on 2026-07-29 had this byte = 1 and the
+      player still got no prompt, because the join reply had already cleared it back to 0.
+
+      Note the read order downstream: the end-of-game screen snapshots the slot when it is
+      CONSTRUCTED (`screen+344`, e.g. `0x9D7F34`), and `0x9DCA34` gates opening the picker on the
+      snapshot. The slot itself is only re-read at `0xA31DB0`, after the player has already chosen
+      a star rating.
   - id: settings
     type: game_settings
     doc: |
