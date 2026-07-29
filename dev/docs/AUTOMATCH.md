@@ -892,25 +892,29 @@ level at **band 9**, about 4 minutes in — which is the overlap rule working as
 condition is `|dLevel| <= band(a) + band(b)`, so searchers must genuinely share a level rather than
 merely sit adjacent.
 
-#### The host change at 01:57:45 was the protocol working (resolved 2026-07-29)
+#### The host change at 01:57:45 was the host QUITTING (corrected 2026-07-29)
 
-Logged as a curiosity at the time: game 255's host passed from chara 3 to chara 1, eight seconds
-before chara 1 quit and the game was torn down. It read as unexplained host migration inside an
-automatch game.
+Game 255's host changed from chara 3 to chara 1, seconds before the game was torn down. This was
+first filed as unexplained, then "resolved" as the client deliberately handing the game on at the
+player's request — **and that resolution was wrong**.
 
-**It was neither unexplained nor migration.** `Game N host passed from character X to Y` is emitted
-only by the `0x43a0` handler (`HostGameController.passHost`), which is a **command the client sends**
-carrying an explicit target chara id — there is no automatic server-side host migration anywhere in
-this server. So chara 3's client deliberately handed the game to chara 1, we honoured it, and the
-ordinary quit teardown followed.
+`0x43a0` is not a pass-host command. [READ] It has exactly one builder (`0xD40F28`), called from the
+host's **leave-game routine** `0x273C38`. Its three callers are UI leave handlers that first ask
+`0x26E958` ("am I the host") and branch: **the host sends `0x43a0`, everyone else sends `0x4380`.**
+They are mutually exclusive. The successor is elected **by the client**, which walks the 24-slot
+roster reading a 0-100 connection-quality score and keeps the maximum. The player is never asked.
 
-That is the expected shape when a host leaves through the in-game menu: the client nominates a
-successor before it goes. The operator was closing clients and idling during matchmaking at the time,
-which is exactly the input that produces it.
+So the log line meant "the host quit" the whole time.
 
-**Recorded because the note itself was the hazard.** An "observed and unexplained" line costs the
-next person an investigation, and this one had a one-line answer in our own handler. Before filing
-anything as anomalous, check whether the log line has a single writer and what triggers it.
+**Why this took two attempts, which is the part worth keeping.** The first investigation confirmed
+that our own code writes that log line from exactly one handler, and concluded the client must
+therefore be asking deliberately. That checks where the *log* comes from, not whether our *reading of
+the packet* is right — and the reading was tier 4, transcribed from a reference server whose own
+comment admitted the first payload field was "unused, as in the reference". Finding the code path is
+not validating the interpretation.
+
+It took an operator saying plainly "that never happened" to reopen it. Testimony that contradicts a
+tier-4 label should outrank the label.
 
 ### The Sneaking "draw" is correct behaviour, not a defect (settled 2026-07-28)
 

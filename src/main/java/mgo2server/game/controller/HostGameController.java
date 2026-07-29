@@ -217,9 +217,9 @@ public class HostGameController implements IGameController {
 	public static final int ROUND_END_RESULT = 0x43a3;
 
 	/** Host hands hosting to another player. Answered {@code result(0)}. */
-	public static final int PASS_HOST = 0x43a0;
+	public static final int HOST_MIGRATION = 0x43a0;
 
-	public static final int PASS_HOST_RESULT = 0x43a1;
+	public static final int HOST_MIGRATION_RESULT = 0x43a1;
 
 	/**
 	 * The client asking for its end-of-round results card (rank/exp/skill table), sent both on the
@@ -472,7 +472,7 @@ public class HostGameController implements IGameController {
 		handlers.put(UPDATE_STATS, this::updateStats);
 		handlers.put(ROUND_END, this::roundEnd);
 		handlers.put(RATE_HOST, this::rateHost);
-		handlers.put(PASS_HOST, this::passHost);
+		handlers.put(HOST_MIGRATION, this::hostMigration);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
 		handlers.put(ADD_LIST, this::addList);
@@ -1191,13 +1191,34 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * Host hands the game to another player ({@link #PASS_HOST}). Request is two u32s — the
-	 * current host's chara id (unused, as in the reference) then the new host's. The game is
-	 * re-keyed to the target and the old host leaves the roster; joins pick up the new host's
-	 * endpoint automatically because {@code 0x4320} reads {@code chara_connection} by the game's
-	 * host id at join time.
+	 * <b>The host quitting</b> ({@link #HOST_MIGRATION}) — not a player choosing to hand the game on.
+	 *
+	 * <p>[ELF 2026-07-29] There is exactly one builder, `0xD40F28`, called from the host's leave-game
+	 * routine `0x273C38`. Its three callers are UI leave handlers that first ask {@code 0x26E958}
+	 * ("am I the host") and branch: <b>host sends this, everyone else sends {@code 0x4380}</b>. They
+	 * are mutually exclusive, so a migrating host does not also send a quit.
+	 *
+	 * <p><b>The successor is elected by the client, silently.</b> `0x273CF4`-`0x273D48` walks the
+	 * 24-slot roster reading per-player property 343 — a 0-100 connection-quality score refreshed
+	 * round-robin — and keeps the maximum. A laxer second pass drops the liveness check if the strict
+	 * one finds nobody. The player is never asked and never sees a prompt.
+	 *
+	 * <p>Payload is {@code {sender's own chara id, elected successor's chara id}}. The first word is
+	 * ignored here because the session already identifies the sender; it is the sender's id read from
+	 * {@code session+0x57D8}, not a "current host" field.
+	 *
+	 * <p><b>The old name was wrong and cost real time.</b> As {@code PASS_HOST} with a log line
+	 * reading "host passed from X to Y", this looked twice like a player performing a deliberate
+	 * transfer — once in an automatch game and once in a Free Battle game — and was twice explained
+	 * away as the client asking on the player's behalf. It is simply what quitting looks like. The
+	 * reading came from a reference server, and its own comment admitted the first field was "unused,
+	 * as in the reference".
+	 *
+	 * <p>The game is re-keyed to the target and the sender leaves the roster; joins pick up the new
+	 * host's endpoint automatically because {@code 0x4320} reads {@code chara_connection} by the
+	 * game's host id at join time.
 	 */
-	private void passHost(GameControllerContext ctx) {
+	private void hostMigration(GameControllerContext ctx) {
 		var game = hostedGame(ctx);
 		var payload = ctx.packet().getPayload();
 
@@ -1207,12 +1228,20 @@ public class HostGameController implements IGameController {
 			var isPlayer = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
 				.anyMatch(player -> player.charaId() == targetId);
 			if (isPlayer && targetId != game.getHostCharaId()) {
-				gameService.passHost(game.getId(), game.getHostCharaId(), targetId);
-				logger.info("Game {} host passed from character {} to {}.",
+				gameService.migrateHost(game.getId(), game.getHostCharaId(), targetId);
+				logger.info("Game {}: host {} quit; the client elected character {} as successor.",
 					game.getId(), game.getHostCharaId(), targetId);
 			} else {
-				logger.warn("Game {}: pass-host target {} is not another player in the game.",
-					game.getId(), targetId);
+				// THE SUCCESSOR IS ALREADY GONE. The client elects by connection score and its
+				// fallback pass drops the liveness check, so it can nominate a roster entry that
+				// has since left. Dropping the command here left the game keyed to a host who had
+				// just quit — a ghost row the browser still lists and nobody can join.
+				//
+				// The sender has left either way, so treat it as the plain quit it is.
+				logger.info("Game {}: host {} quit and its elected successor {} is no longer in the"
+					+ " game; tearing down as an ordinary quit.",
+					game.getId(), game.getHostCharaId(), targetId);
+				gameService.deleteGame(game.getId());
 			}
 		}
 

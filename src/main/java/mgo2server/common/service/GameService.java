@@ -305,12 +305,13 @@ public class GameService {
 	}
 
 	/**
-	 * Hands a game to a new host ({@code 0x43a0}). The old host leaves the roster, matching the
-	 * reference: it passed hosting because it is quitting. Joins keep working unchanged because
-	 * {@code 0x4320} reads the host's endpoint from {@code chara_connection} by the game's host id
-	 * at join time, and the new host registered its own endpoint on lobby entry.
+	 * Re-keys a game to a new host and drops the old one from the roster.
+	 * <p>
+	 * Called when the <b>host quits</b> ({@code 0x43a0}), which is the only thing that triggers it —
+	 * the client elects the successor itself by connection score, and no player ever chooses one. See
+	 * {@code HostGameController.hostMigration}.
 	 */
-	public void passHost(long gameId, long oldHostCharaId, long newHostCharaId) {
+	public void migrateHost(long gameId, long oldHostCharaId, long newHostCharaId) {
 		jdbi.useHandle(handle -> {
 			handle.createUpdate("update game set host_chara_id=:host, last_update=now() where id=:id")
 				.bind("host", newHostCharaId)

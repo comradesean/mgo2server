@@ -186,10 +186,10 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		return new GamePacket(GameListGameController.GET_GAME_DETAILS, payload);
 	}
 
-	private GamePacket passHostTo(long target) {
+	private GamePacket hostQuitElecting(long target) {
 		var payload = Unpooled.buffer();
 		payload.writeInt((int) charaId).writeInt((int) target);
-		return new GamePacket(HostGameController.PASS_HOST, payload);
+		return new GamePacket(HostGameController.HOST_MIGRATION, payload);
 	}
 
 	@Test
@@ -259,7 +259,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		report.writeInt(0).writeInt(999); // a zero id is skipped, as in the reference
 
 		var replies = exchange(new GamePacket(HostGameController.UPDATE_PINGS, report),
-			getDetails(gameId), passHostTo(joiner));
+			getDetails(gameId), hostQuitElecting(joiner));
 
 		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_PINGS_RESULT);
 		// 4 bytes, not empty, since 2026-07-26: the 0x4399 parser (0xD40530) reads a u32
@@ -465,14 +465,14 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	}
 
 	@Test
-	public void passHostRekeysTheGameAndDropsTheOldHost() {
+	public void hostQuitRekeysTheGameToTheElectedSuccessor() {
 		givenSelectedCharacter("Snake");
 		var gameId = givenHostedGame();
 		var joiner = givenJoinedPlayer(gameId, "Raiden");
 
-		var replies = exchange(passHostTo(joiner));
+		var replies = exchange(hostQuitElecting(joiner));
 
-		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.PASS_HOST_RESULT);
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.HOST_MIGRATION_RESULT);
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 
 		var jdbi = TestDatabase.get().jdbi();
