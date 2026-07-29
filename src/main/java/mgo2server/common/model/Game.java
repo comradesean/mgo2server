@@ -26,6 +26,20 @@ public class Game {
 
 	private byte[] hostSettings;
 
+	private byte[] weaponRestrictions;
+
+	private int[] ruleTimers;
+
+	private int uniqueRed;
+
+	private int uniqueBlue;
+
+	private boolean captureExtraTime;
+
+	private int sneakingSnakeKills;
+
+	private byte[] unreadTail;
+
 	private int ping;
 
 	private int hostScore;
@@ -142,6 +156,66 @@ public class Game {
 
 	public void setFlags(int flags) {
 		this.flags = flags;
+	}
+
+	public byte[] getWeaponRestrictions() {
+		return weaponRestrictions;
+	}
+
+	public void setWeaponRestrictions(byte[] weaponRestrictions) {
+		this.weaponRestrictions = weaponRestrictions;
+	}
+
+	public int[] getRuleTimers() {
+		return ruleTimers;
+	}
+
+	public void setRuleTimers(int[] ruleTimers) {
+		this.ruleTimers = ruleTimers;
+	}
+
+	public int getUniqueRed() {
+		return uniqueRed;
+	}
+
+	public void setUniqueRed(int uniqueRed) {
+		this.uniqueRed = uniqueRed;
+	}
+
+	public int getUniqueBlue() {
+		return uniqueBlue;
+	}
+
+	public void setUniqueBlue(int uniqueBlue) {
+		this.uniqueBlue = uniqueBlue;
+	}
+
+	public boolean isCaptureExtraTime() {
+		return captureExtraTime;
+	}
+
+	public void setCaptureExtraTime(boolean captureExtraTime) {
+		this.captureExtraTime = captureExtraTime;
+	}
+
+	public int getSneakingSnakeKills() {
+		return sneakingSnakeKills;
+	}
+
+	public void setSneakingSnakeKills(int sneakingSnakeKills) {
+		this.sneakingSnakeKills = sneakingSnakeKills;
+	}
+
+	/**
+	 * The 14 bytes the client writes as one raw block. Its first eight are the byte-sized timers the
+	 * game-details reply replays; byte 10 carries the host-options flags {@code non_stat} comes from.
+	 */
+	public byte[] getUnreadTail() {
+		return unreadTail;
+	}
+
+	public void setUnreadTail(byte[] unreadTail) {
+		this.unreadTail = unreadTail;
 	}
 
 	public byte[] getHostSettings() {
