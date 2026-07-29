@@ -950,8 +950,11 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	 * sixteen entries are stored rather than only the populated ones.
 	 * <p>
 	 * Weapon restrictions stay a 16-byte bitfield rather than 128 booleans. That is opaque <b>by
-	 * evidence</b> — the client owns the bit assignment and no per-bit meaning is established — as
-	 * distinct from opaque by neglect, which is what the rest of this blob was.
+	 * evidence</b> — a bitmask whose assignment belongs to the client — rather than an unknown. The
+	 * per-weapon map <em>is</em> established: 19 bits confirmed weapon-by-weapon against the live
+	 * client, in {@code PROTOCOL.md}. It stays whole because the remaining bits are
+	 * reference-transcribed and unverifiable on this build, and expanding the field would harden
+	 * those guesses into schema.
 	 */
 	@Test
 	public void hostSettingsDecodeTheRotationTimersAndRestrictions() throws java.sql.SQLException {

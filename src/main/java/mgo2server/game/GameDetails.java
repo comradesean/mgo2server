@@ -94,9 +94,12 @@ public final class GameDetails {
 		// real settings for as long as we kept bytes we could not describe. They are columns now,
 		// and the blob is on its way out — see BACKLOG, "The host-settings blob must go".
 
-		// Weapon restrictions: one bit per item, 1 = locked. Still a 16-byte field rather than 128
-		// booleans, because the client owns the bit assignment and no per-bit meaning is
-		// established — opaque by evidence, not by neglect.
+		// Weapon restrictions: one bit per item, 1 = locked, bit 0 of byte 0 the master enable.
+		// The per-weapon map IS established — 19 bits confirmed weapon-by-weapon against the live
+		// client (PROTOCOL.md, "Weapon restrictions") — so this is not an unknown. It stays a
+		// 16-byte field because it is a bitmask the client owns, and because the remaining bits are
+		// reference-transcribed and unverifiable on this build; expanding it would harden those
+		// guesses into schema.
 		writeOrZero(buffer, game.getWeaponRestrictions(), 16);
 		buffer.writeByte(game.getMaxPlayers())
 			.writeByte(players.size())
