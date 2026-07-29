@@ -137,7 +137,7 @@ public class RankingService {
 	/** Grade points, using the same main/alt split every other experience read uses. */
 	private static final String PLAYER_GRADE_POINT = """
 			select c.id as id, c.name as name,
-				case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end as value
+				c.experience as value
 			from chara c
 			join account a on a.id = c.account_id
 			where c.active
@@ -215,7 +215,7 @@ public class RankingService {
 
 	private static final String CLAN_GRADE_POINT = """
 			select cl.id as id, cl.name as name,
-				coalesce(sum(case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end), 0)
+				coalesce(sum(c.experience), 0)
 					as value
 			from clan cl
 			join clan_member m on m.clan_id = cl.id and m.state between 1 and 2

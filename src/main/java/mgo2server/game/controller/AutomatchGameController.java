@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.model.Account;
+import mgo2server.common.service.CharacterService;
 import mgo2server.game.Automatch;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -88,9 +89,13 @@ public class AutomatchGameController implements IGameController {
 
 	private final Automatch automatch;
 
-	public AutomatchGameController(AutomatchPolicy policy, Automatch automatch) {
+	private final CharacterService characterService;
+
+	public AutomatchGameController(AutomatchPolicy policy, Automatch automatch,
+			CharacterService characterService) {
 		this.policy = policy;
 		this.automatch = automatch;
+		this.characterService = characterService;
 	}
 
 	@Override
@@ -162,15 +167,12 @@ public class AutomatchGameController implements IGameController {
 	/**
 	 * The experience this character's level is derived from.
 	 * <p>
-	 * The main/alt split is the same one the stats screen uses: a character that is its account's
-	 * main spends and shows the main pool, everyone else the alt pool. The client computes its own
-	 * level from the u32 we send at {@code 0x4101 + 0x1C}, which is this number, so grouping
-	 * searchers on it groups them the way the client will draw them.
+	 * The client computes its own level from the u32 we send at {@code 0x4101 + 0x1C}, which is this
+	 * number, so grouping searchers on it groups them the way the client will draw them.
 	 */
-	private static int experience(Account account) {
+	private int experience(Account account) {
 		var charaId = account.getCurrentCharaId();
-		return charaId != null && charaId.equals(account.getMainCharaId())
-			? account.getMainExp() : account.getAltExp();
+		return charaId == null ? 0 : (int) characterService.experienceOf(charaId);
 	}
 
 	/**

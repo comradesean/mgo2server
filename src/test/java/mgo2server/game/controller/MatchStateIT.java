@@ -49,8 +49,8 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter(String name) {
 		accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp)
-					values (:name, 'x', :session, 3, 500)
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :session, 3)
 					""")
 				.bind("name", name)
 				.bind("session", SessionField.stored(TOKEN))
@@ -59,7 +59,8 @@ public class MatchStateIT extends BaseGameClientServerIT {
 				.one());
 
 		charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 500)")
 				.bind("account", accountId)
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id")
@@ -99,13 +100,14 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		var jdbi = TestDatabase.get().jdbi();
 		var otherAccount = jdbi.withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, alt_exp)
-					values (:name, 'x', :name, 3, 100)
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :name, 3)
 					""")
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 		var otherChara = jdbi.withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 100)")
 				.bind("account", otherAccount).bind("name", name)
 				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 		jdbi.useHandle(handle ->
@@ -331,7 +333,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 
 		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("""
-					select a.alt_exp from account a join chara c on c.account_id = a.id
+					select c.experience from chara c
 					where c.id = :c
 					""")
 				.bind("c", joiner).mapTo(Integer.class).one());
@@ -365,7 +367,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		// The joiner is not their account's main character, so the alt pool takes the total.
 		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("""
-					select a.alt_exp from account a join chara c on c.account_id = a.id
+					select c.experience from chara c
 					where c.id = :c
 					""")
 				.bind("c", joiner).mapTo(Integer.class).one());
@@ -393,7 +395,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_STATS_RESULT);
 		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("""
-					select a.alt_exp from account a join chara c on c.account_id = a.id
+					select c.experience from chara c
 					where c.id = :c
 					""")
 				.bind("c", joiner).mapTo(Integer.class).one());
@@ -761,8 +763,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			// Level comes from experience, not rank, and the check reads whichever pool applies to
 			// that character — a joined player's account has an alt pool and no main character.
 			handle.createUpdate("""
-					update account set main_exp = :exp, alt_exp = :exp
-					where id = (select account_id from chara where id = :id)
+					update chara set experience = :exp where id = :id
 					""")
 				.bind("exp", CharacterService.LEVEL_3_EXPERIENCE)
 				.bind("id", charaId)

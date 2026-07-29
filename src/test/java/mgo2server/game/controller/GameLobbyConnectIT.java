@@ -47,8 +47,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter(String name) {
 		accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp, alt_exp)
-					values ('player', 'x', :session, 3, 1234, 99)
+					insert into account (username, password, session, slots)
+					values ('player', 'x', :session, 3)
 					""")
 				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
@@ -58,11 +58,13 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		// Identity sequences restart between tests, so without this the account and character ids
 		// both come out as 1 and a test that confuses the two would pass by coincidence.
 		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, 'Filler')")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, 'Filler', 99)")
 				.bind("account", accountId).execute());
 
 		charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 1234)")
 				.bind("account", accountId)
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id")
@@ -317,15 +319,22 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(new String(name, StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Snake");
 
-		// This character is the account's main, so it draws on the main experience pool.
+		// Experience is the character's own since V59, not a pool shared with its siblings.
 		assertThat(info.getInt(28)).isEqualTo(1234);
 		// The client's parser consumes exactly this much: header, 32+32 ids, 25-byte tail.
 		assertThat(info.readableBytes()).isEqualTo(0x142);
 	}
 
-	/** An alt draws on the other pool. */
+	/**
+	 * A character that is not its account's main keeps its OWN experience.
+	 * <p>
+	 * This used to assert that such a character drew on a shared "alt pool" — which is exactly the
+	 * bug V59 removed. Two non-main characters on one account shared a single value, so playing one
+	 * moved the other's level. The filler character here carries 99 and the subject carries 1234;
+	 * demoting the subject from main must not make it read the sibling's number.
+	 */
 	@Test
-	public void alternateCharacterUsesAltExperience() {
+	public void aNonMainCharacterKeepsItsOwnExperience() {
 		givenSelectedCharacter("Snake");
 		TestDatabase.get().jdbi().useHandle(handle ->
 			handle.createUpdate("update account set main_chara_id = null where id = :id")
@@ -333,7 +342,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 		var info = connect(charaId, BURST_REPLIES).get(1).getPayload();
 
-		assertThat(info.getInt(28)).isEqualTo(99);
+		assertThat(info.getInt(28)).isEqualTo(1234);
 	}
 
 	/** Both macro packets are full-width, with the type byte leading each. */

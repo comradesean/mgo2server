@@ -42,8 +42,8 @@ public class HubGameControllerIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter() {
 		var accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp)
-					values ('hub', 'x', :session, 3, 0)
+					insert into account (username, password, session, slots)
+					values ('hub', 'x', :session, 3)
 					""")
 				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")

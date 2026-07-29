@@ -76,7 +76,7 @@ public class GameService {
 	public int averageExperience(long gameId) {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
-					select coalesce(avg(case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end), 0)
+					select coalesce(avg(c.experience), 0)
 					from game_player gp
 					join chara c on c.id = gp.chara_id
 					join account a on a.id = c.account_id
@@ -99,7 +99,7 @@ public class GameService {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
 					select c.id, c.name, gp.ping,
-						case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end as exp
+						c.experience as exp
 					from game_player gp
 					join chara c on c.id = gp.chara_id
 					join account a on a.id = c.account_id
@@ -537,26 +537,31 @@ public class GameService {
 	}
 
 	/**
-	 * Applies the host's end-of-round experience report ({@code 0x4390}) to a character's account
-	 * pool — the main pool if the target is the account's main character, the alt pool otherwise,
-	 * the same split every other experience read uses. The value is an <b>absolute total</b>, not
-	 * a delta, per the reference. An aborted round instead docks 60 points, floored at zero —
-	 * that penalty is the reference's <em>operator policy</em>, inherited knowingly.
+	 * Applies the host's end-of-round experience report ({@code 0x4390}) to the character.
+	 *
+	 * <p><b>The client owns this number and we persist it.</b> The value is an absolute total, not
+	 * a delta — [ELF 2026-07-27] blob key {@code 0x164} is read straight through with no baseline
+	 * subtraction, the one absolute value in an otherwise all-delta frame, and it matched the
+	 * stored total to the byte live on 2026-07-22. So this overwrites rather than accumulates, and
+	 * <b>a decrease is legitimate</b>: experience in this game can go down, and across 250
+	 * consecutive reports for one character 38 went down, 200 held flat and 12 went up.
+	 *
+	 * <p>Clamped to the wire's own range. The field is a zero-extended {@code u16}, so 65535 is a
+	 * hard ceiling that a long-lived character will reach — clamping keeps the stored value one
+	 * the client could actually have sent, instead of a number that fails to round-trip.
+	 *
+	 * <p>An aborted round docks 60 from whatever is stored rather than taking the reported total.
+	 * That penalty is inherited <em>operator policy</em>, not protocol, and is knowingly kept.
 	 */
 	public void applyRoundExperience(long charaId, int experience, boolean aborted) {
 		jdbi.useHandle(handle ->
 			handle.createUpdate("""
-					update account a set
-						main_exp = case
-							when a.main_chara_id = :chara then
-								case when :aborted then greatest(0, a.main_exp - 60) else :exp end
-							else a.main_exp end,
-						alt_exp = case
-							when a.main_chara_id = :chara then a.alt_exp
-							else case when :aborted then greatest(0, a.alt_exp - 60) else :exp end
+					update chara set
+						experience = case
+							when :aborted then greatest(0, experience - 60)
+							else least(65535, greatest(0, :exp))
 							end
-					from chara c
-					where c.account_id = a.id and c.id = :chara
+					where id = :chara
 					""")
 				.bind("chara", charaId)
 				.bind("aborted", aborted)

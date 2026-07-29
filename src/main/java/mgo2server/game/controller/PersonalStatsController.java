@@ -153,10 +153,7 @@ public class PersonalStatsController implements IGameController {
 			return;
 		}
 
-		var owner = accountService.get(chara.get().getAccountId());
-		var main = owner.getMainCharaId();
-		var experience = main != null && main == chara.get().getId()
-			? owner.getMainExp() : owner.getAltExp();
+		var experience = chara.get().getExperience();
 
 		var info = ctx.buffer(INFO_SIZE);
 		info.writeInt(0); // status

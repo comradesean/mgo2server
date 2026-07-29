@@ -37,8 +37,8 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter(String name) {
 		accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp)
-					values (:name, 'x', :session, 3, 500)
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :session, 3)
 					""")
 				.bind("name", name)
 				.bind("session", SessionField.stored(TOKEN))
@@ -47,7 +47,8 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 				.one());
 
 		charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 500)")
 				.bind("account", accountId)
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id")

@@ -128,7 +128,7 @@ public class CharacterService {
 					where c.id = :student
 					  and (select coalesce(sum(r.seconds_in_game), 0) from round_report r
 						   where r.chara_id = c.id and r.rule between 0 and :lastMode) >= :seconds
-					  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
+					  and c.experience
 						  >= :experience
 					""")
 				.bind("student", charaId)
@@ -390,7 +390,7 @@ public class CharacterService {
 		return jdbi.withHandle(handle -> handle
 			.createQuery("""
 				select coalesce(
-					case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end, 0)
+					c.experience, 0)
 				from chara c
 				join account a on a.id = c.account_id
 				where c.id = :chara
@@ -646,8 +646,7 @@ public class CharacterService {
 				  -- and the column are gone; see V50 and the commit that dropped them.
 				  and (select coalesce(sum(r.seconds_in_game), 0) from round_report r
 					   where r.chara_id = c.id and r.rule between 0 and :lastMode) >= :seconds
-				  and case when a.main_chara_id = c.id then a.main_exp else a.alt_exp end
-					  >= :experience
+				  and c.experience >= :experience
 				""")
 			.bind("chara", charaId)
 			.bind("lastMode", PLAYABLE_MODES - 1)

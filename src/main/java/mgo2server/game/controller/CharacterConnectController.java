@@ -463,10 +463,9 @@ public class CharacterConnectController implements IGameController {
 		ctx.write(new GamePacket(CHARACTER_INFO, buffer));
 	}
 
-	/** Experience is per account, split between the main character and the alts. */
+	/** Experience is the character's own since V59; it used to be an account main/alt pool. */
 	private static int experienceFor(Account account, Chara chara) {
-		var main = account.getMainCharaId();
-		return main != null && main == chara.getId() ? account.getMainExp() : account.getAltExp();
+		return chara.getExperience();
 	}
 
 	private void writeChatMacros(GameControllerContext ctx, long charaId) {
