@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4221
+  id: mgo2_cmd_4221_s2c
   title: "MGO2 0x4221 — player-details card (single reply to 0x4220 {u32 character id})"
   endian: be
   encoding: ISO-8859-1

@@ -134,7 +134,7 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 > straight-line writes. `0x43a4` puts its record count **on the wire** (cap 127) whereas `0x4398`
 > carries **no count** at all — opposite conventions inside one family. `0x43c4` only ever sends
 > the values 1–5 (`0xD40E44` aborts otherwise), which rules out the character-id reading the rest
-> of the `0x43xx` family invites. Per-id layouts: `dev/proto/blanks/inbound/`.
+> of the `0x43xx` family invites. Per-id layouts: `dev/proto/inbound/`.
 
 **Unmodelled subsystems (reached only by opening that feature):**
 
@@ -171,7 +171,7 @@ before either subsystem is modelled. The `0x4b90` sender is at `0xD55CE4`, paylo
 was traced and moved to handled 2026-07-23; see PROTOCOL.md.)
 
 Builder addresses are in [`dev/analysis/c2s_ids.txt`](../analysis/c2s_ids.txt); per-gap payload
-shapes are in `dev/proto/blanks/inbound/`, one `.ksy` per id (2026-07-26 — this supersedes "the
+shapes are in `dev/proto/inbound/`, one `.ksy` per id (2026-07-26 — this supersedes "the
 enumeration task output", which was a `/tmp` file and is gone). They are still not transcribed as
 field layouts *here*, per this project's rule against unparsed specs. Each gap needs its own
 parser trace before implementation — a bare ack does not satisfy commands that expect a bodied
@@ -194,7 +194,7 @@ so the set is complete. A fourth dispatcher `0xD78CCC` (131 ids, `0x2100`–`0x4
 **separate in-game P2P session channel**, not the lobby TCP reply path — out of scope here.
 
 The full list with per-id summaries is [`dev/analysis/s2c_ids.txt`](../analysis/s2c_ids.txt) and
-[`PACKETS.md`](PACKETS.md); byte layouts for all 204 are in `dev/proto/blanks/outbound/`
+[`PACKETS.md`](PACKETS.md); byte layouts for all 204 are in `dev/proto/outbound/`
 (drafts, ELF-derived, 2026-07-26).
 
 > **The dominant failure mode in this direction is a reply that is too short, and it is silent.**
@@ -289,7 +289,7 @@ Three structural facts about these blocks, each of which breaks a naive implemen
   **discarded silently** — no dialog, no state change. `0x4960` is the only id waived from both
   comparisons.
 
-Per-parser addresses and read-primitive shapes now live in `dev/proto/blanks/outbound/`, one
+Per-parser addresses and read-primitive shapes now live in `dev/proto/outbound/`, one
 `.ksy` per id — superseding "in the enumeration task output", which was lost. Note the read
 primitives are **not** the four listed in PROTOCOL.md line 1698; at minimum `0xD5CC64`/`0xD5CCD8`
 (u32, instruction-identical twins — neither is a signed accessor), `0xD5CBC4`/`0xD5CC14` (u16),

@@ -7,7 +7,7 @@ doc: |
   distinction matters because both are small integers and a one-character account cannot tell
   them apart: the server must resolve the index against the same ordering it sent in `0x3049`,
   and must then report the chosen slot back in `0x3049`'s `selected_slot` header field, or the
-  client forgets the selection (see `dev/proto/blanks/outbound/mgo2_cmd_3049_s2c.ksy`).
+  client forgets the selection (see `dev/proto/outbound/mgo2_cmd_3049_s2c.ksy`).
 
   Evidence: builder call site `bl 0xd5cf40` at `0xd37a80`
   (`li r4,12547` = `0x3103` at `0xd37a7c`), sender `0xd37a0c`. One write primitive:

@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4107
+  id: mgo2_cmd_4107_s2c
   title: "MGO2 0x4107 — personal scores (reply 4/4 of the 0x4102 burst, terminal)"
   endian: be
 doc: |

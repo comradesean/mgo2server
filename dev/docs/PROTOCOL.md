@@ -1593,7 +1593,7 @@ any path** and is presumed absent from this build's normal vocabulary. `0x43a2` 
 absent too until 2026-07-23, when live round ends sent it (the 2026-07-22 sweep that missed
 it predates packet tracing; it fires in every mode). Since fully decoded: **one per scoring
 player**, sent immediately after that player's `0x4390`, carrying that player's per-weapon
-kill/headshot/faint tallies — see its own section and `dev/proto/mgo2_cmd_43a2.ksy`. We ack
+kill/headshot/faint tallies — see its own section and `dev/proto/inbound/mgo2_cmd_43a2_c2s.ksy`. We ack
 `0x43a3`, result 0; storing the tallies is backlogged.
 
 What the host admin menu actually sends, mapped action by action against a live client:
@@ -1693,7 +1693,7 @@ round end and on kick teardown. **Confirmed against a live client 2026-07-22** �
 
 **TRACED END TO END, 2026-07-27.** The caveat that used to sit here — "the positions are read
 from the binary, the labels are not" — no longer applies: the gameplay writers have now been
-found, and `dev/proto/mgo2_cmd_4390.ksy` is the authority for every field. What changed:
+found, and `dev/proto/inbound/mgo2_cmd_4390_c2s.ksy` is the authority for every field. What changed:
 
 - **The frame's source is one 152-byte per-player blob** of 76 u16 counters (index `n`), live at
   blob `+0x1a + 2n`, baseline at `+0xb2 + 2n`, blob base `0x1610568 + slot*0x510`. Struct A
@@ -1881,7 +1881,7 @@ the wire) and the reader's own row summed to the wire score exactly (1·3 + 6·2
 > fitting around a counter that is not present. B42, long suspected of feeding the Rescue OTHER
 > row, has a coefficient of **zero in every rule**.
 >
-> Full coefficient table by wire field: `dev/proto/mgo2_cmd_4390.ksy` header doc. The raw rows as
+> Full coefficient table by wire field: `dev/proto/inbound/mgo2_cmd_4390_c2s.ksy` header doc. The raw rows as
 > the stage script emits them, verbatim from `o/stage/n002a/scenerio.gcx` `proc23` (identical in
 > `n003a` and `n004a`), 37 s8 columns each:
 >
@@ -2254,7 +2254,7 @@ constant in this path) followed by 197 bytes of fields, parser `0xD3D874`: u32 i
 16B **clan name**, u8 **membership state**, u32, u32, u8, u32 — with the u32 at wire
 0x22 confirmed as **play time in seconds** (fingerprint 9503 → "02:38:23"). Its square button
 ("more details") sends `0x4102` for the card's character. Byte-exact layout with client struct
-destinations: `dev/proto/mgo2_cmd_4221.ksy`.
+destinations: `dev/proto/outbound/mgo2_cmd_4221_s2c.ksy`.
 
 **It carries real data since 2026-07-27.** This was still the fingerprint payload — `FP-DTL-NAME`,
 `FP-DTL-CLAN` and numbered constants, sent to find out which offset drove which label. It did its
@@ -2311,7 +2311,7 @@ The parser is **`0xD3C9A8`**, reached from the dispatcher `0xD387C8` (`cmpwi 166
 Its destination base is `r29 = r27 + 22488` (`0xD3CA3C`) — exactly what `getLocalProfile` at
 `0xD3A094` returns, i.e. **the same profile the connect burst filled**. Thirteen fields, none
 cleared first, so this packet wins at the end of every round. The complete map is in
-`dev/proto/mgo2_cmd_4129_s2c.ksy`; the summary:
+`dev/proto/outbound/mgo2_cmd_4129_s2c.ksy`; the summary:
 
 | wire | width | -> profile | field |
 | --- | --- | --- | --- |
@@ -2432,7 +2432,7 @@ get-contents replies with **command `0x4341`, empty** — almost certainly a Nom
 
 The client sends **23 commands** in this range and we answered none of them until 2026-07-27, so
 every clan screen stalled with `1933:FFFFFF60`. All 23 are answered now. Byte-exact layouts live in
-`dev/proto/blanks/{inbound,outbound}/mgo2_cmd_4b*.ksy`; this section is the map and the rules that
+`dev/proto/{inbound,outbound}/mgo2_cmd_4b*.ksy`; this section is the map and the rules that
 are not derivable from any one packet.
 
 ## The clan record — one struct, five commands
@@ -2558,7 +2558,7 @@ the match and must be answered for arbitrary clan ids.
 
 ## `0x4b46` blocks — the correction
 
-`dev/proto/blanks/inbound/mgo2_cmd_4b46_c2s.ksy` said *"the live trace proves the client does not
+`dev/proto/inbound/mgo2_cmd_4b46_c2s.ksy` said *"the live trace proves the client does not
 wait for one"* and warned against replying speculatively. **That is true of the connect burst,
 where it fires unprompted and the player walks on, and false from the clan menu, where it stalls
 and fails with `Unable to update clan information (1933:FFFFFF60)`** (live 2026-07-27). One

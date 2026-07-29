@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4390
+  id: mgo2_cmd_4390_c2s
   title: "MGO2 0x4390 — host's end-of-round stat report (client -> server)"
   endian: be
 doc: |

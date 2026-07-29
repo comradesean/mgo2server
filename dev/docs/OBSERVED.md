@@ -2646,7 +2646,7 @@ DEATHMATCH/TEAM DEATHMATCH/BASE/CAPTURE/RESCUE/SNEAKING, Training Mode Time, Com
 Time (Instructor/Student), Number of Soldiers Trained, Host Rating, Instructor Score.
 Display order differs from 0x4107 slot numbers — the fingerprint table remains the slot
 authority. Sources: most rows are 0x4390 struct-B slots (see the rewritten
-dev/proto/mgo2_cmd_4390.ksy); Times Stunned feeds from A `0x0f`; per-mode play times derive
+dev/proto/inbound/mgo2_cmd_4390_c2s.ksy); Times Stunned feeds from A `0x0f`; per-mode play times derive
 from seconds+mode per report; Knife Kills is 0x4107 slot 64 — and **struct B has exactly 58
 slots, so every stat in slots ≥59 (Victories as Snake 63, Knife Kills 64, Snake Kills 67,
 Snake Time 72) cannot be B-fed** — an independent corroboration of knife kills arriving via
@@ -2940,7 +2940,7 @@ a round where the two differ with the DOGTAG row read off the result screen.
 A single session in the automatching lobby brought the mail family up from nothing. Every claim
 below is from that session's traffic or the client's visible behaviour; the ELF addresses are the
 mechanism, the observation is the evidence. The `.ksy` files carry the byte detail —
-`dev/proto/blanks/{inbound,outbound}/mgo2_cmd_48*.ksy`.
+`dev/proto/{inbound,outbound}/mgo2_cmd_48*.ksy`.
 
 ### The first live capture to validate a generated blank spec
 
@@ -3040,7 +3040,7 @@ GAME lobby, trailing NUL padding elided:
 
 Layout: `u8 channel` (0 = all, 1 = team), then the 128-byte blob the ELF could only see as an
 opaque copy, which is one ASCII digit followed by the NUL-terminated message text, zero-padded to
-width. Full field notes in `dev/proto/blanks/inbound/mgo2_cmd_4400_c2s.ksy`.
+width. Full field notes in `dev/proto/inbound/mgo2_cmd_4400_c2s.ksy`.
 
 ### The `/all` and `/team` prefixes never reach the wire
 
@@ -3297,7 +3297,7 @@ the server cannot change the word "TIPS"; only the title node is ours.
 ## The 0x4390 frame traced end to end — 2026-07-27
 
 Five parallel ELF/disc passes closed the command. Field-by-field evidence lives in
-`dev/proto/mgo2_cmd_4390.ksy`; the narrative and the score table are in `PROTOCOL.md`. What
+`dev/proto/inbound/mgo2_cmd_4390_c2s.ksy`; the narrative and the score table are in `PROTOCOL.md`. What
 follows is what *changed*, including the readings that turned out to be wrong.
 
 **The storage model.** The frame is built by a dumb serializer at `0xD42178` — 58 identical
