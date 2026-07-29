@@ -94,26 +94,25 @@ types:
         size: 128
         type: str
         encoding: ISO-8859-1
-        doc: "[ELF] Wire 0x36 -> struct +68, fixed 128. Echoed back; this is the only field of the request that is persisted alongside the appearance."
-      - id: face_paint_unlocked
-        type: u4
         doc: |
-          [UNDOCUMENTED, TIER 4 — flagged 2026-07-29] Wire 0xb6..0xb9, immediately after the
-          comment. **This field is not in the traced parser range**: every other field here carries
-          an ELF wire->struct mapping and this one does not, so either the schema is short by four
-          bytes or we are over-sending them. It has never been checked which.
+          [ELF] Wire 0x36 -> struct +68, fixed 128. Echoed back; this is the only field of the
+          request that is persisted alongside the appearance.
 
-          We send `0xffffffff`, on the sole authority that "both references send all-ones, so every
-          colour is offered; no source of a narrower value has been found" — i.e. tier 4, the
-          category that has cost this project six regressions.
+          **THE PAYLOAD ENDS HERE — 182 bytes.** [ELF `0xD3C3DC`] the parser's last read is this
+          128-byte block at `0xD3C6E0` and it falls straight into READ_END at `0xD3C6F4` with no
+          read in between. Total consumed 4+19+5+5+20+1+128 = 182.
 
-          **Two open questions, neither answered:**
+          We wrote **186** until 2026-07-29, the extra u32 being an `0xffffffff` labelled
+          "face-paint colour unlock bitmask". Nothing reads it — no instruction in the text span
+          touches the struct slots those bytes would occupy. The label was not merely unevidenced
+          but impossible: face paint is a SINGLE byte at struct `+4`, so a one-bit-per-colour mask
+          has no colour axis to apply to. Inherited from a reference server with the value.
 
-          1. Does the client read it at all, and does it gate the face-paint colour picker? Find the
-             reader before trusting the name.
-          2. **Release-day scope.** If face-paint colours are unlocked progressively, all-ones hands
-             out content Konami may not have had switched on at launch — exactly the case
-             `CLAUDE.md` says to hold back. *Shipped on the disc* and *active on release day* are
-             different questions and only the first is readable from our artifacts.
+          Over-sending was harmless, which is why it survived: READ_END (`0xD5C858`) does no length
+          check, and the read helpers bound the cursor against the 1024-byte receive buffer rather
+          than the payload, so the parser never knows how long the packet was.
 
-          Do not treat the name as established. It is a label inherited with the value.
+          Note what `0x4131` deliberately does NOT carry, unlike `0x4122`: chara_id (struct +64),
+          rank (+197), the emblem flag and the saved instructor. It is an appearance-only echo, and
+          its 200-byte memcpy-in/memcpy-out pair PRESERVES those slots rather than overwriting
+          them.

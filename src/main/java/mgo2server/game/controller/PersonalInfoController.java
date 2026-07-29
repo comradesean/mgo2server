@@ -45,22 +45,26 @@ public class PersonalInfoController implements IGameController {
 	private static final int REQUEST_SIZE = 19 + 4 + 1 + 4 + 2 + COMMENT_LENGTH;
 
 	/**
-	 * Face-paint colour unlock bitmask, one bit per colour — <b>allegedly</b>.
+	 * {@code 0x4131}'s payload — <b>182 bytes, which is exactly what the parser reads.</b>
 	 *
-	 * <p><b>TIER 4, and flagged 2026-07-29.</b> The name and the value both come from "both
-	 * references send all-ones, so every colour is offered; no source of a narrower value has been
-	 * found". Nothing here is established: no reader has been identified, and the field sits at
-	 * wire {@code 0xb6}, <b>past the end of the traced parser range</b> in
-	 * {@code dev/proto/outbound/mgo2_cmd_4131_s2c.ksy} — so the schema may be four bytes short, or
-	 * we may be sending four bytes nothing reads. Nobody has checked which.
+	 * <p>We wrote 186 until 2026-07-29, the extra four being an {@code 0xffffffff} labelled
+	 * "face-paint colour unlock bitmask". [ELF {@code 0xD3C3DC}] the parser's last read is the
+	 * 128-byte comment at {@code 0xD3C6E0} and it falls straight into READ_END at {@code 0xD3C6F4}
+	 * — <b>nothing reads those four bytes</b>, and no instruction anywhere in text touches the
+	 * struct slots they would occupy.
 	 *
-	 * <p><b>Release-day scope.</b> If colours unlock progressively, all-ones hands out content that
-	 * may not have been switched on at launch — the case {@code CLAUDE.md} says to hold back, since
-	 * <em>shipped on the disc</em> and <em>active on release day</em> are different questions.
-	 * Left as-is rather than narrowed on a guess: inventing a mask would be the same mistake in the
-	 * other direction. Resolve the reader first.
+	 * <p>The label was worse than unevidenced, it was impossible: face paint is a <b>single byte</b>
+	 * at struct {@code +4}, so a one-bit-per-colour mask has no colour axis to apply to. It was
+	 * inherited with the value from a reference server.
+	 *
+	 * <p>Over-sending was harmless — READ_END does no length check, and the readers bound against
+	 * the 1024-byte receive buffer rather than the payload — which is why this survived unnoticed.
+	 *
+	 * <p>The full finding, and what a future face-paint-unlock toggle would actually require, is in
+	 * {@code dev/docs/POST_LAUNCH.md}. Short version for anyone tempted to put the field back:
+	 * re-sending the mask cannot work, because the parse ends before it.
 	 */
-	private static final int FACE_PAINT_UNLOCKED = 0xffffffff;
+	private static final int REPLY_SIZE = 4 + 19 + 5 + 5 + 20 + 1 + COMMENT_LENGTH;
 
 	private final CharacterService characterService;
 
@@ -176,7 +180,7 @@ public class PersonalInfoController implements IGameController {
 	 */
 	private ByteBuf reply(GameControllerContext ctx, long charaId, CharaAppearance a, byte[] skills,
 			byte[] levels, String comment) {
-		var buffer = ctx.buffer(4 + 19 + 4 + 1 + 4 + 1 + 16 + 5 + COMMENT_LENGTH + 4);
+		var buffer = ctx.buffer(REPLY_SIZE);
 
 		buffer.writeZero(4);
 		buffer.writeByte(a.getUpper()).writeByte(a.getLower()).writeByte(a.getFacePaint())
@@ -211,7 +215,6 @@ public class PersonalInfoController implements IGameController {
 
 		buffer.writeZero(5);
 		BufferUtil.writeString(buffer, comment, StandardCharsets.ISO_8859_1, COMMENT_LENGTH);
-		buffer.writeInt(FACE_PAINT_UNLOCKED);
 
 		return buffer;
 	}
