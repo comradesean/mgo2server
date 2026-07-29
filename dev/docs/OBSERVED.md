@@ -4154,3 +4154,42 @@ bits 0-7 no site tests. Neither is read anywhere in the client; both are echoed 
 what it appeared to.** The first was the `T+0x18` swap that only ever pinned `T+0x58`. The shape to
 watch for: an experiment whose result is equally consistent with the hypothesis and with the
 mechanism carrying the value round unchanged.
+
+
+## The two no-reader settings fields track TRAINING lobbies (2026-07-29)
+
+`+824` (block `+72`, wire `0x0ea`) and `+931` (block `+179`, wire `0x144`) have no reader in this
+build, and they **co-vary perfectly**: a capture carries either the pair `(0x02000000, 0x20)` or
+`(0, 0)`. 214 captured `0x4310` pushes, split by the lobby subtype the host was in:
+
+| subtype | `(0, 0)` | `(0x02000000, 0x20)` |
+| --- | --- | --- |
+| 0 — Free Battle | 2 | 134 |
+| 1 | 4 | 36 |
+| 2 — automatching | 0 | 12 |
+| **7 — training** | **8** | **0** |
+| **8 — training** | **18** | **0** |
+
+**Every training-lobby capture zeroes the pair, and no training capture sets it.** The handful of
+zeros in subtypes 0 and 1 are the earliest captures of all, consistent with fresh state before the
+value was first established.
+
+So these bytes are not inert noise: they carry something the client sets in ordinary lobbies and
+clears in training. Given nothing in this build reads them, the shape that fits is **a feature
+written by a path that still runs and read by code that was compiled out** — and one that was
+disabled in training lobbies.
+
+### The circularity that had to be ruled out first
+
+We had been zeroing exactly these two fields in the automatch settings block since 2026-07-29 06:48
+(`MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS`). Since an automatch host memcpys our block into its own
+settings object and re-emits it in `0x4310`, the `(0, 0)` rows could have been **our own zeros coming
+home** — the same circular shape as the `0x4305` constants earlier the same day.
+
+**Ruled out from the capture timestamps.** The `(0, 0)` captures run 2026-07-22 13:53 to 2026-07-28
+21:11 and stop *before* the switch was turned on; the pattern is present in the very first capture
+ever taken. And the one capture after the switch (07-29 07:11) is **non-zero**, so the zeroed block
+did not propagate back in that instance either.
+
+Worth stating plainly because it nearly went the other way: this was the third observation in one day
+whose obvious reading was circular, and it is the first that survived the check.
