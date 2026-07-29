@@ -389,7 +389,11 @@ public class CharacterConnectController implements IGameController {
 		var buffer = ctx.buffer(INFO_PAYLOAD_SIZE);
 		buffer.writeInt((int) chara.getId());
 		BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		buffer.writeBytes(INFO_PREFIX);
+		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
+			buffer.writeZero(INFO_PREFIX.length);
+		} else {
+			buffer.writeBytes(INFO_PREFIX);
+		}
 
 		buffer.writeInt(experienceFor(account, chara))
 			// The client shows the previous login alongside the current one.

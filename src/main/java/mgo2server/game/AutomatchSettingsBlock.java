@@ -196,8 +196,10 @@ public final class AutomatchSettingsBlock {
 		// schemas, and both are non-zero in every capture, so zeroing them is a change we have no
 		// evidence for. They are named and isolated here so the residue is two lines rather than
 		// spread invisibly through a hex blob.
-		putU32(block, UNKNOWN_72, UNKNOWN_72_VALUE);
-		block[UNKNOWN_179] = (byte) UNKNOWN_179_VALUE;
+		if (!mgo2server.common.Policy.current().zeroUnreadFields()) {
+			putU32(block, UNKNOWN_72, UNKNOWN_72_VALUE);
+			block[UNKNOWN_179] = (byte) UNKNOWN_179_VALUE;
+		}
 
 		return block;
 	}
