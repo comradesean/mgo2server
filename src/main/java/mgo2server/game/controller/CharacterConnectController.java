@@ -50,7 +50,7 @@ public class CharacterConnectController implements IGameController {
 	 * padding (corrected 2026-07-26). The sender writes it from its fourth argument
 	 * ({@code 0xD5C918} at {@code 0xD38708}), so the request is exactly 22 bytes, not "at least
 	 * 20". Its meaning is [UNKNOWN] and we do not read it; the constant below is only a minimum
-	 * length check. See {@code dev/proto/blanks/inbound/mgo2_cmd_4700_c2s.ksy}.
+	 * length check. See {@code dev/proto/inbound/mgo2_cmd_4700_c2s.ksy}.
 	 */
 	private static final int PRIVATE_IP_LENGTH = 16;
 

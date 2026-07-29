@@ -5,7 +5,7 @@ package mgo2server.common.model;
  * <p>
  * A row exists only for a skill the character has: the client memsets its whole 128-entry array
  * before applying what we send, so an id we omit reads back as level 0 with a clear flag. That is
- * the mechanism any future locking hangs off — see {@code dev/proto/mgo2_cmd_4125.ksy}.
+ * the mechanism any future locking hangs off — see {@code dev/proto/outbound/mgo2_cmd_4125_s2c.ksy}.
  */
 public class CharaSkill {
 	/** Ids the client defines. Beyond this every id-keyed lookup in the client clamps to 17. */

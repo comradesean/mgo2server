@@ -253,7 +253,7 @@ public class SocialGameController implements IGameController {
 
 		// Real data, at last. This reply was a fingerprint payload — FP-DTL-NAME, FP-DTL-CLAN and
 		// numbered constants — sent to find out which offset fed which label. It did its job: the
-		// fields it identified are recorded in dev/proto/mgo2_cmd_4221.ksy, and the screen showed
+		// fields it identified are recorded in dev/proto/outbound/mgo2_cmd_4221_s2c.ksy, and the screen showed
 		// placeholders ever since. The clan in particular read as "----" until the player opened
 		// More Details, which fetches 0x4103 and does carry a real clan, so the value appeared to
 		// arrive late when in truth this packet never had it.

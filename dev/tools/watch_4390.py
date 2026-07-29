@@ -2,7 +2,7 @@
 """Live-capture and decode 0x4390 stat reports (or any command) from the freebattle1 log.
 
 Follows `docker logs -f` on the freebattle1 container, extracts every payload of the chosen
-command id, pretty-prints it with the field labels established in dev/proto/mgo2_cmd_4390.ksy,
+command id, pretty-prints it with the field labels established in dev/proto/inbound/mgo2_cmd_4390_c2s.ksy,
 and archives each hit into a samples folder as:
 
   - NNN_HHMMSS_chID.bin   (raw payload; NNN continues from the highest number present)
@@ -45,7 +45,7 @@ DEFAULT_CONTAINERS = [
     "mgo2server-combattraining-1",
 ]
 
-# --- 0x4390 field labels (dev/proto/mgo2_cmd_4390.ksy is the authority) -----------------
+# --- 0x4390 field labels (dev/proto/inbound/mgo2_cmd_4390_c2s.ksy is the authority) -----------------
 
 A_FIELDS = [  # (offset, size, fmt, name) — fmt: B=u8, h=s16, H=u16, I=u32
     (0x00, 4, "I", "chara_id"),
