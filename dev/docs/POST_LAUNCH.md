@@ -132,8 +132,8 @@ availability predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refu
 gate exceeds `(byte & 1) << 4` — 0 or 16 — and exactly 32 entries gate on 16. 23 gate on 0 and are
 always available; 27 defer to a separate check.
 
-**What those 32 are was settled by experiment, not by reading.** With the bit cleared on one
-account and a reconnect:
+**What those 32 are was settled by experiment, then confirmed phrase by phrase.** With the bit
+cleared on one account and a reconnect:
 
 - **codec / preset messages: MISSING**
 - **gear and outfits: completely unchanged**
@@ -146,6 +146,19 @@ rather than the character, which matches the entitlement being per-account.
 The count that prompted the test was the whole clue: 32 gated entries, 32 phrases in the pack.
 Matching counts were not evidence, but they were a reason to look — and looking cost one `UPDATE`.
 
+**Then the table was dumped and matched row by row: 32/32, in the published order**, macros included
+(`ONSLAUGHT`, `TAKEFIRE`, … `LAUGH`, `LAUGH2`). Five of the product page's English strings differ
+from the disc's — *"Somebody, come quick!"* is *"Somebody!"*, *"Goal!"* is *"Score!"* — because each
+phrase has **19 voiced variants** and the page quoted a different one. The two `Laughter` rows carry
+no text at all, which is what a pure voice cue looks like.
+
+**Gear has no gate at all**, settled at the same time: the predicate has 17 call sites binary-wide,
+none in loadout code, and the trailer byte has no third reader. The original "loadout items" label
+was a misread of the table's contents, not a mislabelled gate.
+
+**Granting it is therefore a live operator-policy decision**, and the only one in this subsystem:
+`account.entitlements` bit 0, per account. Set for the paid pack, clear to withhold it.
+
 **This is an entitlement, and we grant it to everyone by default.** That is *operator policy*, not
 protocol, and it has never been a deliberate decision — the value was inherited. Whether those 32
 are the day-one shop items has not been established. Two positions are defensible and the choice
@@ -157,6 +170,36 @@ should be made rather than drifted into:
   once the trailer stops being a constant.
 
 If it becomes a toggle, it is one bit sourced per account, not a new packet.
+
+### The SECOND codec pack — likely post-launch, and possibly bit 1
+
+**The store sold two codec packs.** The first is the day-one item recorded above: 32 phrases, 32
+gated entries, proven. The second came later and **reportedly required a client update** — which,
+if true, puts it squarely out of scope for v1, because a pack that needs a patch cannot have been
+active on release day.
+
+**It is not bit 1, and there is no carrier for it in this build.** The trailer byte is read at
+exactly **two addresses binary-wide** — `0x9B9E30` and `0x9BADA4`, both in the preset-message
+subsystem — and both test **bit 0 only**. So the `0x03` we send has one live bit and one inert one,
+and no flag anywhere grants a second pack.
+
+**What a second pack would have had to change: the catalogue itself.** The phrase table at
+`0xE1812C` has a loop bound of 85 and **82 populated rows**. Ten phrase ids are **shipped on the
+disc but absent from the table entirely** — 27, 34, 35 and 58..64 — and three of them have full
+19-string voice blocks: *"What's our leader's position?"* (string 521), *"Pass! Pass!"* (654),
+*"Shoot!"* (673). Voiced, present, unreachable.
+
+That is exactly the shape of content a later patch would switch on, and it explains why the second
+pack **needed a client update**: adding phrases means extending a table in the executable, which no
+server flag can do. A server-side entitlement can only gate rows that already exist.
+
+**So for v1 there is nothing to withhold and nothing to grant.** The second pack cannot be served,
+by us or by anyone, without a patched client. If later versions are ever served behind toggles, the
+thing to check first is whether *that* build's catalogue has grown past 82 rows and whether a second
+bit acquired a reader.
+
+**Evidence tier:** that a second pack existed and needed an update is community/store knowledge
+(tier 4). The inertness of bit 1 and the ten unreferenced ids are [ELF] and [DISC] respectively.
 
 ### Is the entitlement bit the WHOLE shop? — the experiment to run
 
@@ -215,8 +258,13 @@ availability predicate at all, or are all phrases simply present in this build (
 the case for face paint)? The phrase text lives in the disc string resources, so the list itself is
 readable — the question is whether anything filters it.
 
-**Caution — a citation that needs checking.** The `0x3049` trailer note cites `0x9C0600` as part of
-a "separate ownership/expansion check" for 27 of the table's entries. A separate investigation of the
-host-rating path described `0x9C0600` as returning nonzero only when `roundMode() == 10 &&
-amHost()`. Those two descriptions cannot both be right about the same function. One of them is
-mis-attributed, and it should be resolved before either is built on.
+**That citation conflict is resolved (2026-07-29).** The trailer note called `0x9C0600` part of a
+"separate ownership/expansion check"; the host-rating investigation read it as
+`roundMode() == 10 && amHost()`. **The host-rating reading is correct** — `0x9C060C bl 0x6A9A38`,
+`cmpwi cr7,r3,10`, then `0x9C0638 bl 0x26E958` for the host test. Mode 10 is Combat Training, so it
+means "you are the instructor running this session".
+
+It is not an ownership check of any kind, and neither is its companion `0x9C2C90`, which accepts
+phrase ids 67..92 outside training for a player not on team 0/1 who is carrying item type 17.
+**Neither reads the trailer, a purchase flag, or any account record.** The 27 entries they gate are
+the Combat Training instructor commands, and no server-side field controls them.
