@@ -80,14 +80,14 @@ contacted. A self-signed certificate is not enough.
 
 The leaf certificate must cover **every hostname in the swap list**, not just one. The login is on
 `mgo2auth.konami.com` and the version check on `mgo2web.konami.com`; a certificate naming only one
-fails the other, and both failures look identical (`090B`). The chain in `dev/runtime/www` already carries
-`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/runtime/www/ext.cnf`
+fails the other, and both failures look identical (`090B`). The chain in `dev/runtime/tls` already carries
+`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/runtime/tls/ext.cnf`
 if regenerating.
 
 Copy this repository's CA over one of the emulator's certificate slots:
 
 ```
-cp dev/runtime/www/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
+cp dev/runtime/tls/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
 ```
 
 Back up the original first. The client was observed reading `CA29`–`CA31`; `CA30` works. The

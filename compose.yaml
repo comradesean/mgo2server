@@ -331,9 +331,13 @@ services:
       # cert-expired.pem swaps in a chain whose only defect is its validity window, which the
       # client reports as 070B rather than 090B. See OBSERVED.md, "The certificate branch".
       MGO2SERVER_TLS_CERT: ${MGO2SERVER_TLS_CERT:-cert.pem}
+      MGO2SERVER_TLS_DIR: /tls
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
+      # Mounted separately from the document root: /wwwsrc is copied into /www and served, and the
+      # private keys must not be inside it.
+      - ./dev/runtime/tls:/tls:ro
     ports:
       - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.200:443}:443"
     depends_on:
