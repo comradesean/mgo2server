@@ -879,6 +879,29 @@ public class HostGameController implements IGameController {
 		var base = payload.readerIndex();
 		var bytes = new byte[payload.readableBytes()];
 		payload.getBytes(base, bytes);
+
+		// AN EMPTY ROTATION IS NOT A GAME. Confirm the host picked at least one rule and stage
+		// before letting the create proceed: with every triple zeroed the client sails past the
+		// Create Game screen and hangs on an infinite load, because there is no round to start.
+		//
+		// The client is meant to catch this itself — it ships the sentence for it, dialog 2944
+		// "Game rules and map have not been set. / Please set game rules and map." — but the check
+		// does not fire, and 2 of our 214 stored 0x4310 captures carry a completely empty rotation.
+		// So it has been reaching us and we have been accepting it.
+		//
+		// The test is map, not rule. Rule 0 is Deathmatch and perfectly valid; map 0 is no stage at
+		// all — across those 214 captures the maps actually used are 1, 2, 3, 4, 7 and 12, and a
+		// zero map never once appears beside a real entry. This also matches the rotation's own
+		// terminator convention, where rule == 0 && map == 0 ends the list.
+		if (!hasAnyRound(bytes)) {
+			logger.warn("Host settings refused: account {} sent an empty rotation — no rule or stage"
+				+ " is selected in any of the {} rounds. Accepting it creates a game that cannot"
+				+ " start and hangs the client on an infinite load.",
+				account.getId(), ROTATION_ROUNDS);
+			ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.GENERAL);
+			return;
+		}
+
 		ctx.connection().setHostSettings(bytes);
 
 		// Decode and persist per (character, subtype) so 0x4304 pre-fills next session. The
@@ -904,6 +927,25 @@ public class HostGameController implements IGameController {
 		// than the payload length, so the client consumed four bytes of stale buffer as its
 		// result code. See dev/proto/outbound/mgo2_cmd_4311_s2c.ksy.
 		ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.NONE);
+	}
+
+	/**
+	 * Whether a {@code 0x4310} blob selects at least one round.
+	 *
+	 * <p>A round counts when its <b>map</b> is nonzero. Rule 0 is Deathmatch and is a real choice,
+	 * so a zero rule proves nothing; map 0 is not a stage this disc ships. A blob too short to hold
+	 * the rotation is treated as having no rounds — it cannot describe a startable game either way.
+	 */
+	static boolean hasAnyRound(byte[] blob) {
+		if (blob.length < ROTATION_OFFSET + ROTATION_ROUNDS * 3) {
+			return false;
+		}
+		for (var round = 0; round < ROTATION_ROUNDS; round++) {
+			if (blob[ROTATION_OFFSET + round * 3 + 1] != 0) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

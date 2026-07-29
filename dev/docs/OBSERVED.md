@@ -40,6 +40,44 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Creating a game with no rule or stage selected hangs the client (fixed 2026-07-29)
+
+Reported live: pressing Create Game without picking any rule or stage is not refused, and the
+client goes straight to an infinite load. There is no round to start, so nothing ever completes.
+
+**The client is supposed to catch this.** `ERRORS.md` dialog 2944 is *"Game rules and map have not
+been set. / Please set game rules and map."*, sitting immediately beside 2945, the Create Game
+screen's own network warning. So the sentence exists and belongs to that screen; the check simply
+does not fire on this build. Which result code reaches dialog 2944 is **[UNKNOWN]** — that mapping
+is not in `ERRORS.md`, so the server refusal below uses the generic code rather than an invented
+one.
+
+**It has been reaching us all along.** Decoding the rotation out of all 214 stored `0x4310`
+payloads (`dev/proto/samples/4310/captures.psv`):
+
+| rotation entries with a map set | captures |
+| --- | --- |
+| 0 | **2** |
+| 1 | 206 |
+| 2 | 4 |
+| 3 | 1 |
+| 6 | 1 |
+
+Both empty ones are character 3, on 2026-07-28. We accepted them and created the games.
+
+**The test is the map, not the rule.** Rule 0 is Deathmatch and is a real choice; map 0 is no stage.
+Across those 214 captures the maps actually used are 1, 2, 3, 4, 7 and 12, and a zero map never
+appears beside a real entry — which also matches the rotation's own `rule == 0 && map == 0`
+terminator convention. Testing the rule instead would refuse every Deathmatch on the server.
+
+Refused at `0x4311`, before the blob is persisted, so an empty rotation cannot become the next
+session's Create Game pre-fill either. `0x4311` is the right place for the same reason the hosting
+ban is there: it discriminates result codes, where `0x4317` renders everything generic.
+
+Note this also corrects a scope claim made in passing: the shipped stage set is **not** only
+`{2, 3, 4, 7, 12}`. That is automatching's pool (`map_bit 4252`); map 1 appears in real host
+settings.
+
 ### The wrong turn, which is the part worth keeping
 
 An ELF investigation concluded the badge **could not exist in this build**, and it was wrong. Its
