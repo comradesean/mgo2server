@@ -9,7 +9,6 @@ package mgo2server.game;
 public enum GameError {
 	/** General */
 	NONE(0, true),
-	NOT_IMPLEMENTED(0xff),
 	GENERAL(0x1),
 	INVALID_SESSION(0x2),
 
@@ -49,9 +48,6 @@ public enum GameError {
 
 	/** Character */
 	CHARACTER_DOES_NOT_EXIST(0x20),
-
-	/** Game */
-	GAME_PLACEHOLDER(0x30),
 
 	/**
 	 * Automatching. Every one of these is {@code official}, and that is not a detail — a masked
@@ -146,6 +142,11 @@ public enum GameError {
 	AUTOMATCH_CANNOT_START(-950, true),
 
 	/** {@code 0x43e3}: "Unable to cancel automatching." [0x93D208] */
+	/**
+	 * <b>Not sent today, and kept deliberately.</b> The cancel path answers {@code NONE} or
+	 * {@code -953}; this is the code for a genuine cancel failure, and it is real protocol knowledge
+	 * read from the client rather than a value we made up. Deleting it would discard a finding.
+	 */
 	AUTOMATCH_CANNOT_CANCEL(-952, true),
 
 	/**
@@ -153,15 +154,7 @@ public enum GameError {
 	 * the dormant state [0x93D1EC]. For a cancel that arrives after a match has already been
 	 * assigned, where erroring would be a lie and succeeding would strand the match.
 	 */
-	AUTOMATCH_CANCEL_TOO_LATE(-953, true),
-
-	/** Clan */
-	CLAN_DOES_NOT_EXIST(0x40),
-	CLAN_NOT_A_MEMBER(0x41),
-	CLAN_IN_A_CLAN(0x42),
-	CLAN_NO_APPLICATION(0x43),
-	CLAN_HAS_APPLICATION(0x44),
-	CLAN_NOT_A_LEADER(0x45);
+	AUTOMATCH_CANCEL_TOO_LATE(-953, true);
 
 	/** Applied to the high bytes so the client recognises the value as an error. */
 	public static final int MASK = 0xC0FFEE << 8;

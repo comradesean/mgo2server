@@ -640,12 +640,18 @@ public class ClanGameController implements IGameController {
 			if (membership.state() == ClanService.STATE_LEADER) {
 				clanService.setDescription(membership.id(), description);
 				logger.info("Clan {} description set by character {}.", membership.id(), charaId);
-			} else {
-				logger.info("Character {} tried to set a clan description without leading one.",
-					charaId);
+				writeResult(ctx, SET_DESCRIPTION_RESULT);
+				return;
 			}
+			logger.info("Character {} tried to set a clan description without leading one.", charaId);
+			// -1203 is "You are not clan leader.", and arm 24 of the client's table is bound to this
+			// command. Answering success here stored nothing and told the player it worked, so the
+			// old text was back on the next visit with no explanation.
+			writeCode(ctx, SET_DESCRIPTION_RESULT, NOT_CLAN_LEADER);
+			return;
 		}
-		writeResult(ctx, SET_DESCRIPTION_RESULT);
+		// A short payload or no character: nothing was stored, so do not claim it was.
+		ctx.write(SET_DESCRIPTION_RESULT, GameError.GENERAL);
 	}
 
 	/** Stores the clan's notice, the 512-byte text. Leader only, like the description. */
@@ -659,9 +665,17 @@ public class ClanGameController implements IGameController {
 			if (membership.state() == ClanService.STATE_LEADER) {
 				clanService.setNotice(membership.id(), notice, charaId);
 				logger.info("Clan {} notice set by character {}.", membership.id(), charaId);
+				writeResult(ctx, SET_NOTICE_RESULT);
+				return;
 			}
+			logger.info("Character {} tried to set a clan notice without leading one.", charaId);
+			// GENERAL rather than -1203 here, unlike the description: arm 26 of the client's table
+			// does not carry the not-leader code, so it would take the arm default anyway. Saying
+			// "something went wrong" is honest; the point is that it no longer says "saved".
+			ctx.write(SET_NOTICE_RESULT, GameError.GENERAL);
+			return;
 		}
-		writeResult(ctx, SET_NOTICE_RESULT);
+		ctx.write(SET_NOTICE_RESULT, GameError.GENERAL);
 	}
 
 	/**
@@ -1083,8 +1097,13 @@ public class ClanGameController implements IGameController {
 		var charaId = account != null ? account.getCurrentCharaId() : null;
 		if (charaId != null && clanService.withdraw(charaId)) {
 			logger.info("Character {} withdrew from their clan.", charaId);
+			writeResult(ctx, WITHDRAW_RESULT);
+			return;
 		}
-		writeResult(ctx, WITHDRAW_RESULT);
+		// Nothing was withdrawn — no character, or no clan to leave. Reporting success told the
+		// player they had left something they were never in.
+		logger.info("Character {} sent a withdraw with nothing to withdraw from.", charaId);
+		ctx.write(WITHDRAW_RESULT, GameError.GENERAL);
 	}
 
 	/**
