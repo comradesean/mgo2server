@@ -831,27 +831,23 @@ is the wrong place to look for protocol layout anyway.
 comments, and a checksum mismatch fails validation at startup and crash-loops every game container.
 A stale comment is much the cheaper error. Same trap as the `dev/proto` path rewrite.
 
-## Two instruments for the version work, and they do different jobs
+## The capture harness is gone; the captures are not
 
-`inert_field_watch` is the **summary**: distinct values per watched field, where a second row is an
-alert. `dev_packet_audit` is the **evidence**: every raw `0x4310` push, timestamped and whole, so a future
-question can be answered against real bytes instead of re-derived from a conclusion.
+The raw-payload capture table (`blob_audit`, briefly `dev_packet_audit`) is removed. It was
+single-purpose and its purpose is served: the 352-byte host-settings block is fully decoded into
+typed columns.
 
-Keeping both matters. The summary is what you watch; the evidence is what settles an argument. The
-214 archived captures are what proved the two no-reader fields track training lobbies — and that
-question could not have been answered from the summary alone, because it needed the lobby subtype
-each push carried.
+**All 214 captures live in `dev/proto/samples/4310/`**, with the queries that re-derive what was
+established from them — the 352-byte length, the training-lobby correlation in struct `+824`/`+931`,
+and the Common Settings bits that cannot be rebuilt from their booleans. Discarding evidence because
+the conclusion is written down is how a finding becomes unverifiable; discarding the machinery once
+the evidence is safe is just tidying.
 
-The capture moved from a database trigger into the server (2026-07-29) and is gated by
-`MGO2SERVER_CAPTURE_PACKETS`, left on for the version work. The table was renamed from `blob_audit`:
-that name said what it stored rather than what it was for, and once the blob it was named after was
-dropped it actively misled — a reader would go looking for a matching blob column. The trigger hung off
-`chara_host_settings.blob`, and `V55` dropped that column when the block was decoded. The server is
-the better place anyway: a trigger only ever saw what we chose to store, while the server sees
-exactly what the client sent, **including bytes we do not model**.
-
-`dev_packet_audit` grows unbounded by design — consecutive hosts must not overwrite each other. Prune with
-`delete from dev_packet_audit where captured_at < now() - interval '90 days';`
+**If packet capture is wanted again, build the wider tool rather than reviving this one.** Recording
+every inbound packet needs three things this never had: an allow-list so pings and chat do not drown
+it, a retention cap so it cannot fill a disk during a long session, and capture *ahead* of
+validation — this one sat behind a length guard, so a malformed payload, the kind most worth having,
+was dropped before it was ever archived.
 
 ## The inert-field tripwire
 

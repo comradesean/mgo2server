@@ -149,7 +149,6 @@ public class GameService {
 			return;
 		}
 		inertFields.observeHostSettings(blob);
-		archiveHostSettings(charaId, type, blob);
 
 		var passwordSet = (blob[0x90] & 0xff) != 0;
 		jdbi.useHandle(handle ->
@@ -227,37 +226,6 @@ public class GameService {
 				.execute());
 	}
 
-	/**
-	 * Archives a raw host-settings push for later analysis.
-	 *
-	 * <p>This replaces the database trigger that used to hang off {@code chara_host_settings.blob};
-	 * dropping that column took the trigger with it. Capturing here is better placed anyway — a
-	 * trigger only ever saw what we chose to store, while this sees exactly what the client sent,
-	 * <b>including bytes we do not model</b>, which is the whole point of an evidence trail.
-	 *
-	 * <p>It pairs with {@link InertFieldWatch}: that records distinct values per field and alerts on
-	 * change; this keeps whole payloads so a future question can be answered against real bytes
-	 * rather than re-derived from a conclusion. Discarding evidence because the finding is written
-	 * down is how a finding becomes unverifiable.
-	 *
-	 * <p>Failures are swallowed — an analysis tool must never break the thing it observes.
-	 */
-	private void archiveHostSettings(long charaId, int type, byte[] blob) {
-		if (!mgo2server.common.Policy.current().capturePackets()) {
-			return;
-		}
-		try {
-			jdbi.useHandle(handle -> handle
-				.createUpdate("insert into dev_packet_audit (chara_id, type, blob) "
-					+ "values (:chara, :type, :blob)")
-				.bind("chara", charaId)
-				.bind("type", type)
-				.bind("blob", blob)
-				.execute());
-		} catch (Exception e) {
-			logger.debug("Could not archive host settings for character {}.", charaId, e);
-		}
-	}
 
 	/**
 	 * The 14-byte raw block, padded if the payload stopped short.
