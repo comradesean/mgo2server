@@ -813,3 +813,34 @@ is the wrong place to look for protocol layout anyway.
 **must not be edited to remove them** — they are applied, Flyway checksums the whole file including
 comments, and a checksum mismatch fails validation at startup and crash-loops every game container.
 A stale comment is much the cheaper error. Same trap as the `dev/proto` path rewrite.
+
+## The inert-field tripwire
+
+*Added 2026-07-29.* `inert_field_watch` records **every distinct value** seen for the host-settings
+fields established as parsed-and-never-read. One row per field means the belief holds; **a second row
+is the alert**, and the server logs a WARN when it appears.
+
+```sql
+select field, count(*) as distinct_values from inert_field_watch group by 1 having count(*) > 1;
+select * from inert_field_watch order by field, observations desc;
+```
+
+**Why distinct values rather than a hardcoded baseline.** A baseline has to be maintained, and
+becomes quietly wrong the first time reality disagrees with it. Accumulating what actually arrives
+cannot drift, and the alert condition is a fact about the data rather than about our expectations.
+The warning fires on the *second* value, not the first — the first is the baseline being
+established, and warning about it would train everyone to mute this.
+
+**It found something before it was finished.** `unread_824` and `unread_931` **co-vary**: six stored
+rows carry the pair `(0x02000000, 0x20)` and five carry `(0, 0)`. Two fields with no reader moving in
+lockstep is not noise. It was invisible while those bytes sat inside a blob, and it is a lead worth
+pulling — most likely one feature's state written by a path that still runs, read by code that was
+compiled out.
+
+**This is the instrument for the version work.** "Never read" is a claim about *this* build. When a
+patched client is in play, a field going live shows up here as a log line rather than as a bug report
+months later.
+
+Watched today: `host_settings.800`, `.801`, `.824`, `.832`, `.836`, `.844`, `.931`, `.tail`.
+Extending it is one entry in `InertFieldWatch.HOST_SETTINGS`; each carries the reason it is there,
+because a watcher whose entries cannot be justified becomes noise that gets muted.
