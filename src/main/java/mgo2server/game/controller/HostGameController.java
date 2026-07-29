@@ -1069,6 +1069,14 @@ public class HostGameController implements IGameController {
 					rating)) {
 				logger.info("Game {}: character {} rated host {} at {} stars.",
 					game.getId(), voterId, game.getHostCharaId(), rating);
+			} else {
+				// Was silent, and that hid a real one: a player rejoined and voted a second time,
+				// the constraint refused it, and nothing said so. If this fires after the join gate
+				// went in, the gate and the constraint disagree.
+				logger.warn("Game {}: character {} rated host {} at {} stars, but a vote for this"
+					+ " game is already recorded — discarded. The 0x4321 rating gate should have"
+					+ " stopped the client offering this.",
+					game.getId(), voterId, game.getHostCharaId(), rating);
 			}
 		}
 
