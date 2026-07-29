@@ -269,6 +269,13 @@ look at the bytes rather than at the schema you believe they follow.
 
 ## Hostnames
 
+> **Superseded in part by [HOSTS.md](HOSTS.md).** The table below is what the client was *seen*
+> resolving — still valid as observation. Since 2026-07-29 the same values are readable as **disc
+> data**: string resources 28654–28691 in `o/stage/lobby/scenerio.gcx`, three regional blocks, with
+> the gate and STUN ports stored beside their hosts. That is a tier up from a DNS log, it adds the
+> six other URLs the client holds that never get resolved, and it is what makes the addresses
+> changeable. Go there first.
+
 | Host | Purpose |
 | --- | --- |
 | `mgo2web.konami.com` | Static documents and the version check |
@@ -296,6 +303,12 @@ mgo2web.konami.com=<ip>&&info.service.konamionline.com=<ip>&&mgo2gateus.konamion
 For comparison, `mgo2-server` documents gate 5731, account 5732, game 5733+. This client dials
 15731 for the gate, so that value is disc or region specific; the ports for the other lobbies come
 from the lobby list and can be anything.
+
+> **"Disc or region specific" is now settled: it is region specific, and the disc says so.**
+> The gate port is stored next to its hostname in the address table — US 15731, EU 25731, JP 5731,
+> with STUN 3478 in all three. `o/di` byte 42 picks the block, and it is `0x01` (US) on
+> `BLUS30109`. So 15731 is no longer only a value read off an RPCS3 log; see [HOSTS.md](HOSTS.md).
+> The lobby ports are unaffected — those still come from the lobby list.
 
 ## STUN
 
