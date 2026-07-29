@@ -4114,3 +4114,43 @@ instead of failing loudly.
 The **filter / sort / search preferences** in `0x4120`'s 32-byte trailer are *not* returned by the
 client — that is precisely the 32 bytes `0x4110` omits. So there is no write-back to parse, and
 persisting them would need a mechanism we have not identified. See the `0x4120` trailer entry above.
+
+
+## The host-settings blob is gone, and two "confirmed" constants were circular (2026-07-29)
+
+Both stored settings blobs are dropped. Every byte of the 352-byte block is now a typed column, and
+the block is rebuilt from those columns byte-for-byte for both the game-details reply and the Create
+Game pre-fill.
+
+**What the decode found, none of it visible while the bytes were kept whole:**
+
+- the **rotation was truncated to its first entry**, so a game's later rounds did not survive a round
+  trip through storage;
+- **three fields had never been stored at all** — the lobby subtype the host sends and two
+  no-reader fields — and only surfaced when something tried to reproduce the block;
+- the **Common Settings toggle bytes cannot be rebuilt from their booleans**: bits 1, 2 and 6 are
+  undecoded, and a rebuild produced `0x22` where the client had sent `0x24`. The booleans were
+  *correct* and reconstructing from them would still have been wrong;
+- the block is **352 bytes, not the 345** the last named field implies. The round-trip test missed
+  it because the test built its own fixture at the wrong length and agreed with itself.
+
+### The circular capture — worth reading before trusting any echo test
+
+`HostSettingsReply` wrote two inherited constants, `0x02` at reply `0x0ED` and `0x20` at `0x147`. A
+live capture showed both coming back in the next `0x4310` push, which reads exactly like
+confirmation.
+
+**It proved nothing about the fields.** Create Game entry memcpys the whole 968-byte saved object
+into the screen (`0x89B90C`) and the `0x4310` builder re-emits it, with no code path writing either
+byte in between — so the values coming back were *our own bytes completing a round trip*. The capture
+confirmed the transport worked.
+
+Both are now identified: reply `0x0ED` is struct **+824**, and it is a **u32** rather than a byte, so
+it spans `0x0ed`..`0x0f0` — writing one byte plus three zeros is what produced the `0x02000000`
+everyone kept seeing. Reply `0x147` is struct **+931**, the low byte of the flags word at +928, whose
+bits 0-7 no site tests. Neither is read anywhere in the client; both are echoed from the request now.
+
+**This is the second time in one day that a confirming observation constrained something other than
+what it appeared to.** The first was the `T+0x18` swap that only ever pinned `T+0x58`. The shape to
+watch for: an experiment whose result is equally consistent with the hypothesis and with the
+mechanism carrying the value round unchanged.
