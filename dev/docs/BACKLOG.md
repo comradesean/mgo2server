@@ -831,7 +831,13 @@ cannot drift, and the alert condition is a fact about the data rather than about
 The warning fires on the *second* value, not the first — the first is the baseline being
 established, and warning about it would train everyone to mute this.
 
-**It found something before it was finished.** `unread_824` and `unread_931` **co-vary**: six stored
+**It found something before it was finished, and the finding held up.** See OBSERVED.md, "The two
+no-reader settings fields track TRAINING lobbies": across 214 captures the pair is zeroed in *every*
+training-lobby push and set in every other, which makes them a compiled-out feature's state rather
+than noise. The obvious circular explanation — our own zeroing experiment coming home — was checked
+against capture timestamps and ruled out.
+
+**The original observation was simply:** `unread_824` and `unread_931` **co-vary**: six stored
 rows carry the pair `(0x02000000, 0x20)` and five carry `(0, 0)`. Two fields with no reader moving in
 lockstep is not noise. It was invisible while those bytes sat inside a blob, and it is a lead worth
 pulling — most likely one feature's state written by a path that still runs, read by code that was
