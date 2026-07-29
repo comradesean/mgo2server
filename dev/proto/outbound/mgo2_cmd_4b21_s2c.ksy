@@ -102,16 +102,30 @@ seq:
 
       This is the only thing that gates committing an emblem: 0xAD409C tests ctx+788 & 4, which is
       set purely from state == 2. No privilege bit is involved — see mgo2_cmd_4b47_s2c.ksy.
-  - id: founding_date
+  - id: leader_chara_id
     type: u4
     doc: |
-      [CONFIRMED 2026-07-27] T+0x18, the clan's FOUNDING date, Unix seconds. Same slot, same
-      meaning, as 0x4b81's T+0x18, where sending it and the member count the other way round made
-      the Clan Info screen report **1785129141 members** — the epoch seconds rendered verbatim.
+      [CORRECTED 2026-07-29 — READ from the ELF] T+0x18 is the **clan leader's character id**, not
+      a founding date. The parser (`0xD587AC` for `0x4b21`, `0xD58C74` for `0x4b81`) reads it with the
+      u32 primitive `0xD5CCD8` into the shared struct at `session+0x10000-1968`.
 
-      **Supersedes an earlier reading.** A probe run had this slot rendering as 1969-12-31 and
-      concluded it was "not the date", which is what led to T+0x904 being labelled the founding
-      date instead. T+0x904 is the NOTICE's timestamp — see `notice_at` below.
+      **It has exactly five readers, and they are five clones of one routine** — `0xAC8F9C`,
+      `0xACA5B4`, `0xACAA04`, `0xACBA84`, `0xACD9AC`. Each walks the roster scroll-list and compares
+      this value for **equality against each row's member id**, selecting one row and turning on that
+      row's icon (`0xACBA8C` / `0xACBA90`). The very next instruction compares the same row id against
+      `T+0x6FC`, which is independently confirmed to be a character id — so this is the same kind of
+      value.
+
+      **No date signature at all**: it is never passed to the time formatter `0x8843CC`, never divided
+      or modded, never sign-tested. The struct's only timestamp-shaped consumer is `T+0x904`, and that
+      is the **notice's** date. There is no founding-date field in this struct.
+
+      **Why the old label was wrong, which is the part worth keeping.** It came from an experiment
+      that swapped this slot with `T+0x58` and saw the member count render `1785129141`. That
+      observation constrains **`T+0x58` only** — it proves what the member-count renderer reads and
+      says nothing about this slot; the epoch value merely happened to be what landed in the other
+      one. A real observation with a label layered on top, then mirrored to a sibling packet as "same
+      slot, same meaning" — sound about the slot, false about the meaning.
   - id: leader_name
     size: 16
     type: str
@@ -230,7 +244,8 @@ seq:
       sent each candidate slot the date offset by a different number of days and watched which one
       Clan Affiliation displayed, so the FIELD was right and the LABEL was wrong — the date the
       screen draws here is the date the notice was set, and the 16 bytes after it are the name of
-      whoever set it. The founding date is T+0x18.
+      whoever set it. **T+0x18 is the leader's chara id, not a founding date, and this
+      struct has no founding-date field** — see `leader_chara_id` (corrected 2026-07-29).
 
       **When unset, send -1, NEVER 0.** The renderer 0xAAB2D8 has no conditionals at all — it
       always draws the date line, the author and the notice body, so the line cannot be suppressed.

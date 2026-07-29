@@ -2608,7 +2608,7 @@ struct `T`:
 | `T+0x00` | clan id — **cross-checked against the id the client holds; packet dropped on mismatch** |
 | `T+0x04` | clan name[16] |
 | `T+0x15` | membership state |
-| `T+0x18` | **founding date** |
+| `T+0x18` | **leader's character id** — *not* a founding date, corrected 2026-07-29 |
 | `T+0x1c` | leader name[16] |
 | `T+0x48` | **[ELIMINATED]** — see below |
 | `T+0x58` | member count |
@@ -2622,10 +2622,32 @@ struct `T`:
 
 **Two corrections to earlier readings here.**
 
+### `T+0x18` is the leader's character id, and there is no founding date in this struct (2026-07-29)
+
+**READ from the ELF**, and it settles a contradiction that had been shipping: the code sent the
+leader's chara id here while the schemas called it a founding date, and *both* claimed
+`[CONFIRMED 2026-07-27]`.
+
+The parsers (`0x4b21` → `0xD587AC`, `0x4b81` → `0xD58C74`) read it as a u32 into the shared struct at
+`session+0x10000-1968`. It has **exactly five readers**, five clones of one routine — `0xAC8F9C`,
+`0xACA5B4`, `0xACAA04`, `0xACBA84`, `0xACD9AC` — each walking the roster scroll-list and comparing the
+value for **equality against each row's member id** to select one row and light its icon. The next
+instruction compares that same row id against `T+0x6FC`, a confirmed character id.
+
+**It reaches no date formatter.** Never passed to `0x8843CC`, never divided or modded, never
+sign-tested. `T+0x904` is the struct's only timestamp-shaped consumer, and it is the *notice's* date —
+so **this struct contains no founding-date field at all.**
+
+The old label came from swapping this slot with `T+0x58` and watching the member count render
+`1785129141`. That constrains **`T+0x58`** and nothing else; the epoch value simply happened to be
+what landed in the other slot. The label was then mirrored to the sibling packet as "same slot, same
+meaning" — true about the slot, false about the meaning. Third invalid elimination in this packet
+family, and the same shape as the one below.
+
 - `T+0x904` was documented as the **founding date**. That was a guess about meaning layered on a
   real observation — the field was found by sending every candidate slot the date offset by a
   different number of days and reading which one the screen showed, so *the field is right and the
-  label was wrong*. It is the notice's date. The founding date is `T+0x18`.
+  label was wrong*. It is the notice's date. ~~The founding date is `T+0x18`.~~ **Wrong too** — `T+0x18` is the leader's character id, and this struct has no founding-date field at all (2026-07-29).
 - `T+0x700` was recorded as an unknown "long text block or packed table". It is the notice,
   confirmed live by typing into **Clan Notice** and watching `0x4b66` carry 512 bytes to the same
   offset. Likewise `0x4b64`'s 128 bytes and **Clan Comment**.
@@ -2649,8 +2671,8 @@ yields 12-31-1969. Send **-1**, which is this binary's own convention for an abs
 217 bytes, and it is the counterpart to `0x4b20`, which **cannot** serve a non-member: that reply's
 id is cross-checked against the client's own clan id and the packet is dropped on a mismatch. This
 one's `subject_id` is explicitly **not** cross-checked. Same slot meanings as `0x4b21` for id, name,
-`T+0x18` founding date, `T+0x1c` leader name, `T+0x58` member count, `T+0x378` emblem flag and
-`T+0x67A` comment. `T+0x18` is the founding date and `T+0x58` the member count and **not** the
+`T+0x18` leader chara id, `T+0x1c` leader name, `T+0x58` member count, `T+0x378` emblem flag and
+`T+0x67A` comment. `T+0x58` is the member count and **not** the
 other way round: swapped, the info screen showed *1785129141 members* — the epoch seconds,
 verbatim.
 

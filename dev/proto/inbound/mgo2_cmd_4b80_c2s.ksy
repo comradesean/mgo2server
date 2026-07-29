@@ -24,7 +24,7 @@ doc: |
   unimplemented when it had simply never been sent. See mgo2_cmd_4b42_c2s.ksy.
 
   Fields established in the reply, recorded here because they are what the request is for:
-  `T+0x00` id, `T+0x04` name[16], `T+0x18` founding date, `T+0x1c` leader name[16], `T+0x58`
+  `T+0x00` id, `T+0x04` name[16], `T+0x18` leader chara id, `T+0x1c` leader name[16], `T+0x58`
   member count, `T+0x378` emblem-present flag (3), `T+0x67A` description[128]. `T+0x18` and
   `T+0x58` are the founding date and the member count **in that order**, not the reverse:
   swapped, the info screen showed 1785129141 members — the epoch seconds, verbatim.
