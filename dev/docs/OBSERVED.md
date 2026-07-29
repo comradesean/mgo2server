@@ -4193,3 +4193,45 @@ did not propagate back in that instance either.
 
 Worth stating plainly because it nearly went the other way: this was the third observation in one day
 whose obvious reading was circular, and it is the first that survived the check.
+
+
+## The 14-byte tail is inert, and `non_stat` was reading our own echo (2026-07-29)
+
+`0x4310` wire `0x14b`..`0x158` (struct `+942`..`955`) has **exactly three touch points in the whole
+binary**: the builder that emits it (`0xD44C3C`), the `0x4305` parser that reads it (`0xD45A54`), and
+the create-game initialiser that **memsets it to zero** (`0x89B5E8`). No access at any byte, on any
+alias, anywhere else — searched across the direct displacement, both screen-embed aliases (`+108`,
+`+112`) and both context globals.
+
+**So the client never reads it and never writes it. Its default is fourteen zero bytes.** All 214
+archived captures carry it entirely zero, byte for byte.
+
+### The retraction
+
+This file and our code both claimed the server decodes `non_stat` from byte 10 (wire `0x155`), and
+that this was capture-proven. **It was circular.** `HostSettingsReply` writes reply `0x158` from the
+request's `0x155`; the client's parser lands that in the struct; its builder sends the struct byte
+back as request `0x155`. The bit can only ever read back what we put there — and it never has,
+because every capture is zero.
+
+`game.non_stat` has therefore been false for every game ever recorded, and the "host options" label
+was tier 4 with no support. The read is kept rather than hardcoded, so the value flows if a client
+ever genuinely sets it, and the inert-field tripwire watches this block for exactly that.
+
+**The post-launch-timer label is refuted too.** Our tier-4 comment called the first eight bytes
+"SDM/INT/DM/SCAP/RACE byte-sized timers". Those mode names **do not exist on this disc**: the
+online-lobby string set enumerates exactly eight rules — Deathmatch, Team Deathmatch, Rescue,
+Capture, Sneaking, Base, Bomb, Team Sneaking — and the ELF developer name table agrees
+(`BS CAP RES TDM CP BOM TSN` + `ALL RULE`). No Stealth Deathmatch, Interval, Solo Capture or Race
+string appears anywhere in the set.
+
+**This is the fourth circular observation found in a day**, and the first three all had the same
+shape: a value we sent coming back, read as confirmation. The others were the `0x4305` constants, the
+`T+0x18` slot swap, and the automatch zeroing that looked like it explained the training-lobby split.
+Only that last one survived scrutiny.
+
+### Side finding: the Common Settings word is 64-bit, not 32
+
+The create-game initialiser writes `std r9,1032(r31)` at `0x89B620` — a **64-bit** store covering
+struct `924`..`931`. Our notes describe a 32-bit flags word at `+928`. Same low byte, wider
+container; only bytes 929, 930 and 931 reach the wire (`0x142`, `0x143`, `0x144`).

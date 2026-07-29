@@ -328,10 +328,24 @@ seq:
       [PARTIAL] wire 0x14b..0x158, src+942 — **one 14-byte raw block write**, so the ELF gives no
       field boundaries inside it and any split would be invented.
 
-      No CLIENT reader exists for any byte of the range. **That is not the same as inert**: the
-      server decodes the host-options flags out of byte 10 of this block (wire `0x155`), which is
-      where `non_stat` comes from and is capture-proven. So "the client never reads it back" is
-      established; "nothing uses it" is not.
+      **The client never reads OR WRITES any byte of it** [READ 2026-07-29]. The block has exactly
+      three touch points in the whole binary: the `0x4310` builder emitting it (`0xD44C3C`), the
+      `0x4305` parser reading it (`0xD45A54`), and the create-game initialiser memsetting it to zero
+      (`0x89B5E8`). No access at any byte, on any alias, anywhere else.
+
+      **So its default is fourteen zero bytes, and anything else the server sees came from the
+      server.** All 214 archived captures (`dev/proto/samples/4310/`) carry it entirely zero.
+
+      This retracts an earlier claim in this file. It said the server decodes `non_stat` from byte 10
+      and that this was capture-proven, so the block was "unread rather than unused". **That is
+      circular**: our `0x4305` reply writes its `0x158` from the request's `0x155`, the parser lands
+      it in the struct, and the builder sends it back as `0x155`. The bit can only read back what we
+      put there — and it never has, because every capture is zero.
+
+      The tier-4 labels for this region are likewise unsupported. "Per-rule byte-sized timers for
+      Stealth DM / Interval / Solo Capture / Race" names modes whose strings **do not exist on this
+      disc at all**: the online-lobby set enumerates exactly eight rules (DM, TDM, Rescue, Capture,
+      Sneaking, Base, Bomb, Team Sneaking), and the ELF developer table agrees.
 
       Round-tripped whole. Splitting it needs live divergence testing, not disassembly.
 types:

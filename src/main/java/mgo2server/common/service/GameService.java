@@ -958,6 +958,17 @@ public class GameService {
 				.bind("silentMode", (commonB & 0b100) != 0)
 				.bind("enemyNametags", (commonB & 0b1000) != 0)
 				.bind("voiceChat", (commonB & 0b1000000) != 0)
+				// ALWAYS FALSE, and the source was never real. This reads bit 1 of a byte inside the
+				// 14-byte block the client memsets to zero and never writes (initialiser
+				// 0x89B5E8) — so it can only ever return what WE put there. All 214 archived
+				// captures carry that block entirely zero, byte 0x155 included.
+				//
+				// The "host options (0x155, bit 1)" label was tier 4, and the capture that seemed to
+				// support it is circular: our 0x4305 reply writes 0x158 from the request's 0x155,
+				// the client's parser lands it in the struct, and its builder sends it back as
+				// 0x155. Kept as a read rather than hardcoded false so the day a client genuinely
+				// sets it, the value flows — but nothing about it is established, and the
+				// inert-field tripwire watches this block for exactly that.
 				.bind("nonStat", (blob[0x155] & 0b10) != 0)
 				.bind("idleKick", (commonA & 0b1) != 0 ? blobU16(blob, 0x145) : 0)
 				.bind("teamKillKick", (commonB & 0b10000000) != 0 ? blobU16(blob, 0x147) : 0)
