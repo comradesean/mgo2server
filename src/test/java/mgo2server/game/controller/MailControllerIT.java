@@ -324,15 +324,46 @@ public class MailControllerIT extends BaseGameClientServerIT {
 		assertThat(rows).isZero();
 	}
 
+	/**
+	 * Opening a letter that is not there is refused, and the refusal is FOUR bytes.
+	 * <p>
+	 * This test previously asserted a full-length success, on the "still answers" principle — the
+	 * important thing being that the client is answered at all rather than left to stall. That
+	 * principle stands and is still asserted; what changed is that answering <em>success</em> was
+	 * the wrong way to honour it, and actively unsafe.
+	 * <p>
+	 * The parser reads the 708-byte body <b>only when the result is zero</b>, and its reader
+	 * bound-checks against the 1023-byte packet buffer rather than the payload — so a success reply
+	 * that is short copies stale buffer into the mail object and reports it as a letter. A nonzero
+	 * result skips the read entirely, which is why the failure shape is a bare result word.
+	 * <p>
+	 * {@code -800} renders as "Unable to locate designated mail." [ELF sweep, chain {@code 0x8E9DEC},
+	 * 4352/4352 verified.]
+	 */
 	@Test
-	public void openingAnIndexTheCharacterDoesNotOwnStillAnswers() {
+	public void openingAnIndexTheCharacterDoesNotOwnIsRefused() {
 		givenTwoCharacters();
 
 		var replies = exchange(openMail(0, 7));
 
-		assertThat(replies).hasSize(1);
+		assertThat(replies).as("answered at all — a silent drop stalls the client").hasSize(1);
 		assertThat(replies.get(0).getCommand()).isEqualTo(MessageGameController.READ_MESSAGE_RESULT);
-		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(READ_REPLY_SIZE);
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(replies.get(0).getPayload().readableBytes())
+			.as("a failure is the bare result word; the body is only read on success")
+			.isEqualTo(Integer.BYTES);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(-800);
+	}
+
+	/** Deleting a letter that is not there is refused too, rather than reported as deleted. */
+	@Test
+	public void deletingAnIndexTheCharacterDoesNotOwnIsRefused() {
+		givenTwoCharacters();
+
+		var replies = exchange(deleteMail(0, 7));
+
+		assertThat(replies).hasSize(1);
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(MessageGameController.DELETE_MESSAGE_RESULT);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(-800);
 	}
 }
