@@ -8,6 +8,7 @@ import mgo2server.common.service.AwardService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.StatsService;
 import mgo2server.game.GameControllerContext;
+import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
 import io.netty.buffer.ByteBuf;
@@ -97,8 +98,20 @@ public class PersonalStatsController implements IGameController {
 	/** The 128-byte comment field at wire offset 413, confirmed live via fingerprint v3. */
 	private static final int COMMENT_LENGTH = 128;
 
-	/** The status the error path compares; any nonzero value surfaces as an error. */
-	private static final int STATUS_NOT_FOUND = 1;
+	/**
+	 * {@code 0x4103} status for a character that does not exist.
+	 * <p>
+	 * <b>The client's own code, and bound to this reply by code path rather than by wording</b>
+	 * [ELF 2026-07-29]. The parser at {@code 0xD3E9AC} reads this word first and a nonzero value
+	 * skips the entire body ({@code 0xD3EA40}), completing request slot 22 with the value
+	 * sign-extended. The character-info screen then compares that slot against {@code -0x10A} at
+	 * {@code 0x91D88C} and raises dialog 4154 -> string 22475, <em>"Designated character has been
+	 * deleted and no longer exists."</em>
+	 * <p>
+	 * Sent <b>unmasked</b>: masking would make it {@code 0xC0FFEE…}, which matches nothing and falls
+	 * through to the generic sentence, discarding the one specific answer this failure has.
+	 */
+	private static final int STATUS_CHARACTER_GONE = -266;
 
 	private final CharacterService characterService;
 
@@ -128,7 +141,7 @@ public class PersonalStatsController implements IGameController {
 	private void getPersonalStats(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
 		if (ctx.connection().account() == null || payload.readableBytes() < Integer.BYTES) {
-			writeError(ctx);
+			writeError(ctx, false);
 			return;
 		}
 
@@ -136,7 +149,7 @@ public class PersonalStatsController implements IGameController {
 		var chara = characterService.get(charaId);
 		if (chara.isEmpty()) {
 			logger.debug("Personal stats requested for unknown character {}.", charaId);
-			writeError(ctx);
+			writeError(ctx, true);
 			return;
 		}
 
@@ -368,9 +381,26 @@ public class PersonalStatsController implements IGameController {
 		}
 	}
 
-	private void writeError(GameControllerContext ctx) {
+	/**
+	 * Refuses the stats burst.
+	 * <p>
+	 * Two different failures, and they are not interchangeable. A character that does not exist gets
+	 * {@link #STATUS_CHARACTER_GONE}, the client's own code for exactly that. A malformed request
+	 * gets the generic — <b>every</b> nonzero value other than {@code -266} collapses to dialog 4150,
+	 * <em>"Unable to acquire character information."</em>, so there is no code for it and the generic
+	 * is correct rather than a compromise.
+	 * <p>
+	 * Reaching for {@code -266} on a short packet would tell the player their character had been
+	 * deleted when the packet was merely truncated — a specific lie in place of a vague truth, which
+	 * is the failure mode this project keeps paying for.
+	 * <p>
+	 * This replaced a fabricated literal {@code 1}, which was in neither the client's table nor the
+	 * server's masked space; its only effect was printing {@code (1036:00000001)} beneath the same
+	 * generic sentence.
+	 */
+	private void writeError(GameControllerContext ctx, boolean characterGone) {
 		var info = ctx.buffer(Integer.BYTES);
-		info.writeInt(STATUS_NOT_FOUND);
+		info.writeInt(characterGone ? STATUS_CHARACTER_GONE : GameError.GENERAL.result());
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 	}
 
