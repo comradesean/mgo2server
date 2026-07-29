@@ -5,9 +5,17 @@
 -- 16-byte name slots are zeroed. The destination is carried by a single byte at wire 0x3C5, which
 -- reads 3 for the Game Master and 0 otherwise.
 --
--- The client writes it at 0x8EEAA8 (`li r0,3 ; stb r0,272(r11)`), reached only when bit 17 of the
+-- The client writes it at 0x8EEAA8 (`li r0,3 ; stb r0,272(r11)`), reached only when bit 18 of the
 -- compose screen's flags word at screen+372 is set -- the same bit that greys out the
 -- "View/Edit Address Book" row, confirmed live, because a GM letter has no recipient list to edit.
+--
+-- Bit EIGHTEEN, not 17: `rldicl. r9,r0,46,63` tests bit 64-46. Two independent traces read it as
+-- 17 before the rotate arithmetic was checked, and 17 is a real but unrelated flag (the
+-- message-body editor), which is why the wrong label kept half-fitting.
+--
+-- Bit 18 is set only by the GM menu item (0x8EF098, dispatch case 3) and by the already-addressed
+-- screen-entry arm (0x8E6ECC), and is cleared by every other To-menu item and by the send. It is
+-- NOT cleared by leaving the screen, so picking GM and backing out leaves it set.
 -- The value set is {0, 3}: there is no 1 or 2 arm, and friend/clan recipients travel the ordinary
 -- named path, so nothing else on the wire distinguishes them.
 --

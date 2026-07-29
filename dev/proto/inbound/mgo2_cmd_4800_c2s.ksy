@@ -113,10 +113,18 @@ seq:
       **The destination class: 0 = an ordinary letter to named recipients, 3 = the GAME MASTER.**
       Was `unknown_3c5`, correctly identified as a mode byte with "what 0 vs 3 select is [UNKNOWN]".
 
-      Only writer: `li r0,3; stb r0,272(r24)` at `0x8EEAA8`, taken on **bit 17 of the compose
+      Only writer: `li r0,3; stb r0,272(r24)` at `0x8EEAA8`, taken on **bit 18 of the compose
       screen's flags word at `372(r31)`** (tested `0x8EEDE0`). The same bit gates the send at
       `0x8EE9C8`-`0x8EE9D0`: set, the builder memsets the 128-byte recipient-name block and skips
       the recipient build entirely; clear, it takes the ordinary path requiring a nonzero count.
+
+      **Bit 18, not 17.** `rldicl. rX,r0,46,63` tests bit `64-46`. Two independent traces recorded
+      17 before the rotate arithmetic was checked; bit 17 is real but unrelated — it is the
+      message-body editor modal (`0x8EE940`), which is why the wrong label kept half-fitting.
+
+      Bit 18 is set by the **GM menu item** (`0x8EF098`, dispatch case 3) and by the
+      already-addressed screen-entry arm (`0x8E6ECC`); it is cleared by all four other To-menu
+      items and by the send itself (`0x8EEAB4`). It is **not** cleared by leaving the screen.
 
       **That bit is the GM selection, confirmed live** — selecting To -> GM greys out the
       "View/Edit Address Book" row, which dims on exactly that bit (`0x8E4B30`). A GM letter has no

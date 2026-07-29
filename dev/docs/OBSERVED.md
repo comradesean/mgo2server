@@ -40,6 +40,47 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### The greyed "To" row was Friend List, not the address book (resolved 2026-07-29)
+
+Reported: in Mail -> Create New Mail -> To, a row was greyed out until the player had friends;
+after visiting the Friend List it went bright and **never greyed again**, across client restarts
+and with the To: field cleared. Selecting the bright row did nothing.
+
+Two separate things, and neither is a bug.
+
+**The greyed row was Friend List.** [ELF] the row painter `0x8E4970` dims it when
+`byte 20190 == 0`, and that byte is not a latch — it is **recomputed as the friend count** every
+time the screen is built (`0x8EAB0C`-`0x8EAB48`, 32 iterations over the roster block from
+`0xD3A094(session+364)`, counting entries whose `+32` is nonzero; both it and 20189 are stored 0
+when the roster pointer is null). Zero friends dims it; the `0x4580` fetch returning two makes it
+bright; the roster is refetched at every login, so it never returns to zero. Clearing the To: field
+cannot affect it — that touches only `recipientCount` at `screen+0x180000+13736`.
+
+**"View/Edit Address Book" was never dim, and doing nothing is correct.** `text22` is JP
+宛先リスト確認／編集 — *view/edit the RECIPIENT list*; the English name is a mistranslation and
+there is no persistent address book. Its handler `0x8EDF78` requires `recipientCount > 0`
+(`0x8EDF88 ble`) and otherwise plays deny SE 91 (`0x8EEE84`) and returns. **Bright is not the same
+as usable.** Add a recipient and it opens.
+
+The full dim table, from `0x8E4970`:
+
+| row | dims when |
+| --- | --- |
+| Add Recipient | `recipientCount > 7` (`0x8E49AC`) |
+| Friend List | `byte 20190 == 0`, i.e. **no friends** (`0x8E4A3C`) |
+| Clan Roster | `byte 20189 == 0` or bit 2 set (`0x8E4AB4`/`0x8E4AC4`) |
+| GM | bit 2 set (`0x8E4AE8`) |
+| View/Edit Address Book | **bit 18 set**, i.e. the letter is addressed to the GM (`0x8E4B30`) |
+
+**Bit 18 is the GM flag**, confirmed live: selecting To -> GM greys the address-book row, because a
+GM letter has no recipient list to edit. Set by the GM item (`0x8EF098`); cleared by all four other
+To-menu items and by the send; **not** cleared by leaving the screen.
+
+**Two traces read that bit as 17 before the arithmetic was checked.** `rldicl. rX,r0,46,63` tests
+bit `64-46 = 18`. Bit 17 is real but unrelated — the message-body editor modal (`0x8EE940`) — which
+is exactly why the wrong label kept half-fitting and survived two investigations. Check the rotate
+before naming a bit.
+
 ### Host rating: one vote per GAME is operator policy (2026-07-29)
 
 Confirmed live once the gate went in: rejoining the same game offers no prompt, and a new game by

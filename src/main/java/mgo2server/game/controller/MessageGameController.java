@@ -299,10 +299,15 @@ public class MessageGameController implements IGameController {
 
 		// TO: GAME MASTER. A GM letter carries no recipient at all — the client zeroes the count
 		// and all eight name slots — and marks itself with a single byte immediately after the
-		// body. [ELF] written at 0x8EEAA8 (`li r0,3 ; stb r0,272(r11)`), reached only when bit 17
+		// body. [ELF] written at 0x8EEAA8 (`li r0,3 ; stb r0,272(r11)`), reached only when bit 18
 		// of the compose screen's flags is set: the same bit that greys out the recipient-list row,
 		// confirmed live 2026-07-29, because a GM letter has no recipients to edit. Values are
 		// {0, 3} — there is no 1 or 2 arm, and friend/clan picks travel the ordinary named path.
+		//
+		// Bit EIGHTEEN. `rldicl. r9,r0,46,63` tests bit 64-46; two traces read it as 17 before the
+		// arithmetic was checked. Bit 17 exists and is the message-body editor, which is why the
+		// wrong label kept half-fitting. Set only by the GM menu item (0x8EF098); cleared by every
+		// other To-menu item and by the send.
 		//
 		// Without this the letter fell through the recipient loop as "0 of 0 delivered" and was
 		// answered SUCCESS, so the player was told it sent and nothing was stored anywhere.
