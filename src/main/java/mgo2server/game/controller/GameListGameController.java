@@ -263,14 +263,38 @@ public class GameListGameController implements IGameController {
 		gameService.addPlayer(gameId, charaId);
 
 		var buffer = ctx.buffer(GameJoin.SIZE);
-		// THE HOST-RATING GATE. A joiner may rate the host once per game, and this byte is the only
-		// thing that can enforce it: the client clears its own "already voted" latches every time
-		// the picker is re-armed, so left to itself it will happily offer the prompt again on every
-		// rejoin. Observed live 2026-07-29 — one player joined, left, voted, rejoined and voted
-		// again; the second vote hit host_review_once_per_game and was discarded after the fact.
+		// THE HOST-RATING GATE. This byte is the only thing that can limit repeat voting: the
+		// client clears its own "already voted" latches every time the picker is re-armed, so left
+		// to itself it will offer the prompt again on every rejoin. Observed live 2026-07-29 — one
+		// player joined, left, voted, rejoined and voted again; the second vote hit
+		// host_review_once_per_game and was discarded after the fact. Gating here means the prompt
+		// never appears, rather than a vote being taken and then thrown away.
 		//
-		// Same key as that constraint on purpose. Disagreeing would mean offering a prompt whose
-		// vote we then throw away, which is worse than not offering it.
+		// ---- OPERATOR POLICY: one vote per GAME, not per host ----
+		//
+		// This is our choice, not protocol. Nothing in the client constrains it; the binary has no
+		// notion of who you have rated before. Three options were considered (2026-07-29):
+		//
+		//   PER GAME (chosen) — a player may rate a host once in each game they join. Rating is
+		//     about a hosting session, so someone you play with regularly stays rateable, and a
+		//     host's average keeps moving as their hosting changes. Confirmed live: a rejoin to the
+		//     same game offers nothing, and a new game offers the prompt again.
+		//
+		//   PER HOST, EVER — rejected. It freezes a host's average after a single vote, so the
+		//     ranking board would be decided by whoever rated first and would stop meaning anything
+		//     within days. It also cannot be undone once the rows exist.
+		//
+		//   PER HOST PER WINDOW (e.g. one vote per host per 24h) — not implemented, and the right
+		//     answer if farming becomes real. Layer it on top of the per-game rule with the window
+		//     in server.env rather than replacing this.
+		//
+		// KNOWN EXPOSURE of the per-game rule: a host can create a fresh game repeatedly to harvest
+		// votes from the same player. That is deliberate for now — it costs the host a teardown and
+		// a re-create each time, and no ranking has ever been contested on this server. If it does
+		// become a problem, the cooldown above is the fix, not switching to per-host.
+		//
+		// This MUST keep the same key as host_review_once_per_game. If the two ever disagree the
+		// client is offered a prompt whose vote is then discarded, and rateHost's warning fires.
 		var alreadyRated = gameService.hasRatedHostOf(gameId, charaId);
 		GameJoin.write(buffer, hostEndpoint.get(), game.get().getRule(), game.get().getMap(),
 			charaId != game.get().getHostCharaId() && !alreadyRated);
