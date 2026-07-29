@@ -40,6 +40,26 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Host rating: one vote per GAME is operator policy (2026-07-29)
+
+Confirmed live once the gate went in: rejoining the same game offers no prompt, and a new game by
+the same host offers one again. Both behaviours are intended.
+
+Nothing in the client constrains this — the binary has no notion of who you have rated before, and
+its own latches are cleared whenever the picker is re-armed. So the limit is entirely ours, carried
+in the `0x4321` gate byte, and it has to agree with `host_review_once_per_game` or the client is
+offered a prompt whose vote we then discard.
+
+| option | verdict |
+| --- | --- |
+| **per game** | **chosen.** A rating is about a hosting session, so a regular opponent stays rateable and a host's average keeps moving |
+| per host, ever | rejected — freezes each host's average after one vote, so the ranking board is decided by whoever votes first and stops meaning anything within days |
+| per host per window (e.g. 24h) | not implemented; the right fix *if* farming becomes real, layered on top of per-game rather than replacing it |
+
+Known exposure: a host can create a fresh game repeatedly to harvest votes from the same player.
+Accepted for now — it costs a teardown and re-create each time, and no ranking here has ever been
+contested. The full reasoning lives at the gate in `GameListGameController`.
+
 ### Host rating: we switched it off on every join, in one hardcoded byte (fixed 2026-07-29)
 
 Only one host rating has ever been recorded on this server, and no `0x43c4` appears in any log.

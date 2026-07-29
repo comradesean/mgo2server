@@ -669,6 +669,10 @@ public class GameService {
 	 * <p>Deliberately the same key as {@code host_review_once_per_game}. If this disagreed with the
 	 * constraint the client would be offered a prompt whose vote we then discard — observed live on
 	 * 2026-07-29, twice, the second silently.
+	 *
+	 * <p><b>Per game is operator policy, not protocol</b>, and the reasoning — including the
+	 * per-host and cooldown alternatives, and what the per-game rule leaves open — is recorded at
+	 * the single call site in {@code GameListGameController}, where the gate is applied.
 	 */
 	public boolean hasRatedHostOf(long gameId, long voterCharaId) {
 		return jdbi.withHandle(handle -> handle
