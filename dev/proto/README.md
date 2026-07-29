@@ -77,8 +77,9 @@ Counts after the merge: **112 inbound, 204 outbound** — which is exactly `dev/
 and `s2c_ids.txt`, with `0x0005` counted in both. Every id has exactly one file.
 
 **Three applied migrations deliberately keep the old paths.** `V20__skills.sql`,
-`V21__mail.sql` and `V42__stats_serving.sql` reference `dev/proto/mgo2_cmd_4125.ksy` and
-`mgo2_cmd_4390.ksy` at their pre-merge locations, in comments. **Do not fix them.** Flyway
+`V21__mail.sql` and `V42__stats_serving.sql` reference `mgo2_cmd_4125.ksy` and
+`mgo2_cmd_4390.ksy` at their pre-merge root locations, in comments (written without the directory
+prefix here so a link-checker does not flag this paragraph as a broken reference). **Do not fix them.** Flyway
 checksums the whole file, comments included, and these are recorded in `schema_version` as applied
 — rewriting a comment changes the checksum, `migrate()` fails validation on next startup, and every
 game container crash-loops. A stale comment is the cheaper of the two errors. The same trap caught

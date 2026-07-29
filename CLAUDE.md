@@ -70,6 +70,12 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
+- `dev/proto/` — **the machine-checkable byte layouts**, one `.ksy` per command id: 112 in
+  `inbound/`, 204 in `outbound/`, plus `0x0005` at the root because it is identical both ways. Every
+  id has exactly one file, so a missing layout is always an explicit blank and never an oversight.
+  Confidence is per field, in the `doc:` tag — the directory says direction, nothing more. Read
+  `dev/proto/README.md` before adding one, and **look for the existing file before writing a new
+  one**: schemas have twice been written fresh alongside a draft that already existed.
 - `dev/docs/LOBBIES.md` — the lobby model: types, subtypes and the categories this build has, the
   two lists the client keeps, what the port check dials, and the deployment rules that follow.
 - `dev/docs/STUN.md` — the UDP port check.
@@ -141,7 +147,7 @@ docker run --rm -v "$PWD":/w -w /w -v "$HOME/.m2":/root/.m2 \
   maven:3.9-eclipse-temurin-25 mvn -B verify
 ```
 
-Expect two counts in the summary — currently **211 unit and 198 integration** (2026-07-28). One
+Expect two counts in the summary — currently **213 unit and 198 integration** (2026-07-29). One
 number means the integration tests did not run.
 
 Running it alongside a live stack is safe: the suite spins up its own `PostgreSQLContainer` on a

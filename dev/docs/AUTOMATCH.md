@@ -1023,6 +1023,9 @@ This also names three lobby subtypes `LOBBIES.md` left unnamed: **3 = Tournament
 - **Where event 55 (`0x43f5`) is handled.** Not on channel 60, not in this screen.
 - **Byte `+0x04` of the status block**, and the four tail bytes of each nibble array. Written, never
   read.
-- **The wire meaning of `0x43f1`'s fields between the host id and the settings block.**
+- ~~**The wire meaning of `0x43f1`'s fields between the host id and the settings block.**~~
+  **Mostly resolved** — see §3: `0x04` is the lobby id, `0x08` the lobby subtype, `0x0A` and `0x0E`
+  are zeroed by all four sibling writers, and `0x12` is the rotation index. **What remains is one
+  byte:** `0x09`, the subtype's sibling at `lobbyObj+0x261`.
 - **The 150 units/s calibration**, which is anchored on a tier-2 observation. If the ~40 s figure is
   loose, the 20-minute search window moves with it.
