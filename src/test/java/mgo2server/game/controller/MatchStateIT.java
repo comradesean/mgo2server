@@ -96,6 +96,22 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	}
 
 	/** A second character on another account, inserted straight into the roster. */
+	/** A character on its own account that never joined the game — the attribution negative. */
+	private long givenStrangerNotInTheGame(String name) {
+		var jdbi = TestDatabase.get().jdbi();
+		var account = jdbi.withHandle(handle ->
+			handle.createUpdate("""
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :name, 3)
+					""")
+				.bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		return jdbi.withHandle(handle ->
+			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+				.bind("account", account).bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+	}
+
 	private long givenJoinedPlayer(long gameId, String name) {
 		var jdbi = TestDatabase.get().jdbi();
 		var otherAccount = jdbi.withHandle(handle ->
@@ -1232,6 +1248,122 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		return TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select count(*) from inert_field_watch where field=:f")
 				.bind("f", field).mapTo(Integer.class).one());
+	}
+
+
+	/** Builds a 0x43a4 payload: {u32 chara, s32 count, count x {u8 skill, u16 experience}}. */
+	private static byte[] skillReport(long charaId, int... skillThenExperience) {
+		var records = skillThenExperience.length / 2;
+		var out = new byte[8 + records * 3];
+		writeInt(out, 0, (int) charaId);
+		writeInt(out, 4, records);
+		for (var i = 0; i < records; i++) {
+			var at = 8 + i * 3;
+			out[at] = (byte) skillThenExperience[i * 2];
+			out[at + 1] = (byte) (skillThenExperience[i * 2 + 1] >> 8);
+			out[at + 2] = (byte) skillThenExperience[i * 2 + 1];
+		}
+		return out;
+	}
+
+	private static int skillExperience(long charaId, int skillId) {
+		return TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery(
+					"select experience from chara_skill where chara_id=:c and skill_id=:s")
+				.bind("c", charaId).bind("s", skillId).mapTo(Integer.class).one());
+	}
+
+	/**
+	 * The host's skill-experience report is applied, which is the ONLY way skill progression can
+	 * persist: skills level by use, the server cannot observe use, and the client reports it here.
+	 * <p>
+	 * The value is an absolute total, not a delta — [ELF 0x27D140] the builder computes a delta only
+	 * to decide whether the skill moved, then overwrites it with the live value.
+	 */
+	@Test
+	public void aSkillExperienceReportIsStoredAsAnAbsoluteTotal() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		assertThat(skillExperience(joiner, 2))
+			.as("starts at the granted level-1 value")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 16384, 5, 24576))));
+
+		assertThat(replies.get(0).getCommand())
+			.as("the report opens wait slot 53; unanswered it is a latent FFFFFF60")
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		assertThat(skillExperience(joiner, 2)).isEqualTo(16384);
+		assertThat(skillExperience(joiner, 5)).isEqualTo(24576);
+		assertThat(skillExperience(joiner, 3))
+			.as("a skill absent from the report is left alone")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+	}
+
+	/**
+	 * Attribution is the character id in the payload, not the connection — the host sweeps all 24
+	 * slots and reports for every player whose skills moved. A character that is not in the game
+	 * is still refused, exactly as 0x4390 refuses one.
+	 */
+	@Test
+	public void aSkillReportForSomeoneElsesCharacterIsRefused() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var stranger = givenStrangerNotInTheGame("Otacon");
+		grantStartingSkills(stranger);
+
+		exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(stranger, 2, 24576))));
+
+		assertThat(skillExperience(stranger, 2))
+			.as("a host may not move experience for a player it does not have")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+	}
+
+	/** A record for a skill the character does not own is not a grant; 0x4125 decides ownership. */
+	@Test
+	public void aReportForAnUnownedSkillGrantsNothing() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 24576))));
+
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		var rows = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_skill where chara_id=:c")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(rows).isZero();
+	}
+
+	/**
+	 * The count on the wire is the authority, not end-of-stream — the client's loop bound is re-read
+	 * from it each pass. A declared count the payload cannot cover is dropped rather than
+	 * half-applied, and still answered so the client does not stall.
+	 */
+	@Test
+	public void aTruncatedSkillReportIsDroppedButStillAnswered() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		var truncated = new byte[8 + 3];
+		writeInt(truncated, 0, (int) joiner);
+		writeInt(truncated, 4, 9);
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(truncated)));
+
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		assertThat(skillExperience(joiner, 2)).isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
 	}
 
 }

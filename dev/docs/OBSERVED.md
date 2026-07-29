@@ -40,6 +40,48 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Skill progression: `0x43a4` is how the client reports it, and we were dropping it (2026-07-29)
+
+Skills level by **use**. The server cannot observe use, so the client has to report — and it does,
+in `0x43a4`, which we did not handle at all. Every character's skill levels were therefore frozen
+at whatever they were granted at creation, and the apparent split (Sean level 3 on everything,
+rawr and poop level 1) was purely an artefact of creation date: characters predating V20 got the
+24,576 backfill, later ones get `MINIMUM_VISIBLE_EXPERIENCE` = 8,192.
+
+**The chain, end to end [ELF].** `0x4125`/`0x4129` → `profile+11444` → the player-announce builder
+at `0x8841A8` copies it to `announce+50` → the receivers at `0x2764E0` and `0x278230` `SET` it into
+record-store key 392 (live) **and** key 648 (baseline), so the delta starts at zero on join → in
+match, `0x6FCA40` (`addi r6,r6,1`) increments the live value once per use, snapping to
+`(level << 13) + 8192` on level-up at `0x6FCAD4` → at teardown `0x27D028` emits a record for every
+skill whose live value differs from its baseline, then rebaselines.
+
+**The reported value is ABSOLUTE, not a delta.** `0x27D12C` writes the delta and `0x27D140`
+immediately overwrites it with `live[id]`. Storing deltas would compound every round.
+
+**The host reports for everyone.** It sweeps all 24 player slots (`0x7083C8`/`0x708800` →
+`SubmitReport(slot, 1)` at `0x27DF38`), so attribution is the character id at wire `+0x00`, not the
+connection — unlike `0x4390`, whose attribution is connection-implicit.
+
+Wire, total `8 + 3*count`:
+
+| offset | size | field |
+| --- | --- | --- |
+| `+0x00` | 4 | character id (blob key 332) |
+| `+0x04` | 4 | record count, capped at 127 by the sender (`0xD419BC`) |
+| `+0x08` | 3 × count | `{u8 skill_id, u16 experience}` — no flag byte, unlike `0x4125` |
+
+It opens **wait slot 53** (`0xD41A78`), so an unanswered report is a latent `FFFFFF60`.
+
+**Why nothing persisted, precisely.** In-match accrual writes record-store key 392;
+`profile+11444` — what `0x4125`/`0x4129` fill and what the announce builder serialises for the
+*next* match — is written by nothing else in the image. So `profile+11444` is entirely
+server-authoritative: experience accrued in a round lived only in the blob and was discarded at
+teardown. It also means our `0x4129` must not answer `0x4128` with pre-round values after a report
+has arrived, or the player watches their skills regress.
+
+Not yet observed on the wire: no `0x43a4` appears in any capture or log to date, so the layout is
+tier-1 (read from the binary) and the round trip is still untested live.
+
 ### Creating a game with no rule or stage selected hangs the client (fixed 2026-07-29)
 
 Reported live: pressing Create Game without picking any rule or stage is not refused, and the

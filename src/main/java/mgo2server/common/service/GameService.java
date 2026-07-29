@@ -570,6 +570,41 @@ public class GameService {
 	}
 
 	/**
+	 * Applies a {@code 0x43a4} per-skill experience report, and returns how many rows moved.
+	 *
+	 * <p><b>The values are absolute totals</b>, not deltas — [ELF {@code 0x27D140}] the builder
+	 * computes a delta only to decide whether a skill changed, then overwrites it with the live
+	 * value before writing the record. Accumulating instead would compound every round.
+	 *
+	 * <p>Only skills the character already owns are touched. {@code 0x4125} is what decides
+	 * ownership; a record for a missing skill is a claim this command has no authority to grant, so
+	 * the update simply matches nothing and the count reports it.
+	 *
+	 * <p>Clamped to the column's {@code u16} range, which is the wire's range too — the report
+	 * carries experience as a {@code u16}, so a value outside it cannot have been sent and would
+	 * only ever be a mis-parse.
+	 */
+	public int applySkillExperience(long charaId, java.util.Map<Integer, Integer> experienceBySkill) {
+		if (experienceBySkill.isEmpty()) {
+			return 0;
+		}
+		return jdbi.withHandle(handle -> {
+			var moved = 0;
+			for (var entry : experienceBySkill.entrySet()) {
+				moved += handle.createUpdate("""
+						update chara_skill set experience = :experience
+						where chara_id = :chara and skill_id = :skill
+						""")
+					.bind("chara", charaId)
+					.bind("skill", entry.getKey())
+					.bind("experience", Math.max(0, Math.min(65535, entry.getValue())))
+					.execute();
+			}
+			return moved;
+		});
+	}
+
+	/**
 	 * The host settings a character uses for a lobby subtype, creating defaults on first use.
 	 * The original does the same, materialising a default settings blob when none exists.
 	 */
