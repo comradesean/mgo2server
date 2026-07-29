@@ -142,17 +142,31 @@ public class CharacterGameController implements IGameController {
 	private static final int TRAILER_ENTITLEMENT_INDEX = 3;
 
 	/**
-	 * Index 1 carries {@code 0x07} and <b>has no reader at all</b>, as do indices 0, 2 and 4..31.
-	 * Kept verbatim because "what we have always sent" is the only evidenced thing about the inert
-	 * bytes — not because it means anything.
+	 * Index 1 carries {@code 0x07}, and <b>none of its three set bits is understood</b>.
+	 *
+	 * <p>Per account since V63, so they can be isolated live. A trace reported that this index has
+	 * no reader — but the same trace said index 3 bit 0 unlocked loadout items, which a live test
+	 * disproved (it gates the codec messages and leaves gear alone). A negative from a source that
+	 * got the positive wrong does not settle anything, and this is cheap to test properly.
 	 */
-	private static final int TRAILER_INERT_INDEX = 1;
+	private static final int TRAILER_INDEX1 = 1;
 
-	private static final byte TRAILER_INERT_VALUE = 0x07;
-
+	/**
+	 * Builds the trailer for one account.
+	 *
+	 * <p><b>Provenance, and why every set bit is per-account.</b> The values {@code 0x07} at index 1
+	 * and {@code 0x03} at index 3 are <b>tier 4</b>: `PROTOCOL.md` lists them under "fixed constants
+	 * we emit without knowing why", noting only that "both Nomad upstreams and mgo2-server send
+	 * these exact bytes". They were never derived from the binary or from a Konami capture.
+	 *
+	 * <p>That mattered more than it looked. Of the five bits we set, exactly one is now understood —
+	 * index 3 bit 0 — and it grants the <b>MGO Codec Pack, a day-one PAID item</b>. We were handing
+	 * out purchased content because a reference server did. The remaining four bits are unexamined
+	 * and could be doing the same thing.
+	 */
 	private static byte[] trailerFor(Account account) {
 		var trailer = new byte[TRAILER_SIZE];
-		trailer[TRAILER_INERT_INDEX] = TRAILER_INERT_VALUE;
+		trailer[TRAILER_INDEX1] = (byte) (account.getEntitlementsIndex1() & 0xff);
 		trailer[TRAILER_ENTITLEMENT_INDEX] = (byte) (account.getEntitlements() & 0xff);
 		return trailer;
 	}

@@ -102,8 +102,26 @@ public class Account {
 	 */
 	private int entitlements = 3;
 
+	/**
+	 * The {@code 0x3049} trailer's byte at index 1. We have always sent {@code 0x07} and <b>no bit
+	 * of it is understood</b>.
+	 * <p>
+	 * Per account (V63) for the same reason as {@link #entitlements}: so the three set bits can be
+	 * isolated by an {@code UPDATE} and a reconnect instead of guessed at. Named by wire position
+	 * rather than by a guess at meaning, following the {@code unread_NNN} precedent.
+	 */
+	private int entitlementsIndex1 = 7;
+
 	public int getEntitlements() {
 		return entitlements;
+	}
+
+	public int getEntitlementsIndex1() {
+		return entitlementsIndex1;
+	}
+
+	public void setEntitlementsIndex1(int entitlementsIndex1) {
+		this.entitlementsIndex1 = entitlementsIndex1;
 	}
 
 	public void setEntitlements(int entitlements) {
