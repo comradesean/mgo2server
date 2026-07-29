@@ -119,6 +119,22 @@ public class MessageGameController implements IGameController {
 	 */
 	private static final int RECIPIENT_BLOCKED_MAIL = -830;
 
+	/**
+	 * A recipient no character owns.
+	 * <p>
+	 * <b>[CANDIDATE, not established.]</b> The client's table carries
+	 * <em>"Improper address entered.\nUnable to send mail."</em> (dialog 6158, string 23791), which
+	 * is exactly this condition, but the code that reaches that dialog is not bound to this command
+	 * by any observation we have — only by the wording matching. {@code -802} is the neighbour our
+	 * own notes name for an invalid recipient.
+	 * <p>
+	 * It is used anyway because the alternative was worse: these recipients were silently dropped,
+	 * and a letter addressed only to unknown names reported success. A code that may render a
+	 * generic sentence still tells the truth; reporting success does not. If a capture ever shows
+	 * the right code, this is the one line to change.
+	 */
+	private static final int RECIPIENT_UNKNOWN = -802;
+
 	/** Wire offset of the eight recipient-name slots: one leading count byte. */
 	private static final int SEND_RECIPIENTS_OFFSET = 1;
 
@@ -273,6 +289,7 @@ public class MessageGameController implements IGameController {
 
 		var delivered = 0;
 		var blocked = new java.util.ArrayList<String>();
+		var unknown = new java.util.ArrayList<String>();
 		for (var slot = 0; slot < count; slot++) {
 			var recipient = readString(payload, SEND_RECIPIENTS_OFFSET + slot * NAME_LENGTH,
 				NAME_LENGTH);
@@ -291,13 +308,14 @@ public class MessageGameController implements IGameController {
 				delivered++;
 			} else {
 				logger.info("Send mail: no character named \"{}\"; letter dropped.", recipient);
+				unknown.add(recipient);
 			}
 		}
 		logger.info("Send mail from \"{}\": {} of {} recipient(s) delivered{}, subject \"{}\".",
 			senderName, delivered, count,
 			blocked.isEmpty() ? "" : " (" + blocked.size() + " blocked)", subject);
 
-		if (blocked.isEmpty()) {
+		if (blocked.isEmpty() && unknown.isEmpty()) {
 			var buffer = ctx.buffer(Integer.BYTES + 1);
 			buffer.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);
 			ctx.write(new GamePacket(SEND_MESSAGE_RESULT, buffer));
@@ -308,13 +326,26 @@ public class MessageGameController implements IGameController {
 		// entry names one recipient and why it failed. -830 resolves to "The receiver has blocked
 		// incoming mail" through the client's error table; its neighbours are -810 "You are on the
 		// receiver's Block List", -801/-820 and -802 for unknown or invalid recipients.
+		// UNKNOWN RECIPIENTS GO IN THE LIST TOO. They used to be logged and dropped, and if EVERY
+		// name was unknown the player was told the letter sent. Nothing had been sent.
+		//
+		// The per-recipient list already existed for blocked recipients; unknown ones simply were
+		// not being added to it. They carry RECIPIENT_UNKNOWN rather than the blocked code — saying
+		// "that player has blocked you" about a name that does not exist would be a specific lie,
+		// which is worse than a vague truth.
+		var failed = blocked.size() + unknown.size();
 		var buffer = ctx.buffer(Integer.BYTES + 1 + Integer.BYTES
-			+ blocked.size() * (NAME_LENGTH + Integer.BYTES));
-		buffer.writeInt(RECIPIENT_BLOCKED_MAIL).writeByte(SEND_RESULT_FLAGS);
-		buffer.writeInt(blocked.size());
+			+ failed * (NAME_LENGTH + Integer.BYTES));
+		buffer.writeInt(blocked.isEmpty() ? RECIPIENT_UNKNOWN : RECIPIENT_BLOCKED_MAIL)
+			.writeByte(SEND_RESULT_FLAGS);
+		buffer.writeInt(failed);
 		for (var name : blocked) {
 			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
 			buffer.writeInt(RECIPIENT_BLOCKED_MAIL);
+		}
+		for (var name : unknown) {
+			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
+			buffer.writeInt(RECIPIENT_UNKNOWN);
 		}
 		ctx.write(new GamePacket(SEND_MESSAGE_RESULT, buffer));
 	}

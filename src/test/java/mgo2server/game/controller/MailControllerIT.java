@@ -208,16 +208,38 @@ public class MailControllerIT extends BaseGameClientServerIT {
 		assertThat(row).isEqualTo("subject|body|Snake|Otacon");
 	}
 
+	/**
+	 * A letter to a name nobody owns is refused, and the recipient is named in the failure list.
+	 * <p>
+	 * This test previously asserted the opposite — its name was
+	 * {@code unknownRecipientIsDroppedButStillReportsSuccess} — so the bug was pinned as intended
+	 * behaviour. Nothing was stored and the player was told the letter sent.
+	 * <p>
+	 * The per-recipient failure list already existed for blocked recipients; unknown ones simply
+	 * were not added to it. They carry {@code -802} rather than the blocked code, because saying
+	 * "that player has blocked you" about a name that does not exist is a specific lie, which is
+	 * worse than a vague truth.
+	 */
 	@Test
-	public void unknownRecipientIsDroppedButStillReportsSuccess() {
+	public void unknownRecipientIsRefusedAndNamed() {
 		givenTwoCharacters();
 
 		var replies = exchange(sendMail("NoSuchPerson", "s", "b"));
+		var payload = replies.get(0).getPayload();
 
-		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(payload.getInt(0))
+			.as("a nonzero result is what makes the client read the failure list")
+			.isNotEqualTo(GameError.NONE.result());
+		assertThat(payload.getInt(5)).as("one failed recipient").isEqualTo(1);
+
+		var name = new byte[16];
+		payload.getBytes(9, name);
+		assertThat(new String(name, StandardCharsets.ISO_8859_1).replace("\0", ""))
+			.isEqualTo("NoSuchPerson");
+
 		var count = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select count(*) from mail").mapTo(Long.class).one());
-		assertThat(count).isZero();
+		assertThat(count).as("still nothing stored — that part was always right").isZero();
 	}
 
 	@Test
