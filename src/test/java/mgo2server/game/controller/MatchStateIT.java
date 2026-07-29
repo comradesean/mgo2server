@@ -1044,4 +1044,81 @@ public class MatchStateIT extends BaseGameClientServerIT {
 			.isEqualTo((byte) 3);
 	}
 
+	/**
+	 * The typed columns reproduce the host-settings block byte for byte.
+	 * <p>
+	 * <b>This is the test that decides whether the blob can be dropped.</b> Storing bytes we hand
+	 * back to a client without knowing what they are was a bridge; the columns are complete only if
+	 * they can produce the same bytes the client sent. Until this passes the blob stays as the
+	 * source of truth, because a reconstruction one byte wrong would corrupt every Create Game
+	 * pre-fill and the symptom would be a screen full of plausible values.
+	 * <p>
+	 * The fixture is deliberately not all-zeros: every field carries a distinct value, so a
+	 * mis-mapped offset swaps two things visibly rather than cancelling out.
+	 */
+	@Test
+	public void typedColumnsRebuildTheHostSettingsBlockExactly() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		// The shared fixture is 342 bytes — enough for applyHostSettings, which needs 0x156 — but a
+		// full block runs to 0x159 because the unread tail ends there. Extend it so the round trip
+		// covers every byte the client actually sends.
+		var sent = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		System.arraycopy("Rat Patrol".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x00, 10);
+		System.arraycopy("hello".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x10, 5);
+		sent[0x90] = 1;
+		System.arraycopy("hunter2".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x91, 7);
+		sent[0xA1] = 1;                       // dedicated
+		sent[0xA2] = 2;                       // lobby subtype as sent
+		sent[0xA3] = 4; sent[0xA4] = 12; sent[0xA5] = 0;
+		sent[0xA6] = 1; sent[0xA7] = 3;  sent[0xA8] = 2;
+		sent[0xD3] = 0x11; sent[0xD4] = 0x22;
+		sent[0xD5] = (byte) 0x81; sent[0xE4] = 0x40;
+		sent[0xEA] = 0x02;                    // the no-reader u32's first byte
+		sent[0xEE] = 0x33;
+		sent[0xF0] = 0x44;
+		sent[0xF4] = 0x55;
+		sent[0xF6] = 3;                       // stance
+		sent[0xF7] = 9;                       // level-limit tolerance
+		sent[0xFC + 3] = 8;
+		sent[0xFC + 16 * 4 + 3] = 4;
+		sent[0x140] = 2; sent[0x141] = 3;
+		sent[0x144] = 0x20;
+		sent[0x149] = 1;                      // capture extra time on
+		sent[0x14A] = 5;                      // SNAKE kills
+		sent[0x155] = 0b10;                   // host options: non-stat, inside the unread tail
+		sent[0x158] = 0x77;                   // last byte of the tail, and of the block
+
+		services.getGameService().applyHostSettings(gameId, sent);
+
+		var rebuilt = services.getGameService().rebuildHostSettings(gameId);
+
+		assertThat(rebuilt).as("a game with stored settings rebuilds").isNotNull();
+		assertThat(rebuilt).hasSize(mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+
+		// Byte-for-byte, and reported by offset so a failure names the field rather than dumping
+		// 345 bytes of hex.
+		for (var at = 0; at < rebuilt.length; at++) {
+			assertThat(rebuilt[at])
+				.as("byte 0x%s", Integer.toHexString(at))
+				.isEqualTo(sent[at]);
+		}
+	}
+
+	/** A game with no stored settings rebuilds to null rather than to a block of zeros. */
+	@Test
+	public void rebuildingSettingsThatWereNeverSentGivesNull() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		assertThat(services.getGameService().rebuildHostSettings(gameId))
+			.as("a game exists between createGame and applyHostSettings; that is not zeros")
+			.isNull();
+	}
+
 }
