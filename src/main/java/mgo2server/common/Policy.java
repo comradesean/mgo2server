@@ -25,8 +25,7 @@ public record Policy(
 	Duration clanDisbandCooldown,
 	Duration clanEmblemCooldown,
 	Duration clanJoinCooldown,
-	boolean zeroUnreadFields,
-	boolean probePlayTimeFields
+	boolean zeroUnreadFields
 ) {
 	/** A week. What all three cooldowns default to. */
 	public static final Duration DEFAULT_COOLDOWN = Duration.ofHours(168);
@@ -49,28 +48,27 @@ public record Policy(
 			hours(env, "MGO2SERVER_CLAN_DISBAND_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_JOIN_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
-			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS"),
-			flag(env, "MGO2SERVER_EXPERIMENT_PROBE_4103_PLAYTIME")
+			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS")
 		);
 	}
 
 	/**
-	 * <b>An experiment switch, not a feature.</b> Zeroes the four inherited constants that an
-	 * exhaustive ELF sweep found have <b>no reader in this client build</b>:
-	 * <ul>
-	 * <li>automatch settings block {@code +72} (captured {@code 0x02000000}) and {@code +179}
-	 * (captured {@code 0x20});</li>
-	 * <li>{@code 0x4101}'s four u16 — their only readers are four getters nothing calls;</li>
-	 * <li>{@code 0x4120}'s trailer bytes 8..31.</li>
-	 * </ul>
+	 * Zeroes the inherited constants an exhaustive ELF sweep found have <b>no reader</b> in this
+	 * client build: automatch settings block {@code +72} (captured {@code 0x02000000}) and
+	 * {@code +179} (captured {@code 0x20}), and {@code 0x4101}'s four u16, whose only readers are
+	 * four getters nothing ever calls.
 	 *
-	 * <p><b>Deliberately excluded</b>, because they are NOT unread: {@code 0x4120} trailer bytes 0-7,
-	 * where two nibbles reach a consumer, and the {@code 0x3049} trailer, whose index-3 bit 0 unlocks
-	 * 32 of the 91 loadout items.
+	 * <p><b>Kept for a specific future purpose:</b> these are candidate bits for a later game
+	 * version. {@code +179} in particular is the low byte of the settings flags word whose bits 8-23
+	 * are the ~16 Common Settings toggles — bits 0-7 are an unused byte with our bit 5 set, which is
+	 * what a compiled-out feature tends to leave behind. If a later client is compared against this
+	 * one, that is the first place to look, and this switch is how the theory gets tested.
 	 *
-	 * <p>Off by default. The point is to test the sweeps against a real client rather than to change
-	 * what we ship — and the sweeps have a stated limit: a reader that stashed the struct pointer in
-	 * memory and reloaded it into an untracked register would have been missed.
+	 * <p><b>Not included</b>, because they are read: {@code 0x4120}'s trailer bytes 0-7 (the filter
+	 * and sort preferences, now sent as deliberate zeros) and the {@code 0x3049} trailer, whose
+	 * index-3 bit 0 unlocks 32 of the 91 loadout items.
+	 *
+	 * <p>Off unless explicitly set. Absent, blank and non-boolean all mean off.
 	 */
 	private static boolean flag(UnaryOperator<String> env, String name) {
 		var value = env.apply(name);
