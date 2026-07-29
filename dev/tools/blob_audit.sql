@@ -1,24 +1,22 @@
--- Ad-hoc capture harness: archives a blob column on every write, so consecutive writers do not
--- overwrite the evidence while a payload is being decoded. Not part of the schema.
+-- Capture harness for raw payloads. Analysis evidence, never served to a client.
 --
--- RETIRED FOR chara_host_settings AS OF V55. That column is gone -- the 0x4310 host-settings block
--- is fully decoded into typed columns, which is what this harness existed to make possible, and
--- V55 drops the trigger along with the column. The captured rows in blob_audit are KEPT: they are
--- the evidence the decode was built from, and discarding them because the conclusion is written
--- down would make that conclusion unverifiable.
+-- THE HOST-SETTINGS CAPTURE IS NOW IN THE SERVER, not in this file. It used to be a trigger on
+-- chara_host_settings.blob; V55 dropped that column when the block was decoded into typed columns,
+-- which took the trigger with it. GameService.archiveHostSettings writes every raw 0x4310 push to
+-- blob_audit instead, and V57 owns the table.
 --
--- To use it on the next blob, change the table and column in the trigger below. The function reads
--- NEW.blob by name, so a differently-named column needs it adjusted too.
+-- Capturing in the server is better placed than a trigger was: a trigger only ever saw what we
+-- CHOSE to store, while the server sees exactly what the client sent, including bytes we do not
+-- model. That difference is the whole point of an evidence trail.
 --
--- Drop with: DROP TRIGGER <name> ON <table>;
---            DROP FUNCTION audit_host_settings_blob; DROP TABLE blob_audit;
-CREATE TABLE IF NOT EXISTS blob_audit (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    chara_id bigint NOT NULL,
-    type smallint NOT NULL,
-    blob bytea,
-    captured_at timestamptz NOT NULL DEFAULT now()
-);
+-- It pairs with inert_field_watch:
+--
+--   inert_field_watch  -- the SUMMARY. Distinct values per watched field; a second row is an alert.
+--   blob_audit         -- the EVIDENCE. Whole payloads with timestamps.
+--
+-- This file remains for capturing a DIFFERENT blob column, if one ever needs the same treatment.
+-- Edit the table and column below; the function reads NEW.blob by name, so a differently-named
+-- column needs it adjusted too.
 
 CREATE OR REPLACE FUNCTION audit_host_settings_blob() RETURNS trigger AS $$
 BEGIN
@@ -29,11 +27,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- No trigger is installed by default any more: the column this pointed at no longer exists.
--- Uncomment and edit for the next capture.
+-- No trigger is installed: the host-settings capture lives in the server now. Uncomment and edit
+-- for the next blob that needs archiving.
 --
 -- CREATE TRIGGER <name>_blob_audit
 --     AFTER INSERT OR UPDATE OF blob ON <table>
 --     FOR EACH ROW EXECUTE FUNCTION audit_host_settings_blob();
 
-SELECT 'blob_audit table and function ready; no trigger installed' AS status;
+SELECT 'blob_audit function ready; host-settings capture runs in the server' AS status;

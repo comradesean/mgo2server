@@ -814,6 +814,25 @@ is the wrong place to look for protocol layout anyway.
 comments, and a checksum mismatch fails validation at startup and crash-loops every game container.
 A stale comment is much the cheaper error. Same trap as the `dev/proto` path rewrite.
 
+## Two instruments for the version work, and they do different jobs
+
+`inert_field_watch` is the **summary**: distinct values per watched field, where a second row is an
+alert. `blob_audit` is the **evidence**: every raw `0x4310` push, timestamped and whole, so a future
+question can be answered against real bytes instead of re-derived from a conclusion.
+
+Keeping both matters. The summary is what you watch; the evidence is what settles an argument. The
+214 archived captures are what proved the two no-reader fields track training lobbies — and that
+question could not have been answered from the summary alone, because it needed the lobby subtype
+each push carried.
+
+The capture moved from a database trigger into the server (2026-07-29). The trigger hung off
+`chara_host_settings.blob`, and `V55` dropped that column when the block was decoded. The server is
+the better place anyway: a trigger only ever saw what we chose to store, while the server sees
+exactly what the client sent, **including bytes we do not model**.
+
+`blob_audit` grows unbounded by design — consecutive hosts must not overwrite each other. Prune with
+`delete from blob_audit where captured_at < now() - interval '90 days';`
+
 ## The inert-field tripwire
 
 *Added 2026-07-29.* `inert_field_watch` records **every distinct value** seen for the host-settings
