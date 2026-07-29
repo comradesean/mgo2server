@@ -805,7 +805,15 @@ public class HostGameController implements IGameController {
 	private void getHostSettings(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {
-			ctx.write(HOST_SETTINGS_RESULT, GameError.INVALID_SESSION);
+			// THE EMPTY BLOCK, NOT AN ERROR WORD. 0x4305 has no result field — it is the 128-byte
+			// empty or 348-byte populated settings block — and it is the one payload we Blowfish
+			// ENCRYPT outbound. A 4-byte reply here handed the Create Game screen four bytes of
+			// ciphertext followed by stale receive buffer, parsed as saved host settings, because
+			// the client's read primitives bound-check the 1023-byte buffer rather than the payload.
+			//
+			// The empty path is the correct refusal and already exists below: a character that never
+			// pushed settings gets 128 zeros and the screen opens on defaults.
+			writeEmptyHostSettings(ctx);
 			return;
 		}
 
@@ -821,6 +829,17 @@ public class HostGameController implements IGameController {
 			return;
 		}
 
+		writeEmptyHostSettings(ctx);
+	}
+
+	/**
+	 * The 128-byte empty settings block — the only correct "nothing to pre-fill" answer.
+	 * <p>
+	 * {@code 0x4305} carries no result word, so there is no error to send here: a short reply is
+	 * read as a settings block regardless, out of whatever the receive buffer held. The empty block
+	 * is what the Create Game screen opens on when a character has never hosted.
+	 */
+	private void writeEmptyHostSettings(GameControllerContext ctx) {
 		var buffer = ctx.buffer(HOST_SETTINGS_SIZE);
 		buffer.writeZero(HOST_SETTINGS_SIZE);
 		ctx.write(new GamePacket(HOST_SETTINGS_RESULT, buffer));

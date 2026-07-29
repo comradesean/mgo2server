@@ -278,8 +278,20 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(payload.getInt(4)).isEqualTo(9101); // id echo
 	}
 
+	/**
+	 * Match details answers an empty list rather than invented rows.
+	 * <p>
+	 * This test used to assert three fingerprint records — literal {@code "FP-DETAIL-LONG-1"} text
+	 * and fabricated ids — reached the client. They did, on a real screen, for every request. The
+	 * 93-byte record is ELF-traced but entirely unlabelled, so there is nothing honest to put in it,
+	 * and an empty list says "no details" where invented rows say something false the player can
+	 * read.
+	 * <p>
+	 * The precedent is why this matters: a sibling fingerprint string was parsed as a bitfield and
+	 * minted 17 medals nobody had earned.
+	 */
 	@Test
-	public void matchDetailsServesFingerprintRows() {
+	public void matchDetailsServesAnEmptyList() {
 		givenSelectedCharacter("Snake");
 
 		var request = Unpooled.buffer();
@@ -287,11 +299,11 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		var replies = loginThen(new GamePacket(SocialGameController.GET_MATCH_DETAILS, request),
 			SocialGameController.MATCH_DETAILS_END);
 
-		assertThat(replies).hasSize(3);
+		// Start and end only — the client is still answered, which is what keeps it from stalling.
+		assertThat(replies).hasSize(2);
 		assertThat(replies.get(0).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_START);
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(0);
-		assertThat(replies.get(1).getPayload().readableBytes()).isEqualTo(3 * 93);
-		assertThat(replies.get(2).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_END);
-		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
+		assertThat(replies.get(1).getCommand()).isEqualTo(SocialGameController.MATCH_DETAILS_END);
+		assertThat(replies.get(1).getPayload().getInt(0)).isEqualTo(0);
 	}
 }

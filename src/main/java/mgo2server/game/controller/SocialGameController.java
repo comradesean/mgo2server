@@ -183,8 +183,6 @@ public class SocialGameController implements IGameController {
 		ctx.write(resultPacket(ctx, PLAYER_SEARCH_END));
 	}
 
-	private static final int DETAIL_FINGERPRINT_ROWS = 3;
-
 	/**
 	 * Met-players history ({@code 0x4680}, u32 character id). 25-byte records, all fields
 	 * live-confirmed 2026-07-23 (OBSERVED.md): u32 Unix timestamp of the last encounter, u32
@@ -223,7 +221,11 @@ public class SocialGameController implements IGameController {
 	/**
 	 * Match details ({@code 0x4684}, u32 entry id from the history list — the logged id reveals
 	 * which list field the client echoes). 93-byte records (u32, 64-byte string, 16-byte string,
-	 * u8, u32, u32), ELF-traced, fully unlabelled; TEMPORARY fingerprint markers as above.
+	 * u8, u32, u32), ELF-traced but <b>fully unlabelled</b>, so we serve an empty list.
+	 * <p>
+	 * The request is still logged: the echoed entry id is what identifies which field of the
+	 * {@code 0x4682} record the client sends here, and that is worth keeping even while the reply
+	 * is empty.
 	 */
 	private void getMatchDetails(GameControllerContext ctx) {
 		var payload = ctx.packet().getPayload();
@@ -232,20 +234,15 @@ public class SocialGameController implements IGameController {
 			logger.info("Match details requested for entry {}.", payload.readInt());
 		}
 
-		ctx.write(resultPacket(ctx, MATCH_DETAILS_START));
-		var buffer = ctx.buffer(DETAIL_FINGERPRINT_ROWS * 93);
-		for (var i = 1; i <= DETAIL_FINGERPRINT_ROWS; i++) {
-			buffer.writeInt(9200 + i);
-			BufferUtil.writeString(buffer, "FP-DETAIL-LONG-" + i, StandardCharsets.ISO_8859_1,
-				64);
-			BufferUtil.writeString(buffer, "FP-D16-" + i, StandardCharsets.ISO_8859_1,
-				NAME_LENGTH);
-			buffer.writeByte(50 + i);
-			buffer.writeInt(9300 + i);
-			buffer.writeInt(9400 + i);
-		}
-		ctx.write(new GamePacket(MATCH_DETAILS_ENTRIES, buffer));
-		ctx.write(resultPacket(ctx, MATCH_DETAILS_END));
+		// AN EMPTY LIST, not invented rows. This sent three fingerprint records — literal
+		// "FP-DETAIL-LONG-1" text and fabricated ids — to a real screen, unconditionally, for every
+		// request. It was the last surviving fingerprint payload; its siblings were removed after
+		// one of them ("FP-STR-C") was parsed as a bitfield and minted 17 medals nobody had earned.
+		//
+		// The 93-byte record is ELF-traced but entirely unlabelled, so there is nothing honest to
+		// put in it. An empty list says "no details" — which is true — where invented rows say
+		// something false in a way the player can read.
+		writeEmptyList(ctx, MATCH_DETAILS_START, MATCH_DETAILS_END);
 	}
 
 	/**

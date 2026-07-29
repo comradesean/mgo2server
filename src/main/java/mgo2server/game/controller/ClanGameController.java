@@ -239,6 +239,13 @@ public class ClanGameController implements IGameController {
 	private static final int EMBLEM_REFUSED = -1216;
 
 	/**
+	 * {@code 0x4b51}: "You do not have emblem editing rights." (24415)
+	 * <p>
+	 * Arm 25 of the client's table, bound to this command by id rather than by matching wording.
+	 */
+	private static final int NO_EMBLEM_RIGHTS = -1218;
+
+	/**
 	 * Refusing a clan creation on the requirements: {@code -1206} ->
 	 * <em>"Conditions to create clan have not been met."</em> ({@code 0xA7E680}).
 	 * <p>
@@ -784,7 +791,13 @@ public class ClanGameController implements IGameController {
 					membership.id(), charaId, mode);
 			} else {
 				logger.info("Character {} tried to set a clan emblem without leading one.", charaId);
-				refuseEmblem(ctx);
+				// A PERMISSIONS failure, not a cooldown. This used to send EMBLEM_REFUSED (-1216),
+				// which the client renders as "A fixed amount of time must pass in order for the
+				// emblem to be updated." — a confident, specific lie that sends the player away to
+				// wait for a timer that will never expire. -1218 is "You do not have emblem editing
+				// rights", and its arm is bound to 0x4b51 BY COMMAND ID, which is the strongest
+				// binding in the error table.
+				writeCode(ctx, UPLOAD_EMBLEM_RESULT, NO_EMBLEM_RIGHTS);
 				return;
 			}
 		}
