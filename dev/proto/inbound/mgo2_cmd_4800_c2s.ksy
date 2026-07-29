@@ -29,9 +29,16 @@ doc: |
   widths and total size were derived from the disassembly before any capture existed and were
   correct on every count.
 
-  Still [UNKNOWN] after the capture: the leading u8 (observed `1`) and the two trailing signed
-  bytes (both `0`). One capture cannot separate a constant from a variable — vary the mailbox
-  or the recipient count before naming them.
+  **Two of those three are now resolved (2026-07-29), by doing exactly what this paragraph asked
+  for — varying the recipient count.** A letter To -> GM produced count **0** with all eight name
+  slots zeroed and `3` in the first trailing byte, against the earlier capture's count `1`, one
+  filled slot and `0`. So the leading u8 is the **recipient count** and the byte at `0x3c5` is the
+  **destination class**. The second trailing byte at `0x3c6` remains [UNKNOWN] and has no writer
+  anywhere in the compose screen.
+
+  Worth keeping as method: a single capture could not separate constant from variable here, and the
+  thing that separated them was one deliberately different send, not more staring at the same
+  bytes.
 
   Nothing here says how the *server* should answer; see `../outbound/mgo2_cmd_4801_s2c.ksy`.
   We have no handler for this command, which is why the capture exists: the client hangs
@@ -99,14 +106,32 @@ seq:
       `0x8EEC3C` by the same rule as `subject`.
       708 is the same width as the block `0x4841` reads on success — consistent with a stored
       mail body round-tripping, though that pairing is [INFERRED], not tested.
-  - id: unknown_3c5
+  - id: destination
     type: s1
     doc: |
-      [ELF] `0xD5C86C` (signed) at `0xD5400C`, from `base-8304`. A **mode byte**: the only
-      writer found in the compose screen is `li r0,3; stb r0,272(r24)` at `0x8EEAA8`, taken
-      conditionally on a bit of `372(r31)` tested at `0x8EEDE0`; the other branch keeps a value
-      set elsewhere. Observed **`0`** in the 2026-07-26 capture, so the capture took the other
-      branch. What 0 vs 3 select is [UNKNOWN].
+      [ELF + CONFIRMED LIVE 2026-07-29] `0xD5C86C` (signed) at `0xD5400C`, from `base-8304`.
+      **The destination class: 0 = an ordinary letter to named recipients, 3 = the GAME MASTER.**
+      Was `unknown_3c5`, correctly identified as a mode byte with "what 0 vs 3 select is [UNKNOWN]".
+
+      Only writer: `li r0,3; stb r0,272(r24)` at `0x8EEAA8`, taken on **bit 17 of the compose
+      screen's flags word at `372(r31)`** (tested `0x8EEDE0`). The same bit gates the send at
+      `0x8EE9C8`-`0x8EE9D0`: set, the builder memsets the 128-byte recipient-name block and skips
+      the recipient build entirely; clear, it takes the ordinary path requiring a nonzero count.
+
+      **That bit is the GM selection, confirmed live** — selecting To -> GM greys out the
+      "View/Edit Address Book" row, which dims on exactly that bit (`0x8E4B30`). A GM letter has no
+      recipient list, so the row correctly becomes meaningless.
+
+      Value set is **{0, 3}**: `stb ...,272(rN)` occurs once in the whole mail module and 3 is the
+      only literal stored. It is a boolean in a byte, not an enum — friend and clan picks travel the
+      ordinary named path and are indistinguishable on the wire from a typed name.
+
+      Live frame, 2026-07-29: a GM letter's entire 967-byte payload was zero apart from the subject
+      at `0x081`, the body at `0x101`, and **`3` here**. Count 0, all eight name slots zero.
+
+      Server note: this needs its own path. A GM letter has no recipient character, so it falls
+      through a recipient loop as "0 of 0 delivered" — we answered SUCCESS and stored nothing until
+      this was identified. See V61 and `gm_mail`.
   - id: unknown_3c6
     type: s1
     doc: |

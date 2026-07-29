@@ -149,6 +149,16 @@ public class MessageGameController implements IGameController {
 
 	private static final int BODY_LENGTH = 708;
 
+	/**
+	 * Wire offset of the destination byte — immediately after the 708-byte body, i.e. 965
+	 * ({@code 0x3C5}) in the 967-byte payload.
+	 */
+	private static final int GM_DESTINATION_OFFSET =
+		SEND_RECIPIENTS_OFFSET + SEND_MAX_RECIPIENTS * NAME_LENGTH + SUBJECT_LENGTH + BODY_LENGTH;
+
+	/** The only nonzero value that byte takes: the letter is addressed to the Game Master. */
+	private static final int GM_DESTINATION = 3;
+
 	/** 0x4822 entry: {u8 mailbox, u8 index, u8, char[128] name, char[128] comment, u32, u8 x3}. */
 	private static final int ENTRY_SIZE = 3 + 128 + 128 + Integer.BYTES + 3;
 
@@ -286,6 +296,33 @@ public class MessageGameController implements IGameController {
 		var count = Math.min(payload.getByte(0) & 0xff, SEND_MAX_RECIPIENTS);
 		var subject = readString(payload, subjectOffset, SUBJECT_LENGTH);
 		var body = readString(payload, bodyOffset, BODY_LENGTH);
+
+		// TO: GAME MASTER. A GM letter carries no recipient at all — the client zeroes the count
+		// and all eight name slots — and marks itself with a single byte immediately after the
+		// body. [ELF] written at 0x8EEAA8 (`li r0,3 ; stb r0,272(r11)`), reached only when bit 17
+		// of the compose screen's flags is set: the same bit that greys out the recipient-list row,
+		// confirmed live 2026-07-29, because a GM letter has no recipients to edit. Values are
+		// {0, 3} — there is no 1 or 2 arm, and friend/clan picks travel the ordinary named path.
+		//
+		// Without this the letter fell through the recipient loop as "0 of 0 delivered" and was
+		// answered SUCCESS, so the player was told it sent and nothing was stored anywhere.
+		var destination = payload.readableBytes() > GM_DESTINATION_OFFSET
+			? payload.getUnsignedByte(GM_DESTINATION_OFFSET) : 0;
+		if (destination == GM_DESTINATION) {
+			characterService.sendGameMasterMail(charaId, senderName, subject, body);
+			logger.info("GM mail from \"{}\" (character {}), subject \"{}\".",
+				senderName, charaId, subject);
+			// The same 5-byte success shape as an ordinary letter: status then flags, no error
+			// list. The parser only reads a failure list when the status is nonzero.
+			var reply = ctx.buffer(Integer.BYTES + 1);
+			reply.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);
+			ctx.write(new GamePacket(SEND_MESSAGE_RESULT, reply));
+			return;
+		}
+		if (count == 0) {
+			logger.warn("Send mail from \"{}\" with no recipients and destination byte {} —"
+				+ " nothing stored. Subject \"{}\".", senderName, destination, subject);
+		}
 
 		var delivered = 0;
 		var blocked = new java.util.ArrayList<String>();
