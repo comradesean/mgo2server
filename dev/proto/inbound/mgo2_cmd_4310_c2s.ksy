@@ -119,7 +119,19 @@ seq:
       position are [ELF].
   - id: unknown_0ea
     type: u4
-    doc: "[UNKNOWN] wire 0x0ea, src+824."
+    doc: |
+      [UNKNOWN] wire 0x0ea, src+824 — and now [ELF 2026-07-29] a **proven u32 with no reader and no
+      writer anywhere in the binary**. An exhaustive scan for `,824(rN)` found zero sites in the MGO
+      ranges, while every identified neighbour appears at its literal offset (`818` max players, 12
+      sites; `820` briefing, 10; `847` tolerance, 11; `941` SNAKE, 8). Not in the accessor bank
+      either. The create-game screen never stores to it.
+
+      Width settled both directions: parser `0xD43784` uses the u32 reader `0xd5ccd8`, builder
+      `0xD449C8` the u32 writer `0xd5c9bc`. Our captured value `0x02000000` is therefore 33554432 and
+      not a u8 `2` with padding — identical on the wire, which is why it needed checking.
+
+      So the value is **server-authored and echoed back**. The disc's Common Settings label run
+      (13671-13820) has nothing between briefing time and friendly fire, so no UI label matches it.
   - id: unknown_0ee
     type: u2
     doc: "[UNKNOWN] wire 0x0ee, src+832. Note src+828..831 are not sent."
@@ -196,10 +208,21 @@ seq:
   - id: common_c
     type: u1
     doc: |
-      [INFERRED] wire 0x144, src+931. Our `HostSettingsReply` calls the corresponding reply slot
-      (`0x147`) "commonC", injects a constant `0x20` there, and ignores this request byte — and
-      the live check saw that injected `0x20` come back in the next push, which is what ties
-      the two positions together. A third toggle byte, contents unmapped. [UNKNOWN] bit map.
+      [INFERRED] wire 0x144, src+931. Our `HostSettingsReply` writes a constant here.
+
+      [ELF 2026-07-29] It has **its own u8 read** (`0xD43B10` via `0xd5cb8c`), distinct from the
+      raw-2 covering src+929/930, and the builder splits the same way. It is the **low byte of the
+      32-bit flags word at src+928** — and that settles it: 117 sites do `lwz rX,928(rB)` and
+      bit-test the result, and **every tested bit lies in bits 8-23**, i.e. in src+929/930 only.
+      Nothing tests bits 0-7. The constant `0x20` sets bit 5, which no site consumes.
+
+      The only load of src+931 is the accessor `0x9072AC`, which returns the byte raw and is **dead
+      code** — its sole appearance is its OPD descriptor at `0x101C118`, there is no `bl` to it, and
+      the file is `ET_EXEC` with no relocations, so a runtime-patched reference is impossible.
+
+      Meaning [UNKNOWN]. The disc's Common Settings list is ~16 items, matching the 16 bits at 8-23
+      exactly, so no leftover label is available for this byte.
+
   - id: idle_kick
     type: u2
     doc: |

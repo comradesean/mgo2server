@@ -257,16 +257,40 @@ public final class AutomatchSettingsBlock {
 	private static final int UNKNOWN_72 = 72;
 
 	/**
-	 * Non-zero in every capture. Read as a u32 this is {@code 0x02000000}, i.e. a lone {@code 2} in
-	 * the first byte followed by three zeros — so it may equally be a u8 with padding. The schemas
-	 * give it as u4 and no reader has been traced, so it is emitted exactly as captured.
+	 * <b>A genuine u32, and read by nothing</b> [ELF 2026-07-29].
+	 * <p>
+	 * The width is settled in both directions — the parser at {@code 0xD43784} uses the u32 reader
+	 * {@code 0xd5ccd8} and the builder at {@code 0xD449C8} the u32 writer {@code 0xd5c9bc} — so this
+	 * is the value 33554432, not a {@code 2} with three padding bytes. Identical on the wire either
+	 * way, which is exactly why it needed checking.
+	 * <p>
+	 * <b>No reader and no writer exists anywhere in the binary.</b> An exhaustive scan for
+	 * {@code ,824(rN)} found nothing in the MGO ranges, while every identified neighbour appears at
+	 * its literal offset many times over. So the value is server-authored and merely echoed back,
+	 * and the disc has no Common Settings label for it either.
+	 * <p>
+	 * Emitted as captured. Zeroing it is still a change with no evidence behind it — but the reason
+	 * has upgraded from "no reader traced" to "no reader exists, and the client is not the author".
 	 */
 	private static final int UNKNOWN_72_VALUE = 0x02000000;
 
 	/** Block offset of the second still-unexplained field. [UNKNOWN] in both schemas. */
 	private static final int UNKNOWN_179 = 179;
 
-	/** {@code 0x20} in every capture. Sits beside the common-settings toggles but is not one. */
+	/**
+	 * <b>The low byte of the settings flags word, and no flag lives in it</b> [ELF 2026-07-29].
+	 * <p>
+	 * It has its own u8 read ({@code 0xD43B10}), distinct from the raw-2 covering the two common
+	 * toggles beside it. Those three bytes are the 32-bit flags word at struct {@code +928}, and
+	 * <b>every one of the 117 bit-tests against that word lies in bits 8-23</b> — the two toggles.
+	 * Nothing tests bits 0-7. Our {@code 0x20} sets bit 5, which no site consumes.
+	 * <p>
+	 * The only load of this byte is the accessor {@code 0x9072AC}, which is dead code: its sole
+	 * appearance is an OPD descriptor, there is no call to it, and the image is {@code ET_EXEC} with
+	 * no relocations so a runtime-patched reference is impossible.
+	 * <p>
+	 * Emitted as captured, for the same reason as {@link #UNKNOWN_72_VALUE}.
+	 */
 	private static final int UNKNOWN_179_VALUE = 0x20;
 
 	private AutomatchSettingsBlock() {

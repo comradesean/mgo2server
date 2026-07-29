@@ -136,7 +136,31 @@ public class HubGameController implements IGameController {
 
 	/**
 	 * The four 57-byte entry records that follow the two header words of {@code 0x4991}
-	 * ({@code 4 × 57 = 228}), sent as zeros because their layout is undecoded.
+	 * ({@code 4 × 57 = 228}).
+	 * <p>
+	 * <b>Zeros are the CORRECT answer here, not a placeholder — decoded 2026-07-29.</b> These are
+	 * pending <b>tournament entry</b> records, and {@code rec+0x00} is the client's own
+	 * "slot occupied" test ({@code 0x8932FC}, {@code 0x893470}). Four zeroed records therefore mean
+	 * <em>"you have no pending entries"</em>: the screen machine at {@code 0x892B08} falls through
+	 * to state 27 and shows the ordinary Main Menu. A non-zero slot instead raises a confirmation
+	 * dialog on arrival at the lobby — disc string 269, <em>"Participate in Official Tournament
+	 * \"%s\"?"</em>, or string 268's reconnect prompt for slot 0 — and answering yes runs
+	 * {@code 0x4986} then the {@code 0x491B} team rejoin.
+	 * <p>
+	 * <b>Do not "fix" this by filling the records in.</b> Tournament lobbies are Ver. 1.20 content,
+	 * post-launch and out of scope for v1, so the right release-day answer is exactly what we send:
+	 * no pending entries.
+	 * <p>
+	 * Seven of the eleven fields have <b>no reader anywhere in the client</b> — the reader set is
+	 * closed, because the only getter for this table ({@code 0xD47494}) has a single caller
+	 * ({@code 0x8932CC}). The three that are read: {@code +0x00} the key, also matched against the
+	 * {@code 0x4902} game-lobby list and used as the delete key by {@code 0x4993};
+	 * {@code +0x1e} the team id, handed to {@code 0x4986} and {@code 0x491B}; and {@code +0x33} a
+	 * lobby id, rendered as that lobby's ordinal within its subtype group.
+	 * <p>
+	 * The count word is <b>dead</b>: the loop bound is hardcoded to four ({@code cmpwi r20,3} at
+	 * {@code 0xD48F84}), the value is overwritten with 4 at {@code 0xD48FC0}, and nothing reads it
+	 * afterwards. Sending 0 would change nothing and would not shorten the payload.
 	 * <p>
 	 * <strong>Corrected 2026-07-26 from {@code 0xa4} (164).</strong> This was "a block the client
 	 * only skips", taken from the reference servers. The parser at {@code 0xD48D40} does not skip
