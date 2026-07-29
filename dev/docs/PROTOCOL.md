@@ -584,7 +584,10 @@ three tail bytes out of stale buffer contents, because its read primitives bound
 
 **Resolved 2026-07-29, from the parser side.** `0xD3732C` copies exactly **32** bytes
 (`li r5,32` at `0xD3774C`) to `ctx+22452`, independently confirming the 32-byte reading. And the
-trailer is not inert: **index 3 bit 0 unlocks 32 of the 91 selectable loadout items.** Readers
+trailer is not inert: **index 3 bit 0 unlocks the 32 CODEC / preset messages.** (An earlier trace
+read these as "32 of the 91 selectable loadout items" — disproved live 2026-07-29: clearing the
+bit removed codec messages and left gear and outfits entirely unchanged. Almost certainly the
+day-one paid "MGO Codec Pack", 32 additional voice tracks.) Readers
 `0x9B9E30` (`(byte & 1) << 4`) and `0x9BADA4` (`byte & 1`) feed the availability predicate
 `0x9B9DF0`, which walks an 85-entry table at `0xE1812C` and refuses any item whose gate exceeds the
 threshold; 32 entries gate on exactly 16, 23 gate on 0, 27 defer to an ownership check. Bit 1 of that

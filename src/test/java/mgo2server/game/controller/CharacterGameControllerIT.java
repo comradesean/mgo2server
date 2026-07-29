@@ -173,8 +173,8 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	 * <p>
 	 * This is the whole point of V62: the byte was a compile-time constant, then an environment
 	 * variable, and neither could be changed for one account or without a restart. The experiment
-	 * in {@code POST_LAUNCH.md} — does the bit gate loadout items, the 32 Codec Pack phrases, or
-	 * both? — is now an {@code UPDATE} and a reconnect.
+	 * in {@code POST_LAUNCH.md} was run this way and settled it: the bit gates the 32 CODEC /
+	 * preset messages, and gear was unaffected.
 	 */
 	@Test
 	public void clearingTheAccountsEntitlementsClearsTheBitOnTheWire() {

@@ -66,7 +66,9 @@ public record Policy(
 	 *
 	 * <p><b>Not included</b>, because they are read: {@code 0x4120}'s trailer bytes 0-7 (the filter
 	 * and sort preferences, now sent as deliberate zeros) and the {@code 0x3049} trailer, whose
-	 * index-3 bit 0 unlocks 32 of the 91 loadout items.
+	 * index-3 bit 0 unlocks the 32 codec / preset messages — <b>not</b> loadout items, which was
+	 * the label of an earlier ELF trace and was disproved live on 2026-07-29 (clearing the bit
+	 * removed codec messages and left gear untouched).
 	 *
 	 * <p>Off unless explicitly set. Absent, blank and non-boolean all mean off.
 	 */
