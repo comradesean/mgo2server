@@ -5,6 +5,8 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.Level;
+import mgo2server.common.service.StatsService;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
@@ -203,12 +205,23 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		for (var page = 0; page <= 1; page++) {
 			for (var mode = 0; mode < 8; mode++) {
 				for (var column = 0; column < 18; column++) {
+					// The last row of matrix 0 is the player-details card's summary row, not a mode:
+					// column 17 is its PLAY TIME and column 13 its LEVEL. Both are real values rather
+					// than fabricated ones, so they are exempt from "played nothing produces
+					// nothing" — a character with no rounds still has a level, and its play time is
+					// legitimately zero. See cumulativeMatrixCarriesTheCardsPlayTimeAndLevel.
+					if (page == 0 && mode == StatsService.MODE_ROWS - 1
+						&& (column == 13 || column == 17)) {
+						continue;
+					}
 					assertThat(cell(replies.get(1 + page), mode, column))
 						.as("page %d mode %d column %d", page, mode, column)
 						.isZero();
 				}
 			}
 		}
+		// And with no rounds at all the card's play time is genuinely zero.
+		assertThat(cell(replies.get(1), StatsService.MODE_ROWS - 1, 17)).isZero();
 		for (var record = 0; record <= 1; record++) {
 			for (var slotNumber = 1; slotNumber <= 73; slotNumber++) {
 				assertThat(slot(replies.get(3), record, slotNumber))
@@ -234,12 +247,18 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * Rows 6 and 7 must be zero even when a report exists for them. Row 6 has no page of its own
-	 * but IS summed into every Total and the header time, so anything binned there inflates totals
-	 * with nothing on screen to explain it.
+	 * No <b>mode statistics</b> may be binned into rows 6 or 7. Row 6 has no page of its own but IS
+	 * summed into every Total and the header time, so anything put there inflates totals with
+	 * nothing on screen to explain it.
+	 * <p>
+	 * Narrowed 2026-07-29: row 7 is <b>not a hidden mode row</b> — the parser's eight wire blocks
+	 * land in memory rows 0,1,2,3,4,5,7,11, so this one is row 11, the player-details card's summary
+	 * row. Its columns 13 and 17 deliberately carry the card's LEVEL and PLAY TIME. The rule this
+	 * test protects is unchanged: no per-mode figures there, and rule 6 and rule 7 reports stay out
+	 * of the grid entirely.
 	 */
 	@Test
-	public void theHiddenModeRowsStayZero() {
+	public void theHiddenModeRowsCarryNoModeStatistics() {
 		givenSelectedCharacter("Snake");
 		givenReport(6, "kills, seconds_in_game", "9, 600");
 		givenReport(7, "kills", "4");
@@ -248,8 +267,17 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 
 		for (var column = 0; column < 18; column++) {
 			assertThat(cell(matrix, 6, column)).as("row 6 column %d", column).isZero();
+			if (column == 13 || column == 17) {
+				continue; // the card's LEVEL and PLAY TIME, asserted separately
+			}
 			assertThat(cell(matrix, 7, column)).as("row 7 column %d", column).isZero();
 		}
+
+		// The rule-6 and rule-7 reports above contributed 600 seconds, and none of it may appear:
+		// the card's play time counts playable modes only.
+		assertThat(cell(matrix, StatsService.MODE_ROWS - 1, 17))
+			.as("rule 6/7 seconds must not reach the card's play time")
+			.isZero();
 	}
 
 	/**
@@ -650,4 +678,53 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		assertThat(payload.getInt(0)).isEqualTo(123);
 		assertThat(payload.readableBytes()).isEqualTo(651);
 	}
+	/**
+	 * The last row of matrix 0 carries the player-details card's PLAY TIME and LEVEL.
+	 * <p>
+	 * That row is <b>not a mode</b>. The parser computes
+	 * {@code base = T + 312 + index*864 + row*72 + col*4} and skips memory rows 6, 8, 9 and 10, so
+	 * the eight wire blocks land in memory rows 0,1,2,3,4,5,7,11 — the eighth being row 11. The
+	 * card's PLAY TIME cell {@code T+0x494} is exactly {@code 312 + 11*72 + 17*4}, the final u32 of
+	 * this payload; its LEVEL is column 13 of the same row.
+	 * <p>
+	 * Before this, More Details blanked the card: matrix index 0 memsets {@code T+0x138} for 3456
+	 * bytes, which spans that cell, and {@code 0x4103} cannot restore it — that parser's
+	 * destinations stop below the range and resume above it. The renderer clamps to 9999:59:59, so
+	 * zero was the only value that could produce {@code 00:00:00}.
+	 */
+	@Test
+	public void cumulativeMatrixCarriesTheCardsPlayTimeAndLevel() {
+		givenSelectedCharacter("Snake");
+		givenReport(0, "seconds_in_game", "600");
+		givenReport(1, "seconds_in_game", "900");
+
+		var replies = statsBurst();
+		var cumulative = replies.get(1);
+		assertThat(cumulative.getPayload().getInt(4)).as("matrix index 0 is sent first").isZero();
+
+		var summaryRow = StatsService.MODE_ROWS - 1;
+		assertThat(cell(cumulative, summaryRow, 17))
+			.as("row 11 col 17 = T+0x494, the card's PLAY TIME, and the final u32 of the payload")
+			.isEqualTo(1500);
+		assertThat(cumulative.getPayload().getInt(580))
+			.as("same cell addressed by absolute offset, pinning the geometry")
+			.isEqualTo(1500);
+
+		assertThat(cell(cumulative, summaryRow, 13))
+			.as("row 11 col 13 = T+0x484, the card's LEVEL")
+			.isEqualTo(Level.of(services.getCharacterService().experienceOf(charaId)));
+	}
+
+	/** The weekly matrix is left alone: the card reads matrix 0, and nothing reads matrix 1's row 11. */
+	@Test
+	public void weeklyMatrixSummaryRowIsNotFilled() {
+		givenSelectedCharacter("Snake");
+		givenReport(0, "seconds_in_game", "600");
+
+		var weekly = statsBurst().get(2);
+
+		assertThat(weekly.getPayload().getInt(4)).isEqualTo(1);
+		assertThat(cell(weekly, StatsService.MODE_ROWS - 1, 17)).isZero();
+	}
+
 }

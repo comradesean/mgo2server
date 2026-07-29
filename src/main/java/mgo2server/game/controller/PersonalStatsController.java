@@ -1,6 +1,7 @@
 package mgo2server.game.controller;
 
 import mgo2server.common.BufferUtil;
+import mgo2server.common.Level;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.AwardService;
@@ -81,6 +82,12 @@ public class PersonalStatsController implements IGameController {
 
 	/** The one signed column of the matrix — a round score can be negative. */
 	private static final int SCORE_COLUMN = 3;
+
+	/** Column 17 of the summary row — the player-details card's PLAY TIME, at {@code T+0x494}. */
+	private static final int SUMMARY_PLAY_SECONDS_COLUMN = 17;
+
+	/** Column 13 of the summary row — the same card's LEVEL, at {@code T+0x484}. */
+	private static final int SUMMARY_LEVEL_COLUMN = 13;
 
 	/** Friend and blocked id arrays, 32 slots each, matching 0x4101. */
 	private static final int RELATION_LIST_IDS = 32;
@@ -183,11 +190,11 @@ public class PersonalStatsController implements IGameController {
 		for (var i = 0; i < 12; i++) {
 			info.writeShort(0);        // 12×u16 → T+0x1AB6.. — the privilege word must stay 0
 		}
-		info.writeInt(probe(1 * 3600)); // u32 → T+0x1AD0 [UNKNOWN] — probe candidate 1
+		info.writeInt(0);              // u32 → T+0x1AD0 [UNKNOWN]
 		for (var i = 0; i < 9; i++) {
 			info.writeByte(0);         // 9×u8 → T+0x1DE0.. [UNKNOWN]
 		}
-		info.writeInt(probe(2 * 3600)); // u32 → T+0x1DEC [UNKNOWN] — probe candidate 2
+		info.writeInt(0);              // u32 → T+0x1DEC [UNKNOWN]
 		for (var i = 0; i < 14; i++) {
 			info.writeByte(0);         // 14×u8 → T+0x1DF0.. [UNKNOWN]
 		}
@@ -198,7 +205,7 @@ public class PersonalStatsController implements IGameController {
 			info.writeInt(0);          // 5×u32 → T+0x1E08.. [UNKNOWN]
 		}
 		info.writeByte(0);             // u8 → T+0x1E1C [UNKNOWN]
-		info.writeInt(probe(3 * 3600)); // u32 → T+0x1E20 [UNKNOWN] — probe candidate 3
+		info.writeInt(0);              // u32 → T+0x1E20 [UNKNOWN]
 		BufferUtil.writeString(info, chara.get().getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);           // the confirmed 128-byte comment → T+0x1E24
 		// Wire 541: the WORN title, 1-based, 0 for none. The server picks it — the client has no
@@ -269,7 +276,7 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt(instructorScore.ratingSum())  // wire 632 → instructor star numerator
 			.writeInt(instructorScore.votes())      // wire 636 → instructor star denominator
 			.writeInt(0);                           // wire 640 [UNKNOWN] — reads the LOCAL record
-		info.writeInt(probe(4 * 3600)); // trailing u32 → T+0x124 [UNKNOWN] — probe candidate 4
+		info.writeInt(0);              // trailing u32 → T+0x124 [UNKNOWN]
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 
 		// Both stats surfaces, both periods, all derived from round_report at query time.
@@ -308,6 +315,28 @@ public class PersonalStatsController implements IGameController {
 	private void writeMatrix(GameControllerContext ctx, long charaId, StatsService.Period period,
 			int pageSelector) {
 		var grid = statsService.modeGrid(charaId, period);
+
+		// THE LAST ROW BLOCK IS NOT A MODE — it is the summary row the player-details card reads.
+		// The parser (0xD3E53C) computes base = T + 312 + index*864 + row*72 + col*4 and skips
+		// memory rows 6, 8, 9 and 10, so the eight wire blocks land in memory rows
+		// 0,1,2,3,4,5,7,11 — the eighth is row 11. The card's PLAY TIME cell is T+0x494, which is
+		// exactly 312 + 11*72 + 17*4, i.e. row 11 column 17: the final u32 of this payload. Its
+		// LEVEL is column 13 of the same row.
+		//
+		// This is why More Details blanked the card. Matrix index 0 memsets T+0x138 for 3456 bytes
+		// (0xD3E5F4-0xD3E604), which spans T+0x494, and 0x4103 cannot restore it — that parser's
+		// destinations stop below the range and resume above it. So the card went to 00:00:00 on
+		// every visit and only 0x4221 could put it back. The renderer at 0x9060EC clamps to
+		// 9999:59:59, so ZERO is the only value that can produce 00:00:00.
+		//
+		// Only the cumulative matrix is filled: the card reads matrix 0, and nothing is known to
+		// read matrix 1's summary row.
+		if (pageSelector == PERIOD_CUMULATIVE) {
+			var summary = grid[StatsService.MODE_ROWS - 1];
+			summary[SUMMARY_PLAY_SECONDS_COLUMN] = characterService.displayedPlaySeconds(charaId);
+			summary[SUMMARY_LEVEL_COLUMN] = Level.of(characterService.experienceOf(charaId));
+		}
+
 		var matrix = ctx.buffer(MATRIX_SIZE);
 		matrix.writeInt(0); // status
 		matrix.writeInt(pageSelector);
@@ -343,66 +372,6 @@ public class PersonalStatsController implements IGameController {
 		var info = ctx.buffer(Integer.BYTES);
 		info.writeInt(STATUS_NOT_FOUND);
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
-	}
-	/**
-	 * A probe value for one of {@code 0x4103}'s unidentified u32 slots. <b>LIVE — this is currently
-	 * deployed, not gated.</b> Remove it once the slot is identified.
-	 * <p>
-	 * <b>Why this exists.</b> The Rankings player card shows PLAY TIME as 00:00:00, and the operator's
-	 * observations pin the mechanism exactly:
-	 * <ul>
-	 * <li>selecting <em>Player Details</em> from the context menu on <b>another</b> character
-	 * populates the time — that path sends {@code 0x4220}, and our {@code 0x4221} carries the real
-	 * figure;</li>
-	 * <li>clicking <b>yourself</b> opens the card directly without that request, and it reads
-	 * zero;</li>
-	 * <li>opening <b>More Details</b> and backing out <b>zeroes it again</b>.</li>
-	 * </ul>
-	 * Both of the zeroing paths go through {@code 0x4102} → {@code 0x4103}, and {@code 0x4103} writes
-	 * the <b>same</b> viewed-player struct {@code 0x4221} does ({@code T = *(obj+0x11904)}, which is
-	 * {@code *(session+0x10000+6404)} — the same base by two names). So this is the
-	 * {@code 0x4129} defect a third time: a packet that shares another's destination slots and sends
-	 * zero for a field the other fills.
-	 * <p>
-	 * The fix is for {@code 0x4103} to carry the play time too. What is not yet known is <b>which</b>
-	 * of its {@code [UNKNOWN]} u32 slots holds it — hence this probe.
-	 * <p>
-	 * Rather than guess — filling every unknown u32 with a play time is exactly how a fingerprint
-	 * string once minted 17 unearned medals — each candidate gets a distinct, unmistakable clock
-	 * value. Whichever the card renders names the field:
-	 * <ul>
-	 * <li>01:00:00 → {@code T+0x1AD0}</li>
-	 * <li>02:00:00 → {@code T+0x1DEC}</li>
-	 * <li>03:00:00 → {@code T+0x1E20}</li>
-	 * <li>04:00:00 → {@code T+0x124}</li>
-	 * </ul>
-	 * If none renders, the field is elsewhere — the five-u32 block at {@code T+0x1E08} and the
-	 * {@code obj+0x30} slot are the next candidates.
-	 * <p>
-	 * This is the same method that pinned experience at {@code 0x4221} wire {@code 0x18}: send values
-	 * that land on distinguishable outputs and read which one appears.
-	 * <p>
-	 * <b>How to run it.</b> With the probe on: open the Rankings card, go into <em>More Details</em>,
-	 * then back out. That is the deterministic trigger — clicking yourself on a fresh Rankings load
-	 * shows the correct time, because the card reads the <b>local</b> record until {@code 0x4103}
-	 * populates the viewed-player struct, after which it reads that instead. Backing out of More
-	 * Details is the moment the struct wins, and it is exactly when the zero appears today. Read the
-	 * clock value on the card: it names the slot in one look.
-	 * <p>
-	 * <b>Worth checking while in there:</b> the operator saw one character's Player Details populate
-	 * <em>both</em> cards. If both then show the <em>same</em> figure, that is the single shared
-	 * viewed-player struct leaking one player's total onto another's card — a separate bug from this
-	 * one, and a more serious one.
-	 */
-	private static int probe(int seconds) {
-		// DISABLED. Setting all four candidates at once BROKE a working path: clicking yourself in
-		// Player Rankings had been showing the correct time, and with these four slots non-zero it
-		// went back to 00:00:00 — while none of the four clock values ever appeared.
-		//
-		// That is information, not just a failed test: at least one of these slots is read, and it
-		// is not a seconds value. Probing four at once cannot say which, so the next attempt must do
-		// ONE slot per deployment.
-		return 0;
 	}
 
 }
