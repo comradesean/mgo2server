@@ -40,15 +40,19 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
-### The greyed "To" row was Friend List, not the address book (resolved 2026-07-29)
+### The greyed "To" row — PARTLY resolved, and the grey-out itself is NOT explained (2026-07-29)
 
 Reported: in Mail -> Create New Mail -> To, a row was greyed out until the player had friends;
 after visiting the Friend List it went bright and **never greyed again**, across client restarts
 and with the To: field cleared. Selecting the bright row did nothing.
 
-Two separate things, and neither is a bug.
+**Open: why "View/Edit Address Book" was dim.** The operator reports directly that *that* row was
+greyed, and operator testimony outranks an inference. An earlier version of this entry claimed the
+greyed row must have been Friend List; that was **over-claimed and is withdrawn**. What is actually
+established is below; what is not is at the end.
 
-**The greyed row was Friend List.** [ELF] the row painter `0x8E4970` dims it when
+**Friend List's dim rule is real, and does match part of the report.** [ELF] the row painter
+`0x8E4970` dims it when
 `byte 20190 == 0`, and that byte is not a latch — it is **recomputed as the friend count** every
 time the screen is built (`0x8EAB0C`-`0x8EAB48`, 32 iterations over the roster block from
 `0xD3A094(session+364)`, counting entries whose `+32` is nonzero; both it and 20189 are stored 0
@@ -80,6 +84,30 @@ To-menu items and by the send; **not** cleared by leaving the screen.
 bit `64-46 = 18`. Bit 17 is real but unrelated — the message-body editor modal (`0x8EE940`) — which
 is exactly why the wrong label kept half-fitting and survived two investigations. Check the rotate
 before naming a bit.
+
+#### What is NOT established, and is the open question
+
+The address-book row dims **iff bit 18 is set**, and bit 18 has **two** setters, not one:
+
+- `0x8EF098` — the GM menu item. Requires the player to pick GM. Cannot explain a grey-out seen
+  before GM was ever selected.
+- **`0x8E6ECC`** — a **screen-entry arm** inside `0x8E63E4`, gated on **bit 3**, which also loads
+  `text16` and zeroes the eight recipient slots and `recipientCount`. Described by the trace as the
+  "this compose is already addressed to the GM" entry path. **What sets bit 3 was never traced.**
+
+So a dim row on first entry is fully consistent with `0x8E6ECC` firing, and nothing rules it out.
+
+The initial state of bit 18 is **inference, not evidence**: the trace could not locate the screen
+object's constructor (reached via the screen-manager singleton at `*(0xFEFA80-32768)` = `0x166EA28`
+field 0; `0x8EF270`'s OPD `0x101B8E0` has one reference, TOC slot `0xFE7C70`, whose loader was not
+resolved). What *was* read is narrower: no instruction stores a literal into this screen's `+372`,
+and the only wholesale mask (`0x8E4F8C`-`0x8E4FB8`, `and r9,r9,0xFFFF0FF7`) does not touch bit 18.
+"Clear at construction" does not follow from that if the object is reused or if bit 3 is set on
+entry.
+
+**Next step:** trace bit 3's writers and whether `0x8E63E4` runs on ordinary screen entry. Until
+then the grey-out is unexplained, and the Friend-List reading is a hypothesis competing with an
+unexcluded mechanism — not the answer.
 
 ### Host rating: one vote per GAME is operator policy (2026-07-29)
 
