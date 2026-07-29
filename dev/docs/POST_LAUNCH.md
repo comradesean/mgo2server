@@ -145,6 +145,32 @@ should be made rather than drifted into:
 
 If it becomes a toggle, it is one bit sourced per account, not a new packet.
 
+### Is the entitlement bit the WHOLE shop? — the experiment to run
+
+**Hypothesis, 2026-07-29 (operator's):** the shop may not have several mechanisms, just one. If the
+85-entry table at `0xE1812C` is a *mixed* availability table rather than a loadout-only one, then
+`0x3049` trailer index 3 bit 0 gates everything the shop sells, and "32 of the 91 selectable
+loadout items" is simply the label the first trace reached for.
+
+The number is what makes it worth testing: the bit unlocks **32** gated entries, and the day-one
+Codec Pack adds **32** phrases. Matching counts are not evidence — but they are a reason to look,
+and the test is one restart.
+
+**How to settle it.** `MGO2SERVER_ENTITLEMENT_BYTE=0`, restart, then check *both* screens:
+
+1. the loadout item list, and
+2. Personal Data -> Game Play Options -> **Preset Message Slot**.
+
+| what shrinks | conclusion |
+| --- | --- |
+| loadout only | the existing label is right; the codec pack is gated somewhere else |
+| preset messages only | the label is wrong — the table is the message list, not items |
+| **both** | **one bit is the whole shop.** Rename it, and make it per-account |
+| neither | the bit does not reach either screen, and the trace needs revisiting |
+
+Restore with `MGO2SERVER_ENTITLEMENT_BYTE=3` or by unsetting it. The default is unchanged, and a
+test pins it so the default cannot drift silently.
+
 ### The MGO Codec Pack — WHERE IT IS GATED IS UNKNOWN
 
 A day-one paid item on the Konami shop: **32 additional voice phrases** for the preset-message

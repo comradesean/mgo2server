@@ -155,6 +155,33 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 		assertThat(payload.getByte(5)).isEqualTo((byte) 0);   // character count
 	}
 
+	/**
+	 * The entitlement trailer: 32 bytes at the end of the grid, with bit 0 of index 3 set.
+	 * <p>
+	 * [ELF] the parser at {@code 0xD3732C} copies exactly 32 bytes ({@code li r5,32} at
+	 * {@code 0xD3774C}). Index 3 bit 0 is the only byte in it with any reader: {@code 0x9B9E30}
+	 * computes {@code (byte & 1) << 4} and the availability predicate {@code 0x9B9DF0} refuses any
+	 * entry whose gate exceeds that, so clearing it removes 32 gated entries from the client.
+	 * <p>
+	 * <b>What those 32 entries are is unresolved.</b> "Loadout items" is the label from the first
+	 * trace, but the day-one MGO Codec Pack adds exactly 32 preset-message phrases, so one bit may
+	 * be the whole shop. {@code MGO2SERVER_ENTITLEMENT_BYTE} flips it in one restart to settle
+	 * which screens shrink. This test pins the default; it is not a claim about what is unlocked.
+	 */
+	@Test
+	public void theEntitlementTrailerHasBitZeroSetAtIndexThree() {
+		var payload = loginThen(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
+			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
+
+		var trailer = 0x1d7 - 32;
+		assertThat(payload.getUnsignedByte(trailer + 3) & 1)
+			.as("index 3 bit 0 — clearing it removes 32 gated entries from the client")
+			.isEqualTo(1);
+		assertThat(payload.getUnsignedByte(trailer + 1))
+			.as("index 1 carries 0x07, which has no reader at all")
+			.isEqualTo((short) 0x07);
+	}
+
 	@Test
 	public void listsCharacters() {
 		accountId = createAccount();

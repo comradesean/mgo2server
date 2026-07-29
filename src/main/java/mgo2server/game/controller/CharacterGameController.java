@@ -115,12 +115,55 @@ public class CharacterGameController implements IGameController {
 	 * "35-byte trailer with 07 at +4 and 03 at +6" lands them on indices 1 and 3, which is exactly
 	 * where they sit here.
 	 */
-	private static final byte[] LIST_TRAILER = {
-		0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	};
+	/** [ELF 0xD3774C] The parser copies exactly 32 bytes; 35 was a phantom. */
+	private static final int TRAILER_SIZE = 32;
+
+	private static final byte[] LIST_TRAILER = buildTrailer();
+
+	/**
+	 * Index 3 of the trailer — the entitlement bit — overridable so it can be flipped in one
+	 * restart instead of a rebuild.
+	 *
+	 * <p><b>What the experiment is for.</b> The bit is documented as unlocking "32 of the 91
+	 * selectable loadout items", a label taken from the first trace of the availability predicate.
+	 * But the day-one shop's <b>MGO Codec Pack adds exactly 32 preset-message phrases</b>, and if
+	 * the 85-entry table at {@code 0xE1812C} is a mixed availability table rather than a
+	 * loadout-only one, this single bit could be the whole shop. The counts matching is not
+	 * evidence, but it is a reason to look.
+	 *
+	 * <p>Set {@code MGO2SERVER_ENTITLEMENT_BYTE=0} and restart, then check <b>both</b> screens:
+	 * the loadout item list, and Personal Data -&gt; Game Play Options -&gt; Preset Message Slot.
+	 * Whichever shrinks is what the bit governs — and if both do, the hypothesis is confirmed and
+	 * "loadout items" is the wrong name for it.
+	 *
+	 * <p>Default {@code 0x03}, which is what we have always sent. Only bit 0 is read; bit 1 has no
+	 * reader.
+	 */
+	private static byte[] buildTrailer() {
+		var trailer = new byte[TRAILER_SIZE];
+		trailer[1] = 0x07;
+		trailer[3] = entitlementByte();
+		return trailer;
+	}
+
+	private static byte entitlementByte() {
+		var configured = System.getenv("MGO2SERVER_ENTITLEMENT_BYTE");
+		if (configured == null || configured.isBlank()) {
+			return 0x03;
+		}
+		try {
+			var value = (byte) (Integer.decode(configured.trim()) & 0xff);
+			logger.warn("MGO2SERVER_ENTITLEMENT_BYTE={} — 0x3049 trailer index 3 overridden."
+				+ " Bit 0 clear removes 32 gated entries from the client's availability table.",
+				configured.trim());
+			return value;
+		} catch (NumberFormatException e) {
+			logger.warn("MGO2SERVER_ENTITLEMENT_BYTE=\"{}\" is not a number; using 0x03.",
+				configured);
+			return 0x03;
+		}
+	}
+
 
 	private final AccountService accountService;
 
