@@ -22,7 +22,6 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | --- | --- |
 | `http_probe.py` | Serves the HTTP and HTTPS endpoints (`probe-http`, `probe-https`), terminates TLS and proxies to the web service. Holds the TLS-1.0 and `SECLEVEL=0` settings the console needs. |
 | `turnserver.conf` | coturn config for the `probe-stun` service — the STUN responder that answers the port check. |
-| `stun_probe.py` | The former hand-rolled STUN responder, kept as a reference/diagnostic (coturn replaced it). Run standalone: `python stun_probe.py 3478 <ip> <secondary-ip>`. |
 | `www/` | Static documents only — the document root the probes copy in and serve. |
 | `tls/` | The certificate chain and its private keys. Deliberately **not** under `www/`: that directory is served, and keys have no business in a document root. Mounted separately at `/tls`. |
 
@@ -39,9 +38,10 @@ Not normally running. Each exists because it answered a question once and would 
 
 | path | role |
 | --- | --- |
-| `stun_selftest.py` | Asserts the STUN reply format against a running responder. Run it after touching `stun_probe.py`; a regression there produces no error, just a hung game. |
+| `stun_selftest.py` | Asserts the STUN reply format against a running responder — coturn, these days. A regression there produces no error, just a hung game. |
 | `upnp_probe.py` | Answers the client's UPnP discovery. The game carries its own IGD client. |
 | `dnsmasq.conf` | A logging DNS server. **DNS is not needed to play** — this is for discovering the hostnames a different disc or region asks for. |
+| `retired/` | Superseded implementations, kept because they document a working approach rather than because anything runs them. `stun_probe.py` is the hand-rolled STUN responder coturn replaced on 2026-07-21; run it standalone with `python stun_probe.py 3478 <ip> <secondary-ip>`. |
 
 ## About `tls/`
 
