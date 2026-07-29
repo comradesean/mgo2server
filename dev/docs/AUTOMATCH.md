@@ -851,12 +851,25 @@ level at **band 9**, about 4 minutes in — which is the overlap rule working as
 condition is `|dLevel| <= band(a) + band(b)`, so searchers must genuinely share a level rather than
 merely sit adjacent.
 
-#### Observed and not yet explained
+#### The host change at 01:57:45 was the protocol working (resolved 2026-07-29)
 
-At 01:57:45 game 255's host passed from chara 3 to chara 1, eight seconds before chara 1 quit and the
-game was torn down. **Host migration inside an automatch-formed game is not something the matchmaker
-does deliberately**, and it is not known whether this was the player leaving the host slot or
-something the server did. Not reproduced, not investigated.
+Logged as a curiosity at the time: game 255's host passed from chara 3 to chara 1, eight seconds
+before chara 1 quit and the game was torn down. It read as unexplained host migration inside an
+automatch game.
+
+**It was neither unexplained nor migration.** `Game N host passed from character X to Y` is emitted
+only by the `0x43a0` handler (`HostGameController.passHost`), which is a **command the client sends**
+carrying an explicit target chara id — there is no automatic server-side host migration anywhere in
+this server. So chara 3's client deliberately handed the game to chara 1, we honoured it, and the
+ordinary quit teardown followed.
+
+That is the expected shape when a host leaves through the in-game menu: the client nominates a
+successor before it goes. The operator was closing clients and idling during matchmaking at the time,
+which is exactly the input that produces it.
+
+**Recorded because the note itself was the hazard.** An "observed and unexplained" line costs the
+next person an investigation, and this one had a one-line answer in our own handler. Before filing
+anything as anomalous, check whether the log line has a single writer and what triggers it.
 
 ### The Sneaking "draw" is correct behaviour, not a defect (settled 2026-07-28)
 
