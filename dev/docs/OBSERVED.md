@@ -744,7 +744,7 @@ What makes it PASS, stated as the responder must satisfy it:
    distinct server addresses is what the client reads as full-cone (NAT type `0x10`) and passes;
    a differing/absent mapping reads as symmetric (0/1/2) and fails `0692:00000003`.
 
-`dev/runtime/stun_probe.py` already emits MAPPED + SOURCE + CHANGED with `peer` as the mapped address
+`dev/tools/retired/stun_probe.py` already emits MAPPED + SOURCE + CHANGED with `peer` as the mapped address
 (port-preserving) and, given a second address, answers change-IP from it — i.e. it is the right
 shape. The capture removes the last doubt about the format (four attributes are accepted; the
 old "decoder rejects >2 attributes" comment was wrong and is fixed). The remaining risk is
@@ -796,7 +796,7 @@ sends four. The missing one is **XOR-MAPPED-ADDRESS**, and two things about it w
 its type is **`0x8020`** (not the RFC-5389 `0x0020`), and it is XORed against the **request
 transaction id**, not the magic cookie (`port ^ txid[0:2]`, `ip ^ txid[0:4]`). Decoded from the
 capture and validated: for txid `eb55d721…`, client `47.205.42.160:5730`, it reproduces the
-captured `port=fd37 ip=c498fd81` exactly. `dev/runtime/stun_probe.py` now sends this by default.
+captured `port=fd37 ip=c498fd81` exactly. `dev/tools/retired/stun_probe.py` now sends this by default.
 
 With the four-attribute reply, the game accepts the response, runs the port check to a verdict,
 and **reaches the online menu.** The verdict is `0692:00000003` ("NAT looks symmetric"), a soft

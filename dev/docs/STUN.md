@@ -4,7 +4,10 @@ MGO2 runs NAT discovery before it will allow online play, shown as **"Adjusting 
 Matches are peer to peer, so the client needs to know how its UDP port looks from outside. If the
 server gets this wrong the game hangs on that screen with no error and no timeout.
 
-Our responder is `dev/runtime/stun_probe.py`, run as the `probe-stun` service. `dev/docs/PROTOCOL.md` covers the
+Our responder is **coturn**, run as the `probe-stun` service and configured by
+`dev/runtime/turnserver.conf`. (It replaced a hand-rolled responder on 2026-07-21; that script is
+kept for reference at `dev/tools/retired/stun_probe.py` and is not part of the stack.)
+`dev/docs/PROTOCOL.md` covers the
 TCP lobby protocol and has no bearing here: this is UDP, on its own thread in the client, sharing
 nothing with the lobby servers — and none of the ciphers in `dev/docs/CRYPTO.md` either. STUN packets
 are plaintext.
@@ -160,7 +163,7 @@ not fix it, and the client learns it from the CHANGED-ADDRESS we send, so any fr
 long as it is reported consistently. Our responder uses `primary + 1`.
 
 ```
-python3 dev/runtime/stun_probe.py 3478 <A1> <A2>
+python3 dev/tools/retired/stun_probe.py 3478 <A1> <A2>
 ```
 
 RFC 5780 §6 goes further: a server that cannot provide a second address **MUST** reject

@@ -350,7 +350,7 @@ services:
   # as a lobby error rather than a NAT one.
   # coturn, STUN-only, is the responder. It replaced the hand-rolled stun_probe.py on 2026-07-21:
   # coturn is what echo (the reference server confirmed to play online) uses, and swapping it in
-  # got a client past the port check into clean hosting. stun_probe.py is kept under dev/runtime as
+  # got a client past the port check into clean hosting. stun_probe.py is kept under dev/tools/retired as
   # a reference/diagnostic; run it with `python stun_probe.py 3478 <ip> <secondary-ip>` if needed.
   #
   # A second address is what makes NAT classification possible at all: the client asks the server
