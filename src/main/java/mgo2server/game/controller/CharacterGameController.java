@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.CharacterNames;
 import mgo2server.common.model.Chara;
+import mgo2server.common.model.Account;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
@@ -118,52 +119,41 @@ public class CharacterGameController implements IGameController {
 	/** [ELF 0xD3774C] The parser copies exactly 32 bytes; 35 was a phantom. */
 	private static final int TRAILER_SIZE = 32;
 
-	private static final byte[] LIST_TRAILER = buildTrailer();
+	/**
+	 * The trailer's entitlement byte — index 3, and the only byte in the 32 with any reader.
+	 *
+	 * <p>Sourced from {@code account.entitlements} (V62) rather than a constant, so it is
+	 * <b>per account and editable live</b>: an {@code UPDATE} takes effect on the next
+	 * character-list fetch, with no restart and without touching anyone else.
+	 *
+	 * <p>[ELF] only bit 0 is read, by two sites on the same byte at {@code ctx+22455}:
+	 * {@code 0x9B9E30} computes {@code (byte & 1) << 4} — 0 or 16 — and {@code 0x9BADA4} tests
+	 * {@code byte & 1} to pick between two list-builders. The 16 is a threshold: the availability
+	 * predicate {@code 0x9B9DF0} walks an 85-entry table at {@code 0xE1812C} and refuses any entry
+	 * whose gate exceeds it. <b>32 entries gate on exactly 16</b>, so clearing bit 0 removes them.
+	 *
+	 * <p><b>What those 32 are is unresolved</b> — "loadout items" is the label from the first trace,
+	 * but the day-one Codec Pack adds exactly 32 preset-message phrases, so one bit may be the whole
+	 * shop. See {@code dev/docs/POST_LAUNCH.md}; the experiment is now
+	 * {@code update account set entitlements = 0 where id = ...} and a reconnect.
+	 */
+	private static final int TRAILER_ENTITLEMENT_INDEX = 3;
 
 	/**
-	 * Index 3 of the trailer — the entitlement bit — overridable so it can be flipped in one
-	 * restart instead of a rebuild.
-	 *
-	 * <p><b>What the experiment is for.</b> The bit is documented as unlocking "32 of the 91
-	 * selectable loadout items", a label taken from the first trace of the availability predicate.
-	 * But the day-one shop's <b>MGO Codec Pack adds exactly 32 preset-message phrases</b>, and if
-	 * the 85-entry table at {@code 0xE1812C} is a mixed availability table rather than a
-	 * loadout-only one, this single bit could be the whole shop. The counts matching is not
-	 * evidence, but it is a reason to look.
-	 *
-	 * <p>Set {@code MGO2SERVER_ENTITLEMENT_BYTE=0} and restart, then check <b>both</b> screens:
-	 * the loadout item list, and Personal Data -&gt; Game Play Options -&gt; Preset Message Slot.
-	 * Whichever shrinks is what the bit governs — and if both do, the hypothesis is confirmed and
-	 * "loadout items" is the wrong name for it.
-	 *
-	 * <p>Default {@code 0x03}, which is what we have always sent. Only bit 0 is read; bit 1 has no
-	 * reader.
+	 * Index 1 carries {@code 0x07} and <b>has no reader at all</b>, as do indices 0, 2 and 4..31.
+	 * Kept verbatim because "what we have always sent" is the only evidenced thing about the inert
+	 * bytes — not because it means anything.
 	 */
-	private static byte[] buildTrailer() {
+	private static final int TRAILER_INERT_INDEX = 1;
+
+	private static final byte TRAILER_INERT_VALUE = 0x07;
+
+	private static byte[] trailerFor(Account account) {
 		var trailer = new byte[TRAILER_SIZE];
-		trailer[1] = 0x07;
-		trailer[3] = entitlementByte();
+		trailer[TRAILER_INERT_INDEX] = TRAILER_INERT_VALUE;
+		trailer[TRAILER_ENTITLEMENT_INDEX] = (byte) (account.getEntitlements() & 0xff);
 		return trailer;
 	}
-
-	private static byte entitlementByte() {
-		var configured = System.getenv("MGO2SERVER_ENTITLEMENT_BYTE");
-		if (configured == null || configured.isBlank()) {
-			return 0x03;
-		}
-		try {
-			var value = (byte) (Integer.decode(configured.trim()) & 0xff);
-			logger.warn("MGO2SERVER_ENTITLEMENT_BYTE={} — 0x3049 trailer index 3 overridden."
-				+ " Bit 0 clear removes 32 gated entries from the client's availability table.",
-				configured.trim());
-			return value;
-		} catch (NumberFormatException e) {
-			logger.warn("MGO2SERVER_ENTITLEMENT_BYTE=\"{}\" is not a number; using 0x03.",
-				configured);
-			return 0x03;
-		}
-	}
-
 
 	private final AccountService accountService;
 
@@ -244,7 +234,7 @@ public class CharacterGameController implements IGameController {
 		}
 
 		buffer.writeZero(LIST_TRAILER_OFFSET - buffer.writerIndex());
-		buffer.writeBytes(LIST_TRAILER);
+		buffer.writeBytes(trailerFor(account));
 
 		assert buffer.readableBytes() == LIST_PAYLOAD_SIZE
 			: "Character list must be " + LIST_PAYLOAD_SIZE + " bytes, was " + buffer.readableBytes();

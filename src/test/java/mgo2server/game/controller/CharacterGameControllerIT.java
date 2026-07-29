@@ -168,6 +168,29 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	 * be the whole shop. {@code MGO2SERVER_ENTITLEMENT_BYTE} flips it in one restart to settle
 	 * which screens shrink. This test pins the default; it is not a claim about what is unlocked.
 	 */
+	/**
+	 * Clearing {@code account.entitlements} clears the bit on the wire — no restart involved.
+	 * <p>
+	 * This is the whole point of V62: the byte was a compile-time constant, then an environment
+	 * variable, and neither could be changed for one account or without a restart. The experiment
+	 * in {@code POST_LAUNCH.md} — does the bit gate loadout items, the 32 Codec Pack phrases, or
+	 * both? — is now an {@code UPDATE} and a reconnect.
+	 */
+	@Test
+	public void clearingTheAccountsEntitlementsClearsTheBitOnTheWire() {
+		accountId = createAccount();
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("update account set entitlements = 0 where id = :id")
+				.bind("id", accountId).execute());
+
+		var payload = loginThenNoAccount(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
+			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
+
+		assertThat(payload.getUnsignedByte(0x1d7 - 32 + 3) & 1)
+			.as("read per request, so the UPDATE applies without a restart")
+			.isZero();
+	}
+
 	@Test
 	public void theEntitlementTrailerHasBitZeroSetAtIndexThree() {
 		var payload = loginThen(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
