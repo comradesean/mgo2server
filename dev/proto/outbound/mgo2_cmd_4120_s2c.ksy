@@ -33,15 +33,55 @@ seq:
     repeat: expr
     repeat-expr: 4
     doc: "[ELF] Wire 0x030, four separate 64-byte copies to ctx+27472 + i*64. PROTOCOL.md: four codec names."
-  - id: unknown_130
+  - id: list_preferences
     size: 32
     doc: |
-      [UNKNOWN] Wire 0x130, one 32-byte copy to ctx+29265. PROTOCOL.md reproduces the original
-      contents byte for byte and records no meaning:
-        `01 00 10 00 00 00 00 10  11 10 00 00 00 00 00 00`
-        `00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00`
-      `0x4110`, the write-back, is a 304-byte push = this packet minus these 32 bytes, so the
-      trailer is server-owned state the client never edits.
+      [CONFIRMED 2026-07-29] **The player's Filter Host List / Sort Host List / Player Search
+      preferences.** Bytes 0..7 are **sixteen 4-bit fields**; bytes 8..31 have no reader at all.
+
+      Each nibble has a generated getter and setter (`0x906BE8`..`0x906E10`) and is pinned by **two
+      independent paths** — that getter, and its own help-string and value-label ids — so this map is
+      READ rather than inferred from ordering. Labels from `lobby/scenerio.gcx`, string set
+      `-set [2f0293] $strres:9789 $strres:11033`, where `string id = headerIndex - 9789`.
+
+      `0` is `----` (no filtering) on every filter row:
+
+      ```
+      b0lo Filter (master)      0 Disabled | 1 Enabled
+      b0hi -- DEAD, no callers anywhere
+      b1lo -- DEAD, no callers anywhere
+      b1hi Number of Players    0 ---- | 1 Display Only Open Games
+      b2lo Level Limit          0 ---- | 1 Only Not Restricted | 2 Only Restricted
+      b2hi Password Lock        0 ---- | 1 Only Disabled | 2 Only Enabled
+      b3lo Weapon Restrictions  0 ---- | 1 Only Not Restricted | 2 Only Restricted
+      b3hi Friendly Fire        0 ---- | 1 Only Disabled | 2 Only Enabled
+      b4lo Voice Chat           0 ---- | 1 Only Disabled | 2 Only Enabled
+      b4hi Network Quality      0 ---- | 1 Only Good | 2 Normal or Better
+      b5lo Friends              0 ---- | 1 Only When Present
+      b5hi Blocked Players      0 ---- | 1 Will Not Display
+      b6lo Sort key             0 Name | 1 Players Joined | 2 Network Quality
+      b6hi Sort order           0 Ascending | 1 Descending
+      b7lo Search match         0 Partial and Exact | 1 Exact Only
+      b7hi Search case          0 Case Insensitive | 1 Case Sensitive
+      ```
+
+      Screens: FILTERING SETTING (`0x9084BC`, nine rows), SORT HOST LIST (`0x90C010`), PLAYER SEARCH
+      (`0x90E264` — the `ST1_ON-OFF`/`ST2_ON-OFF` widgets). The ELF also carries a developer name
+      table at `0xE0D548`-`0xE0DBF0` naming the same fields in English.
+
+      **The server now sends all zeros.** The inherited constant
+      `01 00 10 00 00 00 00 10 11 10 ...` set Filter=Enabled, **Password Lock="Display Only
+      Disabled"** — hiding every password-locked game from every browser — and Match Case=Case
+      Sensitive. The client's own default for the region is zero (validator memsets 33 bytes at
+      `0x9472E8`).
+
+      **Correction:** an earlier note gave a clamp table (b6lo <= 1, b6hi forced to 0). The setters
+      `0x906DC8`/`0x906DE0` contain **no clamp** — they mask to four bits — b6lo is three-state
+      cycling 0..2 at `0x90C4C0`, and b6hi is a live toggle at `0x90C694`.
+
+      These are per-player preferences and we push one set to everyone. The client does not return
+      them in `0x4110`, whose write-back is 304 bytes = this packet minus exactly these 32, so
+      whatever persisted them used a path not yet identified.
 types:
   settings_block:
     doc: |
