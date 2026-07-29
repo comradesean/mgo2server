@@ -7,6 +7,20 @@ the id space is fully enumerated and each id has a place to record what the ELF 
 Promotion path: when a spec's fields are all mapped and at least the shape is confirmed
 against a capture, it graduates to `dev/proto/` (the verified set) and is deleted here.
 
+**2026-07-29: the automatch family graduated — 7 specs.** `0x43e0`/`0x43e2` inbound and
+`0x43e1`/`0x43e3`/`0x43e4`/`0x43f1`/`0x43f2` outbound, all now implemented and confirmed against a
+live three-client match. Counts moved 90 -> 88 inbound and 178 -> 173 outbound.
+
+Two of them were **misidentified in the blank and are corrected in the graduated file**, which is
+the more useful half of this pass: `0x43e0` was filed as "automatch status fetch, sent on entry"
+when it is **start automatching, sent on confirm**, and `0x43e2` was "[UNKNOWN: which action]" when
+it is the **cancel**. Both were settled by the client's own error table — the two request slots
+print "Unable to *start*" and "Unable to *cancel*" respectively. `0x43f1`'s first u32 was likewise
+a generic "room/game key" and is the **host character id**.
+
+`0x43f0`, `0x43f3`, `0x43f4` and `0x43f5` stay blank: we do not send them, and `0x43f3`/`0x43f4`
+have never been exercised.
+
 **2026-07-27: 35 specs graduated in one pass** — 33 of the clan family plus `0x3103` and
 `0x4600`. The counts below moved 109 -> 90 inbound and 194 -> 178 outbound. Four clan specs that
 are individually complete were held back deliberately: `0x4b11`/`0x4b13` and `0x4b53`/`0x4b55`
@@ -21,8 +35,8 @@ Direction is encoded by the folder, from **the server's** point of view:
 
 | folder | direction | suffix | count | id list |
 | --- | --- | --- | --- | --- |
-| `inbound/` | client -> server (what we receive and must answer) | `_c2s` | 90 | `dev/analysis/c2s_ids.txt` (112 ids, 21 already verified) |
-| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 178 | `dev/analysis/s2c_ids.txt` (204 ids, 25 already verified) |
+| `inbound/` | client -> server (what we receive and must answer) | `_c2s` | 88 | `dev/analysis/c2s_ids.txt` (112 ids, 21 already verified) |
+| `outbound/` | server -> client (what we send and the client parses) | `_s2c` | 173 | `dev/analysis/s2c_ids.txt` (204 ids, 25 already verified) |
 | (root) | both directions, identical schema | none | 1 | `0x0005` only |
 
 Direction is carried **twice on purpose** — by the folder and by the `_c2s`/`_s2c` filename
