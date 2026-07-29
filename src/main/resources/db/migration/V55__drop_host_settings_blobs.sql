@@ -86,5 +86,15 @@ WHERE blob IS NOT NULL AND length(blob) >= 342 AND unread_tail IS NULL;
 -- seven are zero in every capture. Nothing is read from them; they are reproduced because the block
 -- handed back to the client has to be the length the client sent.
 
+-- The capture harness hangs off this column and blocks the drop. It is operator-installed from
+-- dev/tools/blob_audit.sql, not part of the schema, and its job here is done: it existed to archive
+-- 0x4310 pushes so consecutive hosts would not overwrite the evidence while the block was being
+-- decoded. The block is decoded, so the trigger goes with the column.
+--
+-- blob_audit itself is KEPT, rows and all. It holds the captures the decode was built from, and
+-- throwing away the evidence because the conclusion is written down is how a finding becomes
+-- unverifiable. Re-point the harness at another column when the next blob needs the same treatment.
+DROP TRIGGER IF EXISTS host_settings_blob_audit ON public.chara_host_settings;
+
 ALTER TABLE public.game DROP COLUMN IF EXISTS host_settings;
 ALTER TABLE public.chara_host_settings DROP COLUMN IF EXISTS blob;
