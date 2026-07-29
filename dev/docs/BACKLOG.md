@@ -746,3 +746,40 @@ needs presence stored per session — a `chara_presence(chara_id, game_id, subty
 left_at)` row written where `creditTrainingTime` currently upserts — after which the weekly figure
 is a window over `left_at` and the lifetime figure stays a sum. Not urgent: the slots are correct
 cumulatively today.
+
+## The host-settings blob must go — full decode ledger
+
+*Pinned 2026-07-29.* `chara_host_settings.blob` is stored raw and replayed verbatim; `game`
+decodes 24 fields and passes the rest through. **The end state is no blob and every byte typed.**
+Storing raw because "the client's serializer is the only authority on its layout" is a reason to
+start with a blob, not to keep one: we hand these bytes back to a client, so we are responsible for
+knowing what they are.
+
+**134 bytes are already understood and simply not typed.** That is the part to fix first, and it
+needs no new research:
+
+| wire | bytes | field | evidence |
+| --- | --- | --- | --- |
+| `0x0a3`-`0x0d2` | 48 | rotation, 16 x `{rule, map, flags}` | `[ELF]`; we store round 0 only |
+| `0x0d5`-`0x0e4` | 16 | weapon restrictions, 1 bit per item, 1 = locked | `[CONFIRMED]` |
+| `0x0fc`-`0x13f` | 68 | rule timers, 17 x u32 | `[ELF]` widths; per-rule pairing confirmed twice |
+| `0x140`-`0x141` | 2 | unique characters | `[INFERRED]` |
+
+**~34 bytes are genuinely unknown** and split by how they can be attacked:
+
+- **20 bytes of scattered scalars** — `0x0d3`, `0x0d4`, `0x0ea`, `0x0ee`, `0x0f0`, `0x0f4`,
+  `0x0f6`, `0x0f7`, `0x144`, `0x149`, `0x14a`. Positions and widths exact. Tractable by ELF: each
+  has a struct destination, so the method is find-the-reader, same as the filter nibbles.
+  `0x0ea` is already settled as far as it can be — **no reader and no writer**, so it is
+  server-authored and echoed.
+- **14 bytes at `0x14b`-`0x158`** — one raw block write, so **the ELF gives no field boundaries at
+  all**. Disassembly cannot split this; it needs live divergence testing, and that makes it the
+  last item rather than the next one.
+
+**Order of work.** (1) Type the 134 understood bytes into columns. (2) Reconstruct the blob from
+those columns and prove it byte-identical to the stored one, in tests and against a live capture —
+that is what makes dropping the blob safe rather than hopeful. (3) Drop `blob` from both tables.
+(4) Chase the 20 scalars. (5) Divergence-test the 14-byte block.
+
+Do not drop the blob before step 2 passes: a reconstruction that is one byte wrong would corrupt
+every Create Game pre-fill, and the symptom would be a screen full of plausible values.
