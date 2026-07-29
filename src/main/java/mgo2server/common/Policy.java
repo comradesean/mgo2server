@@ -25,7 +25,8 @@ public record Policy(
 	Duration clanDisbandCooldown,
 	Duration clanEmblemCooldown,
 	Duration clanJoinCooldown,
-	boolean zeroUnreadFields
+	boolean zeroUnreadFields,
+	boolean capturePackets
 ) {
 	/** A week. What all three cooldowns default to. */
 	public static final Duration DEFAULT_COOLDOWN = Duration.ofHours(168);
@@ -48,10 +49,25 @@ public record Policy(
 			hours(env, "MGO2SERVER_CLAN_DISBAND_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
 			hours(env, "MGO2SERVER_CLAN_JOIN_COOLDOWN_HOURS", DEFAULT_COOLDOWN),
-			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS")
+			flag(env, "MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS"),
+			flag(env, "MGO2SERVER_CAPTURE_PACKETS")
 		);
 	}
 
+	/**
+	 * Archives raw protocol payloads to {@code dev_packet_audit} for offline decoding.
+	 *
+	 * <p>Dev tooling, and the cost is explicit: the table grows unbounded by design, because
+	 * consecutive senders must not overwrite each other's evidence. Off means the server writes
+	 * nothing there at all.
+	 *
+	 * <p>It pairs with the inert-field tripwire and does a different job. The tripwire is the
+	 * <b>summary</b> — distinct values per watched field, where a second row is an alert. This is
+	 * the <b>evidence</b> — whole payloads with timestamps, so a later question can be answered
+	 * against real bytes instead of re-derived from a conclusion. The training-lobby correlation
+	 * needed the evidence: it correlated a byte inside each payload against the lobby subtype in the
+	 * same row, which the summary could not have answered.
+	 */
 	/**
 	 * Zeroes the inherited constants an exhaustive ELF sweep found have <b>no reader</b> in this
 	 * client build: automatch settings block {@code +72} (captured {@code 0x02000000}) and

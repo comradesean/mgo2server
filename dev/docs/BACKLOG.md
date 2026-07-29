@@ -834,7 +834,7 @@ A stale comment is much the cheaper error. Same trap as the `dev/proto` path rew
 ## Two instruments for the version work, and they do different jobs
 
 `inert_field_watch` is the **summary**: distinct values per watched field, where a second row is an
-alert. `blob_audit` is the **evidence**: every raw `0x4310` push, timestamped and whole, so a future
+alert. `dev_packet_audit` is the **evidence**: every raw `0x4310` push, timestamped and whole, so a future
 question can be answered against real bytes instead of re-derived from a conclusion.
 
 Keeping both matters. The summary is what you watch; the evidence is what settles an argument. The
@@ -842,13 +842,16 @@ Keeping both matters. The summary is what you watch; the evidence is what settle
 question could not have been answered from the summary alone, because it needed the lobby subtype
 each push carried.
 
-The capture moved from a database trigger into the server (2026-07-29). The trigger hung off
+The capture moved from a database trigger into the server (2026-07-29) and is gated by
+`MGO2SERVER_CAPTURE_PACKETS`, left on for the version work. The table was renamed from `blob_audit`:
+that name said what it stored rather than what it was for, and once the blob it was named after was
+dropped it actively misled — a reader would go looking for a matching blob column. The trigger hung off
 `chara_host_settings.blob`, and `V55` dropped that column when the block was decoded. The server is
 the better place anyway: a trigger only ever saw what we chose to store, while the server sees
 exactly what the client sent, **including bytes we do not model**.
 
-`blob_audit` grows unbounded by design — consecutive hosts must not overwrite each other. Prune with
-`delete from blob_audit where captured_at < now() - interval '90 days';`
+`dev_packet_audit` grows unbounded by design — consecutive hosts must not overwrite each other. Prune with
+`delete from dev_packet_audit where captured_at < now() - interval '90 days';`
 
 ## The inert-field tripwire
 

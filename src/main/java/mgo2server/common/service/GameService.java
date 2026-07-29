@@ -243,9 +243,12 @@ public class GameService {
 	 * <p>Failures are swallowed — an analysis tool must never break the thing it observes.
 	 */
 	private void archiveHostSettings(long charaId, int type, byte[] blob) {
+		if (!mgo2server.common.Policy.current().capturePackets()) {
+			return;
+		}
 		try {
 			jdbi.useHandle(handle -> handle
-				.createUpdate("insert into blob_audit (chara_id, type, blob) "
+				.createUpdate("insert into dev_packet_audit (chara_id, type, blob) "
 					+ "values (:chara, :type, :blob)")
 				.bind("chara", charaId)
 				.bind("type", type)
