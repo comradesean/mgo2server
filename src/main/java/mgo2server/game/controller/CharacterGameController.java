@@ -94,6 +94,27 @@ public class CharacterGameController implements IGameController {
 	 * three-byte-short appearance block cancelling a four-byte slot index — which is the argument
 	 * for asserting the total rather than trusting that it works out.
 	 */
+	/**
+	 * <b>Index 3 bit 0 is load-bearing: it unlocks 32 of the 91 selectable loadout items.</b>
+	 * [ELF 2026-07-29] Do not zero this array.
+	 * <p>
+	 * Two readers, both of the same byte at {@code ctx+22455} — trailer index 3. {@code 0x9B9E30}
+	 * computes {@code (byte & 1) << 4}, i.e. 0 or 16, and {@code 0x9BADA4} tests {@code byte & 1} to
+	 * choose between two list-builders. The 16 is a threshold: the availability predicate
+	 * {@code 0x9B9DF0} walks an 85-entry table at {@code 0xE1812C} and refuses any item whose gate
+	 * value exceeds it. <b>32 of those entries carry a gate of exactly 16</b>, so with this bit clear
+	 * they all disappear from the loadout screen; 23 entries gate on 0 and are always available, and
+	 * 27 defer to a separate ownership check.
+	 * <p>
+	 * We send {@code 0x03}. Only bit 0 is read — <b>bit 1 is not</b> — and the {@code 0x07} at index
+	 * 1 has no reader at all, as do indices 0, 2 and 4..31. So the array is one meaningful bit and 31
+	 * inert bytes, but that bit is worth keeping.
+	 * <p>
+	 * <b>32 bytes, not 35</b> — independently confirmed from the parser side: {@code 0xD3732C} copies
+	 * exactly 32 (`li r5,32` at {@code 0xD3774C}). Subtracting the phantom three from the old
+	 * "35-byte trailer with 07 at +4 and 03 at +6" lands them on indices 1 and 3, which is exactly
+	 * where they sit here.
+	 */
 	private static final byte[] LIST_TRAILER = {
 		0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

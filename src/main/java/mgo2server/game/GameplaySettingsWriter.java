@@ -20,9 +20,31 @@ public final class GameplaySettingsWriter {
 	private static final int CODEC_NAME_LENGTH = 64;
 
 	/**
-	 * Fixed trailer the client expects. Undocumented; reproduced from the original byte for byte.
+	 * The 32 bytes closing {@code 0x4120}. <b>Bytes 0-7 are sixteen 4-bit fields; bytes 8-31 have no
+	 * reader at all.</b> [ELF 2026-07-29]
+	 * <p>
+	 * The region is reached only through the accessor {@code 0x907CE4} ({@code ctx+29265}, 139
+	 * callers), and bytes 0-7 have a generated getter/setter pair per nibble
+	 * ({@code 0x906BE8}..{@code 0x906E10}). The family stops at byte 7. Nothing touches bytes 8-31,
+	 * so the {@code 11 10} we send at indices 8-9 is inert.
+	 * <p>
+	 * <b>The client's own default for the whole region is zero</b> — the validator at
+	 * {@code 0x9472B4} memsets 33 bytes at {@code 0x9472E8} when bit 0 of settings byte 0 is clear,
+	 * which is the only consumer of that bit anyone has found and makes it an "already initialised"
+	 * flag. With the bit set it instead clamps each nibble, and <b>b0lo is forced to 0
+	 * unconditionally</b> ({@code 0x947540}), so our byte 0 of {@code 0x01} is inert too.
+	 * <p>
+	 * Of all 32 bytes, exactly two nibbles reach a consumer: b2hi and b7hi, both legal under the
+	 * clamps. The readers use them as <b>list sort/filter selectors</b> — {@code 0x8C6104} fetches
+	 * b6lo and b6hi and picks which field a list sorts by; the settings screen at
+	 * {@code 0x907F5C} copies ten nibbles into UI object bytes 112-121. Two nibbles (b0hi, b1lo) have
+	 * no callers at all.
+	 * <p>
+	 * Names are <b>not decidable from the ELF</b> — these are per-list display preferences whose
+	 * labels live in the disc assets. Kept as captured because two nibbles genuinely differ from the
+	 * client's default, and we have no evidence about which preference they express.
 	 */
-	private static final byte[] TRAILER = {
+		private static final byte[] TRAILER = {
 		(byte) 0x01, (byte) 0x00, (byte) 0x10, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x10,
 		(byte) 0x11, (byte) 0x10, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
 		(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
