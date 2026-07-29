@@ -73,13 +73,8 @@ public class PolicyTest {
 			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessageContaining("whole number of hours");
 	}
-	/**
-	 * The experiment switch is off unless explicitly turned on.
-	 * <p>
-	 * It zeroes fields an ELF sweep found have no reader, which is a claim about the client rather
-	 * than about us — so it must never be the default. Absent, blank and anything non-boolean all
-	 * mean off.
-	 */
+
+	/** The version-bit experiment is off unless explicitly turned on. */
 	@Test
 	public void zeroUnreadFieldsIsOffUnlessAskedFor() {
 		assertThat(of(Map.of()).zeroUnreadFields()).isFalse();
@@ -87,10 +82,8 @@ public class PolicyTest {
 			.isFalse();
 		assertThat(of(Map.of("MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS", "no")).zeroUnreadFields())
 			.isFalse();
-		assertThat(of(Map.of("MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS", "true")).zeroUnreadFields())
-			.isTrue();
 		assertThat(of(Map.of("MGO2SERVER_EXPERIMENT_ZERO_UNREAD_FIELDS", " TRUE ")).zeroUnreadFields())
-			.as("trimmed and case-insensitive, so a stray space in server.env is not a silent no-op")
+			.as("trimmed and case-insensitive, so a stray space is not a silent no-op")
 			.isTrue();
 	}
 

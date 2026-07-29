@@ -345,7 +345,8 @@ public class PersonalStatsController implements IGameController {
 		ctx.write(new GamePacket(PERSONAL_STATS_INFO, info));
 	}
 	/**
-	 * A probe value for one of {@code 0x4103}'s unidentified u32 slots, or 0 when the probe is off.
+	 * A probe value for one of {@code 0x4103}'s unidentified u32 slots. <b>LIVE — this is currently
+	 * deployed, not gated.</b> Remove it once the slot is identified.
 	 * <p>
 	 * <b>Why this exists.</b> The Rankings player card shows PLAY TIME as 00:00:00, and the operator's
 	 * observations pin the mechanism exactly:
@@ -394,7 +395,7 @@ public class PersonalStatsController implements IGameController {
 	 * one, and a more serious one.
 	 */
 	private static int probe(int seconds) {
-		return mgo2server.common.Policy.current().probePlayTimeFields() ? seconds : 0;
+		return seconds;
 	}
 
 }
