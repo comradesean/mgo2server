@@ -403,13 +403,17 @@ public class Automatch {
 			.filter(other -> other.state() == State.SEARCHING)
 			.filter(other -> other.channel().isActive())
 			.filter(other -> windowsOverlap(searcher, other))
+			.filter(other -> modesCompatible(searcher, other))
 			.count();
-		return (int) Math.max(0, policy.minPlayers() - reachable);
+		// The requirement decays with this searcher's own wait, so the figure counts down on its own
+		// even while nobody else arrives — which is the honest thing to show, because the bar really
+		// is falling.
+		return (int) Math.max(0, policy.requiredPlayersAfter(searcher.waited()) - reachable);
 	}
 
 	/** The figure for a searcher who has only just arrived, before they are in the queue. */
 	public int playersNeededOnArrival() {
-		return Math.max(0, policy.minPlayers() - 1);
+		return Math.max(0, policy.requiredPlayersAfter(Duration.ZERO) - 1);
 	}
 
 	/**
@@ -454,15 +458,20 @@ public class Automatch {
 		// to a newcomer rather than both having to fit inside one shared band. That is also exactly
 		// what each client draws for itself.
 		var anchor = queued.get(0);
+		// The anchor's own wait sets the bar: it decays from minPlayersStart down to minPlayers, so an
+		// early search holds out for a full game and a patient one settles for fewer. Read after the
+		// size guard above, never before — it indexes the list, and an empty queue is the ordinary
+		// case on most ticks.
+		var anchorRequirement = policy.requiredPlayersAfter(anchor.waited());
 		var waiting = queued.stream()
 			.filter(searcher -> windowsOverlap(anchor, searcher))
 			.filter(searcher -> modesCompatible(anchor, searcher))
 			.toList();
-		if (waiting.size() < policy.minPlayers()) {
-			logger.debug("{} searching but only {} compatible with chara {} (level {}, band {}, "
-				+ "rule {}); waiting.", queued.size(), waiting.size(), anchor.charaId(),
+		if (waiting.size() < anchorRequirement) {
+			logger.debug("{} searching, {} compatible with chara {} (level {}, band {}, rule {}), "
+				+ "but it still wants {}; waiting.", queued.size(), waiting.size(), anchor.charaId(),
 				anchor.level(), band(anchor),
-				anchor.ruleFilter() == ANY_RULE ? "any" : anchor.ruleFilter());
+				anchor.ruleFilter() == ANY_RULE ? "any" : anchor.ruleFilter(), anchorRequirement);
 			return;
 		}
 

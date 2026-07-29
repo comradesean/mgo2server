@@ -52,7 +52,9 @@ public record AutomatchPolicy(
 	int bandStart,
 	Duration bandStep,
 	int bandMax,
-	Duration modeRelax
+	Duration modeRelax,
+	int minPlayersStart,
+	Duration minPlayersStep
 ) {
 
 	/**
@@ -151,8 +153,31 @@ public record AutomatchPolicy(
 	 */
 	public static final List<Window> DEFAULT_WINDOWS = List.of();
 
-	/** Two players is the smallest thing that is a match rather than a lobby of one. */
+	/**
+	 * The floor the requirement decays to. Two players is the smallest thing that is a match rather
+	 * than a lobby of one.
+	 */
 	public static final int DEFAULT_MIN_PLAYERS = 2;
+
+	/**
+	 * How many players a search holds out for when it starts.
+	 * <p>
+	 * Twelve, because a full game is better than a fast one — a search that immediately settles for
+	 * two produces a duel when eight people were a minute away. The requirement decays from here, so
+	 * nobody is held out forever; it only biases early matches toward being worth playing.
+	 * <p>
+	 * <b>Operator policy.</b> Nothing establishes what the original held out for, only that its panel
+	 * has a "Players Needed" figure at all — which implies a target above the two it could settle for.
+	 */
+	public static final int DEFAULT_MIN_PLAYERS_START = 12;
+
+	/**
+	 * How long before the requirement drops by one player.
+	 * <p>
+	 * Thirty seconds walks 12 down to 2 in five minutes, well inside the client's own ~20-minute
+	 * search timeout, so a lone pair still matches without waiting it out.
+	 */
+	public static final Duration DEFAULT_MIN_PLAYERS_STEP = Duration.ofSeconds(30);
 
 	/**
 	 * How often the matchmaker re-evaluates.
@@ -211,6 +236,24 @@ public record AutomatchPolicy(
 		return (int) Math.min(bandMax, bandStart + steps);
 	}
 
+	/**
+	 * How many players a search that has waited this long still insists on.
+	 *
+	 * <p>Decays from {@link #minPlayersStart} to {@link #minPlayers}, one player per
+	 * {@link #minPlayersStep}. Same shape as the level band and the mode relaxation: strict at first,
+	 * relaxing with that searcher's own wait.
+	 *
+	 * <p>This is the number behind the client's "Players Needed" figure, so what a player sees
+	 * counting down is the requirement genuinely falling, not a display trick.
+	 */
+	public int requiredPlayersAfter(Duration waited) {
+		if (minPlayersStep.isZero()) {
+			return minPlayers;
+		}
+		var steps = waited.toSeconds() / minPlayersStep.toSeconds();
+		return (int) Math.max(minPlayers, minPlayersStart - steps);
+	}
+
 	public static AutomatchPolicy from(UnaryOperator<String> env) {
 		var policy = new AutomatchPolicy(
 			bool(env, "MGO2SERVER_AUTOMATCH_ENABLED", false),
@@ -223,7 +266,9 @@ public record AutomatchPolicy(
 			level(env, "MGO2SERVER_AUTOMATCH_BAND_START", DEFAULT_BAND_START),
 			seconds(env, "MGO2SERVER_AUTOMATCH_BAND_STEP_SECONDS", DEFAULT_BAND_STEP),
 			level(env, "MGO2SERVER_AUTOMATCH_BAND_MAX", DEFAULT_BAND_MAX),
-			seconds(env, "MGO2SERVER_AUTOMATCH_MODE_RELAX_SECONDS", DEFAULT_MODE_RELAX));
+			seconds(env, "MGO2SERVER_AUTOMATCH_MODE_RELAX_SECONDS", DEFAULT_MODE_RELAX),
+			positive(env, "MGO2SERVER_AUTOMATCH_MIN_PLAYERS_START", DEFAULT_MIN_PLAYERS_START),
+			seconds(env, "MGO2SERVER_AUTOMATCH_MIN_PLAYERS_STEP_SECONDS", DEFAULT_MIN_PLAYERS_STEP));
 		policy.validate();
 		return policy;
 	}

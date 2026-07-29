@@ -122,7 +122,11 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 | `0x71CA84` | the Snake role's gate in the same function — `cmpwi cr7,r28,1`. Same counter, different literal, which is what makes the comparison meaningful |
 | `0x71CBD8`..`0x71CBF8` | the LCG that picks which player becomes the Mk.II (`seed*0x5D588B65 + 1`), mixed with elapsed time |
 | `0x71CA0C` | forces the holder to **team 2** — Snake's side |
-| `0x6FC254` | the kill-credit path's team test, which is what ties that role to `snake_kills`/`mk2_kills` |
+| `0x6FC254` | the kill-credit path's team test, which is what ties that role to `snake_kills`/`mk2_kills`. **Its enclosing hook `0x6FC228` is NOT Sneaking-only** — it is vtable slot 7 of the rule-3 and rule-5 classes and is called directly from `0x717594`, `0x719310`, `0x7198E4` and `0x71A27C`, i.e. shared by rules 0, 1/6, 2, 3, 4 and 5 |
+| `0x7031A4` | **the mode-object factory** — `switch (0x6A9A38())`, 11 cases, jump table at `0x7031D0`. Case 4 (Sneaking) is ctor `0x719B90`, vtable `0xFB5378`. Rule 4 alone also gets a 232-byte object from ctor `0x70F198` at `0x703188` |
+| `0x719D40` | **the Sneaking round-end handler** (vtable slot 4 of the rule-4 class), called as `mode->slot4(mode, &reason, &out)` from `0x704FBC` / `0x70773C`. Reasons 2/3 award; **reasons 4/5 — the Snake-axis outcomes — award nothing** |
+| `0x6FC140` | `AwardTeamWin(unused, teamId)` — walks slots 0..23 and saturating-increments live counter n15 (blob key 56) for every occupied slot on that team. All 20 call sites are host-guarded by `0x26E958`. The **only** writer of `team_win` |
+| `0x6FAEB8` | **Team Sneaking's round-end handler, and the control that proves the omission is deliberate** — same shape as `0x719D40`, but its reason-4 arm *does* call `AwardTeamWin(2)` at `0x6FAFE4` |
 | `0x6EB9B0` | returns the Mk.II's slot, or none |
 | `0xE1B808` / `0xE1B7F8` | `MK2_SKILL` / `SNAKE_SKILL` — the only two unique-character skill names the ELF references |
 | `0x1036BCC` | `MK2 SPARK`, damage-source id `0x72` — the taser, which is what b57 counts |
@@ -191,7 +195,14 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 | --- | --- |
 | `0xD3FEAC` | the sole writer of the round token at session `+0x32F8` — half of the proof that `0x4390` attribution is connection-implicit |
 | `0xD47E18` | the `0x4902` lobby-list entry parser (99-byte entries) |
-| `0x905A7C` / `0x905A94` | the clan emblem gate — byte must equal 3 **and** membership state in `{1,2}` |
+| `0x905A7C` / `0x905A94` | the clan emblem gate on the **lobby-entry** path — byte must equal 3 **and** membership state in `{1,2}`. Its timeout at `0x905B00` (tick counter past 6000) raises the client-side `-160` *"network server error … unable to acquire clan emblem"*; results `-1215`/`-1214` are explicitly tolerated at `0x905B80` |
+| `0x9C2C00` | the **in-game** emblem gate, and it is not the same test: `slot+92 == 3` passes unconditionally, `slot+92 == 2` also passes when the mode is 9, and mode 10 always fails |
+| `0x9D4500` | the per-frame **emblem manager** — walks all 24 slots and fetches **each peer's** emblem by that peer's clan id. 30-entry cache at `0x166F8F4`, stride 776. Backoff on failure at `0x9D4A34`, 6000 ticks, no dialog |
+| `0xA9B3E8` | **the emblem decoder** — `"EMBD"` magic (`0xE1E6A8`, compared at `0xA9B458`), high-bit byte at +4 (`0xA9B470`), 16 RGB palette entries at +5, 512 bytes of packed 4-bit indices at +53 (`0xA9B718`), width asserted 32 at `0xA9B744`. **32x32, 16 colours** |
+| `0xD56618` / `0xD56704` / `0xD57838` | the three emblem-fetch senders (`0x4b4c` / `0x4b4a` / `0x4b48`). **All three append a u32 clan id**; `0x9D47C0` picks `0x4b4c` over `0x4b4a` when the mode is 9 |
+| `0x88407C` | the **player-announce builder** — copies `profile+6872` verbatim to announce `+4` at `0x88415C`, clan id to `+8` (zeroed unless membership−1 ≤ 1), clan name to `+330`. Serialized to peers at `0x272474`–`0x272684`, applied to the slot by `0x2762A0` (own) / `0x278068` (peers); slot array `gameObj+212`, stride 116, 24 slots |
+| `0xD3C9A8` | the **`0x4129` parser** (dispatch `0xD387C8`, `cmpwi 16681` at `0xD388B4`). Writes 13 profile fields at `r27+22488` and clears none — including the emblem flag at `0xD3CC0C`, the **last byte of the payload**. A non-zero `result` skips the whole body |
+| `0xD584B0` / `0xAD4724` / `0xD3DA90` | the other writers of the emblem flag: `0x4b47`, the upload commit, and `0x4221` (the last against the *viewed player's* record, not the local profile) |
 | `0xAB0074` | the clan coroutine that ands the privilege word and refuses to advance unless it is zero |
 | `0xBC2D78` | the ranking scramble |
 | `0x305A60` | a per-object 896-bit flag API |

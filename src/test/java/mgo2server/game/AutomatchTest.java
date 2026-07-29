@@ -46,6 +46,13 @@ public class AutomatchTest {
 	 * a deployment would get. It parses as disabled, which skips {@code validate} — the queue never
 	 * asks whether the window is open, because by the time anything is enqueued the controller has
 	 * already decided that.
+	 * <p>
+	 * <b>The decay is pinned flat here</b>, by starting the requirement at {@code minPlayers} rather
+	 * than the deployed 12. These tests are about grouping, banding and the shortfall arithmetic, all
+	 * of which run at a fixed requirement; leaving the decay on would mean every one of them
+	 * additionally depended on how much simulated time had passed, and would fail for a reason that
+	 * has nothing to do with what they assert. The decay itself is covered where it belongs, in
+	 * {@code AutomatchPolicyTest}.
 	 */
 	private static Automatch queueNeeding(int minPlayers) {
 		return queueNeeding(minPlayers, (lobbyId, hostCharaId) -> 0L);
@@ -57,8 +64,9 @@ public class AutomatchTest {
 	 * lobby looks like and what every test but the election ones wants.
 	 */
 	private static Automatch queueNeeding(int minPlayers, Automatch.GameLookup games) {
-		return new Automatch(AutomatchPolicy.from(
-			Map.of("MGO2SERVER_AUTOMATCH_MIN_PLAYERS", String.valueOf(minPlayers))::get),
+		return new Automatch(AutomatchPolicy.from(Map.of(
+			"MGO2SERVER_AUTOMATCH_MIN_PLAYERS", String.valueOf(minPlayers),
+			"MGO2SERVER_AUTOMATCH_MIN_PLAYERS_START", String.valueOf(minPlayers))::get),
 			LOBBY_ID, LOBBY_SUBTYPE, games);
 	}
 

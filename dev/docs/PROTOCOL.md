@@ -1410,7 +1410,7 @@ result slot and trips the error branch — so it targets some other build and wa
 | `0x15c` | 2 | u16 | idle kick |
 | `0x15e` | 2 | u16 | team-kill kick |
 | `0x160` | 4 | u32 | echo writes `0x2e` verbatim; meaning unknown — **regression guard only** |
-| `0x164` | 2 | u8, u8 | capture extra time; **sneaking-mission SNAKE count** — how many times Snake must be killed, default 3. Was "Snake side" until 2026-07-28; corrected against the client's own default and four stored blobs. Zeros until stored |
+| `0x164` | 2 | u8, u8 | capture extra time; **sneaking SNAKE count (1-5)** — clamped to [1,5] by the create-game adjuster at `0x8A1AC8` and **rendered as a number** at `0x89D7B8`, which is what rules out the older "Snake side" reading: a side index would be drawn as a name or sprite. Default 3. That the count is specifically *kills of Snake* is not decidable from the binary — that label lives on the disc. Was "Snake side" until 2026-07-28; corrected against the client's own default and four stored blobs. Zeros until stored |
 | `0x166` | 8 | u8 ×8 | byte-sized timers (echo: SDM t/r, INT t, DM r, SCAP t/r, RACE t/r); zeros until stored |
 | `0x16e` | 1 | u8 | zero |
 | `0x16f` | 1 | u8 | extra-time flags; bit 1 = non-stat game (echo) |
@@ -2304,6 +2304,48 @@ treated as fixed per-session values; if `0x4129` rewrites them at match end, the
 that `0x4129` also touches should be read the same way. Worth a pass over the unknown fields in
 both, looking for `0x4129` destinations.
 
+
+### The full field map, and the two fields it silently overwrites (2026-07-29)
+
+The parser is **`0xD3C9A8`**, reached from the dispatcher `0xD387C8` (`cmpwi 16681` at `0xD388B4`).
+Its destination base is `r29 = r27 + 22488` (`0xD3CA3C`) — exactly what `getLocalProfile` at
+`0xD3A094` returns, i.e. **the same profile the connect burst filled**. Thirteen fields, none
+cleared first, so this packet wins at the end of every round. The complete map is in
+`dev/proto/mgo2_cmd_4129_s2c.ksy`; the summary:
+
+| wire | width | -> profile | field |
+| --- | --- | --- | --- |
+| `0x00` | s4 | — | result; **non-zero skips the entire body** (`bne 0xD3CC1C`) |
+| `0x04` | u1 | `+7845` | worn title |
+| `0x05` | u4 | `+288` | experience |
+| `0x09` | u1 | `+13097` | [UNKNOWN] |
+| `0x0a` | u4 | — | skill count `N` |
+| `0x0e` | 4N | `+11444 + idx*12` | skills `{idx, u2 value, flag}`; capped at 128, `idx` skipped unless signed-positive |
+| `B+0` | u4 | `+13100` | [UNKNOWN] |
+| `B+4` | u4 | `+292` | grade points (a second experience-scale quantity) |
+| `B+8` | u4 | `+1172` | [UNKNOWN] |
+| `B+12` | u4 | `+6816` | clan id |
+| `B+16` | u2 | `+6838` | privilege mask |
+| `B+18` | u1 | `+6837` | clan membership state |
+| `B+19` | u1 | **`+6872`** | **clan emblem flag** — the last byte, stored at `0xD3CC0C` |
+
+`B = 0x0e + 4N`; total payload `0x22 + 4N`. **This server emits five further bytes** (a u4 chara id
+and a zero u1) that the parser never reads; harmless, and it is unknown whether the original sent
+them.
+
+**Two fields here have already cost real debugging**, three lines apart in the same function:
+
+- the **worn title** was sent as `chara.rank`, which blanked the scorecard's animal-rank badge after
+  the first match;
+- the **emblem flag** was hardcoded to 0, which cleared the clan emblem mid-session — the player
+  started with their emblem and lost it the moment the first round ended. Fixed 2026-07-29.
+
+The rule: **every field here must agree with what `0x4122` sent.** Nothing later corrects it.
+
+**A prior finding is corrected by this trace.** The worn title was recorded at wire `0xef`; this
+parser reads it at wire `0x04`, before the variable-length array, so no `N` can place it at `0xef`.
+The struct offset (`+7845`, `charBlock+0x1EA5`) is sound — the `0xef` belongs to `0x4122`, which
+writes the same slot.
 ## `0x4440` — unknown
 
 **The request is exactly one u8** (ELF 2026-07-26, single-source trace: sender `0xD52A44`, the
@@ -2450,7 +2492,7 @@ bulk**.
 | `0x4b46` `{u16}` | `0x4b47`, 28 bytes | clan record refresh |
 | `0x4b48` `{u32 clan id}` | `0x4b49` `{s4, byte[768]}` | emblem, own clan |
 | `0x4b4a` `{u32 clan id}` | `0x4b4b` `{s4, byte[768]}` | emblem, display fetch |
-| `0x4b4c` | `0x4b4d` `{s4, byte[768]}` | emblem, second fetch |
+| `0x4b4c` `{u32 clan id}` | `0x4b4d` `{s4, byte[768]}` | emblem, second fetch (in-game, mode 9) |
 | `0x4b50` `{u8 mode, byte[768]}` | `0x4b51` | **emblem upload** |
 | `0x4b52` `{u32 clan id}` | `0x4b53` / `0x4b54` / `0x4b55` | roster |
 | `0x4b60` / `0x4b62` `{u32 chara id}` | `0x4b61` / `0x4b63` | transfer leadership / set emblem editor |
@@ -2463,6 +2505,56 @@ bulk**.
 
 On `0x4b01` with `result == 0` the client stores the second word as its clan id and **makes itself
 leader**: `0xD56E84` (`lwz r9,116(r1)` / `stw r9,6816`) and `0xD56E90` (`li r0,2; stb r0,6837`).
+
+### The emblem bitmap: `EMBD`, 768 bytes, 32x32 at 16 colours
+
+The 768-byte block carried by `0x4b49`/`0x4b4b`/`0x4b4d` and uploaded by `0x4b50` is a single
+decodable image format, not an opaque blob. The only decoder in the binary is **`0xA9B3E8`** (17 call
+sites), and it validates as follows:
+
+| offset | size | meaning |
+| --- | --- | --- |
+| 0 | 4 | magic, `memcmp` against **`"EMBD"`** (string `0xE1E6A8`, compare `0xA9B458`) |
+| 4 | 1 | must be **signed-negative** — high bit set (`extsb` / `bge -> fail`, `0xA9B470`) |
+| 5 | 48 | **16 palette entries**, 3 bytes RGB each, expanded to `0xRRGGBBFF` (`0xA9B47C`-`0xA9B6E4`) |
+| 53 | 512 | **packed 4-bit palette indices, high nibble first** (unrolled 512x at `0xA9B718`) |
+| 565 | 203 | unused padding |
+
+512 packed bytes are 1024 pixels, and the target texture width is asserted `== 32` at `0xA9B744`, so
+the image is **32x32**. A block failing either check is dropped silently — the in-game path has no
+error dialog, only a 6000-tick backoff at `0x9D4A34`.
+
+Verified against a live upload: the emblem stored for clan 2 begins `45 4D 42 44 80`, i.e. `EMBD`
+followed by `0x80`, and is exactly 768 bytes.
+
+**Do not confuse the `"%s/%s%d.emb"` string (`0xE1E680`) with a network path.** It sits in the emblem
+*editor*'s literal pool beside `"clanemblem"`, `"emblemeditor"` and `"brush_x1"`, and the errors
+around it are *"Not enough space on the hard disk. Could not save emblem"* (6561-6565). It is the
+local HDD save path for the editor's work in progress. **No URL and no HTTP verb exists on the
+emblem fetch path** — the image is a TCP lobby command, full stop.
+
+### Who fetches whose emblem, in a game
+
+The in-game emblem manager `0x9D4500` walks all 24 player slots, and for each occupied slot with a
+nonzero clan id issues a fetch **keyed on that peer's clan id** — not the viewer's. Results are kept
+in a 30-entry cache at `0x166F8F4` (stride 776: `{u32 clanId, byte[768], pad}`).
+
+**So the server must be able to serve any clan's emblem, not just the requester's.** All three
+senders append a `u32` clan id: `0xD57838` (`0x4b48`), `0xD56704` (`0x4b4a`), `0xD56618` (`0x4b4c`).
+Which of the latter two is used depends on the round mode: `0x9C2918` returns 1 iff `0x6A9A38` is 9,
+and at `0x9D47C0` that selects `0x4b4c` and the `conn+0xFBC9` buffer, versus `0x4b4a` and
+`conn+0xF8C7` otherwise. Modes 9 and 10 are not identified by name in the binary.
+
+The **flag** that decides whether a fetch happens at all is read at `0x9C2C00`, and **3 is not its
+only accepted value**: `slot+92 == 3` passes unconditionally, and `slot+92 == 2` also passes when the
+mode is 9 (mode 10 always fails). That byte reaches the slot **peer-to-peer**, not from us: the
+announce builder `0x88407C` copies `profile+6872` verbatim to announce `+4` (`0x88415C`), the
+announce is serialized to peers at `0x272474`-`0x272684`, and `0x2762A0`/`0x278068` apply `+4` to
+`slot+92` (slot array at `gameObj+212`, stride 116, 24 slots).
+
+**The consequence for the server is a split.** The *flag* can only be fixed in the login burst
+(`0x4122`), because nothing in-game can correct it afterwards; the *image* is a live request during
+the match and must be answered for arbitrary clan ids.
 
 ## `0x4b46` blocks — the correction
 

@@ -677,7 +677,19 @@ public class HostGameController implements IGameController {
 			.writeInt((int) clan.id())
 			.writeShort(0)        // privilege mask (profile+6838); nothing grants privileges yet
 			.writeByte(clan.state())
-			.writeByte(0)         // emblem — emblems are not modelled
+			// The EMBLEM FLAG, and the same defect the worn title above had, three lines apart. This
+			// parser writes the same profile slot as 0x4122 (+6872) and does not clear it first, so a
+			// hardcoded 0 here CLEARS an emblem the connect burst had already switched on — the player
+			// starts the session with their emblem and loses it the moment the first round ends.
+			//
+			// Sending 0 is not "no picture", it is "never ask": the fetch is skipped and the emblem is
+			// silently absent (0x905A90 tests this byte for 3, after 0x905A8C checks the membership
+			// state). So it must agree with 0x4122 and 0x4602, and it is computed the same way in all
+			// three. Safe to set here: 0x4b48/0x4b4a are served by ClanGameController, which is
+			// registered on the game servers as well as the lobby.
+			.writeByte(clan.id() == 0 ? 0
+				: (clanService.emblemFlagOf(clan.id()) == ClanService.EMBLEM_ON_DISPLAY
+					? ClanService.EMBLEM_ON_DISPLAY : 0))
 			.writeInt((int) charaId)
 			.writeByte(0);
 
