@@ -395,36 +395,26 @@ public class CharacterGameController implements IGameController {
 			return;
 		}
 
-		// A LEADER MUST NOT TAKE THE CLAN WITH THEM. Deleting a character is a SOFT delete — the row
-		// stays, flagged inactive with a tombstone name — so `clan.leader_chara_id`'s
-		// `on delete set null` never fires. Without this, a leader who deleted their character left
-		// the clan pointing at somebody who could never log in again: leadership could not be
-		// transferred, the clan could not be disbanded, and the roster showed `_deleted_N` in charge.
+		// A LEADER CANNOT DELETE THEMSELVES, and the client says exactly why: "You are the leader of
+		// a clan. Either disband the clan or assign another character as leader." Both routes already
+		// exist in game — 0x4b04 disband and 0x4b60 transfer leadership.
 		//
-		// OPERATOR POLICY, not protocol. The client has a dialog for refusing this (2658) but its
-		// result code is not established, so refusing would show a generic sentence and leave the
-		// player unable to delete at all. Succeeding without orphaning is the kinder half:
-		//   - other members exist -> the longest-standing one is promoted. membersOf() already
-		//     orders leader-first then by joined_at, so the first non-leaver is exactly that.
-		//   - sole member        -> the clan goes with them; there is nobody to inherit it.
-		// The leaver is then withdrawn either way, so no tombstone lingers on a roster.
+		// This REPLACES an auto-succession policy written earlier the same day, which promoted the
+		// longest-standing member (or disbanded a one-member clan) and let the delete proceed. That
+		// was chosen because -1212 was thought unestablished, so refusing would have shown a generic
+		// sentence and left the player stuck. -1212 is established (sweep of all 4353 codes, chain
+		// 0x94F60C), and it does more than refuse — it names the two ways out. Picking a successor on
+		// the player's behalf is a decision the game itself declines to make.
+		//
+		// The check is still load-bearing beyond the sentence: the delete is a SOFT delete, so
+		// clan.leader_chara_id's "on delete set null" never fires and a leader who got through left
+		// the clan pointing at somebody who could never log in again.
 		var membership = clanService.membershipOf(chara.getId());
 		if (membership.id() != 0 && membership.state() == ClanService.STATE_LEADER) {
-			var successor = clanService.membersOf(membership.id()).stream()
-				.filter(member -> member.charaId() != chara.getId())
-				.findFirst();
-			successor.ifPresentOrElse(member -> {
-				clanService.transferLeadership(membership.id(), chara.getId(), member.charaId());
-				logger.info("Character {} led clan {} and is being deleted; leadership passed to {}.",
-					chara.getId(), membership.id(), member.charaId());
-			}, () -> {
-				clanService.disband(membership.id());
-				logger.info("Character {} led clan {} alone and is being deleted; clan disbanded.",
-					chara.getId(), membership.id());
-			});
-		}
-		if (membership.id() != 0) {
-			clanService.withdraw(chara.getId());
+			logger.info("Delete of character {} refused: it leads clan {}.",
+				chara.getId(), membership.id());
+			ctx.write(DELETE_CHARACTER_RESULT, GameError.CHARACTER_IS_CLAN_LEADER);
+			return;
 		}
 
 		characterService.delete(account.getId(), chara.getId());

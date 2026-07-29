@@ -104,6 +104,24 @@ public enum GameError {
 	 */
 	GAME_HOST_NOT_FOUND(-506, true),
 
+	/**
+	 * {@code 0x3106}: "You are the leader of a clan.\nEither disband the clan or assign another
+	 * character as leader."
+	 * <p>
+	 * [ELF, 2026-07-29] Chain {@code 0x94F60C}, raised at {@code 0x94F674}, wait slot {@code 0x11},
+	 * getter {@code 0xD36C8C}; dialog 2658, disc string 22769. Recovered by a sweep of all 4353
+	 * codes with zero unmodelled, and the arm's positive control is {@code -268} — the delete
+	 * cooldown we already ship — reproducing its documented sentence.
+	 * <p>
+	 * <b>This supersedes an auto-succession policy added earlier the same day.</b> That version
+	 * promoted the longest-standing member (or disbanded a one-member clan) and let the delete
+	 * through, on the reasoning that this code was unestablished and refusing would show a generic
+	 * sentence. It is established, and it does not merely refuse — it tells the player the two ways
+	 * out. Choosing a successor on their behalf is a policy invention the game itself declines to
+	 * make, so we decline too.
+	 */
+	CHARACTER_IS_CLAN_LEADER(-1212, true),
+
 	AUTOMATCH_NOT_OPEN(-970, true),
 
 	/** {@code 0x43e1}: "Unable to start automatching." [0x93CF50] */

@@ -330,19 +330,47 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * A leader who deletes their character hands the clan on rather than orphaning it.
+	 * A clan leader is refused the delete, and told the two ways out.
 	 * <p>
-	 * The delete is a <b>soft</b> delete — the row survives, flagged inactive — so
-	 * {@code clan.leader_chara_id}'s {@code on delete set null} never fires. Before this, the clan
-	 * was left pointing at a character nobody could log in as: leadership could not be transferred,
-	 * the clan could not be disbanded, and the roster showed the tombstone name in charge.
+	 * {@code -1212} renders as "You are the leader of a clan. Either disband the clan or assign
+	 * another character as leader." — both of which the client can already do ({@code 0x4b04},
+	 * {@code 0x4b60}).
 	 * <p>
-	 * <b>Operator policy, not protocol</b> — the client has a dialog for refusing the delete (2658)
-	 * but its result code is unestablished, so we succeed without orphaning instead of refusing with
-	 * a generic sentence.
+	 * The refusal matters beyond the sentence. The delete is a <b>soft</b> delete, so
+	 * {@code clan.leader_chara_id}'s {@code on delete set null} never fires; a leader who got
+	 * through left the clan pointing at a character nobody could log in as, with no in-game way to
+	 * repair it.
+	 * <p>
+	 * <b>This replaces an auto-succession test written earlier the same day</b>, which asserted that
+	 * the longest-standing member was promoted. That behaviour was a policy invention adopted while
+	 * {@code -1212} was believed unestablished; it is established, so the game's own answer wins.
 	 */
 	@Test
-	public void deletingALeaderPassesTheClanToTheLongestStandingMember() {
+	public void refusesToDeleteACharacterThatLeadsAClan() {
+		accountId = createAccount();
+		var leader = insertCharacter("Snake", true);
+
+		var clans = services.getClanService();
+		var clanId = clans.createClan(leader, "Rat Patrol", "").orElseThrow();
+
+		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 0),
+			CharacterGameController.DELETE_CHARACTER_RESULT);
+
+		assertThat(resultOf(replies.get(0)))
+			.isEqualTo(GameError.CHARACTER_IS_CLAN_LEADER.result());
+
+		// Still there, still active, still leading — the refusal left nothing half-done.
+		var active = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select active from chara where id=:id")
+				.bind("id", leader).mapTo(Boolean.class).one());
+		assertThat(active).isTrue();
+		assertThat(clans.membershipOf(leader).state()).isEqualTo(ClanService.STATE_LEADER);
+		assertThat(clans.clanById(clanId)).isPresent();
+	}
+
+	/** An ordinary member is not a leader, so nothing blocks their delete. */
+	@Test
+	public void aPlainClanMemberCanStillBeDeleted() {
 		accountId = createAccount();
 		var leader = insertCharacter("Snake", true);
 		var member = insertCharacter("Otacon", true);
@@ -352,40 +380,12 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 		clans.apply(member, clanId);
 		clans.approve(clanId, member);
 
-		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 0),
+		// Index 1 — delete clamps to the last character, and this asserts we refuse on LEADERSHIP
+		// rather than on clan membership.
+		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 1),
 			CharacterGameController.DELETE_CHARACTER_RESULT);
+
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.NONE.result());
-
-		// The clan survives, under new management, and the leaver is off the roster entirely.
-		assertThat(clans.membershipOf(member).state())
-			.as("the remaining member is promoted")
-			.isEqualTo(ClanService.STATE_LEADER);
-		assertThat(clans.membershipOf(leader).id())
-			.as("the deleted character is withdrawn, so no tombstone lingers on the roster")
-			.isZero();
-
-		var leaderId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createQuery("select leader_chara_id from clan where id=:id")
-				.bind("id", clanId).mapTo(Long.class).one());
-		assertThat(leaderId).as("clan.leader_chara_id follows the promotion").isEqualTo(member);
-	}
-
-	/** With nobody left to inherit it, the clan goes with its leader rather than lingering. */
-	@Test
-	public void deletingASoleLeaderDisbandsTheClan() {
-		accountId = createAccount();
-		var leader = insertCharacter("Snake", true);
-
-		var clanId = services.getClanService().createClan(leader, "Rat Patrol", "").orElseThrow();
-
-		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 0),
-			CharacterGameController.DELETE_CHARACTER_RESULT);
-		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.NONE.result());
-
-		var remaining = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createQuery("select count(*) from clan where id=:id")
-				.bind("id", clanId).mapTo(Integer.class).one());
-		assertThat(remaining).as("no clan is left with a leader who cannot log in").isZero();
 	}
 
 	/** Freshly created characters are protected by the cooldown. */
