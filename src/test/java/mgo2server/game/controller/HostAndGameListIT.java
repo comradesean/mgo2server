@@ -13,6 +13,7 @@ import mgo2server.game.packet.GamePacket;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -125,6 +126,14 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 
 	private static GamePacket createGame() {
 		return new GamePacket(HostGameController.CREATE_GAME);
+	}
+
+	/**
+	 * An empty {@code 0x4310}. Adequate here because the ban check runs before the payload is read
+	 * at all — a valid settings blob would test the parser, not the refusal.
+	 */
+	private static GamePacket checkHostSettings() {
+		return new GamePacket(HostGameController.CHECK_HOST_SETTINGS);
 	}
 
 	@Test
@@ -381,6 +390,68 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getCommand()).isEqualTo(GameListGameController.JOIN_GAME_RESULT);
 		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(4);
 		assertThat(replies.get(0).getPayload().getInt(0)).isNotEqualTo(GameError.NONE.result());
+	}
+
+	/**
+	 * A banned account is refused the join, with the sentence the client ships for it.
+	 * <p>
+	 * {@code -541} renders as "You are currently banned from creating and joining games." and is
+	 * accepted on both halves of play, so one code and one column cover hosting and joining.
+	 */
+	@Test
+	public void bannedAccountCannotJoin() {
+		givenSelectedCharacter("Snake");
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+		banCurrentAccount(OffsetDateTime.now().plusDays(1));
+
+		var replies = exchange(1, joinGame(gameId));
+
+		assertThat(replies.get(0).getPayload().getInt(0))
+			.isEqualTo(GameError.GAME_BANNED_FROM_PLAY.result());
+	}
+
+	/**
+	 * A ban that has run out is not a ban. The comparison does the work, so nothing has to sweep
+	 * the column and an expired row is indistinguishable from a clean one.
+	 */
+	@Test
+	public void expiredBanDoesNotRefuseTheJoin() {
+		givenSelectedCharacter("Snake");
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+		banCurrentAccount(OffsetDateTime.now().minusDays(1));
+
+		var replies = exchange(2, registerEndpoint(), joinGame(gameId));
+
+		var join = replies.stream()
+			.filter(p -> p.getCommand() == GameListGameController.JOIN_GAME_RESULT)
+			.toList().get(0);
+		assertThat(join.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+	}
+
+	/**
+	 * A banned account cannot host either, and the refusal lands on {@code 0x4311} rather than on
+	 * create: {@code 0x4317}'s code test has zero spans, so every value there renders the same
+	 * generic sentence and the ban would be invisible.
+	 */
+	@Test
+	public void bannedAccountCannotHost() {
+		givenSelectedCharacter("Snake");
+		banCurrentAccount(OffsetDateTime.now().plusDays(1));
+
+		var replies = exchange(1, checkHostSettings());
+
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(HostGameController.CHECK_HOST_SETTINGS_RESULT);
+		assertThat(replies.get(0).getPayload().getInt(0))
+			.isEqualTo(GameError.GAME_BANNED_FROM_PLAY.result());
+	}
+
+	/** Sets the ban directly; there is no in-game way to do it, and there is not meant to be. */
+	private void banCurrentAccount(OffsetDateTime until) {
+		TestDatabase.get().jdbi().useHandle(handle -> handle
+			.createUpdate("update account set banned_until = :until")
+			.bind("until", until)
+			.execute());
 	}
 
 	/** A game left over from a previous run is cleared, so it never haunts the browser. */

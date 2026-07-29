@@ -192,6 +192,15 @@ public class GameListGameController implements IGameController {
 			? readNulTerminated(payload, PASSWORD_LENGTH)
 			: "";
 
+		// Banned players are refused before anything else is looked at — the sentence names the
+		// person, not the game, so there is nothing about this game worth checking first.
+		if (account.isBannedAt(java.time.OffsetDateTime.now())) {
+			logger.info("Join refused: account {} is banned until {}.",
+				account.getId(), account.getBannedUntil());
+			ctx.write(JOIN_GAME_RESULT, GameError.GAME_BANNED_FROM_PLAY);
+			return;
+		}
+
 		var game = gameService.get(gameId);
 		if (game.isEmpty()) {
 			ctx.write(JOIN_GAME_RESULT, GameError.GENERAL);
@@ -205,6 +214,25 @@ public class GameListGameController implements IGameController {
 			// useless, and reads as the server being broken rather than as a typo. This is the most
 			// common failure a player will ever hit.
 			ctx.write(JOIN_GAME_RESULT, GameError.GAME_PASSWORD_INCORRECT);
+			return;
+		}
+
+		// CAPACITY. There was no check here at all: a full game was joined rather than refused, and
+		// max_players was stored and never enforced anywhere in the server. The client has the
+		// sentence — "Maximum number of characters already reached." — so the refusal is real rather
+		// than a generic.
+		//
+		// Guarded on a positive max_players because a game row whose settings never arrived stores 0,
+		// and treating that as "capacity zero" would refuse every join to it. The hard ceiling
+		// applies regardless: the client cannot render more than MAX_PLAYERS slots.
+		var occupants = gameService.getPlayers(gameId, game.get().getHostCharaId()).size();
+		var capacity = game.get().getMaxPlayers() > 0
+			? Math.min(game.get().getMaxPlayers(), GameDetails.MAX_PLAYERS)
+			: GameDetails.MAX_PLAYERS;
+		if (occupants >= capacity) {
+			logger.info("Join of game {} refused: {} of {} slots occupied.",
+				gameId, occupants, capacity);
+			ctx.write(JOIN_GAME_RESULT, GameError.GAME_FULL);
 			return;
 		}
 
