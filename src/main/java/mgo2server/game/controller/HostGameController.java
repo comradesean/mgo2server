@@ -831,7 +831,7 @@ public class HostGameController implements IGameController {
 	 * for the acknowledgement before moving on to create the game.
 	 * <p>
 	 * The blob is kept three ways: on the connection for the imminent create-game, parsed into
-	 * the game row's columns by {@code applyHostSettings}, and stored raw per (character, lobby
+	 * the game row's columns by {@code applyHostSettings}, and decoded into columns per (character, lobby
 	 * subtype) so {@link #getHostSettings} can pre-fill the Create Game screen next session.
 	 */
 	private void checkHostSettings(GameControllerContext ctx) {
@@ -862,7 +862,7 @@ public class HostGameController implements IGameController {
 		payload.getBytes(base, bytes);
 		ctx.connection().setHostSettings(bytes);
 
-		// Persist the raw blob per (character, subtype) so 0x4304 pre-fills next session. The
+		// Decode and persist per (character, subtype) so 0x4304 pre-fills next session. The
 		// reference skips persisting clan-room rotations (rule 11); we have no clan rooms, so
 		// nothing is special-cased. Stored raw: the parsed-column path stays applyHostSettings's.
 		var charaId = account.getCurrentCharaId();
