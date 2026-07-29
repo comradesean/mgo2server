@@ -647,6 +647,123 @@ public class GameService {
 	 */
 	private static final int UNREAD_TAIL = 0x14B;
 
+	/** Bytes in the host-settings block, as the client sends it. */
+	public static final int HOST_SETTINGS_SIZE = 0x159;
+
+	/**
+	 * Rebuilds the host-settings block from the typed columns, byte for byte.
+	 *
+	 * <p><b>This is what lets the blob go.</b> Storing bytes we hand back to a client without
+	 * knowing what they are was a bridge, not a design; the columns are now complete, and this
+	 * proves it by producing the same bytes the client sent. `HostSettingsRoundTripIT` asserts that
+	 * equality against a real payload, and until it does the blob stays as the source of truth.
+	 *
+	 * <p>Returns {@code null} when the game has no stored settings, which is a real state: a game
+	 * exists between {@code createGame} and {@code applyHostSettings}.
+	 */
+	public byte[] rebuildHostSettings(long gameId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("select * from game where id = :id")
+			.bind("id", gameId)
+			.map((rs, ctx) -> {
+				if (rs.getBytes("unread_tail") == null) {
+					return null;
+				}
+				var blob = new byte[HOST_SETTINGS_SIZE];
+				putString(blob, 0x00, rs.getString("name"), 16);
+				putString(blob, 0x10, rs.getString("comment"), 128);
+
+				var password = rs.getString("password");
+				var locked = password != null && !password.isEmpty();
+				blob[0x90] = (byte) (locked ? 1 : 0);
+				if (locked) {
+					putString(blob, 0x91, password, 16);
+				}
+
+				blob[0xA1] = (byte) (rs.getBoolean("dedicated") ? 1 : 0);
+				blob[0xA2] = (byte) rs.getInt("settings_lobby_subtype");
+
+				var rules = shorts(rs, "rotation_rules");
+				var maps = shorts(rs, "rotation_maps");
+				var flags = shorts(rs, "rotation_flags");
+				for (var entry = 0; entry < ROTATION_ENTRIES; entry++) {
+					blob[ROTATION + entry * 3] = (byte) rules[entry];
+					blob[ROTATION + entry * 3 + 1] = (byte) maps[entry];
+					blob[ROTATION + entry * 3 + 2] = (byte) flags[entry];
+				}
+
+				blob[0xD3] = (byte) rs.getInt("unread_800");
+				blob[0xD4] = (byte) rs.getInt("unread_801");
+				System.arraycopy(rs.getBytes("weapon_restrictions"), 0, blob, WEAPON_RESTRICTIONS, 16);
+				blob[0xE5] = (byte) rs.getInt("max_players");
+				putU32(blob, 0xE6, rs.getLong("briefing_time"));
+				putU32(blob, 0xEA, rs.getLong("unread_824"));
+				putU16(blob, 0xEE, rs.getInt("unread_832"));
+				putU32(blob, 0xF0, rs.getLong("unread_836"));
+				putU16(blob, 0xF4, rs.getInt("unread_844"));
+				blob[0xF6] = (byte) rs.getInt("stance");
+				blob[0xF7] = (byte) rs.getInt("level_limit_tolerance");
+				putU32(blob, 0xF8, rs.getLong("level_limit_base"));
+
+				var timers = ints(rs, "rule_timers");
+				for (var slot = 0; slot < RULE_TIMER_SLOTS; slot++) {
+					putU32(blob, RULE_TIMERS + slot * Integer.BYTES, timers[slot] & 0xFFFFFFFFL);
+				}
+
+				blob[0x140] = (byte) rs.getInt("unique_red");
+				blob[0x141] = (byte) rs.getInt("unique_blue");
+				blob[0x142] = (byte) rs.getInt("common_a");
+				blob[0x143] = (byte) rs.getInt("common_b");
+				blob[0x144] = (byte) rs.getInt("unread_931");
+				putU16(blob, 0x145, rs.getInt("idle_kick"));
+				putU16(blob, 0x147, rs.getInt("team_kill_kick"));
+				blob[CAPTURE_EXTRA_TIME] = (byte) (rs.getBoolean("capture_extra_time") ? 1 : 0);
+				blob[SNEAKING_SNAKE_KILLS] = (byte) rs.getInt("sneaking_snake_kills");
+				System.arraycopy(rs.getBytes("unread_tail"), 0, blob, UNREAD_TAIL, 14);
+				return blob;
+			})
+			.findOne()
+			.orElse(null));
+	}
+
+	private static short[] shorts(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+		var raw = (Object[]) rs.getArray(column).getArray();
+		var values = new short[raw.length];
+		for (var i = 0; i < raw.length; i++) {
+			values[i] = ((Number) raw[i]).shortValue();
+		}
+		return values;
+	}
+
+	private static int[] ints(java.sql.ResultSet rs, String column) throws java.sql.SQLException {
+		var raw = (Object[]) rs.getArray(column).getArray();
+		var values = new int[raw.length];
+		for (var i = 0; i < raw.length; i++) {
+			values[i] = ((Number) raw[i]).intValue();
+		}
+		return values;
+	}
+
+	private static void putString(byte[] blob, int at, String value, int width) {
+		if (value == null) {
+			return;
+		}
+		var bytes = value.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+		System.arraycopy(bytes, 0, blob, at, Math.min(bytes.length, width));
+	}
+
+	private static void putU16(byte[] blob, int at, int value) {
+		blob[at] = (byte) (value >>> 8);
+		blob[at + 1] = (byte) value;
+	}
+
+	private static void putU32(byte[] blob, int at, long value) {
+		blob[at] = (byte) (value >>> 24);
+		blob[at + 1] = (byte) (value >>> 16);
+		blob[at + 2] = (byte) (value >>> 8);
+		blob[at + 3] = (byte) value;
+	}
+
 	public void applyHostSettings(long gameId, byte[] blob) {
 		if (blob == null || blob.length < 0x156) {
 			return;
@@ -677,7 +794,10 @@ public class GameService {
 						sneaking_snake_kills = :snakeKills,
 						unread_800 = :unread800, unread_801 = :unread801,
 						unread_832 = :unread832, unread_836 = :unread836,
-						unread_844 = :unread844, unread_tail = :unreadTail,
+						unread_844 = :unread844, unread_824 = :unread824,
+						unread_931 = :unread931, unread_tail = :unreadTail,
+						settings_lobby_subtype = :settingsLobbySubtype,
+						common_a = :commonAByte, common_b = :commonBByte,
 						host_settings = :blob
 					where id = :id
 					""")
@@ -737,6 +857,13 @@ public class GameService {
 				.bind("unread832", blobU16(blob, 0xEE))
 				.bind("unread836", blobU32(blob, 0xF0) & 0xFFFFFFFFL)
 				.bind("unread844", blobU16(blob, 0xF4))
+				.bind("unread824", blobU32(blob, 0xEA) & 0xFFFFFFFFL)
+				.bind("unread931", blob[0x144] & 0xff)
+				.bind("settingsLobbySubtype", blob[0xA2] & 0xff)
+				// The authoritative toggle bytes. The booleans above are a decoded VIEW of these:
+				// bits 1, 2 and 6 are not decoded, so rebuilding from the booleans alone drops them.
+				.bind("commonAByte", commonA)
+				.bind("commonBByte", commonB)
 				.bind("unreadTail", java.util.Arrays.copyOfRange(blob, UNREAD_TAIL, UNREAD_TAIL + 14))
 				.bind("blob", blob)
 				.bind("id", gameId)
