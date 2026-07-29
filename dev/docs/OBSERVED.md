@@ -3186,8 +3186,10 @@ the session clan record first. Neither could have been provoked by a better trac
   changed nothing.
 - **`T+0x904` is the founding date.** It is the **notice's** date. The field had been found
   honestly — by sending every candidate slot the date offset by a different number of days and
-  reading which one the screen showed — and then a label was layered onto a real observation. The
-  founding date is `T+0x18`.
+  reading which one the screen showed — and then a label was layered onto a real observation. ~~The
+  founding date is `T+0x18`.~~ **That replacement was itself wrong** — `T+0x18` is the leader's
+  character id, and the ELF shows this struct has **no founding-date field at all** (2026-07-29, see
+  the leader-badge entry above). Correcting a mislabel by moving the label is the same mistake twice.
 - **`T+0x48` is the emblem re-display cooldown.** [ELIMINATED] Sending the real display time
   changed nothing; the emblem could still be re-displayed immediately with a fresh `0x4b21` in
   hand. This one is a *valid* elimination: the confirming observation (a countdown appearing) was
