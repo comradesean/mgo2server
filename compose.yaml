@@ -51,6 +51,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Every other long-lived service is unless-stopped; without this postgres defaulted to "no".
+    # When the Docker daemon restarts (observed twice on 2026-07-29, WSL taking the whole daemon
+    # down), all eleven servers came back and the one thing they depend on did not — so they
+    # crash-looped until someone started it by hand. Restarting the database is exactly the case
+    # that must not need a human.
+    restart: unless-stopped
 
   # Runs migrations once, then exits. Both servers wait for it so neither races the schema.
   migrate:
