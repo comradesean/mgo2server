@@ -730,6 +730,15 @@ public class HostGameController implements IGameController {
 	 * comment[128] at 0x10, a password-enabled byte at 0x90, password[16] at 0x91 — so we parse
 	 * those and update the game this character hosts, then ack {@code 0x43c1 {result=0}}.
 	 */
+	/**
+	 * {@code 0x43c0} wire {@code 0xA1}: the host stance, the screen's "Conditions" row.
+	 * <p>
+	 * [READ] Builder {@code 0xD4161C} emits exactly five values — name[16], comment[128], the
+	 * password flag, password[16], then a {@code u8} from settings {@code +846}. The edit screen
+	 * confirms it: it memsets a 968-byte stack copy and fills only those five, one per editable row.
+	 */
+	private static final int IN_GAME_STANCE = 0xA1;
+
 	private void editHostSettings(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {
@@ -749,9 +758,20 @@ public class HostGameController implements IGameController {
 			var passwordEnabled = bytes.length > 0x90 && bytes[0x90] != 0;
 			var password = passwordEnabled ? readField(bytes, 0x91, 16) : null;
 
-			gameService.updateGameSettings(lobbyId, charaId, name, comment, password);
-			logger.info("Character {} edited its game in place: name='{}', password={}.",
-				charaId, name, passwordEnabled ? "set" : "none");
+			// CONDITIONS — the host stance, and the field that would not save. This packet carries
+			// exactly four editable values and we were reading three; byte 0xA1 was read by nobody,
+			// so the client re-read the stale value on every refresh and the edit appeared to be
+			// ignored.
+			//
+			// Note the offset is NOT the one 0x4310 uses. 0x43c0 is a strict subset of the same
+			// 968-byte settings struct — name, comment, password flag, password, stance — and stops
+			// there, so stance lands at 0xA1 here and at 0xF6 in 0x4310, where 0xA1 means
+			// `dedicated`. Reusing the other packet's offset would have written the wrong field.
+			var stance = bytes.length > IN_GAME_STANCE ? bytes[IN_GAME_STANCE] & 0xff : 0;
+
+			gameService.updateGameSettings(lobbyId, charaId, name, comment, password, stance);
+			logger.info("Character {} edited its game in place: name='{}', password={}, stance={}.",
+				charaId, name, passwordEnabled ? "set" : "none", stance);
 		}
 
 		var buffer = ctx.buffer(Integer.BYTES);

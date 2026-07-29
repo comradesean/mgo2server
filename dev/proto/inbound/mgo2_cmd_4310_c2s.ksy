@@ -141,11 +141,31 @@ seq:
   - id: unknown_0f4
     type: u2
     doc: "[UNKNOWN] wire 0x0f4, src+844. Note src+840..843 are not sent."
-  - id: unknown_0f6
+  - id: host_stance
     type: u1
     doc: |
-      [UNKNOWN] wire 0x0f6, src+846. Candidates on position, from the `0x4313` reply's
-      neighbourhood of the level-limit base: stance and level-limit tolerance. Untested.
+      [CONFIRMED 2026-07-29] wire 0x0f6, src+846. **The host stance** — the Create Game and in-game
+      "Conditions" row. A u8 enum 0..9, named in the client's own developer table at `0xE1BC48`+:
+
+      ```
+      0 HOST_STANCE_EASY                 5 HOST_STANCE_TRAINING
+      1 HOST_STANCE_REAL                 6 HOST_STANCE_INSTRUCTOR_ENTRY
+      2 HOST_STANCE_BEGINNER             7 HOST_STANCE_INSTRUCTOR_STARTED
+      3 HOST_STANCE_EVERYONE             8 (slot left zero)
+      4 HOST_STANCE_OTHER                9 HOST_STANCE_NONE
+      ```
+
+      Range-gated `cmplwi 9 / bgt` at `0xA31230`; the +/- cycler clamps 0..9 at `0xA32700`, with
+      values above 4 additionally gated on a lobby flag (`0x964470`, mask `0x20020`) — the
+      training-only half. [INFERRED] the disc labels (set `[40eff4]`, ids 172-181) map on in order:
+      Casual, Serious, Newbies Welcome, Everyone Welcome, Other, Training, Accepting Trainees,
+      Closed to New Applicants, Special, No Conditions. Corroborated by the Create Game default at
+      `0x89B508` picking 6 in training lobbies, which lands on "Accepting Trainees".
+
+      **The in-game edit `0x43c0` carries this field at ITS OWN wire `0xA1`**, not here. That packet
+      is a strict subset of the same struct — name, comment, password flag, password, stance — and
+      `0xA1` in *this* packet is `dedicated`. Reusing the offset writes the wrong field.
+
   - id: unknown_0f7
     type: u1
     doc: "[UNKNOWN] wire 0x0f7, src+847. Same candidate pair as unknown_0f6."

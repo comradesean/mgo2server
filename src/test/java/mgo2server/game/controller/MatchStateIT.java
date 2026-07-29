@@ -1002,4 +1002,46 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		assertThat(row.get("unique_blue")).isEqualTo(3);
 	}
 
+	/**
+	 * The in-game host edit saves CONDITIONS as well as name, comment and password.
+	 * <p>
+	 * "Conditions" is the host stance — a {@code u8} enum the client names {@code HOST_STANCE_*}
+	 * internally. It did not save because {@code 0x43c0} carries exactly four editable values and we
+	 * read three; the byte was parsed by nobody, so the client re-read the stale value on every
+	 * refresh and the edit looked ignored.
+	 * <p>
+	 * <b>The offset is the trap.</b> {@code 0x43c0} is a strict subset of the same 968-byte settings
+	 * struct as {@code 0x4310} — name, comment, password flag, password, stance, then it stops — so
+	 * stance sits at {@code 0xA1} here and at {@code 0xF6} in {@code 0x4310}, where {@code 0xA1}
+	 * means {@code dedicated}. Reusing the other packet's offset writes the wrong field.
+	 */
+	@Test
+	public void inGameEditSavesConditionsAlongsideNameAndComment() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		services.getGameService().applyHostSettings(gameId, settingsBlob());
+
+		var edit = new byte[0xA2];
+		System.arraycopy("Renamed".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0, edit, 0x00, 7);
+		System.arraycopy("New comment".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0, edit, 0x10, 11);
+		edit[0x90] = 0;      // password cleared
+		edit[0xA1] = 3;      // Conditions -> "Everyone Welcome"
+
+		exchange(new GamePacket(HostGameController.IN_GAME_INFO, Unpooled.wrappedBuffer(edit)));
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select name, comment, stance, host_settings from game where id=:id")
+				.bind("id", gameId).mapToMap().one());
+
+		assertThat(row.get("name")).isEqualTo("Renamed");
+		assertThat(row.get("comment")).isEqualTo("New comment");
+		assertThat(row.get("stance")).isEqualTo(3);
+
+		// The stored blob must agree, or the next details refresh and the Create Game pre-fill hand
+		// back the value the host just changed away from.
+		assertThat(((byte[]) row.get("host_settings"))[0xF6])
+			.as("stance mirrored into the stored blob at its own offset")
+			.isEqualTo((byte) 3);
+	}
+
 }

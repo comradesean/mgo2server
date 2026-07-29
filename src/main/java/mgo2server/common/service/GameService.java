@@ -738,19 +738,64 @@ public class GameService {
 	}
 
 	public void updateGameSettings(long lobbyId, long hostCharaId, String name, String comment,
-			String password) {
-		jdbi.useHandle(handle ->
+			String password, int stance) {
+		jdbi.useHandle(handle -> {
 			handle.createUpdate("""
-					update game set name = :name, comment = :comment, password = :password
+					update game set name = :name, comment = :comment, password = :password,
+						stance = :stance
 					where lobby_id = :lobbyId and host_chara_id = :host
 					""")
 				.bind("name", name)
 				.bind("comment", comment)
 				.bind("password", password)
+				.bind("stance", stance)
 				.bind("lobbyId", lobbyId)
 				.bind("host", hostCharaId)
-				.execute());
+				.execute();
+
+			// KEEP THE STORED BLOBS IN STEP. Stance lives at 0x4310 wire 0xF6, and both the running
+			// game's copy and the per-character Create Game pre-fill are replayed from those bytes.
+			// Updating only the column would make the next details refresh or pre-fill hand back the
+			// value the host just changed away from — the same class of disagreement as an in-place
+			// edit that does not reach storage.
+			//
+			// This is exactly the cost of keeping a blob beside typed columns, and it goes away with
+			// the blob. See BACKLOG, "The host-settings blob must go".
+			handle.createUpdate("""
+					update game set host_settings = set_byte(host_settings, :at, :stance)
+					where lobby_id = :lobbyId and host_chara_id = :host
+						and host_settings is not null and length(host_settings) > :at
+					""")
+				.bind("at", HOST_STANCE)
+				.bind("stance", stance)
+				.bind("lobbyId", lobbyId)
+				.bind("host", hostCharaId)
+				.execute();
+
+			handle.createUpdate("""
+					update chara_host_settings set blob = set_byte(blob, :at, :stance)
+					where chara_id = :host and blob is not null and length(blob) > :at
+					""")
+				.bind("at", HOST_STANCE)
+				.bind("stance", stance)
+				.bind("host", hostCharaId)
+				.execute();
+		});
 	}
+
+	/**
+	 * {@code 0x4310} wire {@code 0xF6} — the host stance, the Create Game / in-game "Conditions" row.
+	 * <p>
+	 * A {@code u8} enum 0..9, named {@code HOST_STANCE_*} in the client's own developer table:
+	 * Casual, Serious, Newbies Welcome, Everyone Welcome, Other, Training, Accepting Trainees,
+	 * Closed to New Applicants, (unused), No Conditions. Values above 4 are the training half and
+	 * are gated behind a lobby flag.
+	 * <p>
+	 * The in-game edit {@code 0x43c0} carries it at <b>its own</b> wire {@code 0xA1}, which is a
+	 * different offset from this one — that packet is a strict subset of the same struct, not the
+	 * same header, and {@code 0xA1} means {@code dedicated} in {@code 0x4310}.
+	 */
+	private static final int HOST_STANCE = 0xF6;
 
 	/**
 	 * Ends a game, crediting everyone still in it first.

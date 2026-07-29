@@ -783,3 +783,14 @@ that is what makes dropping the blob safe rather than hopeful. (3) Drop `blob` f
 
 Do not drop the blob before step 2 passes: a reconstruction that is one byte wrong would corrupt
 every Create Game pre-fill, and the symptom would be a screen full of plausible values.
+
+## Convention: no wire offsets in migrations
+
+*Set 2026-07-29.* Column comments say what the data **means**; wire offsets and widths belong to the
+`.ksy` in `dev/proto/`, which is the authority for them. A second copy in SQL drifts, and the schema
+is the wrong place to look for protocol layout anyway.
+
+**Applies from V52 forward.** `V23`, `V41`, `V46`, `V47`, `V48` and `V51` already carry offsets and
+**must not be edited to remove them** — they are applied, Flyway checksums the whole file including
+comments, and a checksum mismatch fails validation at startup and crash-loops every game container.
+A stale comment is much the cheaper error. Same trap as the `dev/proto` path rewrite.
