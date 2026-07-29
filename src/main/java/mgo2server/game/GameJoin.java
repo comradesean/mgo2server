@@ -37,18 +37,31 @@ public final class GameJoin {
 	 *
 	 * @param currentRule the game's active rule, echoed after the endpoints (echo does the same)
 	 * @param currentMap the game's active map
+	 * @param canRateHost whether this player may rate the host — see the field at wire {@code 0x28}
 	 */
-	public static void write(ByteBuf buffer, ConnectionInfo host, int currentRule, int currentMap) {
+	public static void write(ByteBuf buffer, ConnectionInfo host, int currentRule, int currentMap,
+			boolean canRateHost) {
 		buffer.writeInt(GameError.NONE.result());
 		BufferUtil.writeString(buffer, host.getPublicIp(), StandardCharsets.ISO_8859_1, IP_LENGTH);
 		buffer.writeShort(host.getPublicPort());
 		BufferUtil.writeString(buffer, host.getPrivateIp(), StandardCharsets.ISO_8859_1, IP_LENGTH);
 		buffer.writeShort(host.getPrivatePort());
 
-		// The parser reads one trailing byte; echo writes a rule and map byte here too. Only the
-		// first is consumed by this client, but all three are written to mirror the known-good
-		// server byte for byte.
-		buffer.writeByte(0)
+		// THE HOST-RATING GATE. [ELF 2026-07-29] This byte is not spare, and it is not "unknown":
+		// the 0x4321 parser at 0xD441DC reads it and 0xD441FC stores it to details+964 — the very
+		// slot the star picker is gated on. The end-of-game screen SNAPSHOTS that byte when it is
+		// constructed (six sites, e.g. 0x9D7F34, into screen+344), and 0x9DCA34 skips opening the
+		// picker when the snapshot is zero. No picker, no 0x43C4, no rating.
+		//
+		// We sent a hardcoded zero here, on the strength of "echo writes 0" — so every join
+		// silently switched host rating off, and it stayed off because this reply lands AFTER the
+		// 0x4313 that also writes details+964. Setting the flag in 0x4313 alone could never have
+		// worked. It explains the single rating this server has ever recorded: that one needed a
+		// details refresh to arrive after the join and before the results screen was built.
+		//
+		// A seventh inherited constant, and the same shape as the other six: transcribed
+		// faithfully, wrong for this client, and invisible because nothing tested it.
+		buffer.writeByte(canRateHost ? 1 : 0)
 			.writeByte(currentRule)
 			.writeByte(currentMap);
 	}

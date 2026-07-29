@@ -263,7 +263,10 @@ public class GameListGameController implements IGameController {
 		gameService.addPlayer(gameId, charaId);
 
 		var buffer = ctx.buffer(GameJoin.SIZE);
-		GameJoin.write(buffer, hostEndpoint.get(), game.get().getRule(), game.get().getMap());
+		// A joiner may rate the host; the host itself never reaches this path, but the test is
+		// written out rather than hardcoded so it stays true if that ever changes.
+		GameJoin.write(buffer, hostEndpoint.get(), game.get().getRule(), game.get().getMap(),
+			charaId != game.get().getHostCharaId());
 		ctx.write(new GamePacket(JOIN_GAME_RESULT, buffer));
 	}
 

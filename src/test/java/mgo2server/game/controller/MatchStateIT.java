@@ -1305,6 +1305,27 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	}
 
 	/**
+	 * An over-cap report is clamped to the client's legal maximum, not to the wire's u16 range.
+	 * <p>
+	 * [ELF 0x93E418] the client's validator ZEROES any skill record above 24576, so storing a
+	 * larger value would make the skill vanish from the player's list the next time we sent it
+	 * back — a silent loss, not a rendering quirk.
+	 */
+	@Test
+	public void anOverCapSkillReportIsClampedToTheClientsLegalMaximum() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 65535))));
+
+		assertThat(skillExperience(joiner, 2))
+			.isEqualTo(mgo2server.game.PersonalInfoWriter.MAX_SKILL_EXPERIENCE);
+	}
+
+	/**
 	 * Attribution is the character id in the payload, not the connection — the host sweeps all 24
 	 * slots and reports for every player whose skills moved. A character that is not in the game
 	 * is still refused, exactly as 0x4390 refuses one.

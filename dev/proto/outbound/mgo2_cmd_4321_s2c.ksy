@@ -47,9 +47,24 @@ seq:
   - id: host_private_port
     type: u2
     doc: "[CONFIRMED] wire 0x26."
-  - id: unknown_28
+  - id: can_rate_host
     type: u1
     doc: |
-      [UNKNOWN] wire 0x28. One byte the parser reads into a stack slot; echo writes 0. Position
-      exact, meaning unestablished — and note the parser reads it into a *local*, so if it is
-      stored anywhere it happens outside the traced range. **Last byte of the payload.**
+      [ELF, RESOLVED 2026-07-29] wire 0x28. **The host-rating gate.** Was `unknown_28`, with the
+      note "the parser reads it into a *local*, so if it is stored anywhere it happens outside the
+      traced range" — it does, and this is where. `0xD441DC` reads the byte and `0xD441FC` stores
+      it to `detailsBase + 964` (`session+0x8EF8` + 964), the same slot `0x4313` wire `0x0A7`
+      writes, and only when `result == 0` (`0xD44158`).
+
+      That slot is what permits the star picker. The end-of-game screen snapshots it on
+      construction into `screen+344` (six identical sites, e.g. `0x9D7F34`, `0x9DF0B4`), and
+      `0x9DCA34` skips opening the picker when the snapshot is zero — so no picker, no `0x43C4`,
+      no rating. Send **1** for a joiner and **0** for anyone who must not rate.
+
+      Ordering matters and is the whole reason this was hard to see: this reply lands AFTER any
+      pre-join `0x4313`, so it overwrites that packet's value. Setting the flag in `0x4313` alone
+      cannot enable rating. We sent a hardcoded 0 here (justified as "echo writes 0"), which
+      switched host rating off on every single join.
+
+      The third writer of the same slot is `0xD44D00`, inside the `0x4310` create-game sender,
+      which stores a provable zero — that is how the game stops a host rating itself.

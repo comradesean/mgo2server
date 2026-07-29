@@ -69,14 +69,15 @@ public final class GameDetails {
 			.writeInt(averageExperience)
 			.writeInt(game.getHostScore())
 			.writeInt(game.getHostVotes())
-			// THE HOST-RATING GATE, not a constant. [ELF 2026-07-29] Struct +964, read at three
-			// sites in the join/session state machines: the byte is copied to state+200, and a
-			// nonzero there is what lets the client build and send 0x43C4 — the 1-to-5 host rating.
-			// Zero and it never offers one.
+			// THE HOST-RATING GATE, not a constant. [ELF] Struct +964; the 0x4313 parser writes it
+			// at 0xD44588. A nonzero there is what lets the end-of-game screen open the star picker
+			// and therefore send 0x43C4 — the 1-to-5 host rating. It must be 0 for your own game,
+			// which is how the client stops you rating yourself.
 			//
-			// So it must be 0 for your own game: the client's own hosted-game builder (0x4931 path,
-			// 0xD493CC) leaves this field zero, which is how it stops you rating yourself. We sent 1
-			// unconditionally, so a host could be prompted to rate their own session.
+			// NECESSARY BUT NOT SUFFICIENT, corrected 2026-07-29. 0x4321 wire 0x28 writes the SAME
+			// slot (0xD441FC) and lands after any pre-join 0x4313, so the join reply overwrites
+			// this. Setting it here alone can never enable rating — see GameJoin, which is where
+			// the bug actually was. A live capture had this byte = 1 and produced no prompt.
 			.writeByte(viewerIsHost ? 0 : 1);
 
 		// The rotation: 16 triples of (rule, map, flags). Only a single rule and map are stored

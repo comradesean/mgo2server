@@ -580,9 +580,14 @@ public class GameService {
 	 * ownership; a record for a missing skill is a claim this command has no authority to grant, so
 	 * the update simply matches nothing and the count reports it.
 	 *
-	 * <p>Clamped to the column's {@code u16} range, which is the wire's range too — the report
-	 * carries experience as a {@code u16}, so a value outside it cannot have been sent and would
-	 * only ever be a mis-parse.
+	 * <p><b>Clamped to the client's own legal maximum, not to the wire's range.</b> The two are very
+	 * different: the wire carries a {@code u16}, but [ELF {@code 0x93E418}] the client's validator
+	 * <em>zeroes</em> any skill record whose experience exceeds {@link
+	 * mgo2server.game.PersonalInfoWriter#MAX_SKILL_EXPERIENCE} ({@code cmpwi cr7,r0,24576; ble+}).
+	 * So storing an over-cap value does not merely render oddly — it makes the skill disappear from
+	 * the player's list the next time we send it back. Clamping here keeps the store inside the
+	 * range the client will accept, and matches what {@code PersonalInfoWriter} already enforces on
+	 * the way out.
 	 */
 	public int applySkillExperience(long charaId, java.util.Map<Integer, Integer> experienceBySkill) {
 		if (experienceBySkill.isEmpty()) {
@@ -597,7 +602,9 @@ public class GameService {
 						""")
 					.bind("chara", charaId)
 					.bind("skill", entry.getKey())
-					.bind("experience", Math.max(0, Math.min(65535, entry.getValue())))
+					.bind("experience", Math.max(0,
+						Math.min(mgo2server.game.PersonalInfoWriter.MAX_SKILL_EXPERIENCE,
+							entry.getValue())))
 					.execute();
 			}
 			return moved;
