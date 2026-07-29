@@ -4021,21 +4021,30 @@ destination slots and zeroing a field the other fills.
 `0x4221` carries the real figure, which is why selecting *Player Details* from the context menu on
 another character populates it.
 
-**Which of `0x4103`'s unknown u32 slots holds it is not yet known, and a probe made things worse.**
+**SOLVED 2026-07-29: `0x4105` matrix 0 memsets the cell, and the cell is ours to fill.**
 
-Four candidates (`T+0x1AD0`, `T+0x1DEC`, `T+0x1E20`, `T+0x124`) were given distinct clock values in
-one deployment. **None of them ever rendered**, and a path that had been showing the correct time
-started reading `00:00:00`. Two things follow:
+The card's PLAY TIME is `*(u32*)(T+0x494)`, rendered at `0x9060EC` by the popup builder `0x905818`
+through `"%.2d:%.2d:%.2d"`. **The renderer clamps to 9999:59:59**, so a huge value would print
+`9999:59:59` — only **zero** can produce `00:00:00`.
 
-- **At least one of those slots is read**, and whatever it holds is *not* a seconds value — a
-  non-zero in it **suppresses** the display rather than changing it.
-- **Probing four at once was the design error.** With four variables changed together nothing can be
-  attributed, and one of them interfered with the rest. Any further probe does **one slot per
-  deployment**.
+`0x4105`'s parser (`0xD3E53C`) memsets `T+0x138` for **3456 bytes** when the matrix index is 0
+(`0xD3E5F4`-`0xD3E604`), and `T+0x494` is inside that range. `0x4103` cannot restore it — its
+destinations stop below the range and resume above it. So every More Details visit wiped the cell,
+and only a fresh `0x4221` could put it back.
 
-The probe is disabled in code (`PersonalStatsController.probe` returns 0); there is no environment
-variable for it and never was. The open question moved to the ELF: find the code that formats this
-widget's `hh:mm:ss` and read which struct offset it takes.
+**The cell is not a mystery slot: it is the last u32 of the `0x4105` index-0 payload.** The parser
+computes `base = T + 312 + index*864 + row*72 + col*4` and skips memory rows 6, 8, 9 and 10, so the
+eight wire blocks land in memory rows **0,1,2,3,4,5,7,11**. The eighth is row 11 —
+`312 + 11*72 + 17*4 = 1172 = 0x494`. The card's LEVEL is column 13 of the same row (`T+0x484`).
+
+So the eighth row block is **not a mode**; it is the card's summary row. The server now fills its
+column 17 with total play seconds and column 13 with the level, in the cumulative matrix only.
+
+**The probe was worthless and its "elimination" was invalid.** All four probed slots (`T+0x1AD0`,
+`T+0x1DEC`, `T+0x1E20`, `T+0x124`) lie *outside* the memset range, so none could ever have suppressed
+the field — two of them have no reader anywhere in the binary. The `00:00:00` the probe produced was
+the memset, exactly as before. The experiment could not have distinguished the two causes, which is
+the definition of an invalid elimination.
 
 ### ELIMINATED: the shared viewed-player struct is not leaking between players
 
