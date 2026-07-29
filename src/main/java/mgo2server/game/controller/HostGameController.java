@@ -198,6 +198,39 @@ public class HostGameController implements IGameController {
 	 */
 	public static final int RATE_HOST = 0x43c4;
 
+	/**
+	 * The host's per-skill experience report ({@code 0x43a4}) — <b>the only way skill progression
+	 * can persist</b>, and until 2026-07-29 we did not handle it at all.
+	 *
+	 * <p><b>IDENTIFIED 2026-07-29 [ELF].</b> Serializer {@code 0xD41940}, one caller {@code
+	 * 0x27D028}. Skills level by <em>use</em>, which the server cannot observe — the client is the
+	 * only thing that knows, and this is how it tells us. Accrual is at {@code 0x6FCA40}
+	 * ({@code addi r6,r6,1}, one per use) against record-store key 392, a 128-entry {@code u16}
+	 * array indexed by skill id; key 648 shadows it as a baseline. At round teardown {@code
+	 * 0x27D028} walks ids 1..127, emits a record for every skill whose live value differs from its
+	 * baseline, then rebaselines — the same pattern {@code 0x4390} uses at {@code 0x27DC60}.
+	 *
+	 * <p><b>The reported value is ABSOLUTE, not a delta.</b> The loop computes the delta only to
+	 * decide whether the skill moved: {@code 0x27D12C} writes it and {@code 0x27D140} immediately
+	 * overwrites it with {@code live[id]}. Storing it as a delta would compound every round.
+	 *
+	 * <p><b>The host reports for everyone.</b> It sweeps all 24 player slots, so attribution comes
+	 * from the character id at wire {@code +0x00} rather than from the connection — unlike {@code
+	 * 0x4390}, whose attribution is connection-implicit.
+	 *
+	 * <p>It opens wait slot 53 ({@code 0xD41A78}), so an unanswered report is a latent {@code
+	 * FFFFFF60}.
+	 */
+	public static final int REPORT_SKILL_EXPERIENCE = 0x43a4;
+
+	public static final int REPORT_SKILL_EXPERIENCE_RESULT = 0x43a5;
+
+	/** The client's own cap: {@code 0xD419BC} aborts the send above 127 records. */
+	private static final int MAX_SKILL_RECORDS = 127;
+
+	/** Bytes per record on the wire: {@code u8 skill_id, u16 experience}. No flag byte. */
+	private static final int SKILL_RECORD_WIRE_SIZE = 3;
+
 	public static final int ROUND_END = 0x43a2;
 
 	/**
@@ -472,6 +505,7 @@ public class HostGameController implements IGameController {
 		handlers.put(UPDATE_STATS, this::updateStats);
 		handlers.put(ROUND_END, this::roundEnd);
 		handlers.put(RATE_HOST, this::rateHost);
+		handlers.put(REPORT_SKILL_EXPERIENCE, this::reportSkillExperience);
 		handlers.put(HOST_MIGRATION, this::hostMigration);
 		handlers.put(GET_POST_GAME_INFO, this::postGameInfo);
 		handlers.put(UPDATE_SETTINGS, this::updateSettings);
@@ -944,6 +978,69 @@ public class HostGameController implements IGameController {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Applies the host's per-skill experience report ({@link #REPORT_SKILL_EXPERIENCE}).
+	 *
+	 * <p>Attribution is the character id in the payload, not the connection: the host sweeps every
+	 * player slot and reports for all of them. It is still checked against this game's roster, the
+	 * same way {@code 0x4390} is, so a host can only move experience for players it actually has.
+	 *
+	 * <p>Only skills the character already owns are updated. A record for a skill it does not have
+	 * would be the client claiming a grant, which is not this command's job — {@code 0x4125} decides
+	 * what a character owns — so those are logged rather than inserted.
+	 */
+	private void reportSkillExperience(GameControllerContext ctx) {
+		var game = hostedGame(ctx);
+		var payload = ctx.packet().getPayload();
+
+		if (game == null) {
+			logger.warn("0x43a4 from a NON-HOST connection — reporting-model deviation. Payload: {}",
+				ByteBufUtil.hexDump(payload));
+			ctx.write(REPORT_SKILL_EXPERIENCE_RESULT, GameError.NONE);
+			return;
+		}
+		if (payload.readableBytes() < 2 * Integer.BYTES) {
+			logger.warn("0x43a4 with {} payload bytes; expected at least 8.",
+				payload.readableBytes());
+			ctx.write(REPORT_SKILL_EXPERIENCE_RESULT, GameError.NONE);
+			return;
+		}
+
+		long targetId = payload.readInt() & 0xFFFFFFFFL;
+		var count = payload.readInt();
+
+		// The count is on the wire here and the loop bound is re-read from it each pass, so it is
+		// the authority — not end-of-stream. 0x4398 carries no count at all; mixing the two
+		// conventions up has bitten this project before.
+		if (count < 0 || count > MAX_SKILL_RECORDS
+				|| payload.readableBytes() < count * SKILL_RECORD_WIRE_SIZE) {
+			logger.warn("0x43a4 declares {} skill records but carries {} bytes; dropped.",
+				count, payload.readableBytes());
+			ctx.write(REPORT_SKILL_EXPERIENCE_RESULT, GameError.NONE);
+			return;
+		}
+
+		var inGame = gameService.getPlayers(game.getId(), game.getHostCharaId()).stream()
+			.anyMatch(player -> player.charaId() == targetId);
+		if (!inGame && !gameService.playedLastRound(game.getId(), targetId)) {
+			logger.warn("0x43a4 from game {} reports {} skills for character {}, who is not in it;"
+				+ " dropped.", game.getId(), count, targetId);
+			ctx.write(REPORT_SKILL_EXPERIENCE_RESULT, GameError.NONE);
+			return;
+		}
+
+		var reported = new java.util.LinkedHashMap<Integer, Integer>();
+		for (var i = 0; i < count; i++) {
+			reported.put((int) payload.readUnsignedByte(), payload.readUnsignedShort());
+		}
+
+		var applied = gameService.applySkillExperience(targetId, reported);
+		logger.info("Game {}: character {} reported {} changed skill(s); {} applied. {}",
+			game.getId(), targetId, reported.size(), applied, reported);
+
+		ctx.write(REPORT_SKILL_EXPERIENCE_RESULT, GameError.NONE);
 	}
 
 	/**
