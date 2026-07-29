@@ -86,7 +86,11 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 		// The widest band from the outset, so level never decides whether these tests match. Level
 		// windowing has its own coverage; here it would only make the outcome depend on whatever
 		// experience the fixtures happen to give a character.
-		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX);
+		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX,
+		// Zero relaxation: every searcher accepts any mode immediately, so rule filters never decide
+		// whether these tests match. Mode grouping has its own coverage; here it would only make the
+		// outcome depend on which filter a fixture happened to send.
+		Duration.ZERO);
 
 	/**
 	 * What an operator who has configured nothing gets, and therefore the default deployment — with

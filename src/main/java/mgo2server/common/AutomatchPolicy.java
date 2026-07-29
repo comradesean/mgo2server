@@ -51,7 +51,8 @@ public record AutomatchPolicy(
 	Set<Long> slotInLobbies,
 	int bandStart,
 	Duration bandStep,
-	int bandMax
+	int bandMax,
+	Duration modeRelax
 ) {
 
 	/**
@@ -177,6 +178,26 @@ public record AutomatchPolicy(
 	public static final int DEFAULT_BAND_MAX = 22;
 
 	/**
+	 * How long a searcher insists on their own requested mode before taking anything.
+	 * <p>
+	 * Ninety seconds: long enough that a populated server groups people who want the same thing,
+	 * short enough that a quiet one still matches. Like the band, this is <b>operator policy</b> —
+	 * nothing establishes what the original did, only that a rotation can carry several modes at
+	 * once, which is what makes mixing them possible at all.
+	 */
+	public static final Duration DEFAULT_MODE_RELAX = Duration.ofSeconds(90);
+
+	/**
+	 * Whether a searcher who has waited this long will accept a mode they did not ask for.
+	 * <p>
+	 * The same shape as {@link #bandAfter}: strict at first, relaxing with that searcher's own wait,
+	 * so a patient player reaches out rather than the pair having to satisfy one shared rule.
+	 */
+	public boolean acceptsAnyModeAfter(Duration waited) {
+		return waited.compareTo(modeRelax) >= 0;
+	}
+
+	/**
 	 * How wide a searcher's level window is after waiting this long.
 	 * <p>
 	 * <b>Each searcher carries their own window, and two match when the windows touch.</b> That is
@@ -201,7 +222,8 @@ public record AutomatchPolicy(
 			lobbyIds(env, "MGO2SERVER_AUTOMATCH_SLOT_IN_LOBBIES"),
 			level(env, "MGO2SERVER_AUTOMATCH_BAND_START", DEFAULT_BAND_START),
 			seconds(env, "MGO2SERVER_AUTOMATCH_BAND_STEP_SECONDS", DEFAULT_BAND_STEP),
-			level(env, "MGO2SERVER_AUTOMATCH_BAND_MAX", DEFAULT_BAND_MAX));
+			level(env, "MGO2SERVER_AUTOMATCH_BAND_MAX", DEFAULT_BAND_MAX),
+			seconds(env, "MGO2SERVER_AUTOMATCH_MODE_RELAX_SECONDS", DEFAULT_MODE_RELAX));
 		policy.validate();
 		return policy;
 	}
