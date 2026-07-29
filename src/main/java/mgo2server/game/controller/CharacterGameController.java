@@ -163,6 +163,13 @@ public class CharacterGameController implements IGameController {
 	 * index 3 bit 0 — and it grants the <b>MGO Codec Pack, a day-one PAID item</b>. We were handing
 	 * out purchased content because a reference server did. The remaining four bits are unexamined
 	 * and could be doing the same thing.
+	 *
+	 * <p><b>Bit 1 does nothing on this build.</b> The byte is read at exactly two addresses
+	 * binary-wide — {@code 0x9B9E30} and {@code 0x9BADA4}, both in the preset-message subsystem —
+	 * and both test bit 0 only. The store sold a <em>second</em> codec pack which reportedly needed
+	 * a client update, and bit 1 being inert here is consistent with that: the content would not
+	 * exist for a flag to unlock. Ten phrase ids are shipped on the disc but absent from the
+	 * catalogue (27, 34, 35 and 58..64) — that is what a later pack would extend.
 	 */
 	private static byte[] trailerFor(Account account) {
 		var trailer = new byte[TRAILER_SIZE];

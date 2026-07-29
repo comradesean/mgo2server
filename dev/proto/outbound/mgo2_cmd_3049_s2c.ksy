@@ -93,21 +93,50 @@ seq:
       was the loadout-item count and does not belong here; the table this gates has 85 entries, of
       which 32 carry the gated value.)
 
-      **Corrected 2026-07-29, live.** This said "32 of the 91 selectable loadout items", from a
-      trace of the availability predicate. Clearing the bit on one account removed the CODEC
-      message list and left gear and outfits completely unchanged, so the 85-entry table at
-      `0xE1812C` is a preset-message table, not a loadout one. The 32 are almost certainly the
-      day-one paid "MGO Codec Pack" (32 additional voice tracks, bound to the Konami ID — which
-      matches this being per-account). Tier 2 beats a derived label.
+      **Corrected 2026-07-29, live, then confirmed phrase by phrase.** This said "32 of the 91
+      selectable loadout items". Clearing the bit on one account removed the CODEC message list and
+      left gear and outfits completely unchanged; a follow-up dump of the table then matched the 32
+      against the published product list **32/32, in the same order**. It is the day-one paid
+      **"MGO Codec Pack"** (32 additional voice tracks, bound to the Konami ID — which is why the
+      entitlement is per-account).
 
-      Two readers, both of `ctx+22455` (index 3): `0x9B9E30` computes `(byte & 1) << 4` — 0 or 16 —
-      and `0x9BADA4` tests `byte & 1` to choose between two list-builders. The 16 is a threshold: the
-      availability predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any item
-      whose gate exceeds it. **32 entries gate on exactly 16**, 23 gate on 0 and are always
-      available, and 27 defer to a separate ownership/expansion check (`0x9C0600`/`0x9C2C90`).
+      **Gear has no gate at all.** `0x9B9DF0` has 17 call sites binary-wide, in two functions
+      (`0x9A50D0`, the preset-message shortcut-binding screen, and `0xA459D0`) — neither is loadout
+      code. Nothing has to "permit" gear; the earlier label was a misread of what the table holds.
 
-      We send `0x03`. **Only bit 0 is read** — bit 1 has no reader, nor do indices 0, 2 and 4..31, so
-      the `0x07` we send at index 1 is inert.
+      Readers of this byte: exactly two, both `ctx+22455`. `0x9B9E30` computes `(byte & 1) << 4` —
+      0 or 16 — and `0x9BADA4` tests `byte & 1`, jumping to `li r0,16; stb r0,616(r31)` so the two
+      list-builders can skip rows whose gate exceeds it.
+
+      **The table at `0xE1812C` is the preset radio-message catalogue.** 6-byte records
+      `{u16 first_string_id, u16 phrase_id, u16 gate}`; the loop bound is 85
+      (`(512-2)/6`, `0x9B9E34`/`0x9B9E3C`) but only **82 are populated** — slot 82 holds `0xFFFF`
+      and 83..84 are padding. Gates: **23 at 0**, always available; **32 at 16**, the Codec Pack;
+      **27 at 0x80**, the Combat Training instructor commands, which the list builders skip outright
+      and which only `0x9B9DF0` can enable.
+
+      Those 27 are **not** an ownership or expansion check, correcting an earlier note here.
+      `0x9C0600` is `roundMode() == 10 && amHost()` — you are the instructor of a training session —
+      and `0x9C2C90(id)` accepts ids 67..92 outside training for a player not on team 0/1 who is
+      carrying item type 17. Neither reads this trailer, a purchase flag or any account record.
+
+      **So this bit is the only thing the server controls in the whole subsystem.**
+
+      We send `0x03` — **two** bits, and only bit 0 does anything on this build.
+
+      **Bit 1 has no reader on this build**, and that negative is now worth something: the byte is
+      read at exactly **two addresses binary-wide** — `0x9B9E30` (`(byte & 1) << 4`) and `0x9BADA4`
+      (`byte & 1`) — both in the preset-message subsystem, and both test bit 0 only. This is a
+      targeted search for `lbz r0,487(r3)` after `bl 0xD36C74` (which returns `ctx+21968`, hence
+      `ctx+22455`), not the earlier sweeping claim that got bit 0 wrong.
+
+      **The store sold two codec packs**, and the second reportedly needed a client update. Bit 1
+      being inert here is consistent with that: the content would not exist in this build for a flag
+      to unlock. See `POST_LAUNCH.md` — and note the ten phrase ids that are **shipped on the disc
+      but absent from this table** (27, 34, 35 and 58..64), which is what a later pack would have to
+      extend.
+
+      The `0x07` at index 1 is equally unread by that search.
 
       **32 bytes, not 35** — the parser `0xD3732C` copies exactly 32 (`li r5,32` at `0xD3774C`).
       `PROTOCOL.md` once described a 35-byte trailer with `07` at +4 and `03` at +6; subtracting the
