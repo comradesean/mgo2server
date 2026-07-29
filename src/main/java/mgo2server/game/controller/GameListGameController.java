@@ -140,8 +140,10 @@ public class GameListGameController implements IGameController {
 		var game = gameService.get(gameId);
 		if (game.isEmpty()) {
 			// A nonzero result makes the client surface the error instead of waiting; this is
-			// the browser-raced-a-teardown case, not a protocol failure.
-			ctx.write(GAME_DETAILS, GameError.GENERAL);
+			// the browser-raced-a-teardown case, not a protocol failure — and the client has a
+			// sentence for precisely that. "Unable to locate host." says the game went away;
+			// GENERAL's "Unable to acquire host information." reads as a server fault.
+			ctx.write(GAME_DETAILS, GameError.GAME_HOST_NOT_FOUND);
 			return;
 		}
 
@@ -198,7 +200,11 @@ public class GameListGameController implements IGameController {
 
 		var stored = game.get().getPassword();
 		if (stored != null && !stored.isEmpty() && !stored.equals(password)) {
-			ctx.write(JOIN_GAME_RESULT, GameError.GENERAL);
+			// "Password is incorrect." — the client has a sentence for exactly this, and we spent a
+			// long time not sending it. GENERAL prints "Unable to connect to host.", which is true,
+			// useless, and reads as the server being broken rather than as a typo. This is the most
+			// common failure a player will ever hit.
+			ctx.write(JOIN_GAME_RESULT, GameError.GAME_PASSWORD_INCORRECT);
 			return;
 		}
 
