@@ -112,9 +112,22 @@ seq:
       [ELF] wire 0x0e9, block +68. **Immediately follows max_players** — the current-player-count
       byte at block +67 is not on this wire. Position exact; **name tier 4** (downgraded
       2026-07-26, as `max_players`).
-  - id: unknown_0ed
+  - id: unread_824
     type: u4
-    doc: "[UNKNOWN] wire 0x0ed, block +72. This is where the server injects the constant 0x02; the client stored it and echoed it back in the next 0x4310 push (OBSERVED.md), so the slot is real and round-trips, but its meaning is unestablished."
+    doc: |
+      [CONFIRMED 2026-07-29] wire 0x0ed, struct **+824**, and a **u32** — the parser reads four bytes
+      here (`0xd5ccd8` at `0xD456E8`), not one. It spans wire 0x0ed..0x0f0, so what reads as three
+      bytes of padding after it is the rest of this field.
+
+      **Nothing in the binary reads +824.** A sweep of every access at that offset returns 105 sites,
+      none in the screen, settings, accessor or parser ranges — against a control run at +848, the
+      capture-proven level-limit base, which correctly finds its live readers.
+
+      The server used to write a hardcoded `0x02` here, inherited from another implementation; with
+      three zero pad bytes that produced exactly the `0x02000000` seen in captures. **That capture
+      was circular** — Create Game entry memcpys the saved object into the screen (`0x89B90C`) and the
+      `0x4310` builder re-emits it, so the value coming back was our own byte completing a round
+      trip. Echoed from the request now.
   - id: unknown_0f1
     type: u2
     doc: "[UNKNOWN] wire 0x0f1, block +80."
@@ -180,9 +193,18 @@ seq:
   - id: common_b
     type: u1
     doc: "[CONFIRMED] wire 0x146, block +178."
-  - id: unknown_147
+  - id: unread_931
     type: u1
-    doc: "[UNKNOWN] wire 0x147, block +179. Where the server injects the constant 0x20; it came back in the next 0x4310 push, so the client stores it. echo zeroes the same slot in 0x4313."
+    doc: |
+      [CONFIRMED 2026-07-29] wire 0x147, struct **+931** — the low byte of the 32-bit flags word at
+      +928, read as u8 at `0xD459C8`.
+
+      **Bits 0-7 of that word are never tested.** Every test is `rldicl.` with a shift landing in
+      bits 8-23, plus `andis. 1` (bit 16) and `andi. 0x8000` (bit 15) — the seventeen Common Settings
+      toggles, which the disc's help rows (set `2f0293`, ids 591-610) enumerate exactly. The only
+      load of +931 anywhere is the dead accessor bank.
+
+      Previously a hardcoded `0x20`, which sets bit 5 — inert. Echoed from the request now.
   - id: idle_kick
     type: u2
     doc: |

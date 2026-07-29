@@ -82,7 +82,17 @@ public final class HostSettingsReply {
 		copy(out, 0x0D8, blob, 0xD5, 0x10);
 		copy(out, 0x0E8, blob, 0xE5, 1);     // max players
 		copy(out, 0x0E9, blob, 0xE6, 4);     // briefing time
-		out[0x0ED] = 0x02;                   // constant Nomad writes; meaning unknown
+		// ECHO, not a constant. [ELF 2026-07-29] This is struct +824, and it is the TOP BYTE OF A
+		// U32 rather than a byte field — the parser reads four bytes here (0xD456E8, u32 primitive).
+		// Nothing in the binary loads +824: a sweep of every access at that offset returns 105 sites
+		// and none in the screen, settings or accessor ranges, against a control at +848 that
+		// correctly finds the live level-limit base.
+		//
+		// The 0x02 was inherited, and the capture that appeared to confirm it was CIRCULAR: Create
+		// Game entry memcpys the whole saved object into the screen and the 0x4310 builder re-emits
+		// it, so the 0x02 coming back was our own byte completing a round trip. Echo what the host
+		// actually sent.
+		copy(out, 0x0ED, blob, 0xEA, 4);
 		// 0x0EE..0x0F9 zero padding.
 		copy(out, 0x0F9, blob, 0xF6, 1);     // stance
 		copy(out, 0x0FA, blob, 0xF7, 1);     // level-limit tolerance
@@ -91,7 +101,11 @@ public final class HostSettingsReply {
 		copy(out, 0x143, blob, 0x140, 2);    // unique characters red/blue
 		copy(out, 0x145, blob, 0x142, 1);    // commonA
 		copy(out, 0x146, blob, 0x143, 1);    // commonB
-		out[0x147] = 0x20;                   // commonC: constant in Nomad, request byte ignored
+		// ECHO, not a constant. [ELF 2026-07-29] Struct +931, the low byte of the 32-bit flags word
+		// at +928. Every test of that word targets bits 8-23 — the seventeen Common Settings toggles,
+		// which the disc's help rows enumerate exactly — and nothing touches bits 0-7. The inherited
+		// 0x20 sets bit 5, which no site reads. Its only load anywhere is the dead accessor bank.
+		copy(out, 0x147, blob, 0x144, 1);
 		// Kick timers are u16 on both sides, corrected 2026-07-26. The request writes them as
 		// halfwords at 0x145/0x147 (0x4310 sender, 0xd44bf8/0xd44c0c) and the 0x4305 parser reads
 		// u16 at 0x148/0x14a (block +180/+182). Nomad's map copies one byte into each destination's
