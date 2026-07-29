@@ -208,6 +208,10 @@ automatching's elected host puts in `0x4310`, and the reason a host can silently
 | `0x305A60` | a per-object 896-bit flag API |
 | `0x6FC760` | the objective notifier, `f(id, slot)` |
 | `0xDDEE30` | the Scanning skill's S. PLUG item |
+| `0x906BE8`–`0x906E10` | the **list-preference nibble accessors** — one getter and setter per 4-bit field of `0x4120`'s trailer. Screens: FILTERING SETTING `0x9084BC`, SORT HOST LIST `0x90C010`, PLAYER SEARCH `0x90E264` |
+| `0xE0D548`–`0xE0DBF0` | a **developer name table**, English, naming those screens and fields (`FILTER HOST LIST`, `SORT KEY`, `MATCH CASE`, `PASSWORD LOCK`, …). Better field-naming material than the player-facing disc labels, and worth trying for other subsystems |
+| `0x9B9DF0` | the **loadout availability predicate** — 85-entry table at `0xE1812C`, gates each item against `(0x3049 trailer[3] & 1) << 4`. 32 entries gate on 16, 23 on 0, 27 defer to the ownership check `0x9C0600`/`0x9C2C90` |
+| `0xD48D40` | the `0x4991` parser — four 57-byte **tournament entry** records, loop bound hardcoded to four. `rec+0x00` is the slot-occupied test, so all-zero means "no pending entries" |
 
 ---
 

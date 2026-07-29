@@ -85,13 +85,24 @@ seq:
     repeat: expr
     repeat-expr: 8
     doc: "[CONFIRMED] Always 8, always read. 52 wire bytes each; 60 bytes per entry in the client struct."
-  - id: unknown_1b7
+  - id: item_unlock_trailer
     size: 32
     doc: |
-      [UNKNOWN] Wire 0x1b7, fixed 32 bytes -> ctx+22452. PROTOCOL.md flagged item 5 calls this
-      "0x3049's 35-byte trailer, with `07` at +4 and `03` at +6" — note the count differs: the
-      parser reads **32**, and the 3 extra bytes in that description are the three u8 header
-      fields. Contents reproduced from the original; meaning unknown.
+      [CONFIRMED 2026-07-29] **32 bytes, and index 3 bit 0 is load-bearing: it unlocks 32 of the 91
+      selectable loadout items.** Do not zero this.
+
+      Two readers, both of `ctx+22455` (index 3): `0x9B9E30` computes `(byte & 1) << 4` — 0 or 16 —
+      and `0x9BADA4` tests `byte & 1` to choose between two list-builders. The 16 is a threshold: the
+      availability predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any item
+      whose gate exceeds it. **32 entries gate on exactly 16**, 23 gate on 0 and are always
+      available, and 27 defer to a separate ownership/expansion check (`0x9C0600`/`0x9C2C90`).
+
+      We send `0x03`. **Only bit 0 is read** — bit 1 has no reader, nor do indices 0, 2 and 4..31, so
+      the `0x07` we send at index 1 is inert.
+
+      **32 bytes, not 35** — the parser `0xD3732C` copies exactly 32 (`li r5,32` at `0xD3774C`).
+      `PROTOCOL.md` once described a 35-byte trailer with `07` at +4 and `03` at +6; subtracting the
+      phantom three lands those on indices 1 and 3, exactly where they are.
 types:
   character_entry:
     doc: |

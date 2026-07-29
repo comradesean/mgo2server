@@ -830,7 +830,7 @@ than they go on the wire.
 | `0x17` | 9 | zero, purpose unknown |
 | `0x20` | 16 | codec entries 1–4, four bytes each (`a`,`b`,`c`,`d`) — meaning of the four bytes unknown |
 | `0x30` | 256 | four codec names, 64 bytes each, ISO-8859-1 |
-| `0x130` | 32 | **unknown** fixed trailer (below) |
+| `0x130` | 32 | **list preferences** — filter / sort / search, sixteen 4-bit fields in bytes 0-7 (below) |
 
 Trailer:
 
