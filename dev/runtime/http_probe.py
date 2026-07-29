@@ -13,6 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DOCROOT = pathlib.Path(__file__).parent / "www"
 
+# TLS material is deliberately NOT under DOCROOT: www/ is a document root that gets copied into the
+# container and served, and private keys have no business inside it. Overridable because the
+# container mounts the two directories separately.
+TLSDIR = pathlib.Path(os.environ.get("MGO2SERVER_TLS_DIR") or pathlib.Path(__file__).parent / "tls")
+
 # Confirmed from a real client: MGO2 fetches
 #   GET http://mgo2web.konami.com/us/mgo2/policy/policy.txt
 # with User-Agent "PS3Application libhttp/4.9.3-000 (CellOS)". Files under www/ are served at
@@ -149,7 +154,7 @@ if __name__ == "__main__":
         # OBSERVED.md, "The certificate branch".
         chain = os.environ.get("MGO2SERVER_TLS_CERT", "cert.pem")
         tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        tls_ctx.load_cert_chain(str(DOCROOT / chain), str(DOCROOT / "key.pem"))
+        tls_ctx.load_cert_chain(str(TLSDIR / chain), str(TLSDIR / "key.pem"))
         # The PS3's TLS stack is from 2008; allow the old ciphers and versions it offers.
         tls_ctx.minimum_version = ssl.TLSVersion.TLSv1
         tls_ctx.set_ciphers("ALL:@SECLEVEL=0")

@@ -8,7 +8,7 @@ finding the function again costs a full disassembly pass. This page is the index
 File offset = VA − `0x10000`. Text section spans roughly `0x10230`..`0xDE9328`.
 
 **Reading it.** `powerpc64-linux-gnu-objdump -D -b elf64-powerpc` is on PATH, and `capstone` 5.0.6
-is installed (`CS_ARCH_PPC`, `CS_MODE_64 | CS_MODE_BIG_ENDIAN`). `dev/ref/analyze_mgo2.py` has ELF
+is installed (`CS_ARCH_PPC`, `CS_MODE_64 | CS_MODE_BIG_ENDIAN`). `dev/tools/analyze_mgo2.py` has ELF
 section parsing and a PPC decoder already written. **Per CLAUDE.md, disassembly work goes to an
 Opus sub-agent — never inline.**
 

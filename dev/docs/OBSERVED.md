@@ -955,7 +955,7 @@ same word is what decides whether `np=<psn name>` is appended to the login reque
 
 ### That prediction was tested against the real client, and it held
 
-Serving `dev/runtime/www/cert-expired.pem` — the same CA, key and common name as the working chain,
+Serving `dev/runtime/tls/cert-expired.pem` — the same CA, key and common name as the working chain,
 re-signed over 2020–2021 so that expiry is its only defect — produced exactly the predicted
 outcome:
 

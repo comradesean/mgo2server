@@ -23,7 +23,8 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | `http_probe.py` | Serves the HTTP and HTTPS endpoints (`probe-http`, `probe-https`), terminates TLS and proxies to the web service. Holds the TLS-1.0 and `SECLEVEL=0` settings the console needs. |
 | `turnserver.conf` | coturn config for the `probe-stun` service — the STUN responder that answers the port check. |
 | `stun_probe.py` | The former hand-rolled STUN responder, kept as a reference/diagnostic (coturn replaced it). Run standalone: `python stun_probe.py 3478 <ip> <secondary-ip>`. |
-| `www/` | Static documents, and the TLS certificate chain. |
+| `www/` | Static documents only — the document root the probes copy in and serve. |
+| `tls/` | The certificate chain and its private keys. Deliberately **not** under `www/`: that directory is served, and keys have no business in a document root. Mounted separately at `/tls`. |
 
 ## Run once
 
@@ -42,7 +43,7 @@ Not normally running. Each exists because it answered a question once and would 
 | `upnp_probe.py` | Answers the client's UPnP discovery. The game carries its own IGD client. |
 | `dnsmasq.conf` | A logging DNS server. **DNS is not needed to play** — this is for discovering the hostnames a different disc or region asks for. |
 
-## About `www/`
+## About `tls/`
 
 `ca-cert.pem` and `ca-key.pem` are a certificate authority generated for this project. The console
 validates the server certificate against its own store, so the CA has to be installed into the
