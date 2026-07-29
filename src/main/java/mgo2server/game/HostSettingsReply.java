@@ -101,7 +101,7 @@ public final class HostSettingsReply {
 		copy(out, 0x148, blob, 0x145, 2);    // idle kick (u16)
 		copy(out, 0x14A, blob, 0x147, 2);    // team-kill kick (u16)
 		copy(out, 0x14C, blob, 0x149, 1);    // capture extra time
-		copy(out, 0x14D, blob, 0x14A, 1);    // sneaking-mission Snake side
+		copy(out, 0x14D, blob, 0x14A, 1);    // SNAKE: times Snake must be defeated (1-5)
 		copy(out, 0x14E, blob, 0x14B, 8);    // sdm t/r, int t, dm r, scap t/r, race t/r
 		// 0x156 zero.
 		copy(out, 0x157, blob, 0x154, 1);    // extra-time flags
