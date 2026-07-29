@@ -1,43 +1,24 @@
--- The raw-payload capture table, named for what it is, and kept fed.
+-- Remove the raw-payload capture table.
 --
--- It began as blob_audit, created by dev/tools/blob_audit.sql and fed by a trigger on
--- chara_host_settings.blob. V55 dropped that column when the host-settings block was decoded into
--- typed columns, which took the trigger with it -- so the capture stopped, and on a fresh
--- deployment the table would not have existed at all.
+-- It began as blob_audit, an ad-hoc harness fed by a trigger on chara_host_settings.blob, and it
+-- did its job: the 352-byte host-settings block is fully decoded into typed columns. V55 dropped
+-- the column the trigger hung off, and rather than re-point it, the honest answer is that a
+-- single-purpose tool whose purpose is served should go.
 --
--- Renamed because "blob_audit" says what it stores rather than what it is FOR, and with the blob it
--- was named after now gone the name actively misleads: a reader would go looking for a matching
--- blob column. "dev_packet_audit" says the two things that matter -- DEV tooling, archiving
--- PACKETS.
+-- Widening it to capture every packet would be a DIFFERENT tool with different tradeoffs -- an
+-- allow-list so pings do not drown it, a retention cap so it cannot fill a disk, and capture ahead
+-- of validation so malformed payloads are kept. That is worth building when something needs it, not
+-- worth keeping half of in the meantime.
 --
--- EXISTING ROWS ARE PRESERVED. They are the captures the host-settings decode was built from, and
--- 214 of them are what proved the two no-reader fields track training lobbies. Discarding evidence
--- because the conclusion is written down is how a finding becomes unverifiable.
+-- THE CAPTURES SURVIVE, in dev/proto/samples/4310/. All 214 payloads, with the queries that
+-- re-derive what was established from them: the 352-byte length, the training-lobby correlation in
+-- struct +824/+931, and the Common Settings bits that cannot be rebuilt from their booleans.
+-- Discarding evidence because the conclusion is written down is how a finding becomes unverifiable;
+-- discarding the machinery once the evidence is safe is just tidying.
 --
--- The capture now runs in the server rather than in a trigger, gated by MGO2SERVER_CAPTURE_PACKETS.
--- That is better placed than the trigger was: a trigger only ever saw what we CHOSE to store, while
--- the server sees exactly what the client sent, including bytes we do not model.
---
--- It complements the inert-field tripwire rather than duplicating it:
---
---   inert_field_watch  -- the SUMMARY. Distinct values per field; a second row is an alert.
---   dev_packet_audit   -- the EVIDENCE. Whole payloads with timestamps.
+-- The inert-field tripwire (V56) stays. It is the cheap half -- distinct values per watched field,
+-- a second row is an alert -- and it is the one that keeps working when a patched client appears.
 
-ALTER TABLE IF EXISTS public.blob_audit RENAME TO dev_packet_audit;
-
-CREATE TABLE IF NOT EXISTS public.dev_packet_audit (
-	id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	chara_id bigint NOT NULL,
-	type smallint NOT NULL,
-	blob bytea,
-	captured_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS dev_packet_audit_captured_at_idx ON public.dev_packet_audit (captured_at);
-
--- The column keeps the name "blob": it holds a raw payload, which is what a blob honestly is here.
-COMMENT ON TABLE public.dev_packet_audit IS
-	'DEV TOOLING. Raw protocol payloads as received, one row per push, for offline decoding. Never '
-	'served to a client. Written when MGO2SERVER_CAPTURE_PACKETS is on. Grows unbounded by design -- '
-	'consecutive senders must not overwrite each other -- so prune with: delete from '
-	'dev_packet_audit where captured_at < now() - interval ''90 days'';';
+DROP TABLE IF EXISTS public.blob_audit;
+DROP TABLE IF EXISTS public.dev_packet_audit;
+DROP FUNCTION IF EXISTS public.audit_host_settings_blob();
