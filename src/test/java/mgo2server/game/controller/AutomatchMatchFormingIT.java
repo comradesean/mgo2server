@@ -99,12 +99,28 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 	/** Where the 204-byte settings block starts. {@code 19 + 204 = 223}, the parser's own size. */
 	private static final int SETTINGS_BLOCK = 0x13;
 
-	/** Block offsets of the rotation, read as 16 interleaved triples ({@code AUTOMATCH.md} §3). */
-	private static final int ROTATION_RULES = 0;
+	/**
+	 * The rotation is <b>16 interleaved {@code [rule, map, flags]} triples</b> in the block's first
+	 * 48 bytes.
+	 *
+	 * <p>Not three parallel arrays — that is the client's <em>in-memory</em> form after the reader
+	 * scatters the stream. These accessors read it the way the client reads the wire, which is the
+	 * point: this file previously carried parallel offsets under a comment correctly saying
+	 * "interleaved triples", and so agreed with a server that was encoding it wrongly. Two requested
+	 * modes reached the client as one entry with a map id of 1 — a stage that does not exist — which
+	 * is one mode in the "Rules:" popup and a black loading screen.
+	 */
+	private static int rotationRule(byte[] block, int entry) {
+		return block[entry * 3] & 0xFF;
+	}
 
-	private static final int ROTATION_MAPS = 16;
+	private static int rotationMap(byte[] block, int entry) {
+		return block[entry * 3 + 1] & 0xFF;
+	}
 
-	private static final int ROTATION_FLAGS = 32;
+	private static int rotationFlags(byte[] block, int entry) {
+		return block[entry * 3 + 2] & 0xFF;
+	}
 
 	/** Timer-array indices for Team Deathmatch: time, rounds, tickets. */
 	private static final int TDM_TIME = 6;
@@ -356,14 +372,16 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 
 		var block = settingsBlock(announcement);
 
-		assertThat(block[ROTATION_RULES]).isEqualTo((byte) RULE_TDM);
-		assertThat(Automatch.MAP_POOL).contains(block[ROTATION_MAPS] & 0xFF);
-		assertThat(block[ROTATION_FLAGS])
+		assertThat(rotationRule(block, 0)).isEqualTo(RULE_TDM);
+		assertThat(Automatch.MAP_POOL)
+			.as("a map outside the disc's five stages cannot load")
+			.contains(rotationMap(block, 0));
+		assertThat(rotationFlags(block, 0))
 			.as("0 is the one rule-option value the disc's ruleopt_bit allows for every rule")
 			.isZero();
-		assertThat(block[ROTATION_MAPS + 1])
-			.as("one requested rule is one rotation entry; the blob-save loop stops at the first "
-				+ "zero map")
+		assertThat(rotationMap(block, 1))
+			.as("one requested rule is one rotation entry; every loop that walks the rotation stops "
+				+ "at the first zero map")
 			.isZero();
 
 		assertThat(AutomatchSettingsBlock.timer(block, TDM_TIME)).isEqualTo(5);
@@ -385,15 +403,15 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 
 		var block = settingsBlock(awaitMatchFound(clients).get(0));
 
-		assertThat(block[ROTATION_RULES])
+		assertThat(rotationRule(block, 0))
 			.as("entry 0 is the longest-waiting searcher's rule")
-			.isEqualTo((byte) RULE_TDM);
-		assertThat(block[ROTATION_RULES + 1]).isEqualTo((byte) RULE_BASE);
-		assertThat(block[ROTATION_MAPS] & 0xFF).isNotZero();
-		assertThat(block[ROTATION_MAPS + 1])
-			.as("a zero map would make the client discard entry 1 and fall back to entry 0")
-			.isEqualTo(block[ROTATION_MAPS]);
-		assertThat(block[ROTATION_MAPS + 2])
+			.isEqualTo(RULE_TDM);
+		assertThat(rotationRule(block, 1)).isEqualTo(RULE_BASE);
+		assertThat(Automatch.MAP_POOL).contains(rotationMap(block, 0));
+		assertThat(rotationMap(block, 1))
+			.as("a zero map would make the client stop after entry 0 and list one mode")
+			.isEqualTo(rotationMap(block, 0));
+		assertThat(rotationMap(block, 2))
 			.as("the rotation ends where the requested rules do")
 			.isZero();
 	}
