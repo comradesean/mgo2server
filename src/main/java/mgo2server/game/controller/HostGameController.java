@@ -12,6 +12,7 @@ import mgo2server.game.PersonalInfoWriter;
 import mgo2server.game.GameConnection;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
+import mgo2server.game.GameplaySettingsReader;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
 import org.apache.logging.log4j.LogManager;
@@ -243,8 +244,11 @@ public class HostGameController implements IGameController {
 	 * 32-byte trailer — in one burst with two {@code 0x4114} chat-macro write-backs. The earlier
 	 * theory that its header carried the Common Settings toggles was wrong twice over: the toggles
 	 * live in the {@code 0x4310} blob (capture-proven), and this command never appears in the
-	 * hosting flow at all. The body is not yet parsed into {@code chara_settings}, so options do
-	 * not persist across sessions — see BACKLOG. The reply must carry {@code u32 result == 0}.
+	 * hosting flow at all.
+	 * <p>
+	 * <b>The body is now parsed into {@code chara_settings}</b> (2026-07-29), so options persist.
+	 * Before that it was acknowledged and discarded, which is why Lock-On — and in fact every
+	 * Gameplay Option — reverted after each session. The reply must carry {@code u32 result == 0}.
 	 */
 	public static final int UPDATE_SETTINGS = 0x4110;
 
@@ -614,11 +618,34 @@ public class HostGameController implements IGameController {
 	}
 
 	/**
-	 * Acknowledges the post-entry game-rules update ({@link #UPDATE_SETTINGS}); the reply must carry
-	 * a {@code u32} result of 0 or the enter-game flow stalls. Its 48-byte header carries the Common
-	 * Settings toggles, which are not decoded yet — the reply is all the client needs for now.
+	 * Stores the client's gameplay options ({@link #UPDATE_SETTINGS}); the reply must carry
+	 * a {@code u32} result of 0 or the enter-game flow stalls.
 	 */
 	private void updateSettings(GameControllerContext ctx) {
+		// PERSIST THE OPTIONS. Acknowledging without storing is why every Gameplay Option reverted
+		// after a session: 0x4120 was already sending the stored row correctly, so the round trip
+		// was broken on exactly one side, and Lock-On was simply the setting people noticed.
+		//
+		// The payload is 0x4120's own layout truncated at 0x130 — the same 48-byte header and four
+		// 64-byte codec names, minus the list-preferences trailer the client never returns. So the
+		// reader is the writer backwards; see GameplaySettingsReader.
+		var account = ctx.connection().account();
+		var charaId = account != null ? account.getCurrentCharaId() : null;
+		if (charaId != null) {
+			var settings = characterService.getOrCreateSettings(charaId);
+			if (GameplaySettingsReader.apply(ctx.packet().getPayload(), settings)) {
+				characterService.saveSettings(settings);
+				logger.debug("Stored gameplay options for character {}.", charaId);
+			} else {
+				// Short payload: store nothing rather than half of it. The reply still goes out —
+				// withholding it stalls the enter-game flow, which is a worse failure than one
+				// unsaved options change.
+				logger.warn("0x4110 from character {} was {} bytes, expected at least {}; options "
+					+ "not stored.", charaId, ctx.packet().getPayload().readableBytes(),
+					GameplaySettingsReader.PAYLOAD_SIZE);
+			}
+		}
+
 		var buffer = ctx.buffer(Integer.BYTES);
 		buffer.writeInt(GameError.NONE.result());
 		ctx.write(new GamePacket(UPDATE_SETTINGS_RESULT, buffer));

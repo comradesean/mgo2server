@@ -934,6 +934,61 @@ public class CharacterService {
 				.one());
 	}
 
+	/**
+	 * Persists a character's gameplay and interface settings, as sent by {@code 0x4110}.
+	 * <p>
+	 * Every column the reader can fill is written, so a setting the player turned <em>off</em>
+	 * persists as firmly as one they turned on — a partial update would let cleared flags drift
+	 * back to their stored value and look like the client forgetting them.
+	 */
+	public void saveSettings(CharaSettings s) {
+		jdbi.useHandle(handle -> handle
+			.createUpdate("""
+					update chara_settings set
+						online_status_mode = :onlineStatusMode,
+						normal_view_speed = :normalViewSpeed,
+						shoulder_view_speed = :shoulderViewSpeed,
+						first_view_speed = :firstViewSpeed,
+						view_change_speed = :viewChangeSpeed,
+						hud_display_size = :hudDisplaySize,
+						weapon_switch_mode = :weaponSwitchMode,
+						weapon_switch_a = :weaponSwitchA,
+						weapon_switch_b = :weaponSwitchB,
+						weapon_switch_c = :weaponSwitchC,
+						weapon_switch_now = :weaponSwitchNow,
+						weapon_switch_before = :weaponSwitchBefore,
+						item_switch_mode = :itemSwitchMode,
+						codec1a = :codec1a, codec1b = :codec1b, codec1c = :codec1c, codec1d = :codec1d,
+						codec2a = :codec2a, codec2b = :codec2b, codec2c = :codec2c, codec2d = :codec2d,
+						codec3a = :codec3a, codec3b = :codec3b, codec3c = :codec3c, codec3d = :codec3d,
+						codec4a = :codec4a, codec4b = :codec4b, codec4c = :codec4c, codec4d = :codec4d,
+						voice_chat_recognition_level = :voiceChatRecognitionLevel,
+						voice_chat_volume = :voiceChatVolume,
+						headset_volume = :headsetVolume,
+						bgm_volume = :bgmVolume,
+						email_friends_only = :emailFriendsOnly,
+						receive_notices = :receiveNotices,
+						receive_invites = :receiveInvites,
+						normal_view_vertical_invert = :normalViewVerticalInvert,
+						normal_view_horizontal_invert = :normalViewHorizontalInvert,
+						shoulder_view_vertical_invert = :shoulderViewVerticalInvert,
+						shoulder_view_horizontal_invert = :shoulderViewHorizontalInvert,
+						first_view_vertical_invert = :firstViewVerticalInvert,
+						first_view_horizontal_invert = :firstViewHorizontalInvert,
+						first_view_player_direction = :firstViewPlayerDirection,
+						first_view_memory = :firstViewMemory,
+						radar_lock_north = :radarLockNorth,
+						radar_floor_hide = :radarFloorHide,
+						hud_hide_name_tags = :hudHideNameTags,
+						lock_on_enabled = :lockOnEnabled,
+						codec1_name = :codec1Name, codec2_name = :codec2Name,
+						codec3_name = :codec3Name, codec4_name = :codec4Name
+					where chara_id = :charaId
+					""")
+			.bindBean(s)
+			.execute());
+	}
+
 	public EquippedSkills getOrCreateEquippedSkills(long charaId) {
 		jdbi.useHandle(handle ->
 			handle.createUpdate("insert into chara_equipped_skills (chara_id) values (:id) on conflict do nothing")
