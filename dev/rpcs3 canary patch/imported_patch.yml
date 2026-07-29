@@ -1,0 +1,44 @@
+Version: 1.2
+Anchors:
+  MGS4_All_Games: &MGS4_All_Games
+    "Metal Gear Solid 4: Guns of the Patriots":
+      BLUS30109: [ All ]
+
+  MGS4_CrashWorkaround_Notes: &MGS4_CrashWorkaround_Notes
+    "NOPs three stores to +0x68 in *.SELF. Workaround for 0x68 crash, not a fix."
+
+PPU-9712144d93487f0b62e39f55e175af783b58af72:
+  "Crash fix":
+    Games:
+      "Metal Gear Solid 4: Guns of the Patriots":
+        BLUS30109: [ All ]
+    Author: "Sean"
+    # Disc 1.00 counterparts of the published 02.00 addresses (0x1409f8 / 0x140a10 / 0x140a44),
+    # which decode to unrelated instructions on this build. Constant +0x3D2C within this routine
+    # only -- do not reuse that delta to port other 02.00 patches.
+    Notes: *MGS4_CrashWorkaround_Notes
+    Patch Version: 1.0
+    Patch:
+      - [ be32, 0x00144724, 0x60000000 ]
+      - [ be32, 0x0014473c, 0x60000000 ]
+      - [ be32, 0x00144770, 0x60000000 ]
+
+PPU-3e681ce889f7deeccac2d7a8db87e8e5c4541a89:
+  "MGO2 0x68 crash fix":
+    Games:
+      "Metal Gear Solid 4: Guns of the Patriots":
+        BLUS30109: [ All ]
+    Author: "Sean"
+    # Same routine as the MGS4 entry above, relocated by +0xDEA8. Across the whole 424-instruction
+    # function only 3 words differ, and all three are relocation artifacts (one TOC displacement,
+    # two bl targets) -- so these are the same three stores, not a lookalike.
+    # All three ARE guarded (0x1525cc, 0x1525e4, 0x152618), but the guard tests the draw-list head
+    # rather than the tail pointer being stored through. Head and tail are produced together by one
+    # SPU task, so head != 0 with tail == 0 cannot happen on hardware -- the null comes from
+    # upstream, which makes this an emulation defect rather than a game bug.
+    Notes: *MGS4_CrashWorkaround_Notes
+    Patch Version: 1.0
+    Patch:
+      - [ be32, 0x001525cc, 0x60000000 ]
+      - [ be32, 0x001525e4, 0x60000000 ]
+      - [ be32, 0x00152618, 0x60000000 ]
