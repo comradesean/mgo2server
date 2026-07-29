@@ -381,9 +381,12 @@ public class PersonalStatsController implements IGameController {
 	 * This is the same method that pinned experience at {@code 0x4221} wire {@code 0x18}: send values
 	 * that land on distinguishable outputs and read which one appears.
 	 * <p>
-	 * <b>How to run it.</b> With the probe on, click <em>yourself</em> in the Rankings list — that is
-	 * the path that uses {@code 0x4103} alone, with no {@code 0x4221} to mask the result. Reading the
-	 * clock value there names the slot in one look.
+	 * <b>How to run it.</b> With the probe on: open the Rankings card, go into <em>More Details</em>,
+	 * then back out. That is the deterministic trigger — clicking yourself on a fresh Rankings load
+	 * shows the correct time, because the card reads the <b>local</b> record until {@code 0x4103}
+	 * populates the viewed-player struct, after which it reads that instead. Backing out of More
+	 * Details is the moment the struct wins, and it is exactly when the zero appears today. Read the
+	 * clock value on the card: it names the slot in one look.
 	 * <p>
 	 * <b>Worth checking while in there:</b> the operator saw one character's Player Details populate
 	 * <em>both</em> cards. If both then show the <em>same</em> figure, that is the single shared
