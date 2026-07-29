@@ -583,3 +583,70 @@ it, not the ordering itself.
   `0xAC80C0`, `0xACCEAC`) have not been read, so the entry gate may not be its only consequence.
 - What reads the hub entry's 16-byte **name**. Lobby Select uses the string table, and the
   sub-list separates by id; the name's presentation surface is unidentified.
+
+## `0x4991` is tournament entry, and our zeros are correct (2026-07-29)
+
+The lobby Main Menu asks the server for **pending tournament entries** with `0x4990` and parses the
+reply at `0xD48D40`: two header words then **four 57-byte records**, the loop bound hardcoded rather
+than taken from the count we send.
+
+**`rec+0x00` is the client's own slot-occupied test** (`0x8932FC`, `0x893470`). Zero means the slot is
+empty. So the all-zero reply we send is not a placeholder — it is the literal statement *"you have no
+pending entries"*, and the screen machine at `0x892B08` falls through to state 27 and draws the
+ordinary menu.
+
+A non-zero slot instead raises a confirmation dialog **on arrival at the lobby**: disc string 269,
+*"Participate in Official Tournament \"%s\"?"*, or for slot 0 string 268's *"An error was encountered
+while connecting to game \"%s\". Try to connect again?"*. Answering yes runs `0x4986` (acquire team
+entry information), then `0x491B` (rejoin team), optionally `0x4914` (leave team). The `%s` comes
+from the matching `0x4902` game-lobby entry's 64-byte text block.
+
+Three of the eleven fields are read: the key at `+0x00`, a **team id** at `+0x1e` handed to `0x4986`
+and `0x491B`, and a **lobby id** at `+0x33` rendered as its ordinal within its subtype group. The
+other eight are parsed and never read — and that is exhaustive rather than a failure to look: the only
+getter for the table (`0xD47494`) has a single caller, and a scan of every displacement into its
+296-byte area found four sites in total.
+
+**Scope note.** Tournament lobbies are **Ver. 1.20**, post-launch, and out of scope for v1 per the
+release-day rule. Serving "no pending entries" is therefore both correct and the right scope — this is
+not a gap to fill in later unless tournaments are deliberately switched on.
+
+The count word is dead: overwritten with 4 at `0xD48FC0` and never read.
+
+### What serving tournaments would actually take
+
+Recorded now because the decode is fresh, not because it is planned — tournaments are **Ver. 1.20**
+and out of scope for v1. If a version toggle ever switches them on, this is the whole client-side
+contract, and nothing here needs re-deriving:
+
+**1. Advertise the pending entry.** `0x4991` record *n* (`n` = 0..3), with:
+
+| field | wire | what to put there |
+| --- | --- | --- |
+| `entry_key` | `+0x00` | **nonzero**, and equal to the `index` of the `0x4902` game-lobby entry that names this tournament — the client matches them (`0x8933B8`, `0x893568`) to get the `%s` for its prompt |
+| `team_id` | `+0x1e` | the team's id; it is handed straight to `0x4986` and `0x491B` |
+| `lobby_id` | `+0x33` | the lobby the tournament is in, same id space as `0x4902` wire `0x08` |
+
+Everything else in the record can stay zero — it has no reader.
+
+**2. Expect the prompt.** On arriving at the lobby Main Menu the client raises a yes/no dialog per
+occupied slot. **Slot 0 is special**: it gets string 268, *"An error was encountered while connecting
+to game \"%s\". Try to connect again?"* — a reconnect, not an invitation. Slots 1–3 get string 269,
+*"Participate in Official Tournament \"%s\"?"*. The `%s` is the matched `0x4902` entry's 64-byte text
+block, which `PROTOCOL.md` notes is otherwise rendered only by the subtype-5 category.
+
+**3. Serve the follow-on commands.** Answering yes walks the state machine at `0x892B08`:
+
+| state | command | error strings | must answer |
+| --- | --- | --- | --- |
+| 18 | `0x4986` → `0x4987` | 5271–5275 | acquire team entry information |
+| 20 | `0x491B` | 5276–5280 | rejoin team |
+| 24 | `0x4914` → `0x4915` | 5168–5171 | leave team |
+
+Plus `0x4992` → `0x4993` to delete an entry, which is **keyed on `entry_key`** (`0xD48C88`) and
+`memset`s the matching 72-byte record client-side.
+
+**4. Do not bother with the count.** It is overwritten with 4 regardless.
+
+The remaining unknown is what the *server* should do behind those commands — team rosters, entry
+approval, bracket state. None of that is visible from the client, which only ever asks and displays.

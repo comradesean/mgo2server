@@ -156,7 +156,22 @@ types:
         doc: "block +68. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_72
         type: u4
-        doc: "block +72. [UNKNOWN]"
+        doc: |
+          [ELF 2026-07-29] A **genuine u32**, proven in both directions: the parser reads it with
+          `0xd5ccd8` at `0xD43784` (the same u32 reader used for `+68`, `+84`, `+88`, `+96` and all 17
+          timers) and the builder writes it with `0xd5c9bc` at `0xD449C8`. So the captured
+          `0x02000000` is the value **33554432**, not a `2` with three padding bytes — the wire bytes
+          would be identical either way, which is why it needed checking.
+
+          **No reader and no writer exists in the binary.** An exhaustive scan for `,824(rN)` found
+          zero sites in the MGO ranges, and there is no accessor for it in the bank at
+          `0x907030`-`0x907A70`. Every identified neighbour does appear at its literal offset — `818`
+          max players (12 sites), `820` briefing (10), `847` tolerance (11), `941` SNAKE (8) — so
+          `824` is a hole rather than a gap in the search. The create-game screen never stores to it.
+
+          The value is therefore **server-authored and merely echoed back by the client**. Meaning
+          [UNKNOWN]; the disc's Common Settings label run (13671-13820) has nothing between briefing
+          time and friendly fire, so no UI label corresponds to it either.
       - id: unknown_76
         type: u4
         doc: "block +76. [UNKNOWN]"
@@ -218,7 +233,24 @@ types:
         doc: "block +178. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_179
         type: u1
-        doc: "block +179. [UNKNOWN]"
+        doc: |
+          [ELF 2026-07-29] A u8 with **its own read** — `0xD43B10` uses the u8 reader `0xd5cb8c`,
+          while `+177`/`+178` are covered by a single raw-2 read at `0xD43AE4`. The builder splits the
+          same way (`0xD44BD8` u8 at struct `931`; `0xD44BC0` raw-2 at `929`), and the game-list row
+          builder `0xD49488` copies exactly two bytes from `929` and never touches `931`.
+
+          **It is the low byte of the 32-bit flags word at struct `+928`**, and that is what settles
+          it: 117 sites do `lwz rX,928(rB)` and bit-test the result, and **every tested bit lies in
+          bits 8-23** — i.e. in `+177`/`+178` only. Nothing anywhere tests bits 0-7. `0x20` sets bit
+          5, which no site consumes.
+
+          The sole load of struct `+931` is the accessor `0x9072AC`, which returns the raw byte with
+          no compare, mask, index or formatter — and it is **dead code**: its only appearance is its
+          OPD descriptor at `0x101C118`, there is no `bl` to it, and the file is `ET_EXEC` with no
+          relocations, so a runtime-patched reference is impossible.
+
+          Meaning [UNKNOWN]. The disc's Common Settings list is ~16 items, exactly matching the 16
+          bits at 8-23, so no leftover label is available for this byte.
       - id: idle_kick
         type: u2
         doc: "block +180. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"

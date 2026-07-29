@@ -74,43 +74,99 @@ types:
   entry:
     doc: "57 wire bytes; client stride 72 (`rec + 72*n`)."
     seq:
-      - id: unknown_00
+      - id: entry_key
         type: u4
-        doc: "[UNKNOWN] rec+0x00 of the record."
+        doc: |
+          [CONFIRMED 2026-07-29] **The record key, and the slot-occupied flag.** Nonzero means this
+          slot holds a pending entry (`0x8932FC`, `0x893470`); **zero means the slot is empty**, which
+          is why an all-zero reply is the correct "no pending entries" answer rather than a
+          placeholder.
+
+          Also matched against the `0x4902` game-lobby list to find the entry that names this
+          tournament (`0x8933B8`, `0x893568`), and used as the delete key by `0x4993` (`0xD48C88`).
       - id: unknown_04
         type: u1
-        doc: "[UNKNOWN] rec+0x04."
+        doc: |
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.
       - id: unknown_05
         type: u1
-        doc: "[UNKNOWN] rec+0x05."
+        doc: |
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.
       - id: unknown_06
         type: u4
-        doc: "[UNKNOWN] read into a stack slot then stored 64-bit-wide at rec+0x08."
+        doc: |
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.
       - id: unknown_0a
         type: u4
-        doc: "[UNKNOWN] rec+0x10."
+        doc: |
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.
       - id: name_a
         type: str
-        size: 16
-        doc: "[INFERRED] rec+0x14, 16-byte raw block; name-width by analogy. Width is [ELF 0xd48ee8]."
-      - id: unknown_1e
+        doc: |
+          [INFERRED, and PARSED BUT NEVER READ] A 16-byte name field, plausibly the team name — the
+          shared clan record at `0xD4AF34` uses 16-byte name fields at `0xD4B180`/`0xD4B284`.
+
+          **Unfalsifiable from the ELF**: nothing reads it, so the inference cannot be confirmed or
+          refuted from the binary, and no client behaviour can distinguish a correct value from
+          zeros.
+      - id: team_id
         type: u4
-        doc: "[UNKNOWN] rec+0x28."
+        doc: |
+          [CONFIRMED 2026-07-29] **The team id.** Cached at `0x893304` / `0x89349C` and passed as the
+          sole argument to `0xD4A90C` (command `0x4986`, acquire team entry information) and
+          `0xD4D9E4` (command `0x491B`, rejoin team).
       - id: name_b
         type: str
-        size: 16
-        doc: "[INFERRED] rec+0x2c, second 16-byte raw block. Width is [ELF 0xd48f24]."
+        doc: |
+          [INFERRED, and PARSED BUT NEVER READ] A 16-byte name field, plausibly the team name — the
+          shared clan record at `0xD4AF34` uses 16-byte name fields at `0xD4B180`/`0xD4B284`.
+
+          **Unfalsifiable from the ELF**: nothing reads it, so the inference cannot be confirmed or
+          refuted from the binary, and no client behaviour can distinguish a correct value from
+          zeros.
       - id: unknown_32
         type: u1
         doc: |
-          [UNKNOWN] rec+0x3d — note the 1-byte gap after the 16-byte block at rec+0x2c. The
-          gap byte rec+0x3c **is** written: 0xD5D018 memcpys `len` bytes and then stores a NUL
-          at dest+len (`stb r0,0(r9)` at 0xD5D07C). Earlier revisions said "0x3c is not
-          written", which is wrong; the wire conclusion is unchanged, because the cursor
-          advances by exactly `len` (0xD5D084-0xD5D088) and the NUL is client-side only.
-      - id: unknown_33
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.
+      - id: lobby_id
         type: u2
-        doc: "[UNKNOWN] rec+0x3e."
+        doc: |
+          [CONFIRMED 2026-07-29] **A lobby id**, in the same id space as `0x4902`'s lobby id at wire
+          `0x08` — `0x891458` feeds that field to the same function. Read at `0x893320` / `0x8934D0`
+          and passed to `0xD47CE0` -> `0xD35C7C`, which scans the 52-byte lobby array at `ctx+0x750`
+          (`0xD35FC4`) and returns the lobby's **ordinal within its subtype group**. The result is set
+          as text parameter 254.
       - id: unknown_35
         type: u4
-        doc: "[UNKNOWN] rec+0x40, the last field of the record."
+        doc: |
+          [UNKNOWN, and PARSED BUT NEVER READ — 2026-07-29] Position and width exact. **No reader
+          exists anywhere in the client.** The reader set is closed and exhaustive: the only getter
+          for this table (`0xD47494`) has exactly one caller (`0x8932CC`), and a scan of every
+          displacement into the table's 296-byte area found just four sites — the startup memset,
+          that getter, the `0x4993` handler and this parser. So zero is not merely safe here, it is
+          unobservable.

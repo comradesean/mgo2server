@@ -751,8 +751,10 @@ client behaviour. In particular, do not adopt a reference server's `0x2E` at wir
 tier 4 with no ELF support.
 
 **A correction worth recording:** the earlier claim that these six were "read by the getter bank" at
-`0x907030`–`0x907A70` was wrong. **That bank is dead code** — only three of its ~70 functions are
-ever called (`0x907948` roster-entry pointer, `0x907A0C` comment pointer, `0x907A64` name pointer),
+`0x907030`–`0x907A70` was wrong. **That bank is dead code** — only nine of its ~70 functions are
+ever called (`0x907948` roster-entry pointer, `0x907A0C` comment pointer, `0x907A64` name pointer,
+plus `0x907B68`, `0x907CE4`, `0x907D98`, `0x907DC0`, `0x907E04` and `0x907F14`; count corrected from
+three on 2026-07-29 by an exhaustive caller scan),
 and the rest have no pointer reference anywhere in the file. Being in that bank is not evidence of a
 runtime read, and an investigation built on it would have been chasing nothing.
 
