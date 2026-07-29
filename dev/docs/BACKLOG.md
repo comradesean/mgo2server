@@ -747,9 +747,26 @@ left_at)` row written where `creditTrainingTime` currently upserts — after whi
 is a window over `left_at` and the lifetime figure stays a sum. Not urgent: the slots are correct
 cumulatively today.
 
-## The host-settings blob must go — full decode ledger
+## ~~The host-settings blob must go~~ — DONE 2026-07-29
 
-*Pinned 2026-07-29.* `chara_host_settings.blob` is stored raw and replayed verbatim; `game`
+*Pinned and closed 2026-07-29.* **Both blobs are dropped** (`V55`). Every byte of the 352-byte block
+is a typed column, and the block is rebuilt from those columns byte-for-byte for the game-details
+reply and the Create Game pre-fill alike. What follows is the ledger as it stood, kept because the
+findings outlive the task.
+
+**What the decode found**, none of it visible while the bytes were kept whole: the rotation was
+truncated to its first entry so later rounds did not survive storage; three fields had never been
+stored at all; the Common Settings toggle bytes cannot be rebuilt from their booleans because bits
+1, 2 and 6 are undecoded; and the block is 352 bytes, not the 345 the last named field implies.
+
+**What deliberately remains**, all documented as opaque *by evidence* rather than by neglect:
+`weapon_restrictions` (16 bytes, the client owns the bit assignment) and `unread_tail` (14 bytes,
+written by the client as one raw block with no field boundaries to split on) in both tables, plus
+`clan.emblem`, which is an image.
+
+---
+
+**The original entry:** `chara_host_settings.blob` is stored raw and replayed verbatim; `game`
 decodes 24 fields and passes the rest through. **The end state is no blob and every byte typed.**
 Storing raw because "the client's serializer is the only authority on its layout" is a reason to
 start with a blob, not to keep one: we hand these bytes back to a client, so we are responsible for

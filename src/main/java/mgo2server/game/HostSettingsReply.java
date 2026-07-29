@@ -4,7 +4,8 @@ import io.netty.buffer.ByteBuf;
 
 /**
  * Builds the populated {@code 0x4305} reply — the saved host settings the Create Game screen
- * pre-fills with — from the raw {@code 0x4310} blob the client itself pushed last time.
+ * pre-fills with — from the {@code 0x4310} block, which is **rebuilt from typed columns** rather than
+ * replayed — the stored blob was dropped in V55 once the columns reproduced it byte for byte.
  * <p>
  * <b>Provenance: reference (tier 4), not the binary.</b> The layout is transcribed from
  * GHzGangster/Nomad's {@code Hosts.getSettings()} (fetched 2026-07-22 at the user's request),

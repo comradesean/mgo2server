@@ -142,6 +142,23 @@ public class CharacterConnectController implements IGameController {
 	 * The {@code 0x0150} == 336 == {@code 0x4120} length coincidence has no code behind it and is
 	 * not a lead.
 	 */
+	/**
+	 * Writes the four dead constants, honouring the zeroing experiment.
+	 *
+	 * <p><b>One writer, because two diverged.</b> {@code 0x4101} applied the policy gate and
+	 * {@code 0x4103} wrote the array raw, so with the experiment on a client received zeros from one
+	 * packet and the constants from the other — which makes the experiment prove nothing about these
+	 * bytes. An audit found it; nothing else could have, since both behaviours look correct in
+	 * isolation.
+	 */
+	static void writeInfoPrefix(io.netty.buffer.ByteBuf buffer) {
+		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
+			buffer.writeZero(INFO_PREFIX.length);
+			return;
+		}
+		buffer.writeBytes(INFO_PREFIX);
+	}
+
 	static final byte[] INFO_PREFIX = {
 		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,
 		(byte) 0x01, (byte) 0x3E, (byte) 0x01, (byte) 0x50,
@@ -389,11 +406,7 @@ public class CharacterConnectController implements IGameController {
 		var buffer = ctx.buffer(INFO_PAYLOAD_SIZE);
 		buffer.writeInt((int) chara.getId());
 		BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
-			buffer.writeZero(INFO_PREFIX.length);
-		} else {
-			buffer.writeBytes(INFO_PREFIX);
-		}
+		writeInfoPrefix(buffer);
 
 		buffer.writeInt(experienceFor(account, chara))
 			// The client shows the previous login alongside the current one.

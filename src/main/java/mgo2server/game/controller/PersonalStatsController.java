@@ -150,7 +150,7 @@ public class PersonalStatsController implements IGameController {
 		info.writeInt((int) chara.get().getId());
 		BufferUtil.writeString(info, chara.get().getName(), StandardCharsets.ISO_8859_1,
 			NAME_LENGTH);
-		info.writeBytes(CharacterConnectController.INFO_PREFIX);
+		CharacterConnectController.writeInfoPrefix(info);
 		info.writeInt(experience);
 		// v4: the "login times / flag / friend ids / blocked ids" labels were inferred from the
 		// 0x4101 layout, never observed — and after v2/v3 they are the only bytes of this packet
