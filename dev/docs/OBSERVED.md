@@ -4046,6 +4046,32 @@ the field — two of them have no reader anywhere in the binary. The `00:00:00` 
 the memset, exactly as before. The experiment could not have distinguished the two causes, which is
 the definition of an invalid elimination.
 
+### What remains: the first render only, and the server cannot reach it
+
+Confirmed fixed live 2026-07-29 — backing out of More Details keeps the time, and the zero cannot be
+reproduced once any burst has landed.
+
+**One symptom survives, and it is first-render-only.** Opening your own card for the first time after
+login still shows `00:00:00`. The login sequence explains it: `0005, 3003, 4820, 4100, 4700, 4b48,
+4900, 4130, 4990` — **no `0x4102`**. The viewed-player struct is untouched until the player opens
+something, so on the very first draw `T+0x494` is genuinely zero. The `0x4102` that follows fills it,
+and it stays filled.
+
+So the card draws **before** our reply arrives and does not repaint until the screen is left and
+re-entered. That is also what the earlier *"if I wait a bit, it starts showing up"* observation was.
+
+**Nothing is missing on our side** — a log sweep across every game server shows no
+`No handler for command` since the fix, so the client is not asking for anything we fail to answer.
+
+The server has no earlier opportunity. The only writers of that struct are `0x4103`/`0x4105` — replies
+to a request the client has not yet made — and `0x4221`, which the self-click path never sends.
+Clicking *another* player's Player Details does send it, which is exactly why that path always
+worked.
+
+Whether retail behaved the same way is **not knowable from our artifacts**: the struct would be
+equally empty on a real server, so this is plausibly original behaviour. Left alone rather than
+worked around.
+
 ### ELIMINATED: the shared viewed-player struct is not leaking between players
 
 There is exactly one viewed-player struct, so a natural worry was that one character's total was
