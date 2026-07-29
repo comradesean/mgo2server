@@ -50,11 +50,27 @@ public final class AutomatchSettingsBlock {
 	/** Rotation entries, matching the {@code 0x4310} writer's own loop bound. */
 	public static final int ROTATION_ENTRIES = 16;
 
-	private static final int RULES = 0;
+	/**
+	 * The rotation occupies the block's first 48 bytes as <b>16 interleaved
+	 * {@code [rule, map, flags]} triples</b> — not three parallel arrays.
+	 *
+	 * <p>This cost an evening. The client's <em>in-memory</em> form is parallel: the shared reader
+	 * {@code 0xD4364C} scatters the stream into {@code rules[16]} at +0, {@code maps[16]} at +16 and
+	 * {@code flags[16]} at +32 ({@code 0xD43678}–{@code 0xD436E4}). But the read primitive is a
+	 * strictly sequential byte stream, so the <b>wire</b> order is the call order — rule0, map0,
+	 * flags0, rule1, map1, flags1, and so on. The {@code 0x4310} builder emits the same interleaved
+	 * order at wire {@code 0xA3}, so the convention is symmetric.
+	 *
+	 * <p>Writing the parallel form onto the wire produced a rotation the client de-interleaved into
+	 * nonsense: two requested modes came out as one entry with a map id of 1 — a stage that does not
+	 * exist on the disc, whose five maps are {@code {2,3,4,7,12}} — and a second entry with map 0,
+	 * which terminates every loop that walks the rotation. That is one mode in the "Rules:" popup and
+	 * a black loading screen, both from the same mistake.
+	 */
+	private static final int ROTATION = 0;
 
-	private static final int MAPS = 16;
-
-	private static final int FLAGS = 32;
+	/** Bytes per rotation entry: rule, map, flags. */
+	private static final int ENTRY = 3;
 
 	/** The seventeen timer/count u32s. */
 	private static final int TIMERS = 100;
@@ -149,7 +165,7 @@ public final class AutomatchSettingsBlock {
 	 * (block 189), and the full default timer table.
 	 */
 	private static final byte[] DEFAULT_BLOCK = HexFormat.of().parseHex(
-		"0400000000000000000000000000000007000000000000000000000000000000"
+		"0407000000000000000000000000000000000000000000000000000000000000"
 			+ "0000000000000000000000000000000000000000000000000000000000000000"
 			+ "0000100000000002020000000000000000000000000000000000000000000016"
 			+ "0000000000000008000000040000000400000004000000040000000400000003"
@@ -195,19 +211,18 @@ public final class AutomatchSettingsBlock {
 		var block = DEFAULT_BLOCK.clone();
 		block[CURRENT_PLAYERS] = (byte) PLAYERS_AT_CREATE;
 
-		// Wipe the captured rotation before writing ours: the client's own blob-save loop stops at the
-		// first zero map, so a leftover entry beyond ours would still be part of the cycle.
-		for (var entry = 0; entry < ROTATION_ENTRIES; entry++) {
-			block[RULES + entry] = 0;
-			block[MAPS + entry] = 0;
-			block[FLAGS + entry] = 0;
-		}
+		// Wipe the captured rotation before writing ours: every loop that walks it stops at the first
+		// zero map, so a leftover entry beyond ours would still be part of the cycle.
+		java.util.Arrays.fill(block, ROTATION, ROTATION + ROTATION_ENTRIES * ENTRY, (byte) 0);
 
 		var entry = 0;
 		for (var rule : new LinkedHashSet<>(rules)) {
-			block[RULES + entry] = (byte) (int) rule;
-			block[MAPS + entry] = (byte) map;
-			block[FLAGS + entry] = 0;
+			var at = ROTATION + entry * ENTRY;
+			block[at] = (byte) (int) rule;
+			block[at + 1] = (byte) map;
+			// The per-rule "rule option". Zero is the one value the disc's ruleopt_bit whitelist
+			// permits for every rule.
+			block[at + 2] = 0;
 			applyObservedTimers(block, rule);
 			entry++;
 		}
