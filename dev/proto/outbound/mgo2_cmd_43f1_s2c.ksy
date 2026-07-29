@@ -172,6 +172,15 @@ types:
           The value is therefore **server-authored and merely echoed back by the client**. Meaning
           [UNKNOWN]; the disc's Common Settings label run (13671-13820) has nothing between briefing
           time and friendly fire, so no UI label corresponds to it either.
+
+          **HYPOTHESIS, unproven and marked as such.** The captured u32 is `0x02000000` — a `2` in the
+          *most significant* byte. A server writing a single byte into the first octet of a u32 slot
+          produces exactly this, so the most economical reading is a **u8 field at +72 holding 2**,
+          with three bytes of padding the client happens to read as part of a u32. That is consistent
+          with its neighbours: +66 and +67 are u8 counts and +68 is a u4 holding the small value 2.
+          What it counts or selects is unknown. **Nothing in the binary can confirm or refute this** —
+          the field has no reader — so it must not be promoted without evidence from outside our
+          artifacts.
       - id: unknown_76
         type: u4
         doc: "block +76. [UNKNOWN]"
@@ -251,6 +260,18 @@ types:
 
           Meaning [UNKNOWN]. The disc's Common Settings list is ~16 items, exactly matching the 16
           bits at 8-23, so no leftover label is available for this byte.
+
+          **HYPOTHESIS, unproven and marked as such.** Bits 8-23 of this flags word are the ~16 Common
+          Settings toggles, matching the disc's label run one-for-one. Bits 0-7 are a whole unused
+          byte inside the same word, and our capture has **bit 5** set. The economical reading is a
+          **second bank of toggles this build does not implement** — later-version settings, or ones
+          cut before release — which would explain a flag the client faithfully stores, echoes and
+          never consults.
+
+          That is speculation with one supporting observation and no proof: the accessor for this byte
+          exists (`0x9072AC`) but is dead code, which is what a build with a feature compiled out
+          tends to leave behind. If a later client version is ever compared against this one, **this
+          byte is the first place to look** — a bit that goes live there would name itself.
       - id: idle_kick
         type: u2
         doc: "block +180. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
