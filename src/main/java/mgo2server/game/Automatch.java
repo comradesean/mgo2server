@@ -228,6 +228,28 @@ public class Automatch {
 	 */
 	public static final int[] MAP_POOL = {2, 3, 4, 7, 12};
 
+	/**
+	 * The rules a wildcard search may be given, and the rules a rotation may contain.
+	 *
+	 * <p>"Do not specify rules" means <em>any</em> of these, so a search that expresses no preference
+	 * gets one picked at random rather than always landing on the same mode. That is what a wildcard
+	 * ought to mean, and it stops every no-preference match being identical.
+	 *
+	 * <p>Matches the client's own selectable set from the rule menu ({@code 0x93B60C}) and the disc's
+	 * {@code rule_bit 191}, minus rule 7: Team Sneaking is behind a feature bit this server clears,
+	 * so it must never be chosen for someone who did not ask for it. Rule 6 (BOMB) has no menu row at
+	 * all.
+	 *
+	 * <p><b>Rule 0 (Deathmatch) is included, and that is currently unproven.</b> A rotation whose
+	 * entry 0 was rule 0 was seen to hang both clients on a black loading screen with a blank
+	 * "Rules:" line — but block 67 was also going out as zero in those runs, which independently
+	 * fails the client's game-object validator at {@code 0x883FB4}. The two were fixed at nearly the
+	 * same time and the logs from the failing builds are gone, so the attribution is not settled.
+	 * Deathmatch has to be playable, so it stays in the set; if a Deathmatch match hangs while other
+	 * rules do not, this is the first place to look.
+	 */
+	public static final int[] WILDCARD_RULES = {0, 1, 2, 3, 4, 5};
+
 	private final AutomatchPolicy policy;
 
 	private final long lobbyId;
@@ -434,10 +456,13 @@ public class Automatch {
 		var anchor = queued.get(0);
 		var waiting = queued.stream()
 			.filter(searcher -> windowsOverlap(anchor, searcher))
+			.filter(searcher -> modesCompatible(anchor, searcher))
 			.toList();
 		if (waiting.size() < policy.minPlayers()) {
-			logger.debug("{} searching but only {} within reach of level {} (band {}); waiting.",
-				queued.size(), waiting.size(), anchor.level(), band(anchor));
+			logger.debug("{} searching but only {} compatible with chara {} (level {}, band {}, "
+				+ "rule {}); waiting.", queued.size(), waiting.size(), anchor.charaId(),
+				anchor.level(), band(anchor),
+				anchor.ruleFilter() == ANY_RULE ? "any" : anchor.ruleFilter());
 			return;
 		}
 
@@ -454,6 +479,9 @@ public class Automatch {
 		}
 
 		var members = waiting.stream().map(Searcher::charaId).toList();
+		// Every distinct mode the group actually asked for, in join order — the rotation carries all
+		// of them, so nobody is talked out of what they wanted. Wildcards contribute nothing here;
+		// they are happy with whatever the others chose.
 		var rules = new LinkedHashSet<Integer>();
 		for (var searcher : waiting) {
 			if (searcher.ruleFilter() != ANY_RULE) {
@@ -461,9 +489,11 @@ public class Automatch {
 			}
 		}
 		if (rules.isEmpty()) {
-			// Everyone said "no preference", so the server picks. Deathmatch is the least
-			// presumptuous default: no teams to balance and no objective to explain.
-			rules.add(0);
+			// Everyone said "Do not specify rules", so the wildcard picks one at random rather than
+			// always serving the same mode. Nothing establishes what the original did here; this is
+			// operator policy, and randomness is the reading of "any" that does not quietly turn a
+			// wildcard into a fixed default.
+			rules.add(WILDCARD_RULES[random.nextInt(WILDCARD_RULES.length)]);
 		}
 
 		var map = MAP_POOL[random.nextInt(MAP_POOL.length)];
@@ -514,10 +544,27 @@ public class Automatch {
 				}
 				logger.info("Automatch releasing {} players into game {} ({}).",
 					match.members.size(), match.gameId, name);
-				// The host is included deliberately: its own handler expects this packet, and a
-				// spurious one to a host that has left is dropped, where omitting it can park it
-				// forever.
+				// The HOST IS EXCLUDED. It created the game and is already in it; pushing 0x43f2
+				// sends it down the joiner branch of its own state machine.
+				//
+				// Observed live 2026-07-28: the host received 0x43f2, never sent 0x4320, and reported
+				// 0x4322 (join failed) six seconds later while sitting on the match-found screen. The
+				// other client, which is a genuine joiner, advanced on its own and asked us for the
+				// endpoint correctly.
+				//
+				// This reverses an earlier reading. Error 4945 fires when 0x43f2 names me as host
+				// "after my create had failed", and I took that as proof the host's handler expects
+				// the packet in the normal flow. It only proves the host can RECEIVE it — on a
+				// failure path.
 				for (var charaId : match.members) {
+					if (charaId == match.hostCharaId) {
+						var host = searchers.get(charaId);
+						if (host != null) {
+							host.state = State.MATCHED;
+							forget(charaId);
+						}
+						continue;
+					}
 					var searcher = searchers.get(charaId);
 					if (searcher != null) {
 						searcher.state = State.MATCHED;
@@ -588,6 +635,31 @@ public class Automatch {
 		channel.writeAndFlush(new GamePacket(command, buffer));
 	}
 
+	/**
+	 * Whether two searchers will accept each other's mode.
+	 *
+	 * <p>Grouped by mode first and relaxed with time, the same shape as the level band. A searcher
+	 * who asked for Rescue starts out only matching other Rescue players and wildcards; once they
+	 * have waited past the relaxation point they will take anything rather than keep waiting.
+	 *
+	 * <p>Wildcards — "Do not specify rules" — are compatible with everyone from the outset, which is
+	 * what makes them wildcards.
+	 *
+	 * <p>Mixing is possible at all because <b>a rotation carries several modes</b>: a group that
+	 * wanted Team Deathmatch and Sneaking plays both, which is observed behaviour rather than a
+	 * compromise we invented. So relaxing costs a searcher nothing they asked for — their own mode is
+	 * still in the rotation, alongside someone else's.
+	 */
+	private boolean modesCompatible(Searcher a, Searcher b) {
+		if (a.ruleFilter() == ANY_RULE || b.ruleFilter() == ANY_RULE) {
+			return true;
+		}
+		if (a.ruleFilter() == b.ruleFilter()) {
+			return true;
+		}
+		return policy.acceptsAnyModeAfter(a.waited()) || policy.acceptsAnyModeAfter(b.waited());
+	}
+
 	/** This searcher's half-width right now, which is also what we send them. */
 	public int band(Searcher searcher) {
 		return policy.bandAfter(searcher.waited());
@@ -654,24 +726,9 @@ public class Automatch {
 		if (searchers.isEmpty()) {
 			return;
 		}
-		// BOTH ARRAYS ARE ZERO, DELIBERATELY — reverted 2026-07-28 after reference footage.
-		//
-		// We briefly filled the first array with a per-level count of queued searchers, on the
-		// reading that the panel's two series are the disc's "Matching" (string 924) and "In Game"
-		// (923) beneath the "Entry Status" label (915). That produced a visible bar above the
-		// player's own level column. Footage of a real Konami-era automatch session shows NO such
-		// bar, so whatever the original sent, it was not this.
-		//
-		// The honest position: the ELF establishes only that the client draws A[i] + B[i] as a bar
-		// per level column, clamped to 15. It never establishes what the numbers COUNT. The
-		// "Matching / In Game" reading was an inference from two nearby strings, and those strings
-		// are at least as likely to be the values of a status field showing the player's OWN state
-		// than a legend for this graph.
-		//
-		// Zeros render a flat graph, which is what the footage shows, and cannot mislead. The
-		// packing and clamping are still exercised by AutomatchPacketsTest, so re-enabling this is
-		// a two-line change once someone knows what the arrays mean.
-		var matching = new int[AutomatchPackets.COLUMNS];
+		// The second array stays zero. Its meaning is unestablished, and the first one carries the
+		// count described below; sending a number we cannot justify into the other would just be the
+		// earlier mistake again in a different column.
 		var inGame = new int[AutomatchPackets.COLUMNS];
 		for (var searcher : searchers.values()) {
 			// Only clients still searching. Once a match has been announced the client has left state
@@ -684,6 +741,27 @@ public class Automatch {
 			if (!channel.isActive()) {
 				continue;
 			}
+			// Counted per recipient, because it EXCLUDES them: the graph shows who else is out there.
+			//
+			// "The bar represents the amount of players within that specific level" — community
+			// report. Excluding yourself is what reconciles that with reference footage showing NO
+			// bar above the player's own column: in that session they were the only searcher at
+			// their level, so the honest count was zero. Counting yourself drew a one-unit line
+			// where the original drew nothing, which is how the error was caught.
+			//
+			// Open: whether "players" means the automatch queue or everyone online at that level.
+			// The queue is what this screen is for — those are the people you could be matched with
+			// — and it is the only population countable without inventing a scope.
+			var matching = new int[AutomatchPackets.COLUMNS];
+			for (var other : searchers.values()) {
+				if (other == searcher || other.state() != State.SEARCHING
+					|| !other.channel().isActive()) {
+					continue;
+				}
+				var level = Math.min(Math.max(other.level(), 0), AutomatchPackets.COLUMNS - 1);
+				matching[level]++;
+			}
+
 			var buffer = channel.alloc().buffer(AutomatchPackets.SEARCH_PANEL_SIZE);
 			// The band is per recipient: it is that searcher's own window, so the lit range on their
 			// gauge widens visibly the longer they wait.

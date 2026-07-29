@@ -75,7 +75,11 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 		// The widest band from the outset, so level never decides whether these tests match. Level
 		// windowing has its own coverage; here it would only make the outcome depend on whatever
 		// experience the fixtures happen to give a character.
-		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX);
+		AutomatchPolicy.DEFAULT_BAND_MAX, Duration.ofSeconds(30), AutomatchPolicy.DEFAULT_BAND_MAX,
+		// Zero relaxation: every searcher accepts any mode immediately, so rule filters never decide
+		// whether these tests match. Mode grouping has its own coverage; here it would only make the
+		// outcome depend on which filter a fixture happened to send.
+		Duration.ZERO);
 
 	/** Team Deathmatch, menu row 2. */
 	private static final int RULE_TDM = 1;
@@ -146,8 +150,22 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 			givenSearcher("B", "bob", "Bob", ruleB));
 	}
 
+	/**
+	 * Which character each test client is playing, so a test can tell the elected host from the
+	 * joiners — the two are now treated differently on release.
+	 */
+	private final java.util.Map<TestClient, Long> charaIds = new java.util.HashMap<>();
+
+	private long charaIdOf(TestClient client) {
+		var charaId = charaIds.get(client);
+		assertThat(charaId).as("%s was not created through givenSearcher", client.name()).isNotNull();
+		return charaId;
+	}
+
 	private TestClient givenSearcher(String name, String username, String charaName, int rule) {
-		var client = connect(name).login(givenCharacter(username, charaName), token(username));
+		var charaId = givenCharacter(username, charaName);
+		var client = connect(name).login(charaId, token(username));
+		charaIds.put(client, charaId);
 		client.send(start(rule));
 
 		var accepted = client.await(AutomatchGameController.START_AUTOMATCH_RESULT, TIMEOUT);
@@ -248,7 +266,15 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 
 		automatch().gameCreated(hostCharaId, GAME_ID);
 
-		for (var client : clients) {
+		// Only the JOINERS are released. The host created the game and is already in it; pushing
+		// 0x43f2 to it sends it down the joiner branch of its own state machine — observed live on
+		// 2026-07-28, where the host received the push, never sent 0x4320, and reported 0x4322 six
+		// seconds later while stuck on the match-found screen.
+		var host = clients.stream().filter(c -> charaIdOf(c) == hostCharaId).findFirst().orElseThrow();
+		var joiners = clients.stream().filter(c -> charaIdOf(c) != hostCharaId).toList();
+		assertThat(joiners).as("one host, the rest joiners").hasSize(clients.size() - 1);
+
+		for (var client : joiners) {
 			var released = client.await(AutomatchPackets.MATCH_GAME, TIMEOUT);
 			assertThat(released.getPayload().readableBytes())
 				.as("%s's 0x43f2", client.name())
@@ -257,6 +283,12 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 				.as("%s must be sent to the game the host actually created", client.name())
 				.isEqualTo(GAME_ID);
 		}
+
+		// And the host is left alone to hand off into its own game.
+		TestClient.letTicksPass(QUIET);
+		assertThat(host.received(AutomatchPackets.MATCH_GAME))
+			.as("the host must not be told to join the game it just created")
+			.isEmpty();
 	}
 
 	/**
