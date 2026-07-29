@@ -45,8 +45,20 @@ public class PersonalInfoController implements IGameController {
 	private static final int REQUEST_SIZE = 19 + 4 + 1 + 4 + 2 + COMMENT_LENGTH;
 
 	/**
-	 * Face-paint colour unlock bitmask, one bit per colour. Both references send all-ones, so
-	 * every colour is offered; no source of a narrower value has been found.
+	 * Face-paint colour unlock bitmask, one bit per colour — <b>allegedly</b>.
+	 *
+	 * <p><b>TIER 4, and flagged 2026-07-29.</b> The name and the value both come from "both
+	 * references send all-ones, so every colour is offered; no source of a narrower value has been
+	 * found". Nothing here is established: no reader has been identified, and the field sits at
+	 * wire {@code 0xb6}, <b>past the end of the traced parser range</b> in
+	 * {@code dev/proto/outbound/mgo2_cmd_4131_s2c.ksy} — so the schema may be four bytes short, or
+	 * we may be sending four bytes nothing reads. Nobody has checked which.
+	 *
+	 * <p><b>Release-day scope.</b> If colours unlock progressively, all-ones hands out content that
+	 * may not have been switched on at launch — the case {@code CLAUDE.md} says to hold back, since
+	 * <em>shipped on the disc</em> and <em>active on release day</em> are different questions.
+	 * Left as-is rather than narrowed on a guess: inventing a mask would be the same mistake in the
+	 * other direction. Resolve the reader first.
 	 */
 	private static final int FACE_PAINT_UNLOCKED = 0xffffffff;
 
@@ -184,8 +196,13 @@ public class PersonalInfoController implements IGameController {
 		// 0x93E418 ZEROES any record above that rather than clamping. It survived only because
 		// 0x600000 >> 13 still clamps to level 3, so every equipped skill rendered as maxed.
 		//
-		// It has to match what 0x4122 sends for the same slots, or the skill screen disagrees with
-		// itself between the connect burst and a wardrobe change — hence the shared helper.
+		// It has to match what 0x4122 sends for the same slots, because BOTH WRITE THE SAME CLIENT
+		// STRUCT SLOT (+40 + i*4) — disagree and the value there depends on which packet arrived
+		// last. Hence the shared helper.
+		//
+		// Note what is NOT claimed: no reader of that slot has been identified, so whether any
+		// screen renders per-skill experience is unestablished. This is a consistency argument, not
+		// a presentation one.
 		var experience = characterService.skillExperience(charaId);
 		for (var slot = 0; slot < 4; slot++) {
 			buffer.writeInt(PersonalInfoWriter.reportedExperience(

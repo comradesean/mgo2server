@@ -79,8 +79,12 @@ types:
           rendered as maxed.
 
           Now the stored value from `chara_skill`, through the same floor-and-clamp helper `0x4122`
-          uses. **The two must agree**: this is the wardrobe echo and `0x4122` is the connect burst,
-          so a disagreement makes the skill screen contradict itself depending on how you got there.
+          uses. **The two must agree** because they write the SAME destination (`struct +40 + i*4`),
+          so whichever arrived last wins.
+
+          What is NOT established: **no reader of `struct +40` has been identified.** Whether any
+          screen renders per-skill experience is unknown, and the case for keeping the two packets
+          consistent is correctness, not a rendering claim.
 
           Level is derived, never sent: `min(experience >> 13, 3)` at `0x6FC580`.
       - id: unknown_35
@@ -91,3 +95,25 @@ types:
         type: str
         encoding: ISO-8859-1
         doc: "[ELF] Wire 0x36 -> struct +68, fixed 128. Echoed back; this is the only field of the request that is persisted alongside the appearance."
+      - id: face_paint_unlocked
+        type: u4
+        doc: |
+          [UNDOCUMENTED, TIER 4 — flagged 2026-07-29] Wire 0xb6..0xb9, immediately after the
+          comment. **This field is not in the traced parser range**: every other field here carries
+          an ELF wire->struct mapping and this one does not, so either the schema is short by four
+          bytes or we are over-sending them. It has never been checked which.
+
+          We send `0xffffffff`, on the sole authority that "both references send all-ones, so every
+          colour is offered; no source of a narrower value has been found" — i.e. tier 4, the
+          category that has cost this project six regressions.
+
+          **Two open questions, neither answered:**
+
+          1. Does the client read it at all, and does it gate the face-paint colour picker? Find the
+             reader before trusting the name.
+          2. **Release-day scope.** If face-paint colours are unlocked progressively, all-ones hands
+             out content Konami may not have had switched on at launch — exactly the case
+             `CLAUDE.md` says to hold back. *Shipped on the disc* and *active on release day* are
+             different questions and only the first is readable from our artifacts.
+
+          Do not treat the name as established. It is a label inherited with the value.
