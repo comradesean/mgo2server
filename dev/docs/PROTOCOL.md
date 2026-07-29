@@ -969,8 +969,11 @@ four-byte reply like its neighbours. Errors are 4 bytes (`C0FFEE02`, `C0FFEE01`)
 identity being settled). The write-back half of `0x4120`: first observed live 2026-07-22 as a
 **304-byte** push — the `0x4120` layout minus its 32-byte trailer — sent by a *joiner* in one
 burst with two `0x4114`s when saving options. The body is acknowledged (`0x4111 {u32 0}`,
-required) but **not yet parsed into `chara_settings`**, so option edits do not persist across
-sessions; the layout to parse is `0x4120`'s own, already documented above. An earlier theory
+required) and, **since 2026-07-29, parsed into `chara_settings`** — so option edits persist. Until
+then it was acked and discarded, which is why Lock-On and every other Gameplay Option reverted after
+each session; `0x4120` had always sent the stored row correctly, so the round trip was broken on
+exactly one side. The layout is `0x4120`'s own, already documented above, and the reader
+(`GameplaySettingsReader`) is the writer inverted — the two must change together. An earlier theory
 that this command carried the Common Settings toggles in a 48-byte rules header was wrong — see
 OBSERVED.md.
 

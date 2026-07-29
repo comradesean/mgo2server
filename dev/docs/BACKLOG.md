@@ -415,14 +415,20 @@ Two paths to fix, in order of confidence:
 
 See PROTOCOL.md, "The complete sendable set" for the enumeration and the sibling gaps.
 
-## 0x4110 gameplay options are acked but not parsed
+## ~~0x4110 gameplay options are acked but not parsed~~ — DONE 2026-07-29
 
-*Pinned 2026-07-22 (evening).* The options write-back is now identified (304 bytes, the `0x4120`
-layout minus its 32-byte trailer) and its sibling `0x4114` macros are persisted, but `0x4110`
-itself is dropped after the ack, so gameplay/interface option edits do not survive a session.
-The parse is mechanical — invert `GameplaySettingsWriter` into the `chara_settings` columns,
-including its off-by-one stored-vs-wire quirks — and directly serves the no-blobs goal. Verify
-by editing one option, relogging, and checking the Options screen.
+*Pinned 2026-07-22 (evening), closed 2026-07-29.* The body is now parsed into `chara_settings` by
+`GameplaySettingsReader`, which is `GameplaySettingsWriter` inverted, and stored by
+`CharacterService.saveSettings`. Lock-On — and in fact every Gameplay Option — reverted after each
+session until this landed.
+
+The prediction in the original entry held: the parse was mechanical, including the stored-vs-wire
+off-by-one on the music volume, which shares a byte with Lock-On. That quirk is asserted across the
+volume's whole range, because inverting it backwards would drift the value by one on every save and
+read as a client bug rather than a server one.
+
+Covered by `GameplaySettingsRoundTripTest` — a round trip rather than either side alone, since a
+subtly wrong reader corrupts options silently instead of failing.
 
 ## 0x4440 carries an undecoded team/spectator byte
 

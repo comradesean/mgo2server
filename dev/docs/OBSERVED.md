@@ -4079,3 +4079,38 @@ being written onto another's card. **It is not.** Opening one character's Player
 both cards, and **both showed their own correct figure** — the confirming observation would have
 been both showing the *same* number, and it did not happen. The struct is repopulated per view
 rather than shared across simultaneously-displayed rows.
+
+
+## Lock-On reverted every session because the write-back was discarded (2026-07-29)
+
+**Symptom, reported live:** Lock-On Settings returned to its previous value after every game.
+
+**Cause:** `0x4110` — the client's gameplay-options write-back — was acknowledged and its body
+thrown away. `0x4120` had always sent the stored `chara_settings` row correctly, so the round trip
+was broken on exactly one side, and *every* Gameplay Option behaved the same way. Lock-On was simply
+the one anybody noticed: view speeds, inverts, HUD size, volumes and codec entries all reverted too.
+
+**The layout needed no probing.** `0x4110` is 304 bytes, which is `0x4120`'s payload truncated at
+`0x130` — the same 48-byte header and four 64-byte codec names, minus the 32-byte list-preferences
+trailer. Two independent sources already agreed on that: the live 2026-07-22 capture, and the
+builder at `0xD3BFC0` (one 48-byte blob write, then a four-pass loop of 64-byte writes).
+
+**Fixed** by `GameplaySettingsReader`, which is `GameplaySettingsWriter` inverted, plus
+`CharacterService.saveSettings`.
+
+### The one trap in it
+
+**Lock-On shares a byte with the music volume at `+0x14`, and the volume travels one HIGHER than it
+is stored.** Inverting that backwards would drift the volume by one on every save — slow corruption
+that would present as a client bug rather than a server one, and would take a long time to notice.
+It is asserted across the volume's whole range.
+
+The test is a **round trip**, not either side in isolation: a one-sided test passes happily while the
+reader and writer disagree, and a subtly wrong reader corrupts the player's options on every save
+instead of failing loudly.
+
+### What still does not persist, and why it is different
+
+The **filter / sort / search preferences** in `0x4120`'s 32-byte trailer are *not* returned by the
+client — that is precisely the 32 bytes `0x4110` omits. So there is no write-back to parse, and
+persisting them would need a mechanism we have not identified. See the `0x4120` trailer entry above.
