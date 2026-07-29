@@ -182,7 +182,14 @@ public final class GameplaySettingsWriter {
 		BufferUtil.writeString(buffer, s.getCodec3Name(), StandardCharsets.ISO_8859_1, CODEC_NAME_LENGTH);
 		BufferUtil.writeString(buffer, s.getCodec4Name(), StandardCharsets.ISO_8859_1, CODEC_NAME_LENGTH);
 
-		buffer.writeBytes(TRAILER);
+		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
+			// Bytes 0-7 are KEPT: two of their nibbles reach a consumer, so zeroing them would be a
+			// real behaviour change rather than a test of "is anything reading this". Only 8..31,
+			// which have no reader at all, are zeroed.
+			buffer.writeBytes(TRAILER, 0, 8).writeZero(TRAILER.length - 8);
+		} else {
+			buffer.writeBytes(TRAILER);
+		}
 
 		assert buffer.writerIndex() - start == PAYLOAD_SIZE
 			: "Gameplay settings payload must be " + PAYLOAD_SIZE + " bytes";
