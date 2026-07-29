@@ -122,9 +122,25 @@ public class CharacterConnectController implements IGameController {
 
 
 	/**
-	 * Four u16 values the client stores from the header (0x16AE, 0x0338, 0x013E, 0x0150).
-	 * Their meaning is undocumented; they are reproduced from the original server byte for
-	 * byte.
+	 * Four u16 at wire {@code 0x16}/{@code 0x18}/{@code 0x1a}/{@code 0x1c} — {@code 0x16AE},
+	 * {@code 0x0338}, {@code 0x013E}, {@code 0x0150}.
+	 * <p>
+	 * <b>Dead in this build.</b> [ELF 2026-07-29] The parser writes them as four independent u16
+	 * ({@code 0xD3C1BC}, {@code 0xD3C1D8}, {@code 0xD3C1F4}, {@code 0xD3C210}) — so not one 8-byte
+	 * blob — and each has exactly one reader: the bare getters {@code 0x907EC0}, {@code 0x907E98},
+	 * {@code 0x907E70} and {@code 0x907E48}, every one a plain {@code return u16;} with no
+	 * comparison, arithmetic or formatting.
+	 * <p>
+	 * <b>None of those four getters is ever called.</b> Zero {@code bl} sites, and a scan of the
+	 * whole image for any word equal to their OPD descriptors ({@code 0x101C308}..{@code 0x101C320})
+	 * found nothing, which rules out a vtable slot or a TOC pointer. PPC64 emits a descriptor for
+	 * every global function, so their existence is not evidence of use.
+	 * <p>
+	 * We could send zeros. They are kept as captured because changing them buys nothing and the
+	 * values cost nothing — but nothing depends on them, and a later cleanup may drop them.
+	 * <p>
+	 * The {@code 0x0150} == 336 == {@code 0x4120} length coincidence has no code behind it and is
+	 * not a lead.
 	 */
 	static final byte[] INFO_PREFIX = {
 		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,

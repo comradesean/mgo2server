@@ -582,7 +582,15 @@ This was 32 bytes here until recently, making the payload 468 — the client wou
 three tail bytes out of stale buffer contents, because its read primitives bound-check only the
 `0x400` receive buffer and never compare consumed bytes against the payload length.
 
-**Loose end (2026-07-27).** The writer still zero-fills to `0x1b4` and then emits 35 bytes, which
+**Resolved 2026-07-29, from the parser side.** `0xD3732C` copies exactly **32** bytes
+(`li r5,32` at `0xD3774C`) to `ctx+22452`, independently confirming the 32-byte reading. And the
+trailer is not inert: **index 3 bit 0 unlocks 32 of the 91 selectable loadout items.** Readers
+`0x9B9E30` (`(byte & 1) << 4`) and `0x9BADA4` (`byte & 1`) feed the availability predicate
+`0x9B9DF0`, which walks an 85-entry table at `0xE1812C` and refuses any item whose gate exceeds the
+threshold; 32 entries gate on exactly 16, 23 gate on 0, 27 defer to an ownership check. Bit 1 of that
+byte, the `0x07` at index 1, and indices 0, 2 and 4..31 all have **no reader**.
+
+**Prior loose end (2026-07-27).** The writer still zero-fills to `0x1b4` and then emits 35 bytes, which
 is a leftover from the misaligned-entry era. Now that entries are uniform, eight of them end at
 `0x1b7` and the tail is 32 bytes. The two forms produce byte-identical output only because the
 first three trailer bytes are zero, and only while an account holds **fewer than eight**
