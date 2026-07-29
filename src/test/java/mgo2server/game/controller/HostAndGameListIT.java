@@ -125,6 +125,32 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 			Unpooled.wrappedBuffer(new byte[] { 0, 0, 0, 2 }));
 	}
 
+	/** A second character on its own account, to cast a vote from. */
+	private long givenVoter(String name) {
+		var jdbi = TestDatabase.get().jdbi();
+		var account = jdbi.withHandle(handle ->
+			handle.createUpdate("""
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :name, 3)
+					""")
+				.bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		return jdbi.withHandle(handle ->
+			handle.createUpdate("insert into chara (account_id, name) values (:a, :name)")
+				.bind("a", account).bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+	}
+
+	private static void givenHostVote(long gameId, long host, long voter, int rating) {
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("""
+					insert into host_review (game_id, host_chara_id, voter_chara_id, rating)
+					values (:g, :h, :v, :r)
+					""")
+				.bind("g", gameId).bind("h", host).bind("v", voter).bind("r", rating)
+				.execute());
+	}
+
 	private static GamePacket createGame() {
 		return new GamePacket(HostGameController.CREATE_GAME);
 	}
@@ -494,4 +520,39 @@ public class HostAndGameListIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getPayload().getInt(0))
 			.isEqualTo(GameError.INVALID_SESSION.result());
 	}
+
+	/**
+	 * A host's rating reaches the browser, which reads the dead {@code game.host_score} and
+	 * {@code game.host_votes} columns on the wire. Nothing has ever written those, so every host
+	 * showed as unrated however many votes they had; they are now derived from {@code host_review}.
+	 * <p>
+	 * Sum over count, not a pre-divided average — the client draws
+	 * {@code clamp(ceil(2 * numerator / denominator), 0, 10)} half-stars, so the ratio is the
+	 * average.
+	 */
+	@Test
+	public void gameDetailsCarryTheHostsRatingFromHostReview() {
+		givenSelectedCharacter("Snake");
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+		givenHostVote(gameId, charaId, givenVoter("Raiden"), 5);
+		givenHostVote(gameId, charaId, givenVoter("Otacon"), 2);
+
+		var details = exchange(1, getGameDetails(gameId)).get(0).getPayload();
+
+		assertThat(details.getInt(159)).as("rating SUM, the star numerator").isEqualTo(7);
+		assertThat(details.getInt(163)).as("vote COUNT, the denominator").isEqualTo(2);
+	}
+
+	/** A host nobody has rated reports zero votes rather than a stale or invented number. */
+	@Test
+	public void anUnratedHostReportsNoVotes() {
+		givenSelectedCharacter("Snake");
+		var gameId = exchange(1, createGame()).get(0).getPayload().getInt(4);
+
+		var details = exchange(1, getGameDetails(gameId)).get(0).getPayload();
+
+		assertThat(details.getInt(159)).isZero();
+		assertThat(details.getInt(163)).isZero();
+	}
+
 }

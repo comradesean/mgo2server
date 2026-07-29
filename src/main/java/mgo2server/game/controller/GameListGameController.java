@@ -263,10 +263,17 @@ public class GameListGameController implements IGameController {
 		gameService.addPlayer(gameId, charaId);
 
 		var buffer = ctx.buffer(GameJoin.SIZE);
-		// A joiner may rate the host; the host itself never reaches this path, but the test is
-		// written out rather than hardcoded so it stays true if that ever changes.
+		// THE HOST-RATING GATE. A joiner may rate the host once per game, and this byte is the only
+		// thing that can enforce it: the client clears its own "already voted" latches every time
+		// the picker is re-armed, so left to itself it will happily offer the prompt again on every
+		// rejoin. Observed live 2026-07-29 — one player joined, left, voted, rejoined and voted
+		// again; the second vote hit host_review_once_per_game and was discarded after the fact.
+		//
+		// Same key as that constraint on purpose. Disagreeing would mean offering a prompt whose
+		// vote we then throw away, which is worse than not offering it.
+		var alreadyRated = gameService.hasRatedHostOf(gameId, charaId);
 		GameJoin.write(buffer, hostEndpoint.get(), game.get().getRule(), game.get().getMap(),
-			charaId != game.get().getHostCharaId());
+			charaId != game.get().getHostCharaId() && !alreadyRated);
 		ctx.write(new GamePacket(JOIN_GAME_RESULT, buffer));
 	}
 

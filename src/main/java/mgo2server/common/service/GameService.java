@@ -26,19 +26,66 @@ public class GameService {
 
 	/** Games advertised in a lobby, newest last so the list does not reshuffle between requests. */
 	public List<Game> getGames(long lobbyId) {
-		return jdbi.withHandle(handle ->
+		return withHostRatings(jdbi.withHandle(handle ->
 			handle.createQuery("select * from game where lobby_id=:lobbyId order by id")
 				.bind("lobbyId", lobbyId)
 				.mapTo(Game.class)
-				.list());
+				.list()));
 	}
 
 	public Optional<Game> get(long gameId) {
-		return jdbi.withHandle(handle ->
+		var game = jdbi.withHandle(handle ->
 			handle.createQuery("select * from game where id=:id")
 				.bind("id", gameId)
 				.mapTo(Game.class)
 				.findOne());
+		game.ifPresent(g -> withHostRatings(List.of(g)));
+		return game;
+	}
+
+	/**
+	 * Fills in each game's host rating from {@code host_review}, and returns the same list.
+	 *
+	 * <p><b>The {@code game.host_score} and {@code game.host_votes} columns are dead.</b> Nothing
+	 * has ever written them — V43 chose deliberately not to accumulate votes into a row that is
+	 * deleted at teardown, keeping {@code host_review} as the history instead. But
+	 * {@link mgo2server.game.GameDetails} and {@link mgo2server.game.GameListEntry} still put those
+	 * two columns on the wire, so every host read as unrated in the browser however many votes they
+	 * had. This is where the two are reconciled: one source, and the browser now agrees with the
+	 * Personal Data gauge and the ranking board.
+	 *
+	 * <p>Sum over count, not a pre-divided average — the client draws
+	 * {@code clamp(ceil(2 * numerator / denominator), 0, 10)} half-stars, so the ratio itself is the
+	 * average and the gauge lands on the real star count.
+	 *
+	 * <p>One query for the whole list rather than one per game: the browser shows up to 18.
+	 */
+	private List<Game> withHostRatings(List<Game> games) {
+		if (games.isEmpty()) {
+			return games;
+		}
+		var hostIds = games.stream().map(Game::getHostCharaId).distinct().toList();
+		var byHost = jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select host_chara_id, count(*) as votes, coalesce(sum(rating), 0) as rating_sum
+					from host_review
+					where host_chara_id in (<hosts>)
+					group by host_chara_id
+					""")
+			.bindList("hosts", hostIds)
+			.reduceRows(new java.util.HashMap<Long, int[]>(), (map, row) -> {
+				map.put(row.getColumn("host_chara_id", Long.class),
+					new int[] {row.getColumn("rating_sum", Integer.class),
+						row.getColumn("votes", Integer.class)});
+				return map;
+			}));
+
+		for (var game : games) {
+			var score = byHost.get(game.getHostCharaId());
+			game.setHostScore(score == null ? 0 : score[0]);
+			game.setHostVotes(score == null ? 0 : score[1]);
+		}
+		return games;
 	}
 
 	/**
@@ -609,6 +656,31 @@ public class GameService {
 			}
 			return moved;
 		});
+	}
+
+	/**
+	 * Whether this player has already rated the host of this game.
+	 *
+	 * <p>Drives the host-rating gate in the {@code 0x4321} join reply. The client keeps no memory
+	 * across joins — its own "already voted" latches are cleared when the picker is re-armed — so
+	 * <b>only the server can stop a player rejoining and voting repeatedly.</b> That is what the
+	 * gate byte is for, and it is why sending an unconditional 1 is not the finished answer.
+	 *
+	 * <p>Deliberately the same key as {@code host_review_once_per_game}. If this disagreed with the
+	 * constraint the client would be offered a prompt whose vote we then discard — observed live on
+	 * 2026-07-29, twice, the second silently.
+	 */
+	public boolean hasRatedHostOf(long gameId, long voterCharaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select exists (
+						select 1 from host_review
+						where game_id = :game and voter_chara_id = :voter)
+					""")
+			.bind("game", gameId)
+			.bind("voter", voterCharaId)
+			.mapTo(Boolean.class)
+			.one());
 	}
 
 	/**
