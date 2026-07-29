@@ -15,9 +15,7 @@ public class Account {
 
 	private Long currentCharaId;
 
-	private int mainExp;
 
-	private int altExp;
 
 	/**
 	 * Operator-set play ban, or null. See {@code V51__account_ban.sql}.
@@ -101,14 +99,6 @@ public class Account {
 		this.currentCharaId = currentCharaId;
 	}
 
-	public int getMainExp() {
-		return mainExp;
-	}
-
-	public void setMainExp(int mainExp) {
-		this.mainExp = mainExp;
-	}
-
 	public java.time.OffsetDateTime getBannedUntil() {
 		return bannedUntil;
 	}
@@ -125,14 +115,6 @@ public class Account {
 	 */
 	public boolean isBannedAt(java.time.OffsetDateTime now) {
 		return bannedUntil != null && bannedUntil.isAfter(now);
-	}
-
-	public int getAltExp() {
-		return altExp;
-	}
-
-	public void setAltExp(int altExp) {
-		this.altExp = altExp;
 	}
 
 	@Override

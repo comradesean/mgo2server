@@ -469,8 +469,8 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 	private long givenCharacter(String username, String charaName) {
 		var accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp)
-					values (:username, 'x', :session, 3, 0)
+					insert into account (username, password, session, slots)
+					values (:username, 'x', :session, 3)
 					""")
 				.bind("username", username)
 				.bind("session", SessionField.stored(token(username)))

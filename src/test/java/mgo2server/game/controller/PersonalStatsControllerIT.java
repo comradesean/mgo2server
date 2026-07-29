@@ -44,8 +44,8 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter(String name) {
 		accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp, alt_exp)
-					values ('player', 'x', :session, 3, 1234, 99)
+					insert into account (username, password, session, slots)
+					values ('player', 'x', :session, 3)
 					""")
 				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
@@ -53,7 +53,8 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 				.one());
 
 		charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 1234)")
 				.bind("account", accountId)
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id")

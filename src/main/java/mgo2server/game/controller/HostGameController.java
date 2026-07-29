@@ -673,9 +673,7 @@ public class HostGameController implements IGameController {
 			var chara = characterService.get(charaId).orElse(null);
 			if (chara != null) {
 				wornTitle = awardService.wornTitle(charaId);
-				experience = charaId == (account.getMainCharaId() != null
-					? account.getMainCharaId() : 0L)
-					? account.getMainExp() : account.getAltExp();
+				experience = chara.getExperience();
 			}
 		}
 

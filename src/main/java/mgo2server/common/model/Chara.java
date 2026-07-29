@@ -19,8 +19,29 @@ public class Chara {
 
 	private int rank;
 
+	/**
+	 * The character's experience, and the only thing any <em>level</em> on screen is derived from —
+	 * see {@link mgo2server.common.Level}. Not {@link #rank}, which is dead.
+	 * <p>
+	 * Per character since V59. It was two pools on the account (main and alt), which meant a second
+	 * alt shared the first one's level; the wire has always carried it per character, at
+	 * {@code 0x4101} entry offset {@code 0x01c}.
+	 * <p>
+	 * The client owns this value: it reports an absolute total at the end of every round and we
+	 * persist what it says, decreases included. A {@code u16} on the wire, so 65535 is the ceiling.
+	 */
+	private int experience;
+
 	public long getId() {
 		return id;
+	}
+
+	public int getExperience() {
+		return experience;
+	}
+
+	public void setExperience(int experience) {
+		this.experience = experience;
 	}
 
 	public void setId(long id) {

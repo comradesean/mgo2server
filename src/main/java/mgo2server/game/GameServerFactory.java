@@ -98,7 +98,8 @@ public class GameServerFactory {
 				controllers.add(new ChatGameController(services.getGameService(), channels));
 				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
 				controllers.add(new HubGameController(services.getLobbyService()));
-				controllers.add(new AutomatchGameController(automatchPolicy, automatch));
+				controllers.add(new AutomatchGameController(automatchPolicy, automatch,
+					services.getCharacterService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),
 					services.getClanService(), services.getGameService()));

@@ -115,20 +115,21 @@ public class RankingWebControllerIT extends BaseWebClientServerIT {
 			var experience = (names.length - i) * 100;
 			var accountId = jdbi.withHandle(handle ->
 				handle.createUpdate("""
-						insert into account (username, password, slots, main_exp, alt_exp)
-						values (:username, 'x', 3, :exp, 0)
+						insert into account (username, password, slots)
+						values (:username, 'x', 3)
 						""")
 					.bind("username", "player" + names[0] + ids.size())
-					.bind("exp", experience)
 					.executeAndReturnGeneratedKeys("id")
 					.mapTo(Long.class)
 					.one());
 
 			var name = names[i];
 			var charaId = jdbi.withHandle(handle ->
-				handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+				handle.createUpdate("insert into chara (account_id, name, experience)"
+						+ " values (:account, :name, :exp)")
 					.bind("account", accountId)
 					.bind("name", name)
+					.bind("exp", experience)
 					.executeAndReturnGeneratedKeys("id")
 					.mapTo(Long.class)
 					.one());

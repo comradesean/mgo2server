@@ -38,19 +38,19 @@ public class BeginnerLobbyIT extends BaseGameClientServerIT {
 	private long givenCharacterWithExperience(int experience, boolean isMain) {
 		var accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp, alt_exp)
-					values ('player', 'x', :session, 3, :main, :alt)
+					insert into account (username, password, session, slots)
+					values ('player', 'x', :session, 3)
 					""")
 				.bind("session", SessionField.stored(TOKEN))
-				.bind("main", isMain ? experience : 0)
-				.bind("alt", isMain ? 0 : experience)
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
 
 		var charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:a, 'Snake')")
+			handle.createUpdate(
+					"insert into chara (account_id, name, experience) values (:a, 'Snake', :exp)")
 				.bind("a", accountId)
+				.bind("exp", experience)
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
