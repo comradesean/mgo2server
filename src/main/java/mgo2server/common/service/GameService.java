@@ -3,6 +3,8 @@ package mgo2server.common.service;
 import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.model.Game;
 import mgo2server.common.model.HostSettings;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 
@@ -11,6 +13,8 @@ import java.util.List;
 import java.util.Optional;
 
 public class GameService {
+	private static final Logger logger = LogManager.getLogger();
+
 	private final Jdbi jdbi;
 
 	private final InertFieldWatch inertFields;
@@ -145,6 +149,7 @@ public class GameService {
 			return;
 		}
 		inertFields.observeHostSettings(blob);
+		archiveHostSettings(charaId, type, blob);
 
 		var passwordSet = (blob[0x90] & 0xff) != 0;
 		jdbi.useHandle(handle ->
@@ -220,6 +225,35 @@ public class GameService {
 				.bind("unread931", blob[0x144] & 0xff)
 				.bind("unreadTail", tailOf(blob))
 				.execute());
+	}
+
+	/**
+	 * Archives a raw host-settings push for later analysis.
+	 *
+	 * <p>This replaces the database trigger that used to hang off {@code chara_host_settings.blob};
+	 * dropping that column took the trigger with it. Capturing here is better placed anyway — a
+	 * trigger only ever saw what we chose to store, while this sees exactly what the client sent,
+	 * <b>including bytes we do not model</b>, which is the whole point of an evidence trail.
+	 *
+	 * <p>It pairs with {@link InertFieldWatch}: that records distinct values per field and alerts on
+	 * change; this keeps whole payloads so a future question can be answered against real bytes
+	 * rather than re-derived from a conclusion. Discarding evidence because the finding is written
+	 * down is how a finding becomes unverifiable.
+	 *
+	 * <p>Failures are swallowed — an analysis tool must never break the thing it observes.
+	 */
+	private void archiveHostSettings(long charaId, int type, byte[] blob) {
+		try {
+			jdbi.useHandle(handle -> handle
+				.createUpdate("insert into blob_audit (chara_id, type, blob) "
+					+ "values (:chara, :type, :blob)")
+				.bind("chara", charaId)
+				.bind("type", type)
+				.bind("blob", blob)
+				.execute());
+		} catch (Exception e) {
+			logger.debug("Could not archive host settings for character {}.", charaId, e);
+		}
 	}
 
 	/**
