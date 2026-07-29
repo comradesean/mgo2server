@@ -153,8 +153,12 @@ public class GameListGameController implements IGameController {
 		}
 
 		var buffer = ctx.buffer(GameDetails.FIXED_SIZE + players.size() * GameDetails.PLAYER_SIZE);
+		// The viewer cannot rate their own game — see the rating gate in GameDetails.
+		var viewer = account != null ? account.getCurrentCharaId() : null;
+		var viewerIsHost = viewer != null && viewer == game.get().getHostCharaId();
+
 		GameDetails.write(buffer, game.get(), lobbySubtype,
-			gameService.averageExperience(gameId), players);
+			gameService.averageExperience(gameId), players, viewerIsHost);
 		ctx.write(new GamePacket(GAME_DETAILS, buffer));
 	}
 

@@ -41,14 +41,6 @@ public final class GameDetails {
 
 	private static final int COMMENT_LENGTH = 128;
 
-	/**
-	 * Constants echo writes verbatim at two u32 slots; meaning unknown. Reproduced because echo
-	 * demonstrably satisfied this client build, and flagged so nobody mistakes them for ours.
-	 */
-	private static final int UNKNOWN_INT_A = 0x16;
-
-	private static final int UNKNOWN_INT_B = 0x2e;
-
 	/** In echo's extra-time flags byte, bit 1 marks a non-stat game. */
 	private static final int EXTRA_NON_STAT = 0b10;
 
@@ -63,7 +55,7 @@ public final class GameDetails {
 	 * @param players host first — echo writes the host entry before everyone else
 	 */
 	public static void write(ByteBuf buffer, Game game, int lobbySubtype, int averageExperience,
-			List<GameService.GamePlayer> players) {
+			List<GameService.GamePlayer> players, boolean viewerIsHost) {
 		var start = buffer.writerIndex();
 
 		buffer.writeInt(GameError.NONE.result())
@@ -77,7 +69,15 @@ public final class GameDetails {
 			.writeInt(averageExperience)
 			.writeInt(game.getHostScore())
 			.writeInt(game.getHostVotes())
-			.writeByte(1); // echo writes 1 verbatim; meaning unknown
+			// THE HOST-RATING GATE, not a constant. [ELF 2026-07-29] Struct +964, read at three
+			// sites in the join/session state machines: the byte is copied to state+200, and a
+			// nonzero there is what lets the client build and send 0x43C4 — the 1-to-5 host rating.
+			// Zero and it never offers one.
+			//
+			// So it must be 0 for your own game: the client's own hosted-game builder (0x4931 path,
+			// 0xD493CC) leaves this field zero, which is how it stops you rating yourself. We sent 1
+			// unconditionally, so a host could be prompted to rate their own session.
+			.writeByte(viewerIsHost ? 0 : 1);
 
 		// The rotation: 16 triples of (rule, map, flags). Only a single rule and map are stored
 		// until the 0x4310 settings blob is persisted, so round 0 carries them and the rest stay
@@ -107,7 +107,12 @@ public final class GameDetails {
 			.writeZero(22) // u32,u32,u16,u16,u32,u32,u16 in the parser; echo zeroes all of it
 			.writeByte(game.getStance())
 			.writeByte(game.getLevelLimitTolerance())
-			.writeInt(UNKNOWN_INT_A);
+			// [ELF 2026-07-29] Struct +848 — the LEVEL-LIMIT BASE, the same value 0x4302 already
+			// sends from the same column. Identified by the client's own hosted-game builder
+			// mapping struct+848 onto the browser entry's level-limit slot, one of twelve
+			// concordant fields in that mapping. Was a hardcoded 0x16 (22) inherited from a
+			// reference — a plausible-looking level, which is why it never looked wrong.
+			.writeInt(game.getLevelLimitBase());
 		writeTimers(buffer, game.getRuleTimers());
 		buffer.writeByte(game.getUniqueRed())
 			.writeByte(game.getUniqueBlue());
@@ -117,7 +122,11 @@ public final class GameDetails {
 			.writeZero(1)
 			.writeShort(game.getIdleKick())
 			.writeShort(game.getTeamKillKick())
-			.writeInt(UNKNOWN_INT_B);
+			// [ELF 2026-07-29] Struct +936 — the host's PING, the same column 0x4302 sends. No
+			// client writer exists for it on any settings base and 0x4305 skips it, exactly like
+			// player_count: a live-session field, not a saved setting. Was a hardcoded 0x2e (46),
+			// which reads as a believable latency and so survived unquestioned.
+			.writeInt(game.getPing());
 		buffer.writeByte(game.isCaptureExtraTime() ? 1 : 0)
 			.writeByte(game.getSneakingSnakeKills());
 		// The first eight bytes of the block the client writes raw and never reads back. Our own
