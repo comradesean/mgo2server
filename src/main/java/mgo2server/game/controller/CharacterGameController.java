@@ -7,6 +7,7 @@ import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.service.AccountService;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.ClanService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
@@ -104,9 +105,13 @@ public class CharacterGameController implements IGameController {
 
 	private final CharacterService characterService;
 
-	public CharacterGameController(AccountService accountService, CharacterService characterService) {
+	private final ClanService clanService;
+
+	public CharacterGameController(AccountService accountService, CharacterService characterService,
+			ClanService clanService) {
 		this.accountService = accountService;
 		this.characterService = characterService;
+		this.clanService = clanService;
 	}
 
 	@Override
@@ -388,6 +393,38 @@ public class CharacterGameController implements IGameController {
 		if (!characterService.canDelete(chara, OffsetDateTime.now())) {
 			ctx.write(DELETE_CHARACTER_RESULT, GameError.CHARACTER_CANNOT_DELETE_YET);
 			return;
+		}
+
+		// A LEADER MUST NOT TAKE THE CLAN WITH THEM. Deleting a character is a SOFT delete — the row
+		// stays, flagged inactive with a tombstone name — so `clan.leader_chara_id`'s
+		// `on delete set null` never fires. Without this, a leader who deleted their character left
+		// the clan pointing at somebody who could never log in again: leadership could not be
+		// transferred, the clan could not be disbanded, and the roster showed `_deleted_N` in charge.
+		//
+		// OPERATOR POLICY, not protocol. The client has a dialog for refusing this (2658) but its
+		// result code is not established, so refusing would show a generic sentence and leave the
+		// player unable to delete at all. Succeeding without orphaning is the kinder half:
+		//   - other members exist -> the longest-standing one is promoted. membersOf() already
+		//     orders leader-first then by joined_at, so the first non-leaver is exactly that.
+		//   - sole member        -> the clan goes with them; there is nobody to inherit it.
+		// The leaver is then withdrawn either way, so no tombstone lingers on a roster.
+		var membership = clanService.membershipOf(chara.getId());
+		if (membership.id() != 0 && membership.state() == ClanService.STATE_LEADER) {
+			var successor = clanService.membersOf(membership.id()).stream()
+				.filter(member -> member.charaId() != chara.getId())
+				.findFirst();
+			successor.ifPresentOrElse(member -> {
+				clanService.transferLeadership(membership.id(), chara.getId(), member.charaId());
+				logger.info("Character {} led clan {} and is being deleted; leadership passed to {}.",
+					chara.getId(), membership.id(), member.charaId());
+			}, () -> {
+				clanService.disband(membership.id());
+				logger.info("Character {} led clan {} alone and is being deleted; clan disbanded.",
+					chara.getId(), membership.id());
+			});
+		}
+		if (membership.id() != 0) {
+			clanService.withdraw(chara.getId());
 		}
 
 		characterService.delete(account.getId(), chara.getId());
