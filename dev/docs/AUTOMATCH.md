@@ -760,6 +760,40 @@ the *sum* of two bands grows by two per step. A pair four levels apart goes from
 overlapping in a single tick, which on one client's gauge can look like a premature match. Staggering
 each searcher's schedule from their own join time would smooth it, and has not been done.
 
+### Three clients, three different rules — the end-to-end confirmation (2026-07-29)
+
+The first three-client automatch, and it is the strongest single piece of evidence in this document
+because it exercises everything at once and every part of it was observed rather than inferred.
+
+```
+02:24:27  Chara 1 searching for rule 4   (Sneaking)
+02:25:16  Chara 2 searching for rule 2   (Rescue)
+02:25:31  Chara 3 searching for rule 1   (Team Deathmatch)
+02:29:18  Automatch formed: host 1 of 3 players, rules [4, 2, 1], map 2
+02:29:19  Automatch host 1 created game 257
+```
+
+**Three different explicit rule requests, grouped into one game, all three surviving into the
+rotation.** Nobody sent the wildcard; each client named a distinct mode and the mode relaxation
+brought them together after ~3m45s, which is the relax timer plus the level bands meeting.
+
+What this confirms that nothing before it did:
+
+1. **The rotation encoding is right beyond two entries.** Every previous formed game carried one or
+   two rules, and one or two entries cannot distinguish interleaved triples from parallel arrays in
+   every case. Three distinct rules rendering as three modes on the client settles it — the wire
+   format is `[rule, map, flags]` per entry, as recorded above.
+2. **The clan emblem fix works.** Emblems rendered in-game, which is the whole chain: flag 3 in
+   `0x4122`, `0x4129` no longer clearing it at end of round, the announce republishing it
+   peer-to-peer, and the server answering the per-peer emblem fetch with a valid `EMBD` block.
+3. **The worn title fix works.** Animal-rank badges rendered, i.e. `0x4129` wire `0x04` is carrying
+   the worn title rather than `chara.rank`.
+4. **Mode grouping and relaxation work as designed** — strict at first, relaxing with the anchor's
+   wait, rather than either matching immediately or never.
+
+Both of the `0x4129` fields were previously **only** verified against the parser disassembly. This is
+their tier-2 confirmation.
+
 ### "Players Needed" counts the recipient (2026-07-29)
 
 The figure sent at `0x43e1 + 0x05` and `0x43e4 + 0x11` is **"players this game still needs, me
