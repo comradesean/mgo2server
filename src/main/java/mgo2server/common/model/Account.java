@@ -19,6 +19,15 @@ public class Account {
 
 	private int altExp;
 
+	/**
+	 * Operator-set play ban, or null. See {@code V51__account_ban.sql}.
+	 * <p>
+	 * On the account and not the character on purpose: a ban a player can shrug off by switching
+	 * character is not a ban, and the client's own sentence agrees — "<em>You</em> are currently
+	 * banned", not "this character is".
+	 */
+	private java.time.OffsetDateTime bannedUntil;
+
 	public long getId() {
 		return id;
 	}
@@ -98,6 +107,24 @@ public class Account {
 
 	public void setMainExp(int mainExp) {
 		this.mainExp = mainExp;
+	}
+
+	public java.time.OffsetDateTime getBannedUntil() {
+		return bannedUntil;
+	}
+
+	public void setBannedUntil(java.time.OffsetDateTime bannedUntil) {
+		this.bannedUntil = bannedUntil;
+	}
+
+	/**
+	 * Whether play is barred right now.
+	 * <p>
+	 * An expired ban needs no cleanup — the comparison does the work, so nothing has to sweep the
+	 * column.
+	 */
+	public boolean isBannedAt(java.time.OffsetDateTime now) {
+		return bannedUntil != null && bannedUntil.isAfter(now);
 	}
 
 	public int getAltExp() {

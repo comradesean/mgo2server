@@ -794,6 +794,17 @@ public class HostGameController implements IGameController {
 			return;
 		}
 
+		// The hosting half of the ban, and it belongs HERE rather than on create. 0x4311 is where
+		// the client discriminates result codes; 0x4317's test has zero spans, so every code there
+		// renders the same generic "unable to create game" and the ban would be invisible. Refusing
+		// at the settings check also stops the create before it starts. [ELF 2026-07-29]
+		if (account.isBannedAt(java.time.OffsetDateTime.now())) {
+			logger.info("Host settings refused: account {} is banned until {}.",
+				account.getId(), account.getBannedUntil());
+			ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.GAME_BANNED_FROM_PLAY);
+			return;
+		}
+
 		// The blob begins with the 16-byte game name at offset 0 — there is NO leading u32 "type".
 		// (An earlier reading mistook name[0:4] for a type: PROTOCOL.md recorded 1399153006 =
 		// 0x5365616E = "Sean", a game name read as an int.) We parse only round 0 of the rotation
