@@ -939,4 +939,67 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		bytes[offset + 2] = (byte) (value >>> 8);
 		bytes[offset + 3] = (byte) value;
 	}
+	/**
+	 * The 134 bytes that were understood and simply not stored now land in typed columns.
+	 * <p>
+	 * The rotation is the one worth asserting in full: only round 0 was kept before, so a game's
+	 * later rounds were lost on any round trip through storage. A zero map terminates the client's
+	 * walk over the array, so trailing zeros are inert rather than invalid — which is why all
+	 * sixteen entries are stored rather than only the populated ones.
+	 * <p>
+	 * Weapon restrictions stay a 16-byte bitfield rather than 128 booleans. That is opaque <b>by
+	 * evidence</b> — the client owns the bit assignment and no per-bit meaning is established — as
+	 * distinct from opaque by neglect, which is what the rest of this blob was.
+	 */
+	@Test
+	public void hostSettingsDecodeTheRotationTimersAndRestrictions() throws java.sql.SQLException {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var blob = settingsBlob();
+
+		// Three rotation entries then a terminator, at wire 0xa3 with stride 3.
+		blob[0xA3] = 4; blob[0xA4] = 12; blob[0xA5] = 0;   // Sneaking on map 12
+		blob[0xA6] = 1; blob[0xA7] = 3;  blob[0xA8] = 2;   // TDM on map 3, option 2
+		blob[0xA9] = 0; blob[0xAA] = 7;  blob[0xAB] = 0;   // Deathmatch on map 7
+		blob[0xAC] = 0; blob[0xAD] = 0;  blob[0xAE] = 0;   // terminator
+
+		blob[0xD5] = (byte) 0x81;   // weapon restrictions: first and eighth bits
+		blob[0xE4] = 0x40;          // and one in the last byte
+
+        // Rule timer slot 0 = 8, slot 16 = 4, as u32 big-endian.
+		blob[0xFC + 3] = 8;
+		blob[0xFC + 16 * 4 + 3] = 4;
+
+		blob[0x140] = 2;            // unique red
+		blob[0x141] = 3;            // unique blue
+
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from game where id=:id").bind("id", gameId)
+				.mapToMap().one());
+
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_rules")).getArray())
+			.as("all sixteen entries, not just round 0")
+			.hasSize(16)
+			.startsWith((short) 4, (short) 1, (short) 0, (short) 0);
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_maps")).getArray())
+			.startsWith((short) 12, (short) 3, (short) 7, (short) 0);
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_flags")).getArray())
+			.startsWith((short) 0, (short) 2, (short) 0, (short) 0);
+
+		assertThat((byte[]) row.get("weapon_restrictions"))
+			.as("16 bytes, stored verbatim: the bit assignment is the client's")
+			.hasSize(16)
+			.startsWith((byte) 0x81);
+
+		var timers = (Object[]) ((java.sql.Array) row.get("rule_timers")).getArray();
+		assertThat(timers).as("seventeen slots").hasSize(17);
+		assertThat(timers[0]).isEqualTo(8);
+		assertThat(timers[16]).isEqualTo(4);
+
+		assertThat(row.get("unique_red")).isEqualTo(2);
+		assertThat(row.get("unique_blue")).isEqualTo(3);
+	}
+
 }
