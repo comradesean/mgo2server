@@ -24,9 +24,20 @@ doc: |
 
   What remains true is that neither side inspects it: the parser reads the run with
   `0xD5D018` and NUL-terminates at +768 into a 769-byte buffer, so the server stores and
-  returns the 768 bytes verbatim. The *internal* format of the emblem (the pixel or vector
-  encoding the emblem editor produces) is still [UNKNOWN] and does not need to be known to
-  serve it — the block only ever round-trips between `0x4b50` and `0x4b49`/`0x4b4b`/`0x4b4d`.
+  returns the 768 bytes verbatim, and it never needs to inspect them — the block only ever
+  round-trips between `0x4b50` and `0x4b49`/`0x4b4b`/`0x4b4d`.
+
+  **The internal format is no longer unknown** [CONFIRMED 2026-07-29]. The decoder is
+  `0xA9B3E8`: `"EMBD"` magic at +0 (`memcmp` at `0xA9B458` against `0xE1E6A8`), a byte at +4
+  that must be signed-negative i.e. high bit set (`0xA9B470`), 16 RGB palette entries at +5,
+  and 512 bytes of packed 4-bit palette indices at +53, high nibble first (`0xA9B718`). That
+  is 1024 pixels against a width asserted `== 32` at `0xA9B744` — a **32x32, 16-colour**
+  image. Bytes 565..767 are padding. Verified against a live upload, which begins
+  `45 4D 42 44 80`.
+
+  A block failing either check is dropped **silently**; the in-game path has no error dialog,
+  only a 6000-tick backoff at `0x9D4A34`. Serving it verbatim remains correct — but a server
+  that *generates* one must satisfy those two checks.
 
   Evidence (ELF, retail BLUS30109): sender 0xD577A4. It calls the accessor 0xD56EDC
   (`session_ctx(0xD3A094) + 0x1AA0`, or 0 if there is no context) at 0xD577D8, requires the
