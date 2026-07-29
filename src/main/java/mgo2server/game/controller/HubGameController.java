@@ -145,7 +145,7 @@ public class HubGameController implements IGameController {
 	 * {@code 0xD48F88}), reading eleven fields totalling 57 wire bytes per record. The short reply
 	 * did not fault only because the read primitives bound-check the 1023-byte receive buffer
 	 * rather than the payload length, so the client silently consumed 64 bytes of stale buffer.
-	 * See {@code dev/proto/blanks/outbound/mgo2_cmd_4991_s2c.ksy}.
+	 * See {@code dev/proto/outbound/mgo2_cmd_4991_s2c.ksy}.
 	 */
 	private static final int ENTRY_INFO_RECORDS = 4 * 57;
 
@@ -257,7 +257,7 @@ public class HubGameController implements IGameController {
 		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
 		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
 		// than the payload length, so the client consumed four bytes of stale buffer as its
-		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4151_s2c.ksy.
+		// result code. See dev/proto/outbound/mgo2_cmd_4151_s2c.ksy.
 		ctx.write(LOBBY_DISCONNECT_RESULT, GameError.NONE);
 	}
 

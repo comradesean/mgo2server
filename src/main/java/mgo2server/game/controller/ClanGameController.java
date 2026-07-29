@@ -297,7 +297,7 @@ public class ClanGameController implements IGameController {
 	 * The clan probe, a bare u16 the client sends both during the connect burst and when the clan
 	 * menu opens.
 	 * <p>
-	 * <b>It blocks, despite what we recorded.</b> `dev/proto/blanks/inbound/mgo2_cmd_4b46_c2s.ksy`
+	 * <b>It blocks, despite what we recorded.</b> `dev/proto/inbound/mgo2_cmd_4b46_c2s.ksy`
 	 * says "the live trace proves the client does not wait for one" and warns against replying
 	 * speculatively — true of the connect burst, where it fires unprompted and the player walks on.
 	 * From the clan menu it stalls and fails with <em>Unable to update clan information
@@ -323,7 +323,7 @@ public class ClanGameController implements IGameController {
 	// ---------------------------------------------------------------------------------------------
 	// The rest of the family. Every id below is answered in the shape its parser demands so no clan
 	// screen can stall; where the reply carries data we do not understand, it carries zeros rather
-	// than invented values. Sizes come from the parsers in dev/proto/blanks/outbound.
+	// than invented values. Sizes come from the parsers in dev/proto/outbound.
 	//
 	// There was a third table here, for requests answered with a bare success and nothing else. It
 	// stopped the screens hanging, which was worth having, but it turned "unimplemented" into

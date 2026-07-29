@@ -216,7 +216,7 @@ public class MessageGameController implements IGameController {
 	 * Send mail ({@code 0x4800}, 967 bytes): {@code u8 recipientCount}, eight 16-byte recipient
 	 * names, a 128-byte subject, a 708-byte body, and two trailing bytes whose meaning is unknown.
 	 * All three text fields are capture-confirmed (2026-07-26) — see
-	 * {@code dev/proto/blanks/inbound/mgo2_cmd_4800_c2s.ksy}.
+	 * {@code dev/proto/inbound/mgo2_cmd_4800_c2s.ksy}.
 	 * <p>
 	 * One send fans out to a row per recipient. A name nobody owns is skipped and logged: the
 	 * client lets the player type recipients freely, so an unknown name is an ordinary outcome.

@@ -41,7 +41,7 @@ public final class HostSettingsReply {
 	 * to append were never looked at. They did no harm — the read primitives bound-check the
 	 * 1023-byte receive buffer, not the payload length, and nothing here calls the
 	 * cursor-vs-length test {@code 0xD5CEB0} — but 355 was a reference server's struct length, not
-	 * this client's packet length. See {@code dev/proto/blanks/outbound/mgo2_cmd_4305_s2c.ksy}.
+	 * this client's packet length. See {@code dev/proto/outbound/mgo2_cmd_4305_s2c.ksy}.
 	 */
 	public static final int SIZE = 0x15C;
 
@@ -97,7 +97,7 @@ public final class HostSettingsReply {
 		// u16 at 0x148/0x14a (block +180/+182). Nomad's map copies one byte into each destination's
 		// LOW half and leaves the high half zero, which is identical for values <= 255 and drops
 		// the high byte above — a third instance of the same truncation as GameService and
-		// GameDetails. See dev/proto/blanks/outbound/mgo2_cmd_4305_s2c.ksy.
+		// GameDetails. See dev/proto/outbound/mgo2_cmd_4305_s2c.ksy.
 		copy(out, 0x148, blob, 0x145, 2);    // idle kick (u16)
 		copy(out, 0x14A, blob, 0x147, 2);    // team-kill kick (u16)
 		copy(out, 0x14C, blob, 0x149, 1);    // capture extra time

@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  * <p>
  * The request {@code 0x4400} was decoded from four live captures on 2026-07-26 — see
  * {@code dev/docs/OBSERVED.md} "0x4400 — in-game chat" and
- * {@code dev/proto/blanks/inbound/mgo2_cmd_4400_c2s.ksy}. 129 bytes:
+ * {@code dev/proto/inbound/mgo2_cmd_4400_c2s.ksy}. 129 bytes:
  * {@code {u8 kind, u8 channel_digit, NUL-terminated text padded to fill}}. The {@code /all} and
  * {@code /team} prefixes the player types are stripped client-side and never reach the wire.
  * <p>

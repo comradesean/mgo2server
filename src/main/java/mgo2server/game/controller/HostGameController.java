@@ -70,7 +70,7 @@ public class HostGameController implements IGameController {
 	 * <b>Resolved 2026-07-26 — 163 is right.</b> The one-byte ambiguity between the references
 	 * (Model A = 162, Model B = 163) is settled from the binary: the {@code 0x4310} writer emits
 	 * the lobby subtype as a standalone {@code u8} at wire {@code 0xA2} ({@code 0xd448fc}) and the
-	 * rotation begins at {@code 0xA3}. See {@code dev/proto/blanks/inbound/mgo2_cmd_4310_c2s.ksy};
+	 * rotation begins at {@code 0xA3}. See {@code dev/proto/inbound/mgo2_cmd_4310_c2s.ksy};
 	 * no live experiment is needed.
 	 */
 	private static final int ROTATION_OFFSET = 163;
@@ -825,7 +825,7 @@ public class HostGameController implements IGameController {
 		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
 		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
 		// than the payload length, so the client consumed four bytes of stale buffer as its
-		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4311_s2c.ksy.
+		// result code. See dev/proto/outbound/mgo2_cmd_4311_s2c.ksy.
 		ctx.write(CHECK_HOST_SETTINGS_RESULT, GameError.NONE);
 	}
 
@@ -865,7 +865,7 @@ public class HostGameController implements IGameController {
 	 * Stores one player's per-weapon round tallies ({@code 0x43a2}) and acknowledges.
 	 * <p>
 	 * Layout is {@code {u32 chara_id, u32 count, count × {u8 weapon, u16 kills, u16 headshots,
-	 * u16 faints}}} (dev/proto/mgo2_cmd_43a2.ksy). The host sends one of these per scoring player,
+	 * u16 faints}}} (dev/proto/inbound/mgo2_cmd_43a2_c2s.ksy). The host sends one of these per scoring player,
 	 * immediately after that player's {@code 0x4390}; players with no entries are skipped
 	 * entirely, so a zero count is normal.
 	 * <p>
@@ -1012,7 +1012,7 @@ public class HostGameController implements IGameController {
 		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
 		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
 		// than the payload length, so the client consumed four bytes of stale buffer as its
-		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4399_s2c.ksy.
+		// result code. See dev/proto/outbound/mgo2_cmd_4399_s2c.ksy.
 		ctx.write(UPDATE_PINGS_RESULT, GameError.NONE);
 	}
 
@@ -1291,7 +1291,7 @@ public class HostGameController implements IGameController {
 		// u32 unconditionally and hands it to the waiting request slot; an empty payload only
 		// "worked" because the read primitives bound-check the 1023-byte receive buffer rather
 		// than the payload length, so the client consumed four bytes of stale buffer as its
-		// result code. See dev/proto/blanks/outbound/mgo2_cmd_4381_s2c.ksy.
+		// result code. See dev/proto/outbound/mgo2_cmd_4381_s2c.ksy.
 		ctx.write(QUIT_GAME_RESULT, GameError.NONE);
 	}
 
