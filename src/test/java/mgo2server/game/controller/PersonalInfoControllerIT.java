@@ -166,4 +166,31 @@ public class PersonalInfoControllerIT extends BaseGameClientServerIT {
 		}
 	}
 
+
+	/**
+	 * The reply is exactly 182 bytes — what the parser reads, and no more.
+	 * <p>
+	 * We wrote 186 until 2026-07-29, the extra u32 being an {@code 0xffffffff} labelled a
+	 * "face-paint colour unlock bitmask". [ELF {@code 0xD3C3DC}] the last read is the 128-byte
+	 * comment at {@code 0xD3C6E0}, falling straight into READ_END at {@code 0xD3C6F4}. The label
+	 * was impossible as well as unevidenced: face paint is a single byte at struct {@code +4}, so
+	 * there is no colour axis for a per-colour mask to index.
+	 */
+	@Test
+	public void theReplyIsExactlyWhatTheParserReads() {
+		givenSelectedCharacter("Snake");
+
+		var payload = Unpooled.buffer();
+		payload.writeZero(19);
+		payload.writeZero(4).writeZero(1).writeZero(4).writeZero(2);
+		payload.writeZero(128);
+
+		var reply = loginThen(new GamePacket(PersonalInfoController.UPDATE_PERSONAL_INFO, payload),
+			PersonalInfoController.UPDATE_PERSONAL_INFO_RESULT).get(0).getPayload();
+
+		assertThat(reply.readableBytes())
+			.as("4 result + 19 appearance + 5 skills + 5 levels + 20 experience + 1 + 128 comment")
+			.isEqualTo(182);
+	}
+
 }

@@ -934,7 +934,7 @@ Only the appearance and the comment are persisted; the skills and levels are rea
 but not stored. **Note this request carries `lower` and `hands_color`, which `0x3101` skips** — the
 strongest evidence that the creation-time skip is wrong.
 
-### Reply `0x4131` — 182 bytes read (186 written)
+### Reply `0x4131` — 182 bytes
 
 | offset | size | type | meaning |
 | --- | --- | --- | --- |
@@ -945,7 +945,6 @@ strongest evidence that the creation-time skip is wrong.
 | `0x21` | 20 | 5 × u32 | per-skill experience for the equipped slots, from `chara_skill`, through the same floor-and-clamp helper `0x4122` uses. Was a fixed `0x600000` until 2026-07-29 |
 | `0x35` | 1 | u8 | zero, purpose unknown |
 | `0x36` | 128 | ISO-8859-1 | comment, echoed |
-| `0xb6` | 4 | u32 | **never read** — see below |
 
 **Two corrections, both 2026-07-26, both from the ELF (single-source trace).**
 
@@ -953,11 +952,15 @@ strongest evidence that the creation-time skip is wrong.
   `0xD3C66C` and `0xD3C694`. The old "4 skills / zero / 4 levels / zero / 4 × u32 / 5 zero"
   reading covered the same 31 bytes with the padding in the wrong places — wire unchanged, names
   wrong. Same mistake and same fix as `0x4122`.
-- **The payload the client reads is 182 bytes (`0xb6`), not 186.** The parser goes straight from
-  the 128-byte comment (`0xD3C6E0`) to READ_END (`0xD3C6F4`). **The trailing `0xffffffff` at
-  `0xb6` — documented here as a face-paint colour unlock mask — is never read at all.** That label
-  had no evidence behind it beyond the value we chose to send. We still write it; it is four inert
-  bytes past the end of the parse, and removing it is untested. Colour unlocks travel as the
+- **The payload is 182 bytes (`0xb6`), not 186 — and since 2026-07-29 that is what we send.**
+  The parser goes straight from the 128-byte comment (`0xD3C6E0`) to READ_END (`0xD3C6F4`). The
+  trailing `0xffffffff` at `0xb6`, long documented here as a face-paint colour unlock mask, was
+  never read at all: no instruction in the text span touches the struct slots it would occupy.
+  **The label was impossible, not merely unevidenced** — face paint is a single byte at struct
+  `+4`, so a one-bit-per-colour mask has no colour axis. Removing it was previously called
+  "untested"; it is now safe on evidence, since READ_END does no length check and the readers bound
+  against the 1024-byte receive buffer rather than the payload — the parser never knew the packet's
+  length either way. Colour unlocks travel as the
   `{item_id, bit_index}` pairs in `0x4124`/`0x4133`, not as a mask.
 
 The client wants its own values back rather than a bare result code, which is why this is not a
