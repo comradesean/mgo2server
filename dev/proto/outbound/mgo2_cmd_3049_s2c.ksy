@@ -88,8 +88,10 @@ seq:
   - id: item_unlock_trailer
     size: 32
     doc: |
-      [CONFIRMED 2026-07-29] **32 bytes, and index 3 bit 0 is load-bearing: it unlocks 32 of the 91
-      CODEC / preset messages.** Do not zero this unless you mean to.
+      [CONFIRMED 2026-07-29] **32 bytes, and index 3 bit 0 is load-bearing: it unlocks 32 CODEC /
+      preset messages.** Do not zero this unless you mean to. (The "of the 91" in the old wording
+      was the loadout-item count and does not belong here; the table this gates has 85 entries, of
+      which 32 carry the gated value.)
 
       **Corrected 2026-07-29, live.** This said "32 of the 91 selectable loadout items", from a
       trace of the availability predicate. Clearing the bit on one account removed the CODEC
