@@ -96,7 +96,7 @@ public class CharacterGameController implements IGameController {
 	 * for asserting the total rather than trusting that it works out.
 	 */
 	/**
-	 * <b>Index 3 bit 0 is load-bearing: it unlocks 32 of the 91 selectable loadout items.</b>
+	 * <b>Index 3 bit 0 is load-bearing: it unlocks the 32 CODEC / preset messages.</b>
 	 * [ELF 2026-07-29] Do not zero this array.
 	 * <p>
 	 * Two readers, both of the same byte at {@code ctx+22455} — trailer index 3. {@code 0x9B9E30}
@@ -132,10 +132,12 @@ public class CharacterGameController implements IGameController {
 	 * predicate {@code 0x9B9DF0} walks an 85-entry table at {@code 0xE1812C} and refuses any entry
 	 * whose gate exceeds it. <b>32 entries gate on exactly 16</b>, so clearing bit 0 removes them.
 	 *
-	 * <p><b>What those 32 are is unresolved</b> — "loadout items" is the label from the first trace,
-	 * but the day-one Codec Pack adds exactly 32 preset-message phrases, so one bit may be the whole
-	 * shop. See {@code dev/docs/POST_LAUNCH.md}; the experiment is now
-	 * {@code update account set entitlements = 0 where id = ...} and a reconnect.
+	 * <p><b>RESOLVED LIVE 2026-07-29.</b> The first trace called these "32 of the 91 selectable
+	 * loadout items"; that is wrong. Clearing the bit on one account removed the <b>codec / preset
+	 * message</b> list and left gear and outfits <em>entirely unchanged</em>. So the 85-entry table
+	 * at {@code 0xE1812C} is a preset-message table. The 32 are almost certainly the day-one paid
+	 * "MGO Codec Pack" — 32 additional voice tracks, bound to the Konami ID, which is consistent
+	 * with this being per-account. See {@code dev/docs/POST_LAUNCH.md}.
 	 */
 	private static final int TRAILER_ENTITLEMENT_INDEX = 3;
 

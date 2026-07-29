@@ -4206,7 +4206,7 @@ below is evidence. Each entry states what would settle it.
 | `0x4120` trailer bytes 0-7 | `01 00 10 00 00 00 00 10` | **Per-list display preferences** — sixteen 4-bit fields with a generated getter/setter each, used by readers as sort-key and filter selectors | Disc assets: the labels are in the settings-screen resources, not the binary |
 | `0x4602` field at struct `+0x18` | zeros | **Current lobby name** (schema's candidate) — our code called it a clan name, which is a *different* guess for the same bytes | Send three distinguishable strings in the three unknown fields and read a live search result; whichever slot renders names the field |
 | `0x4991` `name_a` / `name_b` | zeros | **Team name**, by analogy with the clan record's 16-byte name fields | Unfalsifiable from the client — nothing reads them. Only an original-server capture would show it |
-| `0x3049` trailer index 3, bit 1 | set (we send `0x03`) | Unknown. **Bit 0 is proven** to unlock 32 loadout items; bit 1 has no reader | Toggle it against a live client and watch the loadout screen |
+| `0x3049` trailer index 3, bit 1 | set (we send `0x03`) | Unknown. **Bit 0 is proven live** to unlock the 32 codec / preset messages (not loadout items — see below); bit 1 has no reader | Toggle it against a live client; bit 0's effect is now known, bit 1's is not |
 
 **Two of these are actively contested rather than merely unknown**, which is worth flagging: the
 `0x4602` 16-byte field has two incompatible candidate labels in our own tree, and `+72`'s width is

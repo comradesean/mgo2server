@@ -89,7 +89,14 @@ seq:
     size: 32
     doc: |
       [CONFIRMED 2026-07-29] **32 bytes, and index 3 bit 0 is load-bearing: it unlocks 32 of the 91
-      selectable loadout items.** Do not zero this.
+      CODEC / preset messages.** Do not zero this unless you mean to.
+
+      **Corrected 2026-07-29, live.** This said "32 of the 91 selectable loadout items", from a
+      trace of the availability predicate. Clearing the bit on one account removed the CODEC
+      message list and left gear and outfits completely unchanged, so the 85-entry table at
+      `0xE1812C` is a preset-message table, not a loadout one. The 32 are almost certainly the
+      day-one paid "MGO Codec Pack" (32 additional voice tracks, bound to the Konami ID — which
+      matches this being per-account). Tier 2 beats a derived label.
 
       Two readers, both of `ctx+22455` (index 3): `0x9B9E30` computes `(byte & 1) << 4` — 0 or 16 —
       and `0x9BADA4` tests `byte & 1` to choose between two list-builders. The 16 is a threshold: the

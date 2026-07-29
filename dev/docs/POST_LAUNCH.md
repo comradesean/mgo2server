@@ -78,7 +78,8 @@ Removed 2026-07-29. The reply is now 182 bytes.
 - **No unlock machinery reachable from it.** The server-supplied bit-test helper `0xD5C2A8` has
   three call sites (`0x916E54`, `0x91C07C`, `0x91C910`), all in the stats screens — none in the
   wardrobe or character creation. The only appearance-adjacent availability predicate found,
-  `0x9B9DF0`, gates **loadout items** off the `0x3049` trailer, not appearance bytes.
+  `0x9B9DF0`, gates the **codec / preset messages** off the `0x3049` trailer (see below — it was
+  labelled "loadout items" until a live test disproved that), not appearance bytes.
 
 **Stated limit of that negative:** the wardrobe screen's own 200-byte working copy
 (`0x9D0F28`–`0x9D0F3C`, into `screenObj+468`) was not exhaustively audited, so "this client has no
@@ -124,14 +125,26 @@ one restart.
 
 ## Paid content we currently grant unconditionally
 
-### The 32 loadout items behind the `0x3049` trailer — GRANTED
+### The MGO Codec Pack — 32 preset messages, GRANTED (resolved live 2026-07-29)
 
-`0x3049` carries a 32-byte trailer whose **index 3 bit 0** is the only meaningful bit in it. We
-send `0x03` there, and that bit unlocks **32 of the 91 selectable loadout items**: the availability
-predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any item whose gate exceeds
-`(byte & 1) << 4` — 0 or 16 — and exactly 32 entries gate on 16. Clear the bit and those 32
-disappear from the loadout screen. 23 entries gate on 0 and are always available; 27 defer to a
-separate ownership check.
+`0x3049` carries a 32-byte trailer whose **index 3 bit 0** is the only meaningful bit in it. The
+availability predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any entry whose
+gate exceeds `(byte & 1) << 4` — 0 or 16 — and exactly 32 entries gate on 16. 23 gate on 0 and are
+always available; 27 defer to a separate check.
+
+**What those 32 are was settled by experiment, not by reading.** With the bit cleared on one
+account and a reconnect:
+
+- **codec / preset messages: MISSING**
+- **gear and outfits: completely unchanged**
+
+So the 85-entry table is a **preset-message table**, and the earlier ELF label — "32 of the 91
+selectable loadout items" — was wrong. The 32 are almost certainly the **MGO Codec Pack**, a
+day-one paid item advertised as *"32 additional voice tracks"* and attached to the **Konami ID**
+rather than the character, which matches the entitlement being per-account.
+
+The count that prompted the test was the whole clue: 32 gated entries, 32 phrases in the pack.
+Matching counts were not evidence, but they were a reason to look — and looking cost one `UPDATE`.
 
 **This is an entitlement, and we grant it to everyone by default.** That is *operator policy*, not
 protocol, and it has never been a deliberate decision — the value was inherited. Whether those 32
@@ -147,10 +160,11 @@ If it becomes a toggle, it is one bit sourced per account, not a new packet.
 
 ### Is the entitlement bit the WHOLE shop? — the experiment to run
 
-**Hypothesis, 2026-07-29 (operator's):** the shop may not have several mechanisms, just one. If the
-85-entry table at `0xE1812C` is a *mixed* availability table rather than a loadout-only one, then
-`0x3049` trailer index 3 bit 0 gates everything the shop sells, and "32 of the 91 selectable
-loadout items" is simply the label the first trace reached for.
+**Hypothesis, 2026-07-29 (operator's), now PARTLY ANSWERED:** the shop may not have several
+mechanisms, just one. The test below was run and the answer was **"preset messages only"** — the
+bit gates the codec pack and does *not* touch gear. So it is not the whole shop; it is one product.
+Whether character slots and any other shop item have their own carriers is still open (slots are
+already a per-account count in the `0x3049` header, so that one at least is separate).
 
 The number is what makes it worth testing: the bit unlocks **32** gated entries, and the day-one
 Codec Pack adds **32** phrases. Matching counts are not evidence — but they are a reason to look,
@@ -168,12 +182,12 @@ Then check *both* screens:
 1. the loadout item list, and
 2. Personal Data -> Game Play Options -> **Preset Message Slot**.
 
-| what shrinks | conclusion |
-| --- | --- |
-| loadout only | the existing label is right; the codec pack is gated somewhere else |
-| preset messages only | the label is wrong — the table is the message list, not items |
-| **both** | **one bit is the whole shop.** Rename it, and make it per-account |
-| neither | the bit does not reach either screen, and the trace needs revisiting |
+| what shrinks | conclusion | |
+| --- | --- | --- |
+| loadout only | the existing label is right; the codec pack is gated somewhere else | |
+| **preset messages only** | **the label is wrong — the table is the message list** | ← **OBSERVED** |
+| both | one bit is the whole shop | |
+| neither | the bit does not reach either screen, and the trace needs revisiting | |
 
 Restore with `update account set entitlements = 3 where id = <account>`. The default is unchanged
 at 3, and two tests hold the line: one pins the default on the wire, one proves the column reaches
@@ -202,7 +216,7 @@ the case for face paint)? The phrase text lives in the disc string resources, so
 readable — the question is whether anything filters it.
 
 **Caution — a citation that needs checking.** The `0x3049` trailer note cites `0x9C0600` as part of
-a "separate ownership/expansion check" for 27 loadout items. A separate investigation of the
+a "separate ownership/expansion check" for 27 of the table's entries. A separate investigation of the
 host-rating path described `0x9C0600` as returning nonzero only when `roundMode() == 10 &&
 amHost()`. Those two descriptions cannot both be right about the same function. One of them is
 mis-attributed, and it should be resolved before either is built on.
