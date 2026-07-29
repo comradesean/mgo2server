@@ -91,6 +91,25 @@ public class Account {
 		this.mainCharaId = mainCharaId;
 	}
 
+	/**
+	 * The {@code 0x3049} trailer's entitlement byte — bit 0 unlocks 32 gated entries in the client.
+	 * <p>
+	 * Per account and editable live (V62): read on every character-list fetch, so an {@code UPDATE}
+	 * applies on the next reconnect with no restart. Default 3, which is what we have always sent.
+	 * <p>
+	 * See {@code CharacterGameController.TRAILER_ENTITLEMENT_INDEX} for what the bit does and
+	 * {@code dev/docs/POST_LAUNCH.md} for the open question of what the 32 entries actually are.
+	 */
+	private int entitlements = 3;
+
+	public int getEntitlements() {
+		return entitlements;
+	}
+
+	public void setEntitlements(int entitlements) {
+		this.entitlements = entitlements;
+	}
+
 	public Long getCurrentCharaId() {
 		return currentCharaId;
 	}

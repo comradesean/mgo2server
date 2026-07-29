@@ -156,7 +156,14 @@ The number is what makes it worth testing: the bit unlocks **32** gated entries,
 Codec Pack adds **32** phrases. Matching counts are not evidence — but they are a reason to look,
 and the test is one restart.
 
-**How to settle it.** `MGO2SERVER_ENTITLEMENT_BYTE=0`, restart, then check *both* screens:
+**How to settle it.** The byte lives in `account.entitlements` (V62) and is read on every
+character-list fetch, so this needs **no restart and affects only the account you pick**:
+
+```sql
+update account set entitlements = 0 where id = <account>;   -- then reconnect
+```
+
+Then check *both* screens:
 
 1. the loadout item list, and
 2. Personal Data -> Game Play Options -> **Preset Message Slot**.
@@ -168,8 +175,12 @@ and the test is one restart.
 | **both** | **one bit is the whole shop.** Rename it, and make it per-account |
 | neither | the bit does not reach either screen, and the trace needs revisiting |
 
-Restore with `MGO2SERVER_ENTITLEMENT_BYTE=3` or by unsetting it. The default is unchanged, and a
-test pins it so the default cannot drift silently.
+Restore with `update account set entitlements = 3 where id = <account>`. The default is unchanged
+at 3, and two tests hold the line: one pins the default on the wire, one proves the column reaches
+it, so neither the default nor the plumbing can drift silently.
+
+Being per-account also makes the eventual policy cheap: if these turn out to be shop items and we
+decide to withhold them, it is a column that already exists rather than new plumbing.
 
 ### The MGO Codec Pack — WHERE IT IS GATED IS UNKNOWN
 
