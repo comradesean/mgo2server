@@ -66,7 +66,23 @@ types:
         type: u4
         repeat: expr
         repeat-expr: 5
-        doc: "[ELF] Wire 0x21 -> struct +40 + i*4. **Five** u32s, 20 bytes. PROTOCOL.md: fixed `0x600000`, as in `0x4122`."
+        doc: |
+          [ELF] Wire 0x21 -> struct +40 + i*4. **Five** u32s, 20 bytes — per-skill experience for
+          the equipped slots, in the same order as `skills`.
+
+          PROTOCOL.md recorded this as "fixed `0x600000`, as in `0x4122`", and we sent that
+          constant until 2026-07-29. It is inherited and was never explained: `0x600000` is
+          `0x6000 << 8`, i.e. **256x the client's legal maximum of 24576**, and the validator at
+          `0x93E418` ZEROES any record above that instead of clamping. It was inert rather than
+          correct — the range check runs on the `0x4129` roster, which we do not send, and
+          `0x600000 >> 13` clamps to level 3 like any large value, so every equipped skill simply
+          rendered as maxed.
+
+          Now the stored value from `chara_skill`, through the same floor-and-clamp helper `0x4122`
+          uses. **The two must agree**: this is the wardrobe echo and `0x4122` is the connect burst,
+          so a disagreement makes the skill screen contradict itself depending on how you got there.
+
+          Level is derived, never sent: `min(experience >> 13, 3)` at `0x6FC580`.
       - id: unknown_35
         type: u1
         doc: "[UNKNOWN] Wire 0x35 -> struct +60. The lone byte after the experience array, matching `0x4122`'s `unknown_6a`."

@@ -121,4 +121,49 @@ public class PersonalInfoControllerIT extends BaseGameClientServerIT {
 		assertThat(((Number) row.get("level2")).intValue()).isEqualTo(3);
 		assertThat(((Number) row.get("skill1")).intValue()).isEqualTo(0);
 	}
+
+	/**
+	 * The echo reports the character's REAL per-skill experience, not the inherited constant.
+	 * <p>
+	 * {@code 0x4131} sent a fixed {@code 0x600000} in all four slots until 2026-07-29 — that is
+	 * {@code 0x6000 << 8}, 256x the client's legal maximum of 24576, and the validator at
+	 * {@code 0x93E418} zeroes any record above it rather than clamping. It was inert rather than
+	 * correct, and made every equipped skill render as maxed.
+	 * <p>
+	 * It must also agree with what {@code 0x4122} sends for the same slot, or the skill screen
+	 * contradicts itself between the connect burst and a wardrobe change.
+	 */
+	@Test
+	public void theEchoReportsRealPerSkillExperience() {
+		givenSelectedCharacter("Snake");
+		grantStartingSkills(charaId);
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("update chara_skill set experience=16384 where chara_id=:c and skill_id=10")
+				.bind("c", charaId).execute());
+
+		var payload = Unpooled.buffer();
+		payload.writeZero(19);
+		payload.writeByte(0).writeByte(0x0a).writeByte(0).writeByte(0); // CQC+ in slot 2
+		payload.writeZero(1);
+		payload.writeByte(0).writeByte(2).writeByte(0).writeByte(0);
+		payload.writeZero(2);
+		payload.writeZero(128);
+
+		var reply = loginThen(new GamePacket(PersonalInfoController.UPDATE_PERSONAL_INFO, payload),
+			PersonalInfoController.UPDATE_PERSONAL_INFO_RESULT).get(0).getPayload();
+
+		var experienceAt = 4 + 19 + 4 + 1 + 4 + 1;
+		assertThat(reply.getInt(experienceAt + 4))
+			.as("slot 2 holds CQC+, stored at 16384 — level 2, not a maxed constant")
+			.isEqualTo(16384);
+		assertThat(reply.getInt(experienceAt))
+			.as("an empty slot reports nothing earned")
+			.isZero();
+		for (var slot = 0; slot < 4; slot++) {
+			assertThat(reply.getInt(experienceAt + slot * 4))
+				.as("slot %d stays inside the client's legal range", slot)
+				.isBetween(0, mgo2server.game.PersonalInfoWriter.MAX_SKILL_EXPERIENCE);
+		}
+	}
+
 }

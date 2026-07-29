@@ -5,6 +5,7 @@ import mgo2server.common.BufferUtil;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.service.CharacterService;
 import mgo2server.game.GameControllerContext;
+import mgo2server.game.PersonalInfoWriter;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
 import mgo2server.game.LoadoutWriter;
@@ -42,12 +43,6 @@ public class PersonalInfoController implements IGameController {
 
 	/** Nineteen clothing bytes, four skills, a pad, four levels, two pads, then the comment. */
 	private static final int REQUEST_SIZE = 19 + 4 + 1 + 4 + 2 + COMMENT_LENGTH;
-
-	/**
-	 * Per-skill experience echoed back. The same fixed value the personal-info packet (0x4122)
-	 * sends; why it is constant is not understood, only that both references send it.
-	 */
-	private static final int SKILL_EXPERIENCE = 0x600000;
 
 	/**
 	 * Face-paint colour unlock bitmask, one bit per colour. Both references send all-ones, so
@@ -159,15 +154,16 @@ public class PersonalInfoController implements IGameController {
 		// chara_equipped_skills.
 		characterService.updateEquippedSkills(charaId, skills, levels);
 
-		ctx.write(new GamePacket(UPDATE_PERSONAL_INFO_RESULT, reply(ctx, a, skills, levels, comment)));
+		ctx.write(new GamePacket(UPDATE_PERSONAL_INFO_RESULT,
+			reply(ctx, charaId, a, skills, levels, comment)));
 	}
 
 	/**
 	 * Echoes the accepted change back. The client wants its own values returned rather than a bare
 	 * result code, which is why this is not a four-byte reply like its neighbours.
 	 */
-	private ByteBuf reply(GameControllerContext ctx, CharaAppearance a, byte[] skills, byte[] levels,
-			String comment) {
+	private ByteBuf reply(GameControllerContext ctx, long charaId, CharaAppearance a, byte[] skills,
+			byte[] levels, String comment) {
 		var buffer = ctx.buffer(4 + 19 + 4 + 1 + 4 + 1 + 16 + 5 + COMMENT_LENGTH + 4);
 
 		buffer.writeZero(4);
@@ -182,8 +178,18 @@ public class PersonalInfoController implements IGameController {
 
 		buffer.writeBytes(skills).writeZero(1).writeBytes(levels).writeZero(1);
 
-		for (var i = 0; i < 4; i++) {
-			buffer.writeInt(SKILL_EXPERIENCE);
+		// REAL PER-SKILL EXPERIENCE, from chara_skill. This echoed a fixed 0x600000 until
+		// 2026-07-29 — inherited from a reference server and never explained. That value is
+		// 0x6000 << 8, i.e. 256x the client's own legal maximum of 24576, and the validator at
+		// 0x93E418 ZEROES any record above that rather than clamping. It survived only because
+		// 0x600000 >> 13 still clamps to level 3, so every equipped skill rendered as maxed.
+		//
+		// It has to match what 0x4122 sends for the same slots, or the skill screen disagrees with
+		// itself between the connect burst and a wardrobe change — hence the shared helper.
+		var experience = characterService.skillExperience(charaId);
+		for (var slot = 0; slot < 4; slot++) {
+			buffer.writeInt(PersonalInfoWriter.reportedExperience(
+				experience.applyAsInt(skills[slot] & 0xFF), levels[slot] & 0xFF));
 		}
 
 		buffer.writeZero(5);
