@@ -765,16 +765,35 @@ needs no new research:
 | `0x0fc`-`0x13f` | 68 | rule timers, 17 x u32 | `[ELF]` widths; per-rule pairing confirmed twice |
 | `0x140`-`0x141` | 2 | unique characters | `[INFERRED]` |
 
-**~34 bytes are genuinely unknown** and split by how they can be attacked:
+**The remaining bytes are now all accounted for** (resolved 2026-07-29):
 
-- **20 bytes of scattered scalars** — `0x0d3`, `0x0d4`, `0x0ea`, `0x0ee`, `0x0f0`, `0x0f4`,
-  `0x0f6`, `0x0f7`, `0x144`, `0x149`, `0x14a`. Positions and widths exact. Tractable by ELF: each
-  has a struct destination, so the method is find-the-reader, same as the filter nibbles.
-  `0x0ea` is already settled as far as it can be — **no reader and no writer**, so it is
-  server-authored and echoed.
-- **14 bytes at `0x14b`-`0x158`** — one raw block write, so **the ELF gives no field boundaries at
-  all**. Disassembly cannot split this; it needs live divergence testing, and that makes it the
-  last item rather than the next one.
+| wire | field | status |
+| --- | --- | --- |
+| `0x0f6` | **host stance** — the "Conditions" row | named, column exists |
+| `0x0f7` | **level-limit tolerance** | named, column exists |
+| `0x149` | **capture extra time** — Capture Mission, extend until a victor | named, new column |
+| `0x14a` | **SNAKE kills** — times Snake must be defeated, clamp 1-5 | named, new column |
+| `0x0d3`, `0x0d4` | parsed, pushed to the client's own store, consumed only by dead accessors | echo-only |
+| `0x0ee`, `0x0f0`, `0x0f4` | no reader anywhere | echo-only |
+| `0x14b`-`0x158` | 14 bytes, **no byte read or written anywhere** | echo-only, undividable |
+| `0x0ea`, `0x144` | no reader **and** no writer | echo-only |
+
+**Echo-only fields get typed-but-unnamed columns, not a blob.** A column per field means the schema
+is complete and the blob has nothing left to justify it. The 14-byte tail is the one exception kept
+whole, and that is a positive result rather than a gap: the client writes it as a single raw block
+and never reads any of it, so there are no boundaries to split on and inventing some would be the
+failure this project has paid for most.
+
+**Two findings worth keeping beyond this task.** The Rule Settings screen independently confirms the
+17-slot rule-timer ordering end to end. And **Bomb Mission has no row on that screen at all** —
+the disc carries its label, but its timer slots are never drawn, which is clean independent
+corroboration of the post-launch boundary in `dev/docs/` rather than another community date.
+
+**Two traps for any future offset hunt in this struct.** A particle loop at `0x644D00` writes a
+16x16 byte matrix and produces a false hit at essentially every offset in this range; and the
+create-game screen embeds the settings struct at `+108`, so every field also appears at `N+108` and
+`N+112` on other registers. Search all three spaces and discard the first. Relatedly, the whole
+`0x907xxx` accessor bank is dead — it pins **widths**, never liveness.
 
 **Order of work.** (1) Type the 134 understood bytes into columns. (2) Reconstruct the blob from
 those columns and prove it byte-identical to the stored one, in tests and against a live capture —

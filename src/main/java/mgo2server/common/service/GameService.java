@@ -633,6 +633,20 @@ public class GameService {
 		return timers;
 	}
 
+	/** Capture Mission "EXTRA TIME": extend the round until a victor emerges. */
+	private static final int CAPTURE_EXTRA_TIME = 0x149;
+
+	/** Sneaking Mission "SNAKE": times Snake must be defeated. Client clamps 1..5. */
+	private static final int SNEAKING_SNAKE_KILLS = 0x14A;
+
+	/**
+	 * Fourteen bytes the client writes as one raw block and never reads.
+	 * <p>
+	 * Kept whole rather than split: the binary gives no field boundaries inside it, so any division
+	 * would be invented. Opaque <b>by evidence</b> — we know the client itself never looks at it.
+	 */
+	private static final int UNREAD_TAIL = 0x14B;
+
 	public void applyHostSettings(long gameId, byte[] blob) {
 		if (blob == null || blob.length < 0x156) {
 			return;
@@ -659,6 +673,11 @@ public class GameService {
 						weapon_restrictions = :weaponRestrictions,
 						rule_timers = :ruleTimers,
 						unique_red = :uniqueRed, unique_blue = :uniqueBlue,
+						capture_extra_time = :captureExtraTime,
+						sneaking_snake_kills = :snakeKills,
+						unread_800 = :unread800, unread_801 = :unread801,
+						unread_832 = :unread832, unread_836 = :unread836,
+						unread_844 = :unread844, unread_tail = :unreadTail,
 						host_settings = :blob
 					where id = :id
 					""")
@@ -705,6 +724,20 @@ public class GameService {
 				.bind("ruleTimers", ruleTimers(blob))
 				.bind("uniqueRed", blob[UNIQUE_RED] & 0xff)
 				.bind("uniqueBlue", blob[UNIQUE_RED + 1] & 0xff)
+				// Newly named 2026-07-29 from the client's own Rule Settings screen: the disc labels
+				// them "EXTRA TIME" under Capture Mission and "SNAKE" under Sneaking, and the latter
+				// independently confirms the correction made to that byte the day before.
+				.bind("captureExtraTime", (blob[CAPTURE_EXTRA_TIME] & 0xff) != 0)
+				.bind("snakeKills", blob[SNEAKING_SNAKE_KILLS] & 0xff)
+				// Echo-only. Each is parsed by the client and read by nothing — either no reader
+				// exists, or the only consumer is an accessor with no callers and no address
+				// references anywhere in the image. Stored so the round-trip is exact.
+				.bind("unread800", blob[0xD3] & 0xff)
+				.bind("unread801", blob[0xD4] & 0xff)
+				.bind("unread832", blobU16(blob, 0xEE))
+				.bind("unread836", blobU32(blob, 0xF0) & 0xFFFFFFFFL)
+				.bind("unread844", blobU16(blob, 0xF4))
+				.bind("unreadTail", java.util.Arrays.copyOfRange(blob, UNREAD_TAIL, UNREAD_TAIL + 14))
 				.bind("blob", blob)
 				.bind("id", gameId)
 				.execute());
