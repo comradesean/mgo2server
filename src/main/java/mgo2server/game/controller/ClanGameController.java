@@ -209,6 +209,33 @@ public class ClanGameController implements IGameController {
 	 * happens, lives in the emblem screen's event-104 consumer, which nobody has located. If a
 	 * refusal ever clears a work-in-progress emblem, revert this to {@code -1202}.
 	 */
+	/**
+	 * Clan result codes recovered from the client's own table, 2026-07-29.
+	 * <p>
+	 * Each is quotable from {@code dev/docs/ERRORS.md} against an arm bound to a specific command
+	 * id by observation, which is what separates these from the several other clan codes whose
+	 * sentence is right but whose arm binding is not established. Those are left as
+	 * {@link GameError#GENERAL} deliberately — a wrong-but-plausible sentence sends the player
+	 * chasing the wrong problem, which is worse than a vague one.
+	 * <p>
+	 * Sent through {@link #writeCode}, which writes the value unmasked; the masked path would turn
+	 * every one of these into {@code 0xC0FFEExx}, matching nothing in the client's table.
+	 */
+	/** {@code 0x4b01}: "A clan with that name already exists.\nUnable to create clan." (23994) */
+	private static final int CLAN_NAME_TAKEN = -1200;
+
+	/** {@code 0x4b01}: "Clan name is not long enough.\nUnable to create clan." (24000) */
+	private static final int CLAN_NAME_TOO_SHORT = -24;
+
+	/** {@code 0x4b05}: "You are not clan leader." (23988) */
+	private static final int NOT_CLAN_LEADER = -1203;
+
+	/**
+	 * {@code 0x4b43}: "Unable to locate designated clan, or clan may be disbanded.\nUnable to apply
+	 * to join clan." (24155)
+	 */
+	private static final int CLAN_NOT_FOUND = -1207;
+
 	private static final int EMBLEM_REFUSED = -1216;
 
 	/**
@@ -919,7 +946,9 @@ public class ClanGameController implements IGameController {
 		var clanId = payload.readableBytes() >= Integer.BYTES ? payload.readInt() & 0xFFFFFFFFL : 0L;
 
 		if (charaId == null || clanId == 0 || clanService.clanById(clanId).isEmpty()) {
-			ctx.write(APPLY_TO_JOIN_RESULT, GameError.GENERAL);
+			// "Unable to locate designated clan, or clan may be disbanded." — which covers the real
+			// race here, a clan disbanded between the browser listing it and the application.
+			writeCode(ctx, APPLY_TO_JOIN_RESULT, CLAN_NOT_FOUND);
 			return;
 		}
 
@@ -1015,7 +1044,7 @@ public class ClanGameController implements IGameController {
 		var membership = clanService.membershipOf(charaId);
 		if (membership.state() != ClanService.STATE_LEADER) {
 			logger.info("Character {} tried to disband a clan they do not lead.", charaId);
-			ctx.write(DISBAND_RESULT, GameError.GENERAL);
+			writeCode(ctx, DISBAND_RESULT, NOT_CLAN_LEADER);
 			return;
 		}
 
@@ -1190,6 +1219,19 @@ public class ClanGameController implements IGameController {
 			: clanService.decline(membership.id(), targetId);
 		logger.info("Clan {}: character {} {} applicant {}{}.", membership.id(), charaId,
 			accept ? "accepted" : "declined", targetId, changed ? "" : " (no pending application)");
+		if (!changed) {
+			// ANSWERING SUCCESS HERE WAS THE BUG. Nothing was approved or declined — the applicant
+			// had already withdrawn — and the leader was told it worked, so the roster silently
+			// disagreed with what they had just been shown.
+			//
+			// GENERAL rather than -1210, deliberately. -1210's sentence is exactly right ("The
+			// applicant has already canceled their clan entry application.") but its arm is not
+			// bound to this command id by any observation, only by matching the wording. A
+			// wrong-but-plausible code sends the player chasing the wrong problem; a vague one only
+			// under-informs. Promote it once the binding is established.
+			ctx.write(reply, GameError.GENERAL);
+			return;
+		}
 		writeResult(ctx, reply);
 	}
 
@@ -1352,7 +1394,7 @@ public class ClanGameController implements IGameController {
 			// The client checks this itself before sending, so reaching here means a modified or
 			// replayed packet rather than a player mistake.
 			logger.warn("Create clan: name '{}' is shorter than the client's own minimum.", name);
-			ctx.write(CREATE_CLAN_RESULT, GameError.GENERAL);
+			writeCode(ctx, CREATE_CLAN_RESULT, CLAN_NAME_TOO_SHORT);
 			return;
 		}
 
@@ -1369,7 +1411,7 @@ public class ClanGameController implements IGameController {
 		var clanId = clanService.createClan(charaId, name, description);
 		if (clanId.isEmpty()) {
 			logger.info("Character {} tried to create clan '{}': name already taken.", charaId, name);
-			ctx.write(CREATE_CLAN_RESULT, GameError.GENERAL);
+			writeCode(ctx, CREATE_CLAN_RESULT, CLAN_NAME_TAKEN);
 			return;
 		}
 
