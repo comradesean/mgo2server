@@ -740,8 +740,19 @@ public class GameService {
 	 */
 	private static final int UNREAD_TAIL = 0x14B;
 
-	/** Bytes in the host-settings block, as the client sends it. */
-	public static final int HOST_SETTINGS_SIZE = 0x159;
+	/**
+	 * Bytes in the host-settings block, as the client sends it.
+	 * <p>
+	 * <b>352, not 345.</b> The last named field ends at {@code 0x159}, and it is tempting to stop
+	 * there — but every one of the ten payloads stored by a real client is {@code 0x160} bytes, with
+	 * the trailing seven all zero. Reconstructing at 345 would come back seven short of what the
+	 * client sent.
+	 * <p>
+	 * This was caught by live data, not by the round-trip test: that test built its own fixture at
+	 * the wrong length, so it agreed with itself. Two copies of one assumption prove nothing, which
+	 * is the same trap that once let a rotation-encoding bug pass two suites and a hand-decode.
+	 */
+	public static final int HOST_SETTINGS_SIZE = 0x160;
 
 	/**
 	 * Rebuilds the host-settings block from the typed columns, byte for byte.
