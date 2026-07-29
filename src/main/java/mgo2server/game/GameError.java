@@ -63,6 +63,47 @@ public enum GameError {
 	 * {@code dev/docs/AUTOMATCH.md} §6. Anything nonzero that is not in the set still produces a
 	 * dialog; there is no benign nonzero result here.
 	 */
+	/**
+	 * {@code 0x4321}: "Password is incorrect.\nUnable to connect to host."
+	 * <p>
+	 * [ELF, 2026-07-29] Chain {@code 0x94483C}, raised at {@code 0x944C58}, code taken from the
+	 * slot-38 getter {@code 0xD3FA34}; disc string 22386. Recovered by a sweep of all 4352 codes,
+	 * so the discrimination is exhaustive rather than sampled.
+	 * <p>
+	 * Before this existed we answered a mistyped password with {@link #GENERAL}, which prints
+	 * <em>"Unable to connect to host."</em> — true, useless, and the most common failure a player
+	 * will ever hit. It reads as the server being broken rather than as a typo.
+	 */
+	GAME_PASSWORD_INCORRECT(-540, true),
+
+	/**
+	 * {@code 0x4321}: "Maximum number of characters already reached.\nUnable to connect to host."
+	 * <p>
+	 * [ELF, 2026-07-29] Same chain as {@link #GAME_PASSWORD_INCORRECT}; disc string 22380.
+	 * <b>Nothing sends this yet</b> — {@code joinGame} has no capacity check at all, so a full game
+	 * is joined rather than refused. The refusal and its sentence both exist; the check does not.
+	 */
+	GAME_FULL(-503, true),
+
+	/**
+	 * {@code 0x4321} / {@code 0x4311}: "You are currently banned from creating and joining games."
+	 * <p>
+	 * [ELF, 2026-07-29] Accepted on <b>both</b> replies, so one value covers hosting and joining.
+	 * Disc string 22583. There is no ban enforcement in this server yet; when there is, this is the
+	 * code, and it is recorded now so the next person does not go looking for two.
+	 */
+	GAME_BANNED_FROM_PLAY(-541, true),
+
+	/**
+	 * {@code 0x4315}: "Unable to locate host."
+	 * <p>
+	 * [ELF, 2026-07-29] Chain {@code 0x8B5244}, raised at {@code 0x8B5280}, code from the slot-36
+	 * getter {@code 0xD3FA8C}; dialog 3599, disc string 22422. Every other nonzero value falls
+	 * through to dialog 2831, <em>"Unable to acquire host information."</em> — which reads as a
+	 * server fault when the real condition is that the game went away.
+	 */
+	GAME_HOST_NOT_FOUND(-506, true),
+
 	AUTOMATCH_NOT_OPEN(-970, true),
 
 	/** {@code 0x43e1}: "Unable to start automatching." [0x93CF50] */

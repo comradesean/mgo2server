@@ -101,7 +101,18 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 					var gameControllerContext = new GameControllerContext(ctx, packet, allocations);
 					handler.accept(gameControllerContext);
 				} catch (Exception e) {
-					logger.error(e);
+					// NAME THE COMMAND. A handler that throws answers nothing, and an unanswered
+					// command is this client's most expensive failure: it stalls and then fails
+					// with FFFFFF60, prefixed by whatever screen was open. `logger.error(e)` alone
+					// left no record of WHICH command died, so the one log line that could have
+					// identified it said only that something threw.
+					//
+					// The no-handler branch above already learned this lesson and dumps the command
+					// id and the payload. This branch is the same failure for the player and had
+					// none of the evidence — so it now logs the same two things.
+					logger.error("Handler for command {} threw; the client will stall and fail with "
+						+ "FFFFFF60. Payload: {}", String.format("%04x", command),
+						ByteBufUtil.hexDump(packet.getPayload()), e);
 					for (var allocation : allocations) {
 						allocation.release();
 					}
