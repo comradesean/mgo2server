@@ -213,20 +213,31 @@ public class AutomatchTest {
 	public void playersNeededIsTheShortfallAmongReachableSearchers() {
 		var automatch = queueNeeding(4);
 
-		assertThat(automatch.playersNeededOnArrival()).isEqualTo(3);
+		// THE RECIPIENT IS COUNTED. A lone searcher facing a requirement of four sees four, not
+		// three — reference footage of the original shows a lone searcher on 12 against the
+		// 12-player start, so the figure means "players this game still needs, me included".
+		assertThat(automatch.playersNeededOnArrival()).isEqualTo(4);
 
 		automatch.enqueue(1, ANY_RULE, 0, new EmbeddedChannel());
 		var first = automatch.searchers().iterator().next();
-		assertThat(automatch.playersNeeded(first)).isEqualTo(3);
+		assertThat(automatch.playersNeeded(first)).isEqualTo(4);
 
 		automatch.enqueue(2, ANY_RULE, 0, new EmbeddedChannel());
 		automatch.enqueue(3, ANY_RULE, 0, new EmbeddedChannel());
+		// Two others found against a requirement of four: two still wanted, one of them this
+		// searcher.
+		assertThat(automatch.playersNeeded(first)).isEqualTo(2);
+
+		// Three others now, so the figure reaches 1 rather than 0 at a complete group — deliberate,
+		// because 0 renders as "????" (string 48) and the last slot must read as a number.
 		automatch.enqueue(4, ANY_RULE, 0, new EmbeddedChannel());
-		assertThat(automatch.playersNeeded(first)).isZero();
+		assertThat(automatch.playersNeeded(first)).isEqualTo(1);
 
 		// Past the minimum it must not go negative: the field is one unsigned byte on the wire, so a
 		// -1 would arrive as 255 players needed.
 		automatch.enqueue(5, ANY_RULE, 0, new EmbeddedChannel());
+		assertThat(automatch.playersNeeded(first)).isZero();
+		automatch.enqueue(6, ANY_RULE, 0, new EmbeddedChannel());
 		assertThat(automatch.playersNeeded(first)).isZero();
 	}
 
@@ -287,9 +298,10 @@ public class AutomatchTest {
 
 		assertThat(packet.getCommand()).isEqualTo(AutomatchPackets.SEARCH_PANEL);
 		assertThat(packet.getPayload().readableBytes()).isEqualTo(AutomatchPackets.SEARCH_PANEL_SIZE);
-		// Players-needed is relative to the recipient — four wanted, one searching — which is why each
-		// searcher gets its own buffer rather than one being broadcast.
-		assertThat(packet.getPayload().getUnsignedByte(0x11)).isEqualTo((short) 3);
+		// Players-needed is relative to the recipient — four wanted, one searching, and the recipient
+		// counts themselves — which is why each searcher gets its own buffer rather than one being
+		// broadcast.
+		assertThat(packet.getPayload().getUnsignedByte(0x11)).isEqualTo((short) 4);
 
 		// Bound to Object first: readOutbound() infers its own return type, which leaves the assertJ
 		// overloads ambiguous.

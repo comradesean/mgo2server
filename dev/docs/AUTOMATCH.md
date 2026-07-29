@@ -760,6 +760,25 @@ the *sum* of two bands grows by two per step. A pair four levels apart goes from
 overlapping in a single tick, which on one client's gauge can look like a premature match. Staggering
 each searcher's schedule from their own join time would smooth it, and has not been done.
 
+### "Players Needed" counts the recipient (2026-07-29)
+
+The figure sent at `0x43e1 + 0x05` and `0x43e4 + 0x11` is **"players this game still needs, me
+included"**, not the shortfall excluding the recipient. A lone searcher facing a 12-player
+requirement sees **12**, not 11.
+
+**Tier 2, and only tier 2:** this comes from video of the original service showing a lone searcher on
+12, not from the binary. The client just prints the byte through disc string 917 — it does not
+compute or validate it, so the ELF cannot settle the convention and no experiment against our own
+client can either. If better footage contradicts this, the change is one subtraction.
+
+Two consequences worth stating so they are not mistaken for bugs:
+
+- The figure **reaches 1, not 0, at a complete group** — the last player still needed is the
+  recipient. That is fine and in fact necessary: **0 renders as `"????"`** (disc string 48), the
+  placeholder for "no figure", so the final slot must read as a number.
+- It still counts down as others arrive *and* as the requirement decays, so it moves for two
+  independent reasons.
+
 ### Full live test, two clients, 2026-07-29
 
 Every path in the matchmaker was exercised against two RPCS3 clients (chara 1 "Sean", level 22;
