@@ -179,8 +179,9 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	 * <p>
 	 * A GM letter carries NO recipient — count 0, all eight name slots zero — and marks itself with
 	 * a single byte at wire {@code 0x3C5}, immediately after the body. [ELF] the client writes 3
-	 * there at {@code 0x8EEAA8}, reached only when bit 17 of the compose screen's flags is set —
-	 * the same bit that greys out the recipient-list row, confirmed live.
+	 * there at {@code 0x8EEAA8}, reached only when bit 18 of the compose screen's flags is set —
+	 * the same bit that greys out the recipient-list row, confirmed live. (Bit 18, not 17:
+	 * {@code rldicl. r9,r0,46,63} tests bit 64-46.)
 	 * <p>
 	 * Before 2026-07-29 this fell through the recipient loop as "0 of 0 delivered" and was answered
 	 * SUCCESS, so the player was told it sent and nothing was stored anywhere.
