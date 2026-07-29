@@ -98,7 +98,7 @@ public class AccountGameController implements IGameController {
 
 		if (payload.readableBytes() < Integer.BYTES + SessionField.FIELD_LENGTH) {
 			logger.warn("Check session: payload too short ({} bytes).", payload.readableBytes());
-			ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+			ctx.write(CHECK_SESSION_RESULT, sessionRefusal());
 			return;
 		}
 
@@ -111,7 +111,7 @@ public class AccountGameController implements IGameController {
 		var account = accountService.findBySession(SessionField.stored(sessionField)).orElse(null);
 		if (account == null) {
 			logger.warn("Check session: no account holds the presented session.");
-			ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+			ctx.write(CHECK_SESSION_RESULT, sessionRefusal());
 			return;
 		}
 
@@ -131,7 +131,7 @@ public class AccountGameController implements IGameController {
 			if (claimed == null || claimed.getAccountId() != account.getId() || !claimed.isActive()) {
 				logger.warn("Check session: account {} claimed character {}, which it does not own.",
 					account.getId(), claimedId);
-				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+				ctx.write(CHECK_SESSION_RESULT, sessionRefusal());
 				return;
 			}
 
@@ -150,7 +150,7 @@ public class AccountGameController implements IGameController {
 			if (account.getId() != claimedId) {
 				logger.warn("Check session: session belongs to account {}, client claimed {}.",
 					account.getId(), claimedId);
-				ctx.write(CHECK_SESSION_RESULT, GameError.INVALID_SESSION);
+				ctx.write(CHECK_SESSION_RESULT, sessionRefusal());
 				return;
 			}
 
@@ -164,4 +164,22 @@ public class AccountGameController implements IGameController {
 
 		ctx.write(new GamePacket(CHECK_SESSION_RESULT, GameError.NONE.result()));
 	}
+	/**
+	 * The refusal for a session we will not accept, chosen by lobby type.
+	 * <p>
+	 * This handler serves <b>both</b> lobby types, and the two are read by different chains on
+	 * different wait slots — the game lobby's {@code 0x3003} completes slot 6, the account lobby's
+	 * completes slot 5. {@code -240} is <em>"You must login again to connect to the lobby"</em> on
+	 * slot 6, which is exactly the instruction the player needs, but on slot 5 it is
+	 * <em>"Unable to connect to server."</em> — worse than that chain's own default. So it is
+	 * gated rather than sent unconditionally.
+	 * <p>
+	 * The account lobby keeps {@link GameError#INVALID_SESSION}, which masks and falls through to
+	 * <em>"Unable to login to server."</em> No better code was found for it; that is a documented
+	 * generic, not an oversight.
+	 */
+	private GameError sessionRefusal() {
+		return lobbyType == LobbyType.GAME ? GameError.LOBBY_LOGIN_AGAIN : GameError.INVALID_SESSION;
+	}
+
 }

@@ -151,8 +151,12 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		var replies = connect(charaId + 9999, 1);
 
 		assertThat(replies).hasSize(1);
+		// A GAME lobby says "You must login again to connect to the lobby." rather than the masked
+		// generic — the instruction the player can actually act on. Gated on lobby type: the same
+		// handler serves account lobbies, where -240 reads as "Unable to connect to server." and is
+		// worse than that chain's default, so those keep INVALID_SESSION.
 		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+			.isEqualTo(GameError.LOBBY_LOGIN_AGAIN.result());
 	}
 
 	/**

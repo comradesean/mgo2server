@@ -37,7 +37,7 @@ public enum GameError {
 	 * [ELF] The lobby-connect state machine compares the completed request's result at
 	 * {@code 0x947198} onward — {@code -240} to dialog 2340, {@code -402} to 2640, and both
 	 * {@code -403} and {@code -404} to dialog <b>2355</b>, which is this sentence. Anything else it
-	 * does not name falls through to 2339, "Unable to connect to lobby."
+	 * does not name falls through to 2341, "Unable to connect to lobby."
 	 * <p>
 	 * {@code -404} is chosen over {@code -403} because it is the code the client's own beginner
 	 * check passes when it raises the same dialog itself ({@code li r4,-404} at {@code 0x892250}),
@@ -121,6 +121,24 @@ public enum GameError {
 	 * make, so we decline too.
 	 */
 	CHARACTER_IS_CLAN_LEADER(-1212, true),
+
+	/**
+	 * {@code 0x3004}: "You must login again to connect to the lobby.\nPlease disconnect from the
+	 * network."
+	 * <p>
+	 * [ELF, 2026-07-29] Chain {@code 0x947198}, raised at {@code 0x9480A0}, wait slot 6, getter
+	 * {@code 0xD39DFC}; dialog 2340, disc string 22273. Sweep of all 4353 codes, zero unmodelled.
+	 * <p>
+	 * <b>GAME LOBBIES ONLY.</b> There are two {@code 0x3003} builders and they complete different
+	 * slots: the game-lobby one at {@code 0xD39FD0} completes slot 6, which is this chain, while the
+	 * account/auth one at {@code 0xD381F8} completes slot 5, a different chain at {@code 0x946B84}
+	 * where {@code -240} means <em>"Unable to connect to server."</em> — worse than that chain's own
+	 * default of <em>"Unable to login to server."</em>
+	 * <p>
+	 * Since one handler serves both lobby types, this must never be sent unconditionally. See
+	 * {@code AccountGameController.sessionRefusal()}.
+	 */
+	LOBBY_LOGIN_AGAIN(-240, true),
 
 	AUTOMATCH_NOT_OPEN(-970, true),
 
