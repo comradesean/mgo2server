@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4105
+  id: mgo2_cmd_4105_s2c
   title: "MGO2 0x4105 — per-mode stat grid (replies 2/4 and 3/4 of the 0x4102 burst)"
   endian: be
 doc: |

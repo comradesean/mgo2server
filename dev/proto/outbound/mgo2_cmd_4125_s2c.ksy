@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4125
+  id: mgo2_cmd_4125_s2c
   title: "MGO2 0x4125 — skill table, packet 7/9 of the connect burst (server -> client)"
   endian: be
 doc: |

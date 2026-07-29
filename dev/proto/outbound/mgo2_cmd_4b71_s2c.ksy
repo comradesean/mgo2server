@@ -21,7 +21,7 @@ doc: |
   **This is the clan twin of 0x4105.** The destination arithmetic at 0xD59A28-0xD59A44 is
   base + 2332 + page*864 + mode*72, and the mode loop runs index 0..11 skipping 6, 8, 9 and 10
   (0xD59A08-0xD59A24) — byte for byte the same geometry as the personal grid documented in
-  dev/proto/mgo2_cmd_4105.ksy (mode*0x48 + page*0x360, 12-slot loop skipping 6/8/9/10, 18 u32
+  dev/proto/outbound/mgo2_cmd_4105_s2c.ksy (mode*0x48 + page*0x360, 12-slot loop skipping 6/8/9/10, 18 u32
   columns, 8 records on the wire). The column layout there is [CONFIRMED] live; here it is only
   [INFERRED] by that structural identity, so the column names are deliberately NOT copied over.
 

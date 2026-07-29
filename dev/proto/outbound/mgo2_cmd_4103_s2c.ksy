@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4103
+  id: mgo2_cmd_4103_s2c
   title: "MGO2 0x4103 — personal-stats character info (reply 1/4 of the 0x4102 burst)"
   endian: be
   encoding: ISO-8859-1

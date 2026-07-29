@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4686
+  id: mgo2_cmd_4686_s2c
   title: "MGO2 0x4686 — match-detail record(s) (item packet of the 0x4684 triple)"
   endian: be
   encoding: ISO-8859-1

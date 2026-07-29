@@ -10,7 +10,7 @@ doc: |
 
   Confirms PROTOCOL.md "Request: one u32, the selected player's id". [CONFIRMED live
   2026-07-23]. The single 201-byte reply `0x4221` is already specced in
-  `dev/proto/mgo2_cmd_4221.ksy`.
+  `dev/proto/outbound/mgo2_cmd_4221_s2c.ksy`.
 doc-ref: dev/docs/PROTOCOL.md "0x4220 — player details"
 seq:
   - id: chara_id

@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4902
+  id: mgo2_cmd_4902_s2c
   title: "MGO2 0x4902 — game-lobby list entries (server -> client)"
   endian: be
 doc: |

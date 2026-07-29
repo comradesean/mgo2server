@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_4682
+  id: mgo2_cmd_4682_s2c
   title: "MGO2 0x4682 — match-history list record(s) (item packet of the 0x4680 triple)"
   endian: be
   encoding: ISO-8859-1

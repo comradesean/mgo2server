@@ -21,7 +21,7 @@ doc: |
 
   Semantics unknown. PROTOCOL.md's `0x4102` section notes that `T+0x3330` "turned out to be match
   history list storage for `0x4682`/`0x4212` records", which pairs this command with the met-players
-  history record `0x4682` (25 wire bytes: see dev/proto/mgo2_cmd_4682.ksy) — a comparable
+  history record `0x4682` (25 wire bytes: see dev/proto/outbound/mgo2_cmd_4682_s2c.ksy) — a comparable
   `{id, 16-byte name, extra}` shape. Treat that as a lead, not an identification.
 doc-ref: dev/docs/PROTOCOL.md "0x4102 — get personal stats" (the T+0x3330 note)
 seq:

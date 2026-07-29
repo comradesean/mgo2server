@@ -53,6 +53,46 @@ doc: |
   variable-length array — so no value of `N` can put it at `0xef`. The struct offset
   (`profile+7845`, = `charBlock+0x1EA5`) is sound and unchanged; only the wire offset was
   wrong. The `0xef` figure belongs to **`0x4122`**, which writes the same slot.
+
+  ## Independently corroborated, and what the destinations mean
+
+  This packet was traced twice — 2026-07-26 against the client context base, and 2026-07-29 against
+  the local profile base — and **all ten destinations agree exactly**. `profile = ctx + 22488`
+  (`0xD3A094`), and every pair maps: `ctx+30333` = `profile+7845`, `ctx+22776` = `+288`,
+  `ctx+35585` = `+13097`, `ctx+35588` = `+13100`, `ctx+22780` = `+292`, `ctx+23660` = `+1172`,
+  `ctx+29304` = `+6816`, `ctx+29326` = `+6838`, `ctx+29325` = `+6837`, `ctx+29360` = `+6872`.
+
+  **What makes this command legible is where it writes, not what it is called.** Every tail
+  destination is a slot some *other* command owns: `+6816` is `0x4122`'s clan id, `+6837`/`+6838`
+  open `0x4122`'s unknown prefix, `+6872` is `0x4122`'s emblem flag, `+288`/`+292` are `0x4101`'s
+  experience and `unknown_13e`, and `+13097`/`+13100` are `0x4101`'s two unknown singles.
+
+  So `0x4129` is a **partial re-send of the connect-burst character record after a match** —
+  experience, title, skills and the clan block, patched in place. That is also the strongest hint
+  available that `0x4101`'s and `0x4122`'s unknown slots at those addresses are **match-mutable**
+  values rather than constants.
+
+  Wait slot **26** (`0x1a`).
+
+  ## The skill loop patches in place
+
+  Unlike `0x4125`, this parser does **not** memset the table first, so it patches records and any id
+  it omits keeps whatever `0x4125` established. The 12-byte record is the one documented in
+  `mgo2_cmd_4125.ksy`: id at +0, experience widened to u32 at +4, flag at +8.
+
+  **Skill level is derived, never sent** — `0x6FC580` gives `min(exp >> 13, 3)`, so the only
+  reachable levels are 0/1/2/3 at experience 0/8192/16384/24576. The flag byte at +8 is what the
+  per-skill gates read, including the training check at `0x897320` on skill 17.
+
+  This is where OBSERVED.md's "skill records come from `0x4129`, not `0x4125`" originates: both write
+  the same table, but only this one is sent after a round.
+
+  ## A stale claim corrected
+
+  An earlier draft of this spec said the total is "34 + 4*count, which is exactly the 34-byte empty
+  readback we send with count 0". The size is right for the **parser** — `0x22 + 4N` is 34 + 4N —
+  but wrong about this server, which sends `POST_GAME_INFO_FIXED = 39` plus `4N`. See `trailing`.
+
 seq:
   - id: result
     type: s4

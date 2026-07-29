@@ -389,7 +389,7 @@ missing a 64-byte text block between the name and the open time. The readers bou
 parses (the first 26 bytes of the two layouts coincide), then the parser resumes 64 bytes into the
 middle of entry 2 and stores rubbish. Symptom is **exactly one lobby in Lobby Select, always the
 first one sent**. Full field table in `PROTOCOL.md`; machine-readable spec in
-`dev/proto/mgo2_cmd_4902.ksy`.
+`dev/proto/outbound/mgo2_cmd_4902_s2c.ksy`.
 
 The 64-entry cap is hard (`0xD480B4`): entry 65 onward is dropped silently.
 

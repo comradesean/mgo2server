@@ -5,7 +5,7 @@ one-line summary. It is the lookup table; [`COMMANDS.md`](COMMANDS.md) is the ar
 that first for the Channel A / Channel B split, the dispatcher addresses, and why the id space is
 known to be complete. Byte-level layouts live in [`PROTOCOL.md`](PROTOCOL.md), live-capture facts
 in [`OBSERVED.md`](OBSERVED.md), and per-id Kaitai specs in `dev/proto/` (verified) and
-`dev/proto/blanks/` (drafts — see [`blanks/README.md`](../proto/blanks/README.md)).
+`dev/proto/inbound/` and `dev/proto/outbound/` — one spec per command id, see [`dev/proto/README.md`](../proto/README.md).
 
 Everything here is **Channel A** (the lobby TCP link our server terminates). Channel B, the
 in-game host-to-peer link, is a disjoint id space and is not listed.

@@ -1,5 +1,5 @@
 meta:
-  id: mgo2_cmd_43a2
+  id: mgo2_cmd_43a2_c2s
   title: "MGO2 0x43a2 — per-player round weapon tallies (client -> server, one per scorer)"
   endian: be
 doc: |

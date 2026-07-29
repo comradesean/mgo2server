@@ -13,7 +13,7 @@ doc: |
   write the same five fields, which is how the layout is known.
 
   **0x4b46 BLOCKS, despite what was recorded.** The inbound spec
-  `dev/proto/blanks/inbound/mgo2_cmd_4b46_c2s.ksy` says "the live trace proves the client does not
+  `dev/proto/inbound/mgo2_cmd_4b46_c2s.ksy` says "the live trace proves the client does not
   wait for one" and warns against replying speculatively. That is true of the connect burst, where
   0x4b46 fires unprompted and the player walks on. From the **clan menu** it stalls and fails with
   "Unable to update clan information (1933:FFFFFF60)", observed live 2026-07-27. One command, two

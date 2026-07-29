@@ -317,7 +317,7 @@ retail service, not read from our artifacts, and only two rules have been seen.
    authored the whole block rather than letting the elected host's saved settings through.
 
 The TDM figures also **decoded the 68-byte timer block**, which had been one undecoded line in
-`PROTOCOL.md`. See `dev/proto/blanks/inbound/mgo2_cmd_4310_c2s.ksy`: the ordering `SNE t/r, CAP t/r,
+`PROTOCOL.md`. See `dev/proto/inbound/mgo2_cmd_4310_c2s.ksy`: the ordering `SNE t/r, CAP t/r,
 RES t/r, TDM t/r/tickets, DM t/tickets, BASE t/r, BOMB t/r, TSNE t/r` was a tier-4 guess; it is now
 corroborated by the client scaling exactly the eight *time* indices by 60 (`0x8CA470`) and by TDM's
 observed 5/4/25 landing on indices 6, 7, 8 in order.

@@ -205,7 +205,7 @@ These are the ones that cost a session. All are live-confirmed unless noted.
 
 This page is the index, not the evidence. For the full traces:
 
-- `dev/proto/mgo2_cmd_4390.ksy` — the round report field by field, including b38, b52/b57 and the
+- `dev/proto/inbound/mgo2_cmd_4390_c2s.ksy` — the round report field by field, including b38, b52/b57 and the
   score coefficient table.
 - `dev/docs/PROTOCOL.md` — command by command, byte by byte.
 - `dev/docs/OBSERVED.md` — the chronological journal, including the readings that turned out wrong.

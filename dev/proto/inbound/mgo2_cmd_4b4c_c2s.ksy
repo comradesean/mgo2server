@@ -55,6 +55,28 @@ doc: |
 
   A block failing either check is dropped **silently**; there is no error dialog on this
   path, only the 6000-tick backoff at `0x9D4A34`.
+
+  ## The open question this file used to carry is now answered
+
+  The draft for this id said the clan-id reading was `[INFERRED]` and that *"what has not been
+  established is what distinguishes `0x4b4c` from `0x4b4a` — both are display fetches with the same
+  request and the same reply — so this file stays a draft"*. It also noted, correctly and
+  self-critically, that *"the server currently ignores the payload and answers from the caller's own
+  membership, which works, and therefore proves nothing about the field."*
+
+  **Both are now settled.** The distinction is the **round mode**: `0x9C2918` returns 1 iff
+  `0x6A9A38` is 9, and `0x9D47C0` uses that to select this command and the `conn+0xFBC9` buffer over
+  `0x4b4a` and `conn+0xF8C7`. And the payload *is* the clan id — the sender `0xD56618` is built
+  byte-for-byte like `0x4b4a`'s, which puts the two beyond structural doubt.
+
+  The server no longer ignores the field, so the "proves nothing" caveat no longer applies either.
+
+  Request slot **103**; `0x4b4a` occupies 102. On a successful flush the client advances its flow
+  state with `0xD32E08(session, 103, 1)`. The sender does not name the reply id.
+
+  Preconditions: `session != NULL` only — no clan-record gate, consistent with a fetch that may name
+  a clan the caller has nothing to do with.
+
 seq:
   - id: clan_id
     type: u4

@@ -25,7 +25,7 @@ doc: |
   request slot, where a nonzero code surfaces as the screen's error dialog.
 
   PROTOCOL.md: acked with result 0, one ack per 0x43a2 packet. The request side is fully
-  decoded in dev/proto/mgo2_cmd_43a2.ksy.
+  decoded in dev/proto/inbound/mgo2_cmd_43a2_c2s.ksy.
 
   DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
   the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
