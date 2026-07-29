@@ -416,10 +416,15 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 		assertThat(reply.getPayload().getUnsignedByte(4))
 			.isEqualTo((short) ALWAYS_OPEN.bandAfter(Duration.ZERO));
 		// Players-needed was zero while there was no queue to count. There is one now, and this
-		// caller is in it — two wanted, one searching — so the honest answer is 1, which the client
+		// caller is in it — two wanted, nobody else found yet — so the answer is 2, which the client
 		// prints through disc string 917. Zero would select the placeholder 48 instead and say
 		// nothing at all. Policy, not protocol: the 2 is MIN_PLAYERS on ALWAYS_OPEN.
-		assertThat(reply.getPayload().getUnsignedByte(5)).isEqualTo((short) 1);
+		//
+		// The recipient is COUNTED here: a lone searcher sees the whole requirement, not the
+		// requirement minus themselves. That is how the original renders it — reference footage
+		// shows a lone searcher on 12 against a 12-player start. [Tier 2: video of the original
+		// service, not read from the binary.]
+		assertThat(reply.getPayload().getUnsignedByte(5)).isEqualTo((short) 2);
 	}
 
 	/**

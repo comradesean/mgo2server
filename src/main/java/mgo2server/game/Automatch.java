@@ -408,12 +408,24 @@ public class Automatch {
 		// The requirement decays with this searcher's own wait, so the figure counts down on its own
 		// even while nobody else arrives — which is the honest thing to show, because the bar really
 		// is falling.
-		return (int) Math.max(0, policy.requiredPlayersAfter(searcher.waited()) - reachable);
+		//
+		// THE RECIPIENT COUNTS THEMSELVES. `reachable` includes this searcher, so subtracting it
+		// whole would show 11 to the first player of a 12-player requirement. Reference footage of
+		// the original shows a lone searcher on 12, so the figure is "players this game still needs,
+		// me included" — hence `reachable - 1`, the number of OTHERS already found. [Tier 2:
+		// observed in video of the original service, not read from the binary.]
+		var others = reachable - 1;
+		return (int) Math.max(0, policy.requiredPlayersAfter(searcher.waited()) - others);
 	}
 
-	/** The figure for a searcher who has only just arrived, before they are in the queue. */
+	/**
+	 * The figure for a searcher who has only just arrived, before they are in the queue.
+	 * <p>
+	 * The bare requirement: they have found nobody yet, and they count themselves. This is the 12
+	 * a lone searcher sees on the original.
+	 */
 	public int playersNeededOnArrival() {
-		return Math.max(0, policy.requiredPlayersAfter(Duration.ZERO) - 1);
+		return Math.max(0, policy.requiredPlayersAfter(Duration.ZERO));
 	}
 
 	/**
