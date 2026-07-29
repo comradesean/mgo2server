@@ -38,8 +38,44 @@ seq:
       Parse it as `0x4120` offsets `0x00`..`0x2f`: the packed privacy / view / switch / voice /
       radar / HUD bytes at `0x00`..`0x17` and the four 4-byte codec entries at `0x20`..`0x2f`.
       That mapping (including the several sliders stored one higher than they go on the wire)
-      is documented under `0x4120` and is **[CONFIRMED]** on the write side only; the read side
-      here has not been byte-verified against a capture.
+      is documented under `0x4120`.
+
+      **The server parses this as of 2026-07-29** — `GameplaySettingsReader` is
+      `GameplaySettingsWriter` inverted, and the pair is covered by a round-trip test rather than
+      by either side alone. Until then the body was acked and discarded, which is why Lock-On and
+      every other Gameplay Option reverted after each session.
+
+      Byte map, offsets within this 48-byte block:
+
+      ```
+      +0x00 privacy A   bit6 email-friends-only, bits4-5 online status mode
+      +0x01 normal view bit0 invert V, bit1 invert H, bits4-7 speed (wire = speed - 1)
+      +0x02 shoulder    as +0x01
+      +0x03 first view  as +0x01, plus bit2 player direction
+      +0x04 view change speed (wire = speed - 1)
+      +0x05..0x0a  [UNKNOWN] sent as zero
+      +0x0b switch modes  low weapon, high item
+      +0x0c [UNKNOWN] sent as zero
+      +0x0d voice chat A  bit0 always 1, bits4-7 recognition level
+      +0x0e voice chat B  low chat volume, high headset volume
+      +0x0f weapon switch A (low) and B (high)
+      +0x10 weapon switch C (low nibble)
+      +0x11 weapon recall  low "before", high "now"
+      +0x12 first-view memory (bit1)
+      +0x13 privacy B  bit0 receive notices, bit4 receive invites
+      +0x14 LOCK-ON (bit0) and music volume (bits4-7, WIRE = STORED + 1)
+      +0x15 radar  bit0 lock north, bit4 floor hide
+      +0x16 HUD  bits0-1 display size, bit4 hide name tags
+      +0x17..0x1f  [UNKNOWN] sent as zero
+      +0x20..0x2f  four codec entries, 4 bytes each
+      ```
+
+      **The `+0x14` off-by-one is the trap.** Lock-On shares its byte with the music volume, and
+      the volume goes out one higher than it is stored. Inverting that wrongly drifts the value by
+      one on every save — slow corruption that reads as a client bug. It is asserted across the
+      whole range in `GameplaySettingsRoundTripTest`.
+
+      The `[UNKNOWN]` gaps are read into nowhere rather than assigned a meaning.
   - id: codec_names
     type: str
     size: 64
