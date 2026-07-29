@@ -160,11 +160,22 @@ public class SocialGameController implements IGameController {
 				buffer.writeInt((int) chara.getId());
 				BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1,
 					NAME_LENGTH);
-				buffer.writeZero(2)   // u16, meaning unknown
-					.writeZero(NAME_LENGTH) // 16 bytes, likely clan name; clans are not modelled
-					.writeZero(4)     // u32, meaning unknown
-					.writeZero(NAME_LENGTH) // 16 bytes, meaning unknown
-					.writeZero(1);    // u8, meaning unknown
+				// THE THREE UNKNOWN FIELDS ARE ZERO ON PURPOSE, and the "likely clan name" note that
+				// used to sit on the first 16-byte field was wrong enough to be dangerous.
+				// mgo2_cmd_4602_s2c.ksy reads the same bytes as CURRENT LOBBY NAME, with the second
+				// 16-byte field as current game name and the trailing u8 as a lobby id. Both
+				// readings are tier-4 candidates and neither is proven — but filling this with a
+				// clan name on the strength of our guess would put the wrong text on a screen that
+				// has room for exactly one string here.
+				//
+				// To settle it, send three distinguishable strings in the three fields and read the
+				// search results on a live client; whichever slot renders names the field. Until
+				// then zeros, which render as nothing rather than as something false.
+				buffer.writeZero(2)     // u16 -> struct+0x16. Candidate: level/rank
+					.writeZero(NAME_LENGTH) // 16 -> struct+0x18. Candidate: current LOBBY name
+					.writeZero(4)       // u32 -> struct+0x2C. Candidate: in-game flag
+					.writeZero(NAME_LENGTH) // 16 -> struct+0x30. Candidate: current GAME name
+					.writeZero(1);      // u8  -> struct+0x41. Candidate: lobby id
 			}
 			ctx.write(new GamePacket(PLAYER_SEARCH_ENTRIES, buffer));
 		}

@@ -3914,3 +3914,27 @@ Corroborated from live data in the same game, same host, minutes apart: the TDM 
 
 **Do not "fix" this.** A server that manufactured a Sneaking team win would diverge from the client.
 
+
+## What we think the remaining unknown fields are — all unproven (2026-07-29)
+
+Recorded so the guesses are visible **and labelled**, because this project's most expensive mistakes
+have all been a plausible label layered on a real observation and then inherited as fact. Nothing
+below is evidence. Each entry states what would settle it.
+
+| field | value we send | hypothesis | how to settle it |
+| --- | --- | --- | --- |
+| settings block `+72` (u32) | `0x02000000` | A **u8 holding 2** with three padding bytes — a server writing one octet into a u32 slot produces exactly this, and the neighbours at `+66`/`+67`/`+68` are small counts | Nothing in the binary can: no reader exists. Needs a capture of the original server sending a *different* value |
+| settings block `+179` (u8) | `0x20` | A **second bank of toggles this build does not implement** — bits 8-23 of the same word are the ~16 Common Settings, bits 0-7 are unused, and the accessor for this byte exists but is dead code, which is what a compiled-out feature leaves behind | Compare against a later client version; a bit that goes live there names itself |
+| `0x4120` trailer bytes 0-7 | `01 00 10 00 00 00 00 10` | **Per-list display preferences** — sixteen 4-bit fields with a generated getter/setter each, used by readers as sort-key and filter selectors | Disc assets: the labels are in the settings-screen resources, not the binary |
+| `0x4602` field at struct `+0x18` | zeros | **Current lobby name** (schema's candidate) — our code called it a clan name, which is a *different* guess for the same bytes | Send three distinguishable strings in the three unknown fields and read a live search result; whichever slot renders names the field |
+| `0x4991` `name_a` / `name_b` | zeros | **Team name**, by analogy with the clan record's 16-byte name fields | Unfalsifiable from the client — nothing reads them. Only an original-server capture would show it |
+| `0x3049` trailer index 3, bit 1 | set (we send `0x03`) | Unknown. **Bit 0 is proven** to unlock 32 loadout items; bit 1 has no reader | Toggle it against a live client and watch the loadout screen |
+
+**Two of these are actively contested rather than merely unknown**, which is worth flagging: the
+`0x4602` 16-byte field has two incompatible candidate labels in our own tree, and `+72`'s width is
+proven u32 while the hypothesis argues its *meaning* is a u8. Do not let either quietly harden.
+
+**Fields where "we don't know" is now a settled answer, not an open question** — no reader exists in
+the client, so no amount of ELF work will help: settings block `+72` and `+179`, the four `0x4101`
+u16, `0x4120` trailer bytes 8-31, seven of the eleven `0x4991` fields, and `0x4602`'s three unknown
+fields insofar as the client only stores them.
