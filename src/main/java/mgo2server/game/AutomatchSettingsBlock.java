@@ -153,25 +153,121 @@ public final class AutomatchSettingsBlock {
 	private static final int AUTOMATCH_SNAKE = 3;
 
 	/**
-	 * A settings block as a fresh character's client offers it, captured from a stored
-	 * {@code 0x4310} on a character that had never edited its timers.
+	 * The block, composed field by field.
 	 *
-	 * <p><b>Placeholder for every field the observed table does not cover.</b> Three such captures
-	 * were byte-identical across the whole timer array and differed only in rotation entry 0 and two
-	 * unidentified bytes, so this is the client's default rather than one player's taste. The
-	 * rotation in it is overwritten on every build.
+	 * <p><b>This replaces a 204-byte captured hex constant</b> that was cloned and patched in four
+	 * places, so roughly 150 bytes went out as one player's client defaults with no statement of what
+	 * they were. Decoding that capture against the schemas
+	 * ({@code dev/proto/outbound/mgo2_cmd_43f1_s2c.ksy} and {@code inbound/mgo2_cmd_4310_c2s.ksy},
+	 * which describe the same struct) showed the alarming part was an illusion: <b>almost the entire
+	 * block is zero</b>. Every non-zero byte in it is either a field the schemas name, or one of the
+	 * two exceptions called out below.
 	 *
-	 * <p>Notable values it carries: max players 16 (block 66), briefing 2 (block 68), SNAKE 3
-	 * (block 189), and the full default timer table.
+	 * <p>The emitted bytes are unchanged — {@code AutomatchSettingsBlockTest} pins the output against
+	 * the original capture. What changed is that nothing is inherited without saying so.
 	 */
-	private static final byte[] DEFAULT_BLOCK = HexFormat.of().parseHex(
-		"0407000000000000000000000000000000000000000000000000000000000000"
-			+ "0000000000000000000000000000000000000000000000000000000000000000"
-			+ "0000100000000002020000000000000000000000000000000000000000000016"
-			+ "0000000000000008000000040000000400000004000000040000000400000003"
-			+ "000000040000000f000000050000001e00000005000000040000001e00000004"
-			+ "0000000a00000004000100000000000000240020000000030000000000030000"
-			+ "000000000000000000000000");
+	private static byte[] template() {
+		var block = new byte[SIZE];
+
+		// The rotation (0..47) stays zero here; build() writes it. A zero map terminates every walk,
+		// so an unwritten rotation is inert rather than wrong.
+
+		// Weapon restrictions (50..65) are zero: no weapon is barred. [CONFIRMED in 0x4310] — a
+		// bitfield, and all-zero is the permissive value rather than a placeholder.
+
+		block[MAX_PLAYERS] = (byte) MAX_PLAYERS_VALUE;
+		putU32(block, BRIEFING_TIME, BRIEFING_SECONDS);
+
+		// Level limits: base 0 with tolerance at the level cap, i.e. no restriction. The gate at
+		// 0x8BA560 admits a player when base - tolerance <= level <= base + tolerance, and these are
+		// in LEVEL units, not experience.
+		block[LEVEL_LIMIT_TOLERANCE] = (byte) LEVEL_CAP;
+
+		for (var i = 0; i < DEFAULT_TIMERS.length; i++) {
+			putU32(block, TIMERS + i * Integer.BYTES, DEFAULT_TIMERS[i]);
+		}
+
+		block[UNIQUE_BLUE] = 1;
+		block[COMMON_A] = (byte) COMMON_A_VALUE;
+		putU16(block, TEAM_KILL_KICK, TEAM_KILL_KICK_VALUE);
+		block[SNAKE] = (byte) AUTOMATCH_SNAKE;
+
+		// THE ONLY TWO BYTES WE STILL INHERIT WITHOUT UNDERSTANDING. Both are [UNKNOWN] in both
+		// schemas, and both are non-zero in every capture, so zeroing them is a change we have no
+		// evidence for. They are named and isolated here so the residue is two lines rather than
+		// spread invisibly through a hex blob.
+		putU32(block, UNKNOWN_72, UNKNOWN_72_VALUE);
+		block[UNKNOWN_179] = (byte) UNKNOWN_179_VALUE;
+
+		return block;
+	}
+
+	private static void putU16(byte[] block, int at, int value) {
+		block[at] = (byte) (value >>> 8);
+		block[at + 1] = (byte) value;
+	}
+
+	private static void putU32(byte[] block, int at, int value) {
+		block[at] = (byte) (value >>> 24);
+		block[at + 1] = (byte) (value >>> 16);
+		block[at + 2] = (byte) (value >>> 8);
+		block[at + 3] = (byte) value;
+	}
+
+	/** Block offsets the schemas name. See the two ksy files for each field's evidence tag. */
+	private static final int MAX_PLAYERS = 66;
+
+	private static final int BRIEFING_TIME = 68;
+
+	private static final int LEVEL_LIMIT_TOLERANCE = 95;
+
+	private static final int UNIQUE_BLUE = 169;
+
+	private static final int COMMON_A = 177;
+
+	private static final int TEAM_KILL_KICK = 182;
+
+	/** 16 players, the game's own maximum. */
+	private static final int MAX_PLAYERS_VALUE = 16;
+
+	/** Briefing length. The client's default, and not a value we have reason to change. */
+	private static final int BRIEFING_SECONDS = 2;
+
+	/** Level 22, the top of the table — so the limit spans every level and restricts nobody. */
+	private static final int LEVEL_CAP = 22;
+
+	/** Common-settings toggle A. Capture-proven at this offset; the bits are not all identified. */
+	private static final int COMMON_A_VALUE = 0x24;
+
+	/** Team kills tolerated before a kick. */
+	private static final int TEAM_KILL_KICK_VALUE = 3;
+
+	/**
+	 * The 17-slot timer array as the client itself defaults it, indexed by {@link #RULE_TIMERS}:
+	 * SNE 8/4, CAP 4/4, RES 4/4, TDM 3/4/15, DM 5/30, BASE 5/4, BOMB 30/4, TSNE 10/4.
+	 *
+	 * <p>{@link #AUTOMATCH_TIMERS} overrides the rules a real automatch game was observed to run
+	 * differently; the rest stay at these, which is the placeholder story and is why that map is the
+	 * one place to edit.
+	 */
+	private static final int[] DEFAULT_TIMERS = {
+		8, 4, 4, 4, 4, 4, 3, 4, 15, 5, 30, 5, 4, 30, 4, 10, 4};
+
+	/** Block offset of the first still-unexplained field. [UNKNOWN] in both schemas. */
+	private static final int UNKNOWN_72 = 72;
+
+	/**
+	 * Non-zero in every capture. Read as a u32 this is {@code 0x02000000}, i.e. a lone {@code 2} in
+	 * the first byte followed by three zeros — so it may equally be a u8 with padding. The schemas
+	 * give it as u4 and no reader has been traced, so it is emitted exactly as captured.
+	 */
+	private static final int UNKNOWN_72_VALUE = 0x02000000;
+
+	/** Block offset of the second still-unexplained field. [UNKNOWN] in both schemas. */
+	private static final int UNKNOWN_179 = 179;
+
+	/** {@code 0x20} in every capture. Sits beside the common-settings toggles but is not one. */
+	private static final int UNKNOWN_179_VALUE = 0x20;
 
 	private AutomatchSettingsBlock() {
 	}
@@ -208,7 +304,7 @@ public final class AutomatchSettingsBlock {
 				+ "rotation entry with a zero map and silently falls back to entry 0.");
 		}
 
-		var block = DEFAULT_BLOCK.clone();
+		var block = template();
 		block[CURRENT_PLAYERS] = (byte) PLAYERS_AT_CREATE;
 
 		// Wipe the captured rotation before writing ours: every loop that walks it stops at the first
