@@ -670,14 +670,13 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 		assertThat(replies).hasSize(1);
 		var payload = replies.get(0).getPayload();
 
-		// Byte-identical to what 0x4124 sends: 4 + 123x5 + 32 = 651. The trailing 32 bytes are
-		// sixteen {u8 item_id, u8 bit_index} pairs, not a terminator, and the size only balances
-		// at sixteen.
-		// A new character owns the whole catalogue, so this is the known-good 651 bytes -- and
-		// byte-identical to the 0x4124 the same character got at login, which is the property that
-		// matters: the two writers fill one table and must agree.
-		assertThat(payload.getInt(0)).isEqualTo(123);
-		assertThat(payload.readableBytes()).isEqualTo(651);
+		// Byte-identical to what 0x4124 sends -- THE property that matters, because the two writers
+		// fill one client table and whichever arrives last wins. 4 + 28x5 + 32 = 176 for the
+		// starter set (V70); it was 651 when creation granted the whole catalogue.
+		//
+		// The trailing 32 bytes are sixteen {u8 item_id, u8 bit_index} pairs, not a terminator.
+		assertThat(payload.getInt(0)).isEqualTo(28);
+		assertThat(payload.readableBytes()).isEqualTo(176);
 	}
 	/**
 	 * The last row of matrix 0 carries the player-details card's PLAY TIME and LEVEL.

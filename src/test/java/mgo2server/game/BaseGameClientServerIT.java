@@ -137,13 +137,14 @@ public abstract class BaseGameClientServerIT {
 	 * V44 that is true of gear too, and a character with no rows sends a count of zero — which is a
 	 * legitimate state, not a broken one.
 	 * <p>
-	 * DISTINCT because the catalogue holds {@code 0x86} twice.
+	 * Mirrors {@code CharacterService.create}: the starter set from {@code starter_gear} (V70), not
+	 * the whole catalogue. A fixture that granted everything would hide a narrowing bug in either
+	 * gear writer.
 	 */
 	protected static void grantStartingGear(long charaId) {
 		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
-					insert into chara_gear (chara_id, item_id)
-					select :chara, distinct_items.item_id
-					from (select distinct item_id from gear_item) distinct_items
+					insert into chara_gear (chara_id, item_id, colours)
+					select :chara, s.item_id, s.colours from starter_gear s
 					on conflict (chara_id, item_id) do nothing
 					""")
 			.bind("chara", charaId)

@@ -1277,12 +1277,18 @@ public class CharacterService {
 			// binary says which items a character should begin with, because the client never
 			// checks — it renders whatever the two gear writers agree on.
 			//
-			// DISTINCT because the catalogue holds 0x86 twice: ownership is per item, and the
-			// duplicate is a quirk of the wire order that the writer reproduces from gear_item.
+			// THE STARTER SET, from `starter_gear` (V70). This used to grant the entire catalogue in
+			// every colour, which V44 did on purpose to stay behaviour-neutral and flagged as a
+			// policy decision left unmade: "Restricting a character to a starter set is now a
+			// DELETE, not a code change."
+			//
+			// Operator policy, not protocol — nothing in the binary says what a character should
+			// begin with, and the table exists so changing it needs no rebuild. Colours come from
+			// the row because a bit indexes a PER-ITEM slot, so the same five colours are a
+			// different mask on a 21-slot camo item than on a 10-slot solid one.
 			handle.createUpdate("""
-					insert into chara_gear (chara_id, item_id)
-					select :charaId, distinct_items.item_id
-					from (select distinct item_id from gear_item) distinct_items
+					insert into chara_gear (chara_id, item_id, colours)
+					select :charaId, s.item_id, s.colours from starter_gear s
 					on conflict (chara_id, item_id) do nothing
 					""")
 				.bind("charaId", charaId)
