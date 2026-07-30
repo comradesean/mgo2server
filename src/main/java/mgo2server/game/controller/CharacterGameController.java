@@ -144,10 +144,10 @@ public class CharacterGameController implements IGameController {
 	/**
 	 * Index 1 carries {@code 0x07}, and <b>none of its three set bits is understood</b>.
 	 *
-	 * <p>Per account since V63, so they can be isolated live. A trace reported that this index has
-	 * no reader — but the same trace said index 3 bit 0 unlocked loadout items, which a live test
-	 * disproved (it gates the codec messages and leaves gear alone). A negative from a source that
-	 * got the positive wrong does not settle anything, and this is cheap to test properly.
+	 * <p>Per account since V63, so they can be isolated live. <b>Nobody has actually looked for a
+	 * reader of this byte.</b> The search that reported "no reader" looked for {@code lbz r0,487(r3)},
+	 * which is <em>index 3</em>'s offset ({@code ctx+21968 + 487}); index 1 is {@code 485}. So the
+	 * negative does not cover this byte at all — see {@code dev/docs/POST_LAUNCH.md}.
 	 */
 	private static final int TRAILER_INDEX1 = 1;
 
