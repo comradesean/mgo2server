@@ -195,19 +195,18 @@ public class LoadoutWriterTest {
 
 
 	/**
-	 * Reward unlocks fill the sixteen {@code {item, bit}} pairs; unused slots keep the 0xff filler.
+	 * Highlights fill the sixteen {@code {item, bit}} pairs; unused slots keep the 0xff filler.
 	 * <p>
 	 * [ELF] the 32 bytes after the gear records are not a terminator — they are sixteen
-	 * {@code {u8 item_id, u8 bit_index}} colour-unlock pairs, read by both the {@code 0x4124} and
-	 * {@code 0x4133} parsers into the same table. We wrote all-{@code 0xff} until V67, which is
-	 * skipped only because item 255 exceeds the parser's 128-entry bound: inert, not correct, and
-	 * it meant no character could ever be granted a colour reward.
+	 * {@code {u8 item_id, u8 bit_index}} pairs. They do <b>not</b> grant: the parser ORs one into
+	 * record{@code +16} only if that bit is already set in the mask at record{@code +12}, and
+	 * {@code +16} drives a wardrobe highlight. This test pins the encoding, not a grant.
 	 */
 	@Test
-	public void rewardUnlocksFillThePairsAndTheRestStayFiller() {
+	public void highlightsFillThePairsAndTheRestStayFiller() {
 		var items = List.of(new CharacterService.OwnedGear(0x04, 0x1FFFFFL));
-		var rewards = List.of(new CharacterService.RewardUnlock(0x0B, 3),
-			new CharacterService.RewardUnlock(0x2E, 17));
+		var rewards = List.of(new CharacterService.GearColourHighlight(0x0B, 3),
+			new CharacterService.GearColourHighlight(0x2E, 17));
 
 		var buffer = Unpooled.buffer();
 		LoadoutWriter.writeGear(buffer, items, rewards);
@@ -218,7 +217,7 @@ public class LoadoutWriterTest {
 		assertThat(buffer.getUnsignedByte(pairs + 2)).isEqualTo((short) 0x2E);
 		assertThat(buffer.getUnsignedByte(pairs + 3)).isEqualTo((short) 17);
 
-		for (var slot = 2; slot < LoadoutWriter.REWARD_SLOTS; slot++) {
+		for (var slot = 2; slot < LoadoutWriter.HIGHLIGHT_SLOTS; slot++) {
 			assertThat(buffer.getUnsignedByte(pairs + slot * 2))
 				.as("unused slot %d keeps the filler the parser skips", slot)
 				.isEqualTo((short) 0xff);
@@ -226,9 +225,9 @@ public class LoadoutWriterTest {
 		assertThat(buffer.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize(items.size()));
 	}
 
-	/** With no unlocks the payload is byte-identical to what we sent before V67. */
+	/** With no highlights the payload is byte-identical to what we sent before V67. */
 	@Test
-	public void noRewardsMeansTheOldAllFillerTail() {
+	public void noHighlightsMeansTheOldAllFillerTail() {
 		var items = List.of(new CharacterService.OwnedGear(0x04, 0x1FFFFFL));
 
 		var buffer = Unpooled.buffer();

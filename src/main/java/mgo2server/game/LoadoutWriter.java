@@ -63,11 +63,11 @@ public final class LoadoutWriter {
 	/**
 	 * The gear payload with the character's colour reward unlocks filled in.
 	 *
-	 * @param rewards up to {@link #REWARD_SLOTS} unlocks; extras are ignored rather than truncating
+	 * @param highlights up to {@link #HIGHLIGHT_SLOTS} unlocks; extras are ignored rather than truncating
 	 *     the payload, because the slot count is fixed by the wire and not by us
 	 */
 	public static void writeGear(ByteBuf buffer, List<CharacterService.OwnedGear> items,
-			List<CharacterService.RewardUnlock> rewards) {
+			List<CharacterService.GearColourHighlight> highlights) {
 		buffer.writeInt(items.size());
 
 		for (var item : items) {
@@ -79,9 +79,18 @@ public final class LoadoutWriter {
 		// 0x4133 one into the same table. Sixteen, not fifteen — the bound at 0xD3C8D4 is tested
 		// before the increment at 0xD3C8DC — and 4 + 615 + 32 = 651 only balances at sixteen.
 		//
-		// DATABASE-DRIVEN since V67 (reward_unlock). Before that every pair was 0xff, which is
-		// skipped only because item id 255 exceeds the parser's 128-entry bound — inert rather
-		// than correct, and no character could ever be granted a colour reward.
+		// THESE GRANT NOTHING. Corrected 2026-07-30: [ELF 0xD3CFBC-0xD3CFE4] the parser ORs a pair
+		// into record+16 ONLY IF that bit is already set in the colour mask at record+12, so a pair
+		// can only ever produce a subset of what the record already carried. +16 is read at
+		// 0x92740C and 0x927744 on a highlight path, not an availability one.
+		//
+		// Availability lives elsewhere and is genuinely server-controlled: item ownership is
+		// record+8 (tested at 0x927350 — an item absent from this packet is never listed in the
+		// wardrobe) and per-colour is record+12 (0x925538, 0x92772C).
+		//
+		// Database-driven since V67 so the slots are usable at all; V68 renamed the table once it
+		// was clear they highlight rather than unlock. Every pair was 0xff before that, which is
+		// skipped only because item id 255 exceeds the parser's 128-entry bound.
 		//
 		// Unused slots keep the 0xff filler, which is the part of the old behaviour that was
 		// right: it is provably ignored. A character with no rows is byte-identical to before.
@@ -89,10 +98,10 @@ public final class LoadoutWriter {
 		// Both packets must select the SAME sixteen or the client's table depends on which
 		// arrived last, which is why the query orders by unlocked_at rather than returning
 		// whatever the planner produces.
-		for (var slot = 0; slot < REWARD_SLOTS; slot++) {
-			if (slot < rewards.size()) {
-				buffer.writeByte(rewards.get(slot).itemId())
-					.writeByte(rewards.get(slot).bitIndex());
+		for (var slot = 0; slot < HIGHLIGHT_SLOTS; slot++) {
+			if (slot < highlights.size()) {
+				buffer.writeByte(highlights.get(slot).itemId())
+					.writeByte(highlights.get(slot).bitIndex());
 			} else {
 				buffer.writeByte(0xff).writeByte(0xff);
 			}
@@ -100,7 +109,7 @@ public final class LoadoutWriter {
 	}
 
 	/** Sixteen {@code {item, bit}} pairs — a hard wire limit, not a policy choice. */
-	public static final int REWARD_SLOTS = GEAR_TERMINATOR_LENGTH / 2;
+	public static final int HIGHLIGHT_SLOTS = GEAR_TERMINATOR_LENGTH / 2;
 
 	/**
 	 * The skill table, from what the character actually owns.
