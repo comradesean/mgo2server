@@ -1122,11 +1122,16 @@ loop bound at `0xD3C8D4` is `cmpwi r31,15`, but it is evaluated **before** the `
 so the loop runs **16 times**. Corroborated arithmetically by `0x4124`, whose known-good 651 bytes
 = 4 + 615 + 32 and only balances with 16 pairs in the same trailing block.
 
-**Live consequence:** `PersonalInfoController.commitOutfit` writes `COMMIT_TRAILER_PAIRS = 15`, so
-we send **34 bytes where the parser reads 36**. The last pair is read out of stale receive-buffer
-contents (the primitives bound-check the 1023-byte buffer, never the payload), which means the
-16th equipped bit is whatever was left over — silently, and differently each time. Not yet fixed
-in code.
+~~**Live consequence:** `PersonalInfoController.commitOutfit` writes `COMMIT_TRAILER_PAIRS = 15`~~
+— **fixed, and the constant no longer exists.** Both `0x4124` and `0x4133` now go through
+`LoadoutWriter.writeGear`, which writes 32 bytes / 16 pairs, so the short-by-one-pair bug (34 bytes
+where the parser reads 36, the 16th pair coming from stale receive-buffer contents) is gone.
+
+**And the pairs grant nothing anyway** [ELF `0xD3CFBC`-`0xD3CFE4`]: a pair is ORed into record
+`+16` **only if that bit is already set** in the colour mask at `+12`, so it can only produce a
+subset of what the record already carried. `+16` feeds a wardrobe highlight (`0x92740C`,
+`0x927744`), not availability. The two real gates are record `+8` for item ownership (`0x927350`)
+and record `+12` for colour (`0x925538`, `0x92772C`).
 
 We send the empty readback (count 0, zero pairs); what the
 original filled the entries with — presumably the skill/gear loadout — awaits a capture, and note

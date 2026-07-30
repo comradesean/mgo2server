@@ -227,6 +227,75 @@ reader.
 
 ---
 
+# Inventory: what we send that does nothing
+
+**Every value below is emitted by this server and read by nothing on this client.** Kept in one
+place because the pattern repeats: each arrived as an inherited constant, each looked like an
+unlock, and each turned out to be inert — sometimes provably so, sometimes only by luck.
+
+Two reasons this list matters rather than being trivia. First, an inert value is a *latent* one: it
+does nothing **on this build**, and several of these sit exactly where a later version would put
+something. Second, a value that looks like an unlock will eventually be trusted as one — that is
+how a paid item ended up granted to everyone.
+
+| what | where | why it does nothing | status |
+| --- | --- | --- | --- |
+| **Trailer byte 1** (`0x07`) | `0x3049` trailer index 1 | displacement 485 is read **nowhere** in the binary | **stopped sending**, V66 |
+| **Trailer byte 3, bit 1** | `0x3049` trailer index 3 | the two readers mask to bit 0 — `rlwinm r27,r0,4,27,27` and `clrlwi r0,r0,31` — so it is **discarded in the opcode** | not sent |
+| **Trailer bytes 0, 2, 4..31** | `0x3049` trailer | no ctx-derived reader at displacements 484, 486, 488..515 | sent as zero |
+| **`FACE_PAINT_UNLOCKED`** (`0xffffffff`) | `0x4131` wire `0xb6` | the parser stops at 182 bytes and never reaches it; face paint is a **single byte**, so a per-colour mask had no axis | **removed**, reply now 182 bytes |
+| **The sixteen `{item, bit}` pairs** | `0x4124` / `0x4133` tail, 32 bytes | the parser ORs a pair into record `+16` **only if the bit is already set** in the mask at `+12`, so it can only ever produce a subset of what we already sent — and `+16` drives a wardrobe *highlight*, not availability | filler `0xff`, which the parser skips (item 255 > its 128-entry bound) |
+| **`chara_gear.colours` bits 24-31** | `0x4124` / `0x4133` record `+12` | the highest colour index in the whole catalogue is **23**, used by one item; a set bit with no catalogue record is skipped **before** the mask is consulted (`0x9276F0`, `0x9254FC`) | still sent — see below |
+| **55 of the 122 gear ids** | `0x4124` / `0x4133` records | 29 exceed the parser's 128-entry bound (`cmplwi r9,128; bgt` at `0xD3CF00`); 26 fall in gaps no category window covers | still sent — see below |
+| **Gear ids 28, 68, 86, 102** | `0x4124` / `0x4133` records | the "None" entries — unconditionally owned by a hardcoded id comparison at `0x92735C`-`0x927384`, and absent from the colour catalogue, so no mask bit can ever be read for them | still sent, harmlessly |
+| **`0x600000` per-skill experience** | `0x4122` / `0x4131` | `0x6000 << 8`, i.e. 256x the client's legal maximum of 24576; survived because `>> 13` clamps to 3 | **fixed** — both now send stored values |
+
+## The two that are still sent, and why they are on the to-do list
+
+**`chara_gear.colours` = `0xFFFFFFFF`** on all 732 live rows. The top 8 bits cannot mean anything,
+and for the ten single-colour items 31 of the 32 cannot. Every item's colour set is a contiguous
+`0..n-1` run, so the legal value is exactly `(1 << n) - 1` and there are only seven distinct masks
+across the 67 real items. Narrowing it is generated work, not hand-written — an agent is dumping
+the per-item counts from the catalogue at `0x10506BC`.
+
+**The 55 phantom gear ids.** Inert today, but not harmless in one specific way: **every character's
+`chara_gear` currently asserts ownership of 55 items that do not exist**, so any future locking
+policy written against the inherited list would be locking imaginary items. The 26 in-range ones
+are the interesting group — they land in the trailing headroom of *every* category:
+
+| category | this build enumerates | we also send |
+| --- | --- | --- |
+| upper body | 11-13 | 14-19 |
+| head | 28-38 | 40-44 |
+| hands | 46-51 | 52-53 |
+| feet | 57-62 | 63-64 |
+| chest | 68-80 | 81-83 |
+| waist | 86-97 | 98-100 |
+| accessories | 102-116 | 117-119 |
+
+Adding a post-launch item means bumping a `li r25,N` count immediate and taking the next free id, so
+**this is what expansion-era gear would look like from here** — the same shape as the
+weapon-restriction table already recorded in `OBSERVED.md`, where our inherited list is a strict
+superset of the shipped roster. That is inference from the pattern, not proof; what is proven is
+that this build never enumerates them.
+
+# What the unlocks mean for v1
+
+For contrast, the complete list of things we send that **do** control content on this build:
+
+| unlock | carrier | gate |
+| --- | --- | --- |
+| **character slots** | `0x3049` header | a per-account count |
+| **MGO Codec Pack** (32 preset messages) | `0x3049` trailer index 3, **bit 0** | `0x9B9DF0` refuses any phrase whose gate exceeds `(byte & 1) << 4`; 32 catalogue rows gate on 16. **Paid day-one item** — granted per account, default off |
+| **gear item ownership** | `0x4124` / `0x4133` record `+8` | `0x927350` — an item absent from the packet is **never listed** in the wardrobe. Five "None" ids are exempt |
+| **gear colour availability** | `0x4124` / `0x4133` record `+12`, bits 0..23 | `0x925538` / `0x92772C` — `mask & (1 << colourIndex)` per swatch |
+| **per-skill experience** | `0x4122` / `0x4131`, and `0x43a4` inbound | not an unlock as such, but the same shape: stored values, legal maximum 24576, and the client **zeroes** any record above it |
+
+Four items, and only the first two are entitlements in the shop sense. Everything else on the wire
+that looked like an unlock is in the table above it.
+
+---
+
 ## Mailbox tabs 2 and 3
 
 Not post-launch content as far as anyone knows, but unresolved and adjacent, so noted here to keep
