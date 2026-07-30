@@ -124,16 +124,31 @@ addresses these after the parser at `0xD3732C` copies all 32 bytes in.
 
 | index | we send | status |
 | --- | --- | --- |
-| 0 | `0x00` | never set, never searched |
-| **1** | `0x07` | three inherited bits, **none understood**; readership open |
-| 2 | `0x00` | never set, never searched |
-| **3** | `0x03` | bit 0 = day-one paid Codec Pack (proven); bit 1 no reader |
-| 4..31 | `0x00` | never set, never searched |
+| 0 | `0x00` | no ctx-derived reader |
+| **1** | `0x00` *(was `0x07`)* | **proven dead** — displacement 485 read nowhere; stopped sending it, V66 |
+| 2 | `0x00` | no ctx-derived reader |
+| **3** | `0x01` for a granted account, else `0x00` | **bit 0 = the day-one paid Codec Pack.** Bit 1 is discarded by the instruction encoding |
+| 4..31 | `0x00` | no ctx-derived reader |
 
-"Never searched" is meant literally for everything except index 3: the one search that reported the
-other bytes inert tested displacement **487**, which is index 3's own offset. The columns are named
-`entitlements_byte1` / `entitlements_byte3` (V65) after the byte each carries, because the earlier
-`entitlements` / `entitlements_index1` pair read as a value and a variant of it.
+**Settled 2026-07-30.** Displacements 484..515 are read at exactly **two addresses in the whole
+binary** — `0x9B9E30` and `0x9BADA4` — both reading index 3, and both masking to bit 0 via
+`rlwinm r27,r0,4,27,27` and `clrlwi r0,r0,31`. So **bit 1 is not merely unread, it is discarded in
+the opcode**, and 31 of the 32 bytes are inert.
+
+That negative is worth trusting because of how it was reached, unlike the earlier one it replaces
+(which tested displacement 487 — index 3's own offset — and then generalised). Four searches, each
+naming its displacement: every D-form access at 485 for any register and width; a raw
+instruction-word scan of the text section; the profile-relative displacement 22453 and its
+`addis`-adjusted band; and `addi rX,rY,485`, i.e. any pointer to the byte ever being formed. Then a
+chain-of-custody check that also covers indexed access: the ctx pointer has **16 origination sites**
+binary-wide, and the complete set of offsets any of them touches is **0, 1, 2, 4+60·i, and 487**.
+
+Columns are named `entitlements_byte1` / `entitlements_byte3` (V65) after the byte each carries; the
+earlier `entitlements` / `entitlements_index1` pair read as a value and a variant of it.
+
+> **Caveat for any future trailer change.** The parser's 480-byte memset covers `ctx+4..483` only,
+> so the trailer is **never cleared** before a `0x3049`. Harmless while we always write all 32
+> bytes, but a short-trailer variant would inherit stale bytes rather than zeros.
 
 ## The two bits that are paid content — index 3, bits 0 and 1
 
@@ -172,22 +187,15 @@ update account set entitlements_byte3 = 1 where id = <account>;   -- grant the d
 update account set entitlements_byte3 = 0 where id = <account>;   -- withhold it
 ```
 
-### Still unexamined: index 1's three bits
+### Index 1: settled, and no longer sent
 
-We send `0x07` at trailer index 1 — three more set bits from the same inherited constant, and
-**none has been tested**. The claim that index 1 "has no reader" does not hold up: the search behind
-it looked for `lbz r0,487(r3)`, which is **index 3's** offset (`ctx+21968 + 487 = ctx+22455`). Index
-1 is `485`. So nobody has actually looked.
+We sent `0x07` here — three more set bits from the same inherited constant — until the search gap
+was closed properly on 2026-07-30. **Displacement 485 is read nowhere in the binary**, so the bits
+were dead, and V66 stops sending them and defaults the column to 0.
 
-It is per-account (`account.entitlements_byte1`, V63), so the test is the same shape:
-
-```sql
-update account set entitlements_byte1 = 0 where id = <account>;   -- then reconnect
-```
-
-Left at `7` for now, because zeroing it is an experiment rather than a correction — but on the same
-reasoning as the two bits above, an inherited constant nobody can explain should not stay set
-forever.
+The column stays rather than being dropped, so a later build can be tested against it without a
+migration. Sending `0x07` again is a one-line `UPDATE` if a future version ever gives that byte a
+reader.
 
 ---
 
