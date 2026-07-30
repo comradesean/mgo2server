@@ -276,9 +276,12 @@ from the disc's — *"Somebody, come quick!"* is *"Somebody!"*, *"Goal!"* is *"S
 phrase has **19 voiced variants** and the page quoted a different one. The two `Laughter` rows carry
 no text at all, which is what a pure voice cue looks like.
 
-**Gear has no gate at all**, settled at the same time: the predicate has 17 call sites binary-wide,
-none in loadout code, and the trailer byte has no third reader. The original "loadout items" label
-was a misread of the table's contents, not a mislabelled gate.
+~~**Gear has no gate at all**~~ — **withdrawn 2026-07-30, it overreached.** What the experiment
+established stands: clearing the codec bit does not affect gear, and `0x9B9DF0` has no loadout call
+site. What does *not* follow is "therefore nothing gates gear". **Gear is gated** — by the `0x4124`
+table itself at `0x927350`, with no predicate function involved, which is exactly why looking for
+one found nothing. Varying the codec bit could not have tested gear either way, so it was never an
+elimination. See `CLAUDE.md`, "Before crossing something off".
 
 **Granting it is therefore a live operator-policy decision**, and the only one in this subsystem:
 `account.entitlements_byte3` bit 0, per account. Every account was set to `0` on 2026-07-29, with the pack
