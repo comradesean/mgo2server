@@ -6,8 +6,21 @@ doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
 
   **The clan roster.** Middle packet of the 0x4b53 / 0x4b54 / 0x4b55 triple answering 0x4b52.
-  [CONFIRMED LIVE 2026-07-27] for the head of the record; the trailing game-location fields are
-  still [UNKNOWN] and go out as zeros.
+  [CONFIRMED LIVE 2026-07-27] for the head of the record.
+
+  **The trailing fields are two `{id, name}` location pairs, and they are LIVE** (traced
+  2026-07-30): `lobby_id` + `lobby_name` at +0x1c/+0x1e, and `game_id` + `game_name` at
+  +0x34/+0x38. Each pair renders one roster column, and each shows the literal `"----"`
+  (`0xE1B6F8`) when its id is zero. We currently send all four as zeros, so both columns read
+  `----`. `game_id` is additionally what enables the **"Move to Game"** menu entry (disc string
+  996, group `"lobby"`).
+
+  **A band error to know about before trusting anything on this page.** The 2026-07-30 first pass
+  scanned `0xA70000`-`0xAEFFFF` for readers and called it the clan UI band. **The roster row
+  painters are just past it** — `0xAF4B60`, `0xAF4D90`, `0xAF5A08`, `0xAF5ED0`, plus the clan-list
+  decorator `0xAF5598` — so three fields were recorded as "no reader" when they are read and
+  rendered. Every remaining negative here has been re-run over `0xAF0000`-`0xB00000`; if you add
+  another, use that band.
 
   **Members and applicants are ONE batch, flagged per row.** Two live experiments settled this, and
   both are worth keeping because each one looks like the obvious answer:
@@ -133,25 +146,60 @@ types:
           taint-scanned across their enclosing functions. Beyond that the selected row's fields are
           read in the jump path at `0xAC7A80`-`0xAC8900` and `0xACCD00`-`0xACCE00`, which were scanned
           by displacement.
+
+          **[RE-VERIFIED 2026-07-30, and the band was extended.]** The original scan stopped at
+          `0xAEFFFF` and therefore missed the row painters — which is how `unknown_30`,
+          `unknown_1e` and `unknown_38` got false negatives on this page. Re-run over
+          `0xAF0000`-`0xB00000`, every load at displacement 24 in that range is off an *element
+          descriptor* (`r31`/`r29`/`r3`), never off a row pointer: 0xAF3B14, 0xAF3B28, 0xAF3B4C
+          (in 0xAF39F0), 0xAF3EC4, 0xAF4170, 0xAF4390, 0xAF4588, 0xAF4E60, 0xAF4F38 (0xAF4D90),
+          0xAF5668, 0xAF5914, 0xAF5944, 0xAF5B00, 0xAF5B40 (0xAF5A08), 0xAF61E4, 0xAF64E4,
+          0xAF66B4. In `0xAF5A08` the row pointer is `r9`/`r26`/`r27` and is only ever loaded at
+          +4, +28, +30, +48; in `0xAF4B60`/`0xAF5ED0` only at +52 and +56. **So this negative
+          survives the correction, and now on a band that contains the code that renders the
+          row.**
       - id: unknown_30
         type: u4
         doc: |
-          [UNKNOWN] struct+0x30 — read here, out of struct order (parser `0xD57F2C`, staged at
-          `r1+160` then memcpy'd with the rest).
+          struct+0x30 — read here, out of struct order (parser `0xD57F2C`, staged at `r1+160` then
+          memcpy'd with the rest).
 
-          **[ELF — NEGATIVE 2026-07-30] No reader found.** As with `unknown_18` this rests on a
-          displacement sweep rather than a closed dataflow: the four `lwz rX,48(rY)` in the clan UI
-          band (`0xACA068`, `0xACA160`, `0xACBD08`, `0xACBD0C`) are all scroll-list bookkeeping on
-          UI objects, not roster rows.
+          **[CORRECTION 2026-07-30] The "no reader found" recorded here earlier is WRONG. This
+          field is read and rendered.** The scan that produced the negative stopped at `0xAEFFFF`,
+          and the roster row painters live at `0xAF4B60`, `0xAF4D90`, `0xAF5A08` and `0xAF5ED0` —
+          just past the end of the band. Anything in this file that rests on "no load at
+          displacement N anywhere in 0xA70000-0xAEFFFF" has the same hole; two more of them were
+          wrong for exactly this reason (`unknown_1e`, now `lobby_name`, and `unknown_38`, now
+          `game_name`).
 
-          Scan that establishes it: rows live at `list+8+n*76` where `list =
-          session[+0x10000+6404] + 0x20000 + 16360`. Only four pieces of code reach them — the accessor
-          `0xD5A0A8` (`GetRosterRow(session, i)`, `mulli r9,r4,76` at `0xD5A0E0`, three `bl` sites:
-          `0x8EC288`, `0x8EC74C`, `0x8ECA88`) and the three stride-76 walkers `0xACB7F0`, `0xACFC7C`,
-          `0xAD11F4`, which are the only `addi rX,rY,76` in the whole clan UI band. Both sets were
-          taint-scanned across their enclosing functions. Beyond that the selected row's fields are
-          read in the jump path at `0xAC7A80`-`0xAC8900` and `0xACCD00`-`0xACCE00`, which were scanned
-          by displacement.
+          What it actually does. `0xAF5A08(elementDescriptor, container, listNode)` is the
+          per-row painter: `lwz r0,0(r5)` takes the row pointer out of the node and parks it at
+          `descriptor+0` (0xAF5A38-0xAF5A50). Eight sites call it, all in the roster screens
+          (0xACACC4, 0xACAFA4, 0xACB2E4, 0xACB5E4, 0xACB934, 0xACBE04, 0xACDCFC, 0xACDF84); the
+          0xACBE04 one is inside the function that walks this very list with `addi r3,r3,76` at
+          0xACB7F0 after `bl 0xD54458`, so the pointer's provenance is closed.
+
+          Inside, at 0xAF5B90 and 0xAF5DA0: `lwz r9,0(r31)` then **`lwz r3,48(r9)`**, `extsw`,
+          `bl 0xCFB8C8` — an integer-to-string helper — and the result becomes the text of the
+          element named by `descriptor+0x20` (or `+0x24`; there are two column slots and the same
+          value feeds both).
+
+          **It is gated by 0x4101 feature bit 2.** `bl 0x2810E0` then `bl 0xD382F8` with `li r4,2`
+          at 0xAF5AE0-0xAF5AE8 and again at 0xAF5CF0-0xAF5CF8 — `featureBit(ctx, 2)`, the same
+          six-bit byte at `0x4101[0x12A]` that gates Team Sneaking on bit 0 (GATES.md §1). Bit
+          clear takes 0xAF5E18 / 0xAF5C58, which hash the literal `"lobby"` (`0xD25D0`) and call
+          `GetString(hash, 3)` instead. Disc set `[2f0293]`, group `0xF914BF` = `"lobby"`, string
+          id 3, is **a single space**. So with the zero feature byte we send today, this column is
+          blank and the number is never displayed — which is why no capture has ever moved with
+          it, and why "sent as zero, nothing on screen changed" was never going to settle anything.
+
+          **The identity of the number is still [UNKNOWN]** — the binary says only "an integer,
+          rendered as decimal, in a roster column that release-day builds leave blank". Naming the
+          column needs the element id in `descriptor+0x20`, which is built by a screen-side
+          descriptor table this trace did not reach.
+
+          Release-day note: this is a feature-flag-gated column, so per CLAUDE.md it is content we
+          are not serving. Do not open bit 2 to find out what it says.
       - id: lobby_id
         type: u2
         doc: |
@@ -176,68 +224,87 @@ types:
 
           **A zero here is not neutral** — it will be looked up like any other id. Leave it 0 only
           while `location_kind` is also 0, which is what actually disables the jump.
-      - id: unknown_1e
+      - id: lobby_name
         size: 16
         type: str
         encoding: ASCII
         doc: |
-          [UNKNOWN] struct+0x1e, 16 bytes fixed. Sits immediately after `lobby_id`, which is the
-          only reason anyone guessed "lobby name"; that guess is still unsupported.
+          [ELF — NAMED 2026-07-30] struct+0x1e, 16 bytes fixed. **The display name of the lobby
+          `lobby_id` points at**, shown in the roster's lobby column.
 
-          **[ELF — PRECISE NEGATIVE 2026-07-30] No reader, and this displacement is distinctive
-          enough for the negative to be strong.** There is **no** `lwz/lbz/lhz/ld/addi rX,30(rY)`
-          anywhere in `0xA70000`-`0xAEFFFF` other than eleven `lbz r8,30(r9)` in the
-          `0xA8B`-`0xA9B` band and four more in `0xAEF`, none of which is on a roster row. Nothing
-          ever takes the address of `struct+0x1e`.
+          **[CORRECTION] The "PRECISE NEGATIVE — no reader" written here earlier is WRONG**, and
+          so is the supporting claim that `STRING_LOBBY`/`STRING_GAME`/`STRING_HOST` are only ever
+          blanked. Both came from a sweep bounded at `0xAEFFFF`; the roster row painters are at
+          `0xAF4B60`, `0xAF4D90`, `0xAF5A08`, `0xAF5ED0`, immediately past it. Treat every other
+          "nothing in 0xA70000-0xAEFFFF" claim in this file with the same suspicion.
 
-          Scan that establishes it: rows live at `list+8+n*76` where `list =
-          session[+0x10000+6404] + 0x20000 + 16360`. Only four pieces of code reach them — the accessor
-          `0xD5A0A8` (`GetRosterRow(session, i)`, `mulli r9,r4,76` at `0xD5A0E0`, three `bl` sites:
-          `0x8EC288`, `0x8EC74C`, `0x8ECA88`) and the three stride-76 walkers `0xACB7F0`, `0xACFC7C`,
-          `0xAD11F4`, which are the only `addi rX,rY,76` in the whole clan UI band. Both sets were
-          taint-scanned across their enclosing functions. Beyond that the selected row's fields are
-          read in the jump path at `0xAC7A80`-`0xAC8900` and `0xACCD00`-`0xACCE00`, which were scanned
-          by displacement.
+          The reader, in the per-row painter `0xAF5A08` (provenance of its row pointer is written
+          out under `unknown_30`):
 
-          Supporting negative on the presentation side: the clan screens do declare elements named
-          `STRING_LOBBY`, `STRING_GAME` and `STRING_HOST` (hashed at `0xAAB858`, `0xAAB868`,
-          `0xAAB878`), but each of those three names is referenced **exactly once** in the whole
-          image, inside the routine that blanks them. Nothing ever writes text into them.
-      - id: unknown_34
+          * 0xAF5B0C-0xAF5B1C — `lwz r11,0(r26)` (row), `lhz r0,28(r9)`, `cmpwi 0`. **`lobby_id`
+            is the gate**: zero branches to 0xAF5E38, which sets the column's text to the literal
+            `"----"` (`0xE1B6F8`, loaded at 0xAF5E58).
+          * nonzero falls into 0xAF5B20: `addi r4,r11,30` — the address of **this** field —
+            `li r5,34`, `bl 0xAF70F0` (bounded copy into `r1+112`), then `0x244340` /`0x2452A0`
+            /`0x246EC0` set the text of the element named by `descriptor+0x18`.
+          * The identical pair repeats at 0xAF5BF4-0xAF5C38 and 0xAF5DB8-0xAF5E10 for the second
+            column slot, `descriptor+0x1c`.
+
+          The copy length is **34**, not 16 — `0xAF70F0` is bounded, and the field's 16 wire bytes
+          plus the client-side NUL at struct+0x2e terminate it well inside that, so the 34 is a
+          buffer size and not evidence of a wider field. **Do not widen the field on the strength
+          of it.**
+
+          Serve a NUL-terminated name here whenever `lobby_id` is non-zero, and leave it empty when
+          `lobby_id` is zero — the client substitutes `"----"` itself and never looks at these
+          bytes.
+      - id: game_id
         type: u4
         doc: |
-          [ELF 2026-07-30] struct+0x34. **It has readers, and it is a gate**, but the identity of
-          the value is still [UNKNOWN].
+          [ELF — NAMED 2026-07-30] struct+0x34. **The game the member is currently in** — the
+          second of the row's two `{id, name}` location pairs, `lobby_id`/`lobby_name` being the
+          first.
 
-          * `0xAC89B0` `lwz r0,52(r3)` then `cmpwi cr7,r0,0; beq 0xAC8878` — **zero here takes the
-            "cannot jump" branch**, so this is the second condition (after `location_kind`) that
-            decides whether the roster offers to follow a member.
-          * `0xAC7AF4` `lwz r3,52(r9)` -> `bl 0x8B8B50`, which is called from only three places in
-            the image (`0x896C9C`, `0x936438`, and here). What `0x8B8B50` does with it is not
-            traced, so calling this a "game id" would be inference from position, not evidence.
+          Three independent readers, and the third is what names it:
 
-          What would settle it: naming `0x8B8B50`, or a live session with a member actually in a
-          game.
-      - id: unknown_38
+          * `0xAC89B0` `lwz r0,52(r3)` then `cmpwi cr7,r0,0; beq 0xAC8878` — zero takes the
+            "cannot jump" branch. The non-zero arm at 0xAC89BC-0xAC89E8 calls `0xD4908C(session)`,
+            requires 0, and then does `GetString(hash, 996)`. Disc set `[2f0293]`, group
+            `0xF914BF` (`"lobby"`), **string 996 = "Move to Game"** — the menu entry this field
+            enables. That is the tier-1 anchor; ids 992-995 either side are the Friend/Block List
+            entries, which is the sanity check that the ordinal is not off by one.
+          * `0xAC7AF4` `lwz r3,52(r9)` -> `bl 0x8B8B50` — the screen that a "move to game" opens.
+          * `0xAF4C3C` and `0xAF5F88` `lwz r0,52(r9)` in the two detail painters, where it gates
+            `game_name` exactly the way `lobby_id` gates `lobby_name`.
+
+          **A zero here is not neutral**, same as `lobby_id`: it is the switch that removes the
+          "Move to Game" option. Leave it zero unless the member really is in a game.
+      - id: game_name
         size: 16
         type: str
         encoding: ASCII
         doc: |
-          [UNKNOWN] struct+0x38, 16 bytes fixed.
+          [ELF — NAMED 2026-07-30] struct+0x38, 16 bytes fixed. **The display name of the game
+          `game_id` points at**, shown in the roster's game column.
 
-          **[ELF — PRECISE NEGATIVE 2026-07-30] No reader.** There is **no** load or `addi` at
-          displacement 56 anywhere in `0xA70000`-`0xAEFFFF`, and nothing takes the address of
-          `struct+0x38`. Same scan as `unknown_1e`, and the same `STRING_HOST`-is-only-ever-cleared
-          observation applies.
+          **[CORRECTION] The "PRECISE NEGATIVE — no reader" written here earlier is WRONG**, for
+          the same reason as `lobby_name`: the sweep stopped at `0xAEFFFF` and the readers are at
+          `0xAF4C28` and `0xAF5F74`, in the two detail painters `0xAF4B60` (called from 0xACAD9C)
+          and `0xAF5ED0` (called from 0xACBEBC, 0xACD368, 0xACDDB4), both roster screens.
 
-          Scan that establishes it: rows live at `list+8+n*76` where `list =
-          session[+0x10000+6404] + 0x20000 + 16360`. Only four pieces of code reach them — the accessor
-          `0xD5A0A8` (`GetRosterRow(session, i)`, `mulli r9,r4,76` at `0xD5A0E0`, three `bl` sites:
-          `0x8EC288`, `0x8EC74C`, `0x8ECA88`) and the three stride-76 walkers `0xACB7F0`, `0xACFC7C`,
-          `0xAD11F4`, which are the only `addi rX,rY,76` in the whole clan UI band. Both sets were
-          taint-scanned across their enclosing functions. Beyond that the selected row's fields are
-          read in the jump path at `0xAC7A80`-`0xAC8900` and `0xACCD00`-`0xACCE00`, which were scanned
-          by displacement.
+          Both are the same four instructions, and they are byte-for-byte the shape `lobby_id` /
+          `lobby_name` use one column over:
+
+              lwz  r9,0(r27)      ; the row pointer
+              addi r11,r9,56      ; &struct+0x38  <- this field
+              li   r5,34          ; bounded copy length
+              lwz  r0,52(r9)      ; game_id
+              cmpwi cr7,r0,0
+              bne  <copy the name and set the element's text>
+              ...  <else set the element's text to the literal "----" at 0xE1B6F8>
+
+          As with `lobby_name` the 34 is the copy bound in `0xAF70F0`, not a field width; the field
+          is 16 wire bytes with the client's NUL at struct+0x48. **Do not widen it.**
       - id: location_kind
         type: u1
         doc: |

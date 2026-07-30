@@ -85,8 +85,27 @@ seq:
   - id: unknown_0005
     type: u1
     doc: |
-      [UNKNOWN] Position and width exact (0xD5C86C). The sender's second u8 parameter, passed
-      through with no validation and untouched by the jump table, so nothing in the sender
-      narrows it. The list renders correctly while the server ignores this byte entirely,
-      which is evidence that it is not load-bearing for the list contents and no evidence at
-      all about what it means. A sort order or a filter selector would both look like this.
+      [UNKNOWN] meaning. Position and width exact (0xD5C86C). The sender's second u8 parameter,
+      passed through with no validation and untouched by the jump table, so nothing *in the
+      sender* narrows it. The list renders correctly while the server ignores this byte entirely,
+      which is evidence that it is not load-bearing for the list contents and no evidence at all
+      about what it means. A sort order or a filter selector would both look like this.
+
+      **[ELF 2026-07-30] The callers narrow it, and the answer is the constant 1.** `0xD58164` has
+      two `bl` sites:
+
+      * **0xA86878**, inside `0xA86760(screen, kind, arg2)` — `mr r28,r4` / `mr r24,r5` at
+        0xA86784/0xA867A8, then `extsb r4,r28` / `extsb r5,r24` at 0xA86868-0xA8686C. Its two
+        callers are the clan-list scroll handlers **0xAC1C58** and **0xAC2B50**, and both do
+        `li r5,1` immediately before the call (0xAC1C54, 0xAC2B4C). The `kind` beside it is chosen
+        by a switch on `[obj+4]` — 5 -> kind 2, 6 -> kind 1, 1 -> kind 0 (via 0xAC20D0 / 0xAC2E44),
+        default 2 — and **all three arms fall into the same `li r5,1`**. So on the paging path the
+        byte is a hardcoded 1, not a selector the screen varies.
+      * **0xA7E030**, in the generic clan request dispatcher `0xA7DC48`, where the byte is that
+        function's *fifth* argument (`mr r24,r7` at 0xA7DCA4, `extsb r5,r24` at 0xA7E028) and
+        arrives from a request descriptor. `0xA7DC48` has **no `bl` site in the image** and its OPD
+        descriptor at 0x10202D8 is referenced by no data word either, so it is reached by indexing
+        an OPD table — which is where this trace stops.
+
+      Recorded as a value, not a meaning: 1 is what the two concrete senders emit. A server should
+      keep ignoring it.
