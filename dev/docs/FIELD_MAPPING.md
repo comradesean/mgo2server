@@ -8,8 +8,9 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**42 packets, 151 unknown fields**, as of 2026-07-30 (batch 2). Was 44 / 178 at batch 1;
-`0x4302` and `0x4129` are the first two packets to reach zero and have left the list. Regenerate with the script in this file's
+**40 packets, 143 unknown fields**, as of 2026-07-30 (batch 2a-redo). Was 44 / 178 at batch 1;
+`0x4302`, `0x4129`, `0x4b12` and `0x4b70` have reached zero (their rows stay in the table, marked
+**0**, so the count stays reproducible). Regenerate with the script in this file's
 history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
 
 ## Method, and the rules that keep it honest
@@ -36,20 +37,20 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | --- | --- | --- | --- | --- | --- |
 | `0x4107` | s2c | 76 | **35** | stats | batch 1 done — 2 resolved (slots 33/34 = Team Sneaking), remaining 35 have **no reader in the image** |
 | `0x4313` | s2c | 52 | **12** | game | batch 2b done — 5 named (0x098 password_enabled, 0x099 dedicated, +176/+179 the flags word's two unread bytes, +184 host_ping); remaining 12 all carry precise negatives |
-| `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** (agent lost to quota) — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`; docs upgraded throughout |
+| `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** (agent lost to quota) — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`; docs upgraded throughout. Not revisited by 2a-redo |
 | `0x4b81` | s2c | 18 | **10** | clan | batch 2a **partial** — no renames; all 10 given precise negatives and tier-1 provenance |
 | `0x4221` | s2c | 17 | **9** | social | open |
 | `0x4310` | c2s | 31 | **7** | game | batch 2b done — 0x0f7 = level_limit_tolerance; `common_c` renamed `common_flags_lsb`; the four echo-only negatives re-established independently |
 | `0x4120` | s2c | 27 | **2** | connect | batch 2c done — 5 named (`dead_settings_05`, `entry_id_0..3`); byte 0 bit 0 proven **load-bearing** |
 | `0x4305` | s2c | 33 | **7** | game | batch 2b done — count unchanged, but all 7 now carry tier-1 provenance; 4 stale tier-4 labels corrected (stance, tolerance, max_players, rule_timers) |
-| `0x4b54` | s2c | 11 | **5** | clan | batch 2a **partial, file was repaired** — 2 named: `lobby_id`, `location_kind`. Agent was killed mid-write and left 16 dedented doc lines; repaired 2026-07-30. **Re-verify before trusting the remaining 5.** |
+| `0x4b54` | s2c | 11 | **2** | clan | batch 2a-redo done — 3 more named (`lobby_name`, `game_id`, `game_name`) and **three false negatives corrected**; `unknown_30` proven live and feature-bit-2 gated; `unknown_18`'s negative re-run on the corrected band |
 | `0x4991` | s2c | 14 | **6** | lobby | open |
 | `0x4101` | s2c | 13 | **1** | connect | batch 2c done — 4 named: `beginner_flag`, `feature_flags`, `grade_points`, `dead_13100` |
 | `0x4582` | s2c | 8 | **5** | social | open |
 | `0x4602` | s2c | 8 | **5** | social | open |
 | `0x4302` | s2c | 21 | **0** | game | batch 2b done — **all four named**: lobby_subtype, round_flags, selector_flags, selector_tiebreak |
-| `0x4b12` | s2c | 10 | **4** | clan | **not started** — batch 2a died first |
-| `0x4b75` | s2c | 7 | **4** | clan | **not started** — batch 2a died first |
+| `0x4b12` | s2c | 10 | **0** | clan | batch 2a-redo done — **all four named**: `row_display_flag`, `discarded_29`, `discarded_2a`, `dead_2b`; two are provable parser-level discards |
+| `0x4b75` | s2c | 7 | **4** | clan | batch 2a-redo done — count unchanged, but the consumer screen (0xA8A080) is found: two of the four are displayed integers, one is a precise negative, and `unknown_00` exposes a client width bug |
 | `0x4129` | s2c | 18 | **0** | connect | batch 2c done — **all three named**; `play_time_seconds` drives the MGS4 single-player unlock |
 | `0x4105` | s2c | 21 | **2** | stats | batch 1 done — cols 13/15 have **no reader in the image**; both docs now carry the scan that establishes it |
 | `0x4122` | s2c | 17 | **2** | connect | batch 2c done — no new tier-1 name available; both negatives independently re-run |
@@ -68,9 +69,9 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x4440` | c2s | 1 | **1** | other | open |
 | `0x4700` | c2s | 4 | **1** | other | open |
 | `0x4800` | c2s | 6 | **1** | other | open |
-| `0x4b10` | c2s | 3 | **1** | other | open |
-| `0x4b46` | c2s | 1 | **1** | other | open |
-| `0x4b70` | c2s | 1 | **1** | other | open |
+| `0x4b10` | c2s | 3 | **1** | other | batch 2a-redo — meaning still unknown, but the two concrete senders hardcode **1** |
+| `0x4b46` | c2s | 1 | **1** | other | batch 2a-redo — traced to the dispatcher's 4th arg; the OPD-table dead end recorded |
+| `0x4b70` | c2s | 1 | **0** | other | batch 2a-redo done — `clan_id`, from the binary rather than a capture |
 | `0x2002` | s2c | 1 | **1** | other | open |
 | `0x2004` | s2c | 1 | **1** | other | open |
 | `0x3049` | s2c | 14 | **1** | other | open |
@@ -186,3 +187,50 @@ two were never started.
 checks that caught it: `yaml.safe_load` over every schema, a `- id:` count against `HEAD` per file,
 and a grep for changed `type:`/`size:`/`repeat:`/`encoding:`/`enum:` lines across the whole diff.
 All three should run at the end of every batch regardless of how the agent exited.
+
+## What batch 2a-redo established (the clan family, finished)
+
+**8 fields resolved, 151 → 143**, two more packets at zero — and, more importantly, **three
+documented negatives overturned**.
+
+### The band error, which is the transferable lesson
+
+Batch 2a called `0xA70000`-`0xAEFFFF` "the clan UI band" and proved several fields unread by
+sweeping it. **The row painters are at `0xAF3BA0`, `0xAF4B60`, `0xAF4D90`, `0xAF5598`, `0xAF5A08`,
+`0xAF5ED0` — just past the end.** Three `0x4b54` fields recorded as "PRECISE NEGATIVE, no reader"
+are read and rendered on screen every time a roster draws.
+
+Per CLAUDE.md's elimination rule, a sweep is only an elimination if the thing sought could have
+been inside the range searched. **A band boundary is an assumption and has to be justified like any
+other.** The cheap defence: before trusting a range, find where the packet's *renderer* lives, not
+just where its parser's callers live. Here the giveaway was available all along — the roster's
+`"----"` placeholder and the `STRING_LOBBY`/`STRING_GAME` element names were both cited in the file
+*as support for the negative*, when a placeholder string is evidence that something fills the slot.
+
+### The wins
+
+| lever | what it bought |
+| --- | --- |
+| the shared row-painter functions above `0xAF0000` | `lobby_name`, `game_id`, `game_name`, and the truth about `0x4b54 +0x30`. Each takes `(elementDescriptor, container, listNode)` and parks the row pointer in the descriptor, so **every read of a row is one of a handful of loads inside four functions** |
+| disc string ids reached from the renderer | `GetString(hash("lobby"), 996)` = **"Move to Game"**, which is what named `game_id` — a menu label the gate enables, not a guess from position |
+| the parser's *scratch slot* | `0x4b12`'s four trailing bytes all pass through one byte at `r1+112`; two are overwritten before any copy-out, so they are **provably discarded**, not merely unread |
+| dead-accessor detection, again | `GetClanListRow` `0xD59FD8`: zero `bl`, OPD `0x102A280` unreferenced, `ET_EXEC`. That closed the clan-list row's escape routes down to one, which is what makes `dead_2b`'s negative a proof |
+| chasing a c2s argument to its **callers** | `0x4b70`'s u32 is `clan_id` — `lwz r9,0(node)` then `lwz r4,0(r9)`, i.e. offset 0 of a `0x4b12` row. The file had called this "a guess dressed as a finding"; it never needed a capture, only the call graph |
+
+### Three findings beyond field names
+
+1. **`0x4101` feature bit 2 gates a clan-roster column.** `featureBit(ctx, 2)` at `0xAF5AE8` /
+   `0xAF5CF8` chooses between rendering `0x4b54 +0x30` as a decimal and substituting
+   `GetString(hash("lobby"), 3)`, which is **a single space**. We send a zero feature byte, so the
+   column is blank — which is exactly why "sent as zero, nothing on screen changed" could never
+   have settled the field. `GATES.md` §1 lists bits 1-5 as "meanings unknown"; bit 2 now has a
+   known consumer. **Do not open it** — release-day scope.
+2. **The list slot at `session[+0x10000+6404] + 0x20000 + 29724` is shared.** `0x4b75` writes
+   96-byte records into it and `0x4685`/`0x4686`/`0x4687` write 28-byte ones, off the identical
+   base computation. These "lists" are reusable slots, not per-command arrays.
+3. **`0x4b75`'s consumer screen reads its own record at the wrong width.** `0xA8A0B8` passes the
+   row to a localtime helper that does `ld r0,0(r28)` — eight bytes — while the parser writes a u32
+   at +0 and a 64-byte text block at +4. The triple is never requested (the client never sends
+   `0x4b73`), so this is best read as an unfinished screen. It is also why `unknown_00` was **not**
+   renamed: the only reader's behaviour and the parser's layout contradict each other, and a name
+   would hide that.

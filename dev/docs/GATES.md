@@ -24,7 +24,8 @@ payload offset **`0x12A`**.
 | bit | meaning | we send |
 | --- | --- | --- |
 | 0 | **Team Sneaking selectable** in Create Game, plus one Sneaking rule option (`ruleopt_bit[4] = 4`) | **0** |
-| 1–5 | exist and are read by the same helper; meanings unknown | 0 |
+| 2 | **a numeric column in the clan roster.** Found 2026-07-30. `featureBit(ctx, 2)` at `0xAF5AE8` and `0xAF5CF8`, inside the roster row painter `0xAF5A08`: set, the row renders `0x4b54`'s `+0x30` word as a decimal (`0xAF5B94` / `0xAF5DA4` → the int-to-string helper `0xCFB8C8`); clear, it substitutes `GetString(hash("lobby"), 3)`, disc set `[2f0293]`, group `0xF914BF` — **a single space**. Which quantity the number is remains unknown, because it has never been displayed | **0** |
+| 1, 3–5 | exist and are read by the same helper; meanings unknown | 0 |
 
 **We are currently suppressing Team Sneaking by sending a zero byte.** The disc-side mask already
 permits it: the lobby stage script's `rule_bit` is `191` = `0xBF` = rules {0,1,2,3,4,5,**7**}

@@ -80,3 +80,18 @@ seq:
       The two contexts are not distinguished by this field: both captures carry `0000`. That
       is why the server cannot tell the connect-burst probe from the clan-menu one and must
       answer both identically.
+
+      **[ELF 2026-07-30] Where the value comes from, and where the trail ends.** `0xD58510` has
+      exactly **one** `bl` site in the image, **0xA7E0DC**, inside the generic clan request
+      dispatcher `0xA7DC48`. There the argument is `clrldi r4,r26,48` — the low 16 bits of the
+      dispatcher's **fourth** parameter (`mr r31,r6` at 0xA7DC94, `mr r26,r31` at 0xA7DCB8). So no
+      clan code chooses it; it is carried in from a request descriptor.
+
+      `0xA7DC48` itself has **no `bl` site**, and its OPD descriptor at 0x10202D8 is referenced by
+      no data word in the file either (the image is `ET_EXEC`, no relocations), so it is entered by
+      indexing an OPD table rather than by a findable reference. That is a genuine dead end for a
+      static trace, and it is why "both call sites pass zero" above is an observation rather than
+      something the binary states: the two contexts are two *descriptors*, not two call sites.
+
+      The one thing this does settle: the field is **not** computed from any clan record, since
+      nothing between the dispatcher's entry and the sender touches one.

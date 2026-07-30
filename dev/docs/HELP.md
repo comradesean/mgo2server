@@ -29,14 +29,43 @@ The category is not free-form — there are exactly two producers:
 | `0` | `OpenHelp(id)`, an explicit call with the topic id | `0x88616C` |
 | `1` | a **per-screen context id**, set from game data rather than passed in | `0x886010` |
 
-Known topics, correlated live 2026-07-27 by matching the probe's access log against the screen
-being opened:
+Known topics, correlated live by matching the probe's access log against the screen being opened.
+**Eighteen are served as of 2026-07-30**; the screen identification is tier 2 (observed request),
+the body text of each is ours.
 
-| document | screen |
-| --- | --- |
-| `1_5.txt` | character select / Register Character |
-| `1_25.txt` | Community Support |
-| `1_30.txt` | Personal Data |
+| document | screen | body |
+| --- | --- | --- |
+| `1_5.txt` | Register Character | written |
+| `1_9.txt` | Automatching Lobby | written |
+| `1_10.txt` | Free Battle | placeholder |
+| `1_11.txt` | Training | placeholder |
+| `1_24.txt` | Clan | placeholder |
+| `1_25.txt` | **Edit Emblem** | placeholder |
+| `1_27.txt` | Edit Clan Notice | placeholder |
+| `1_30.txt` | Personal Data | written |
+| `1_31.txt` | Appearance Settings | placeholder |
+| `1_33.txt` | Friend List | placeholder |
+| `1_34.txt` | Block List | placeholder |
+| `1_37.txt` | Photo Album | placeholder |
+| `1_39.txt` | Automatching Lobby | written |
+| `1_43.txt` | Game Name | placeholder |
+| `1_45.txt` | Drebin Points | placeholder |
+| `1_48.txt` | Novice Training | placeholder |
+| `1_49.txt` | Join Combat Training | placeholder |
+| `1_50.txt` | Combat Training | placeholder |
+
+**`1_25` was recorded here as Community Support** from the 2026-07-27 correlation, and is Edit
+Emblem. Corrected 2026-07-30 (operator-confirmed). Two consequences worth carrying forward:
+
+- The **Konami-disclaimer text** that file used to hold — private non-commercial revival, not
+  operated by or affiliated with Konami, contact the operator — **is now in no document at all**.
+  If that statement should appear somewhere, it needs a home and an id.
+- **Which id Community Support actually uses is once again unknown.** The access log names every
+  document the client asks for, so opening that screen answers it in one request.
+
+`1_9` and `1_39` are byte-identical Automatching Lobby documents. Two ids reaching the same screen
+is expected — category-1 ids come from a per-screen context value in game data (`0x886010`), and
+nothing says that mapping is injective.
 
 ## The document format
 
