@@ -52,7 +52,21 @@ types:
     seq:
       - id: item_id
         type: u1
-        doc: "[ELF] Table index. Must be <= 128 or the record is silently dropped (0xd3cf00)."
+        doc: |
+          [ELF] Table index into `charTable + 9888 + id*12`. Must be `<= 128` or the record is
+          silently dropped (`0xD3CF00`).
+
+          **This byte IS the item-ownership gate.** The record's `+8` is read at `0x927350`, and an
+          item whose byte is zero — i.e. one we never sent a record for — is **never appended to the
+          wardrobe list**. There is no predicate function, which is why searching for one turned up
+          nothing and why "gear has no server-side gate" was wrongly recorded for a day. Five ids
+          are exempt at `0x92735C`-`0x927384` (28, 46, 68, 86, 102 — the "None" entries).
+
+          **Only 67 ids exist on this build.** The wardrobe's 9-arm category table at `0x9270AC`
+          enumerates fixed `{base, count}` windows: head 28-38, upper body 11-13, lower body 22,
+          chest 68-80, waist 86-97, hands 46-51, feet 57-62, accessories 102-116. We send **122**,
+          so 55 are phantom — 29 above the 128 bound and 26 in gaps no window covers, every gap
+          being the trailing headroom of a category. Inert here; see `dev/docs/POST_LAUNCH.md`.
       - id: colour_mask
         type: u4
         doc: |
@@ -83,7 +97,19 @@ types:
           of their categories — already unconditionally owned by a hardcoded id comparison at
           `0x92735C`-`0x927384`. Sending records for them is a no-op in both directions.
   unlock_pair:
-    doc: "Grants one colour bit: if bit `bit_index` is set in the item's `colour_mask`, it is ORed into the item's record at +16."
+    doc: |
+      **Grants nothing.** [ELF `0xD3CFBC`-`0xD3CFE4`] the parser ORs a pair into record `+16` **only
+      if that bit is already set** in the colour mask at record `+12`, so a pair can only ever
+      produce a subset of what the record already carried; one naming an unowned colour does
+      nothing at all.
+
+      `+16` is read at `0x92740C` and `0x927744` on a secondary path — a wardrobe highlight or
+      "new" marker, **not availability**. Availability is record `+8` (item ownership, tested at
+      `0x927350`) and record `+12` (per colour, `0x925538` / `0x92772C`).
+
+      We send `0xff` filler in unused slots, which the parser skips because item 255 exceeds its
+      128-entry bound. Populated from `gear_colour_highlight`, which is empty by default — so the
+      tail is normally 32 bytes of filler, exactly as before the table existed.
     seq:
       - id: item_id
         type: u1
