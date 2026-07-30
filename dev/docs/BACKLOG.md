@@ -820,6 +820,58 @@ that is what makes dropping the blob safe rather than hopeful. (3) Drop `blob` f
 Do not drop the blob before step 2 passes: a reconstruction that is one byte wrong would corrupt
 every Create Game pre-fill, and the symptom would be a screen full of plausible values.
 
+## Gear: five things deliberately left, 2026-07-30
+
+The gear subsystem was mapped and a starter set shipped (`GEAR.md`, V70). These were consciously
+not done, with the reason each was deferred.
+
+### Delete the 55 phantom gear ids
+
+`gear_item` holds 122 distinct ids; the client enumerates **67**. Of the surplus, 29 exceed the
+parser's 128-entry bound and 26 fall in gaps no category window covers — **and none of the 26 has a
+colour-catalogue record**, which is what settled them as padding rather than expansion-era items.
+
+Deferred because it is **wire-visible**: it takes `0x4124` from its current size down, and while the
+client provably ignores those records, "provably" is an ELF argument and this deserves one live
+check. Low risk, low urgency — with the starter set in place, most characters never carry them
+anyway. Do it when someone is already testing the wardrobe.
+
+The concrete harm it removes: any future locking policy written against the inherited list would be
+locking items that do not exist.
+
+### Resolve hands, chest and waist item names properly
+
+Head and accessories are anchored, and upper body and feet were confirmed by watching the
+empty-category fallback render ordinal 0. **Hands, chest and waist are still ordering-derived** —
+counts match their `li r25,N` immediates and colour signatures are consistent, but the flat string
+dump concatenates resource groups and its boundaries are demonstrably unreliable.
+
+The cheap route is the same trick that settled upper body and feet: empty the category on a test
+character, reconnect, and read the label the fallback renders. All three have a None at ordinal 0,
+so one reconnect each settles them.
+
+### Colour name ordinals 25-29 are disputed
+
+Two extractions disagree: `Brown, Green, Gray, Blue, Black` versus `Brown, Gray, Blue, Yellow,
+Rose`. **Only item 113 (Shemagh Scarf) uses that range**, so nothing has forced the question, and
+30-35 was settled independently by an operator's live colour picks. Re-derive before granting or
+naming a Shemagh colour.
+
+### `gear_colour_highlight` is empty and unproven
+
+The table exists and both writers read it, but **no row has ever been written**, so the highlight
+path has never been exercised. It grants nothing by design (the parser ORs a pair into record `+16`
+only if the bit is already set in `+12`), so the open question is purely cosmetic: does a populated
+pair actually mark a swatch as new, and is that worth using? Costs one insert to find out.
+
+### Equipped-but-unowned gear — partially answered, mechanism unconfirmed
+
+See `OBSERVED.md`. A character left wearing items it does not own had its appearance **silently
+rewritten to the category base ids**, which is consistent with the fallback's `stb r23,20416` write
+persisting on the next commit. What is not established is *when* the write-back happens — on screen
+entry, on commit, or on any outfit save — and therefore whether an operator narrowing someone's gear
+can expect their outfit to survive. Worth pinning before any bulk gear change on live characters.
+
 ## Convention: no wire offsets in migrations
 
 *Set 2026-07-29.* Column comments say what the data **means**; wire offsets and widths belong to the

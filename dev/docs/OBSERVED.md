@@ -40,6 +40,28 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### The empty-category fallback writes back, observed (2026-07-30)
+
+Predicted as a hazard when the fallback was found; now seen happening.
+
+A character was stripped to zero gear, reconnected (drawing the forced rows in upper body and feet),
+and later given the starter set. Its stored appearance had been `head 33, upper 13, feet 62`.
+Afterwards it read **`upper 11, feet 57`** — precisely the two category **base ids** the fallback
+force-equips, and neither of which the character had been wearing.
+
+So `stb r23,20416(r11)` at `0x927544` does not merely affect the screen: the value reaches
+`chara_appearance`. **Narrowing a live character's gear can silently rewrite their outfit.**
+
+Two things this does *not* establish, and they matter before anyone does a bulk gear change:
+
+- **When** the write-back is persisted — on screen entry, on an outfit commit, or on any save. The
+  character in question had several reconnects and screen visits in between.
+- Whether an item the character still owns is preserved. `upper 13` (T-shirt) was in the starter set
+  and was replaced anyway, which is not what a pure "fix the illegal ones" rule would do — but there
+  was also live testing in that window, so operator action cannot be excluded.
+
+Recorded as an observation with its ambiguity intact rather than a mechanism.
+
 ### Both gear gates confirmed live, and the empty-category fallback with them (2026-07-30)
 
 Test: strip one character's `chara_gear` to a single row — item 33 (Beret), `colours = 1` — and
