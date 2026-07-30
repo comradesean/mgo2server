@@ -6,7 +6,8 @@ doc: |
   The per-mode statistics matrix. Sent TWICE per 0x4102 burst: once with page 0
   (cumulative) and once with page 1 (weekly) — the stats screen's cumulative/weekly toggle
   switches between them [CONFIRMED, fingerprint v9]. Parser 0xd3e53c stores into
-  T+0x138 + mode*0x48 + page*0x360 + column*4; the grid reader is the cluster at 0x9193BC+.
+  T+0x138 + memRow*0x48 + page*0x360 + column*4, where memRow is the *client mode id*, not
+  the wire index — see the `modes` field. The grid reader is the cluster at 0x9193BC+.
 
   Client-side derivations (never on the wire): the OTHER row = the category's minuend
   column − headshot − lockon, clamped at 0 [CONFIRMED v6]; the ALL row = sum of the displayed rows [CONFIRMED
@@ -34,11 +35,38 @@ seq:
     repeat: expr
     repeat-expr: 8
     doc: |
-      Wire order = client mode-loop order (12-slot loop skipping indices 6/8/9/10)
-      [CONFIRMED v5]: 0 Deathmatch, 1 Team Deathmatch, 2 Rescue, 3 Capture, 4 Sneaking,
-      5 Base, 6 HIDDEN (no page of its own but summed into every Total and the header
-      time — plausibly reserved for an unshipped mode; identity parked. SERVE ZEROS),
-      7 unused (excluded from all sums; serve zeros).
+      Wire order = client mode-loop order [CONFIRMED v5; mechanism read 2026-07-30 at
+      0xd3e60c-0xd3e650: `r27` counts client mode ids 0..11, the four `beq` at
+      0xd3e614/0xd3e61c/0xd3e624/0xd3e62c skip ids 6, 8, 9 and 10, and the row is stored at
+      `T + 312 + r27*72 + page*864`]. So **wire index ≠ memory row**: the eight wire records
+      land on memory rows 0,1,2,3,4,5,7,11, and the memset at 0xd3e5f4 clears 3456 bytes =
+      12 rows × 4 pages.
+
+      Identities, now tier-1 rather than inferred — the DETAIL page's seven "Total Time
+      Playing X" rows each read `memRow*72 + 68` (column 17) and carry a disc label:
+
+        wire 0 → row 0  Deathmatch       (hash 0x39b481, read 0x918304)
+        wire 1 → row 1  Team Deathmatch  (0x39b482, 0x918314)
+        wire 2 → row 2  Rescue           (0x39b485, 0x918344)
+        wire 3 → row 3  Capture          (0x39b484, 0x918334)
+        wire 4 → row 4  Sneaking         (0x39b49d, 0x918364)
+        wire 5 → row 5  Base             (0x39b483, 0x918324)
+        wire 6 → row 7  **TEAM SNEAKING** (0x39b49c, 0x918354)
+        wire 7 → row 11 no label, no row, no reader
+
+      **Wire index 6 is Team Sneaking**, not an unidentified reserved slot: disc string
+      group [1ab3b6] name hash 0x39b49c = "Total Time Playing TEAM SNEAKING", and the
+      seventh mode page (dispatcher arm `byte[16]` at 0x917618) is the one that overlays
+      `SP_SCORE_TSNE01/02` — see mgo2_cmd_4107.ksy slots 33/34. It has no *visible* page on a
+      release-day server only because rule 7 was switched on 2008-07-04. SERVE ZEROS.
+
+      The Total-page sum loops (0x9193ac, 0x919478, 0x91955c, … all identical) iterate memory
+      rows 0..7 gated by the bitmask `li r0,191` → `sraw r0,r0,r7` → `clrldi. r9,r0,63`:
+      0xBF has bit 6 clear, so memory row 6 (never written by the parser) is skipped and
+      memory row 7 — wire index 6 — **is** summed. That is exactly what fingerprint v5
+      measured (the 3115 residual), and it means the earlier reading "wire 6 hidden but
+      summed / wire 7 unused" was right about the arithmetic and wrong about which of them
+      had a page. Memory row 11 (wire 7) is outside the loop bound entirely.
 
       NOTE: the extra per-mode lines on the stats screen (Consecutive Survivals on TDM,
       Bases Conquered / SOP Destabilizer Uses on Base, the GA-KO trio on Rescue, the
@@ -98,13 +126,34 @@ types:
         doc: "col 12. [CONFIRMED]"
       - id: unknown_13
         type: u4
-        doc: "col 13. [UNKNOWN] — fp marker 52300 (v6, Deathmatch) surfaced nowhere on the stats screen."
+        doc: |
+          col 13 (cell offset `312 + row*72 + 52`). [UNKNOWN] — fp marker 52300 (v6,
+          Deathmatch) surfaced nowhere on the stats screen, and the ELF now agrees:
+          **no reader anywhere in the image**.
+
+          How that was established (2026-07-30): every grid access in the binary has the
+          shape `addi rX,rY,K` (K = 304/320/336/352/368) → `add` with the T pointer →
+          `lwz rZ,D(rX)` with D ≤ 32, inside a window containing `mulli …,72` or
+          `mulli …,864`. Enumerating all such sites image-wide yields hits for columns
+          0,1,2,3,4,5,6,7,8,9,10,11,12,14,16,17 — and **zero** for column 13 (which would be
+          K=352,D=12) and column 15 (K=352,D=20). Columns 12 and 14 are read at 0x919688 /
+          0x91a074 with the same K=352 base, so the addressing form is not the reason 13 is
+          missing.
+
+          What would settle it: a reader appearing in a later client build, or the original
+          server's own accounting. Do not guess it from column 12's or 14's meaning.
       - id: rounds
         type: u4
         doc: "col 14. [CONFIRMED]"
       - id: unknown_15
         type: u4
-        doc: "col 15. [UNKNOWN] — fp marker 52500 (v6) surfaced nowhere; candidates: post-game/ranking views."
+        doc: |
+          col 15 (cell offset `312 + row*72 + 60`). [UNKNOWN] — fp marker 52500 (v6)
+          surfaced nowhere, and the same image-wide scan described on `unknown_13` finds
+          **no reader** for K=352,D=20 either. The old note "candidates: post-game/ranking
+          views" is retracted as unsupported: those screens do not address this grid at all
+          (every 72/864-strided access in the binary lives in 0x9193bc-0x91a130, the stats
+          screen, plus the DETAIL play-time rows at 0x918304-0x918378).
       - id: wins
         type: u4
         doc: "col 16. Not rendered on the Deathmatch page (no Wins there) but present in every row. [CONFIRMED]"
