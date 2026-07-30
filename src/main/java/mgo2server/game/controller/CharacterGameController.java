@@ -96,20 +96,23 @@ public class CharacterGameController implements IGameController {
 	 * for asserting the total rather than trusting that it works out.
 	 */
 	/**
-	 * <b>Index 3 bit 0 is load-bearing: it unlocks the 32 CODEC / preset messages.</b>
-	 * [ELF 2026-07-29] Do not zero this array.
+	 * <b>Index 3 bit 0 grants the 32 CODEC / preset messages — the day-one paid MGO Codec Pack.</b>
 	 * <p>
 	 * Two readers, both of the same byte at {@code ctx+22455} — trailer index 3. {@code 0x9B9E30}
 	 * computes {@code (byte & 1) << 4}, i.e. 0 or 16, and {@code 0x9BADA4} tests {@code byte & 1} to
-	 * choose between two list-builders. The 16 is a threshold: the availability predicate
-	 * {@code 0x9B9DF0} walks an 85-entry table at {@code 0xE1812C} and refuses any item whose gate
-	 * value exceeds it. <b>32 of those entries carry a gate of exactly 16</b>, so with this bit clear
-	 * they all disappear from the loadout screen; 23 entries gate on 0 and are always available, and
-	 * 27 defer to a separate ownership check.
+	 * choose between two list-builders. The 16 is a threshold: the predicate {@code 0x9B9DF0} walks
+	 * the preset-message catalogue at {@code 0xE1812C} and refuses any phrase whose gate exceeds it.
+	 * Of the 82 populated rows, <b>32 gate on exactly 16</b> — matched 32/32 to the published product
+	 * list, in order — 23 gate on 0 and are always available, and 27 are the Combat Training
+	 * instructor commands, which no server field controls.
 	 * <p>
-	 * We send {@code 0x03}. Only bit 0 is read — <b>bit 1 is not</b> — and the {@code 0x07} at index
-	 * 1 has no reader at all, as do indices 0, 2 and 4..31. So the array is one meaningful bit and 31
-	 * inert bytes, but that bit is worth keeping.
+	 * <b>It has nothing to do with gear.</b> {@code 0x9B9DF0} has 17 call sites binary-wide, none in
+	 * loadout code, and this byte has no third reader. An earlier note here said the bit unlocked
+	 * "32 of the 91 selectable loadout items" and that clearing it emptied the loadout screen; both
+	 * were wrong, and a live test showed gear entirely unaffected.
+	 * <p>
+	 * We send bit 1 clear. It is read by nothing here and is most likely the second codec pack,
+	 * which needed a client update — see {@code dev/docs/POST_LAUNCH.md}.
 	 * <p>
 	 * <b>32 bytes, not 35</b> — independently confirmed from the parser side: {@code 0xD3732C} copies
 	 * exactly 32 (`li r5,32` at {@code 0xD3774C}). Subtracting the phantom three from the old
