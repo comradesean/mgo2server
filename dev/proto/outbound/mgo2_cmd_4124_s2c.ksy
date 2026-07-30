@@ -56,9 +56,15 @@ types:
           [ELF] Table index into `charTable + 9888 + id*12`. Must be `<= 128` or the record is
           silently dropped (`0xD3CF00`).
 
-          **This byte IS the item-ownership gate.** The record's `+8` is read at `0x927350`, and an
-          item whose byte is zero — i.e. one we never sent a record for — is **never appended to the
-          wardrobe list**. There is no predicate function, which is why searching for one turned up
+          **This byte IS the item-ownership gate, confirmed live 2026-07-30.** The record's `+8` is
+          read at `0x927350`, and an item whose byte is zero — i.e. one we never sent a record for —
+          is **never appended to the wardrobe list**. Verified by stripping a character to a single
+          item and reconnecting: every other item vanished from the wardrobe.
+
+          **Beware the empty-category fallback.** A category left with nothing owned does not render
+          empty — `0x92751C`-`0x927568` force-equips the category's BASE id (`stb r23,20416`) and
+          shows one colourless row. Observed live: emptying upper body and feet produced ids 11 and
+          57. The force-equip writes the equipped byte, so a subsequent outfit commit persists it. There is no predicate function, which is why searching for one turned up
           nothing and why "gear has no server-side gate" was wrongly recorded for a day. Five ids
           are exempt at `0x92735C`-`0x927384` (28, 46, 68, 86, 102 — the "None" entries).
 
