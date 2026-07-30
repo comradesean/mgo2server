@@ -40,6 +40,59 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Gear item names: what is anchored and what is only ordering (2026-07-30)
+
+All 67 reachable gear ids are named in `gear_item.name` (V69). **The confidence is not uniform**,
+and two agents disagreed about it — the honest position is the more cautious one.
+
+**Anchored, safe:**
+
+- **Head** — the ELF special-cases ids **35 and 38** at `0x926D6C`/`0x926D74` off the head byte
+  `+0x80`. Those are ordinals 7 and 10, landing on **Bush Hat** and **Fleece Cap** — the only two
+  soft crushable hats, exactly what you would special-case for wear under a full-head accessory.
+  Two independent anchors in an 11-slot list.
+- **Accessories** — three colour-set signatures across non-adjacent ids, each landing on a
+  semantically coherent group: 104/108 share a set (the two headsets), 105/109/111 share another
+  (three soft head coverings), 103/106/107 share the lens set. Corroborated further by ordinals
+  25-29 being used by exactly one item (Shemagh Scarf: brown/gray/blue/yellow/rose) and 30-31 by
+  exactly the three lens items (Orange, Clear).
+- **Item 33 = Beret** — head ordinal 5, and the only head item besides Fleece Cap carrying the
+  10-solid mask rather than 21-colour camo. A beret and a fleece cap are precisely the two hats you
+  would not print camo on.
+
+**Ordering-derived, counts verified, NOT hash-resolved: upper body, hands, feet, chest, waist.**
+One agent reported these as resolved by group hash and ordinal; the other showed why that cannot be
+certified from the flat string dump, and it is right. `dev/analysis/strings/lobby.txt` concatenates
+separate resource groups, and its boundaries are demonstrably unreliable — there are visible "None"
+blocks before head (15992) and chest (16074) but **none** before waist (16147), hands (16213) or
+accessories (16280), though all three take a None at ordinal 0.
+
+Every count matches its `li r25,N` immediate and every colour signature is consistent, but that is
+corroboration, not resolution. Treat those five categories' names as high-confidence labels rather
+than proven ones, and re-derive them properly if one ever matters.
+
+**Id 22 is deliberately NULL** — its disc header points the English ordinal at a Japanese string
+reading "trousers (provisional name)", with a stray `Aucun` alongside. A defect in the disc data,
+not a gap in ours.
+
+### The colour mask is a per-item slot index
+
+Worth stating separately because it rules out a design that would look natural. The catalogue record
+is `{item_id, colour_slot, colour_name_ordinal}`, and `chara_gear.colours` indexes **`colour_slot`**
+— so **bit 0 is Auscam Desert on item 29, Black on item 33, and Orange on item 103**.
+
+A single global colour bitmask is therefore impossible, and the name ordinal reaches 35, which the
+trailer's `bit <= 31` bound could not express anyway. `chara_gear` already stores one mask per item
+row, which is the correct shape and needs no change.
+
+Item 105 is the clearest example: slots 0-7 (`0x000000FF`) but name ordinals
+`{15,16,17,19,20,21,23,24}` — it skips two. Reading its mask against a global colour list would name
+the wrong colours.
+
+Also noted: colour name ordinals **32-35 are unnamed on the disc but in use** by the three lens
+items (103, 106, 107), so the eyewear ships more lens variants than the disc names. Those swatches
+are skipped at runtime.
+
 ### The greyed "To" row — PARTLY resolved, and the grey-out itself is NOT explained (2026-07-29)
 
 Reported: in Mail -> Create New Mail -> To, a row was greyed out until the player had friends;

@@ -87,7 +87,18 @@ types:
           (`cmplwi cr7,r0,31` at `0xD3CFB0` and `0xD3C8FC`) and the swatch loop runs 0..31
           (`0x927A08`) — they are inert purely because the catalogue never matches.
 
-          **Every item's colour set is a contiguous `0..n-1` run**, so `mask == (1 << n) - 1`
+          **A BIT IS A PER-ITEM SLOT, NOT A GLOBAL COLOUR.** The catalogue record is
+          `{item_id, colour_slot, colour_name_ordinal}`: the mask indexes `colour_slot`, and the
+          *name* is a separate field reaching 35 — which the trailer's `bit <= 31` bound could not
+          even express. So bit 0 is Auscam Desert on item 29, **Black** on item 33, and **Orange**
+          on item 103. There is no global colour bitmask and there could not be one; happily
+          `chara_gear` already stores one mask per item row, which is the right shape.
+
+          Item 105 shows why this matters: it has slots 0-7 (`0x000000FF`) but name ordinals
+          `{15,16,17,19,20,21,23,24}` — it skips two. Reading its mask against a global colour list
+          would name the wrong colours.
+
+          **Every item's slot set is a contiguous `0..n-1` run**, so `mask == (1 << n) - 1`
           exactly and there are only seven distinct legal masks across the 67 reachable items:
           `0x001FFFFF` x39, `0x00000001` x10, `0x000003FF` x6, `0x000000FF` x3, `0x0000001F` x3,
           `0x0000003F` x1, `0x00FFFFFF` x1. A per-item colour COUNT is therefore lossless; a
