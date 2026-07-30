@@ -28,7 +28,7 @@ doc: |
   **16 `{u8 item_id, u8 bit_index}` pairs**, read by a fixed 16-iteration loop. `0xff` works as a
   no-op only because item id 255 > 128 makes every pair skip. The size we send (651 =
   4 + 123*5 + 32) is correct.
-doc-ref: dev/docs/PROTOCOL.md "0x4124 — gear catalogue, 651 bytes"
+doc-ref: dev/docs/GEAR.md
 seq:
   - id: count
     type: u4

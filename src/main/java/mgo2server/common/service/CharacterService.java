@@ -1286,6 +1286,10 @@ public class CharacterService {
 			// begin with, and the table exists so changing it needs no rebuild. Colours come from
 			// the row because a bit indexes a PER-ITEM slot, so the same five colours are a
 			// different mask on a 21-slot camo item than on a 10-slot solid one.
+			//
+			// dev/docs/GEAR.md has the slot->colour tables, the category map and the item names.
+			// Do not compute a mask without it: bit 0 is Auscam Desert on one item and Black on
+			// another.
 			handle.createUpdate("""
 					insert into chara_gear (chara_id, item_id, colours)
 					select :charaId, s.item_id, s.colours from starter_gear s

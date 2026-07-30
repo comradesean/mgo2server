@@ -62,6 +62,10 @@ not an elimination if the thing varied could not have mattered.
   file lives, why titles latch and medals derive, how the worn title is chosen, and which awards
   still cannot be earned. Both are **server-driven**, so every threshold is operator policy we
   chose, and the title numbers are guesses meant to be edited.
+- `dev/docs/GEAR.md` — **items and colours**: the two gates the server actually controls (ownership
+  and per-item colour), the 67-id category map with names, and the thing that catches everyone —
+  a colour bit is a **per-item slot**, so the same colour is a different bit on a different item.
+  Also the starter set and how to change it. Read before touching `chara_gear` or `starter_gear`.
 - `dev/docs/GATES.md` — **the switches**, on one page: feature bits we send that hold client
   features closed (Team Sneaking is ours to open), the per-round Headshots-Only / Drebin-Points
   flag, player-count thresholds, what the client computes for itself and must never be sent, and
