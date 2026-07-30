@@ -1110,6 +1110,20 @@ public class CharacterService {
 	 * One gear record as {@code 0x4124} and {@code 0x4133} carry it: an item id and its colour
 	 * mask. Emitted once per <em>catalogue row</em>, so the duplicated {@code 0x86} yields two.
 	 */
+	/**
+	 * An owned gear item and its colour mask.
+	 *
+	 * <p><b>{@code colours} is still a blanket {@code 0xFFFFFFFF} by default</b> — the column
+	 * default from when the screen was first made to work. Only bits 0..23 can ever mean anything
+	 * and most items use far fewer: [ELF] the client resolves each swatch through the colour
+	 * catalogue at {@code 0x10506BC} first ({@code 0x7E2D98}), and a miss skips the swatch
+	 * <em>before</em> this mask is consulted, so a set bit with no catalogue record does nothing.
+	 * The highest index in the catalogue is 23, used by one item.
+	 *
+	 * <p>Every item's colour set is a contiguous {@code 0..n-1} run, so the legal mask is exactly
+	 * {@code (1 << n) - 1} and a per-item count would be lossless. Recorded in
+	 * {@code dev/proto/outbound/mgo2_cmd_4124_s2c.ksy}.
+	 */
 	public record OwnedGear(int itemId, long colours) {
 	}
 
