@@ -4473,10 +4473,27 @@ and only a fresh `0x4221` could put it back.
 **The cell is not a mystery slot: it is the last u32 of the `0x4105` index-0 payload.** The parser
 computes `base = T + 312 + index*864 + row*72 + col*4` and skips memory rows 6, 8, 9 and 10, so the
 eight wire blocks land in memory rows **0,1,2,3,4,5,7,11**. The eighth is row 11 —
-`312 + 11*72 + 17*4 = 1172 = 0x494`. The card's LEVEL is column 13 of the same row (`T+0x484`).
+`312 + 11*72 + 17*4 = 1172 = 0x494`. ~~The card's LEVEL is column 13 of the same row
+(`T+0x484`).~~
 
-So the eighth row block is **not a mode**; it is the card's summary row. The server now fills its
-column 17 with total play seconds and column 13 with the level, in the cumulative matrix only.
+> **The LEVEL half is WRONG, corrected 2026-07-30.** The arithmetic survives — `312 + 11*72 + 13*4`
+> really is `0x484`, and `0x4105`'s index-0 memset really does clear it — but the identification
+> does not. **The card's LEVEL comes from `T+0x120`**, the experience slot: `0x905F28` does
+> `lwa r3,288(r25)`, passes it to the level walker `0x6F9260`, clamps to 99 and prints `"%d"`.
+> `T+0x120` is the same slot `0x4101` wire `0x01c` and `0x4103`'s `experience` write, so the card
+> derives level from experience exactly as every other screen does.
+>
+> `T+0x484` is a bare `"%d"` at `0x90606C` — the only instruction in the entire text section at
+> displacement 1156 with a character-block base, out of 178 — and it is **gated on `0x4101` feature
+> bit 2**, which we send clear. It has therefore never been on screen, which is why nothing was ever
+> observed to move with it.
+>
+> Consequence: the server writing `level` into `0x4105` column 13 is **mislabelled, not harmful** —
+> the client does not read it as the level and the cell is invisible on this build.
+
+So the eighth row block is **not a mode**; it is the card's summary row. The server fills its
+column 17 with total play seconds and column 13 with a value labelled "level", in the cumulative
+matrix only — see the correction above for what that column actually is.
 
 **The probe was worthless and its "elimination" was invalid.** All four probed slots (`T+0x1AD0`,
 `T+0x1DEC`, `T+0x1E20`, `T+0x124`) lie *outside* the memset range, so none could ever have suppressed

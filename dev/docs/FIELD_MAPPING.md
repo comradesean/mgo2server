@@ -8,7 +8,7 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**40 packets, 143 unknown fields**, as of 2026-07-30 (batch 2a-redo). Was 44 / 178 at batch 1;
+**40 packets, 136 unknown fields**, as of 2026-07-30 (batch 3a). Was 44 / 178 at batch 1;
 `0x4302`, `0x4129`, `0x4b12` and `0x4b70` have reached zero (their rows stay in the table, marked
 **0**, so the count stays reproducible). Regenerate with the script in this file's
 history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
@@ -39,7 +39,7 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x4313` | s2c | 52 | **12** | game | batch 2b done — 5 named (0x098 password_enabled, 0x099 dedicated, +176/+179 the flags word's two unread bytes, +184 host_ping); remaining 12 all carry precise negatives |
 | `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** (agent lost to quota) — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`; docs upgraded throughout. Not revisited by 2a-redo |
 | `0x4b81` | s2c | 18 | **10** | clan | batch 2a **partial** — no renames; all 10 given precise negatives and tier-1 provenance |
-| `0x4221` | s2c | 17 | **9** | social | open |
+| `0x4221` | s2c | 17 | **2** | social | batch 3a done — **7 named**: `experience`, `beginner_flag`, `worn_title`, `host_rating_numerator`, `host_rating_denominator`, `clan_emblem_flag`, `grade_points`. The card's whole renderer (`0x905818`) is mapped slot by slot; two more consumers of feature bit 2 found; OBSERVED.md's "the card's LEVEL is `T+0x484`" corrected |
 | `0x4310` | c2s | 31 | **7** | game | batch 2b done — 0x0f7 = level_limit_tolerance; `common_c` renamed `common_flags_lsb`; the four echo-only negatives re-established independently |
 | `0x4120` | s2c | 27 | **2** | connect | batch 2c done — 5 named (`dead_settings_05`, `entry_id_0..3`); byte 0 bit 0 proven **load-bearing** |
 | `0x4305` | s2c | 33 | **7** | game | batch 2b done — count unchanged, but all 7 now carry tier-1 provenance; 4 stale tier-4 labels corrected (stance, tolerance, max_players, rule_timers) |

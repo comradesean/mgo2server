@@ -307,10 +307,18 @@ public class SocialGameController implements IGameController {
 		// [ELF] wire 0xbc/0xc0 -> profile+13016/+13020, read as a pair at 0x91858C and put through
 		// 0x94258C, which is min(10, ((a*20)/b - 1)/10 + 1) and returns 0 if either is 0. They drive
 		// a 1-of-10 star gauge, with the second also printed literally as " / N". So 0xbc is a
-		// numerator and 0xc0 its total. WHAT they count is still unknown — the widget is named only
-		// by hash — so they stay zero, which the gauge reads as "no bar" rather than as a wrong one.
-		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xbc, gauge value
-		buffer.writeInt(0);                                       // [UNKNOWN] wire 0xc0, gauge total
+		// numerator and 0xc0 its total.
+		//
+		// WHAT THEY COUNT IS THE HOST RATING [ELF 2026-07-30, was "still unknown"]. profile+13016
+		// and +13020 are entries 5 and 6 of 0x4103's rating_block (base 0x32C4, so 0x32C4+5*4 and
+		// +6*4), and 0x918590 pairs them into the half-star gauge 0x94258C exactly as it pairs
+		// 13040/13044 -- the confirmed Instructor Score pair -- three instructions earlier.
+		//
+		// They stay zero for now, which the gauge reads as "no bar" rather than as a wrong one.
+		// Wiring them means reusing the same host-rating votes GameJoin already gates on: see the
+		// 0x4321 wire 0x28 star-picker gate.
+		buffer.writeInt(0);                                       // wire 0xbc, host rating numerator
+		buffer.writeInt(0);                                       // wire 0xc0, host rating denominator
 
 		// [CONFIRMED ELF] wire 0xc4 -> profile+6872: the clan emblem flag, the same byte 0x4122 and
 		// 0x4b47 write. The parser stores it at 0xD3DA84, and the Player Details screen tests it at
