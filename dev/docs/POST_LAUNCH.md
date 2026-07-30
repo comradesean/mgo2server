@@ -128,10 +128,13 @@ here rather than dangerous.
 
 ### Current policy (2026-07-29)
 
-**Default zero.** `account.entitlements` defaults to `3` in the schema for historical reasons, but
-every existing account has been set to `0`, with the codec pack granted individually where wanted.
-Serving a paid day-one item to everyone by default is a decision, and it should be made per account
-rather than inherited from a constant.
+**Default zero, in the schema as well as in the data.** Every existing account was set to `0` on
+2026-07-29, and **V64 changes the column default to `0`** so new accounts match without anyone
+remembering to run an `UPDATE`. Serving a paid day-one item to everyone is a decision, and it is now
+made per account rather than inherited from a constant.
+
+`entitlements_index1` deliberately still defaults to `7` — see below; zeroing it would be an
+experiment, not a correction.
 
 Reversible either way in one statement:
 

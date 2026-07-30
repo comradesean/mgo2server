@@ -95,12 +95,16 @@ public class Account {
 	 * The {@code 0x3049} trailer's entitlement byte — bit 0 unlocks 32 gated entries in the client.
 	 * <p>
 	 * Per account and editable live (V62): read on every character-list fetch, so an {@code UPDATE}
-	 * applies on the next reconnect with no restart. Default 3, which is what we have always sent.
+	 * applies on the next reconnect with no restart.
 	 * <p>
-	 * See {@code CharacterGameController.TRAILER_ENTITLEMENT_INDEX} for what the bit does and
-	 * {@code dev/docs/POST_LAUNCH.md} for the open question of what the 32 entries actually are.
+	 * <b>Defaults to 0 (V64).</b> Bit 0 grants the day-one paid MGO Codec Pack, so it is granted
+	 * deliberately per account and never inherited — the old default of 3 handed a purchased item
+	 * to everyone. Bit 1 has no reader on this build.
+	 * <p>
+	 * See {@code CharacterGameController} for what the bit does and {@code dev/docs/POST_LAUNCH.md}
+	 * for the policy and the second-pack question.
 	 */
-	private int entitlements = 3;
+	private int entitlements = 0;
 
 	/**
 	 * The {@code 0x3049} trailer's byte at index 1. We have always sent {@code 0x07} and <b>no bit

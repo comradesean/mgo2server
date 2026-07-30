@@ -156,31 +156,44 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * The entitlement trailer: 32 bytes at the end of the grid, with bit 0 of index 3 set.
+	 * A new account grants NO paid entitlement — index 3 bit 0 is clear by default.
 	 * <p>
-	 * [ELF] the parser at {@code 0xD3732C} copies exactly 32 bytes ({@code li r5,32} at
-	 * {@code 0xD3774C}). Index 3 bit 0 is the only byte in it with any reader: {@code 0x9B9E30}
-	 * computes {@code (byte & 1) << 4} and the availability predicate {@code 0x9B9DF0} refuses any
-	 * entry whose gate exceeds that, so clearing it removes 32 gated entries from the client.
+	 * That bit grants the day-one <b>MGO Codec Pack</b>, a paid Konami-ID item: the predicate
+	 * {@code 0x9B9DF0} refuses any catalogue phrase whose gate exceeds {@code (byte & 1) << 4}, and
+	 * the 32 rows gating on 16 match the published product list 32/32 in order. It defaulted to set
+	 * until V64, which handed purchased content to every account that had ever existed.
 	 * <p>
-	 * <b>What those 32 entries are is unresolved.</b> "Loadout items" is the label from the first
-	 * trace, but the day-one MGO Codec Pack adds exactly 32 preset-message phrases, so one bit may
-	 * be the whole shop. {@code MGO2SERVER_ENTITLEMENT_BYTE} flips it in one restart to settle
-	 * which screens shrink. This test pins the default; it is not a claim about what is unlocked.
-	 */
-	/**
-	 * Clearing {@code account.entitlements} clears the bit on the wire — no restart involved.
-	 * <p>
-	 * This is the whole point of V62: the byte was a compile-time constant, then an environment
-	 * variable, and neither could be changed for one account or without a restart. The experiment
-	 * in {@code POST_LAUNCH.md} was run this way and settled it: the bit gates the 32 CODEC /
-	 * preset messages, and gear was unaffected.
+	 * The 32-byte width is [ELF]: the parser at {@code 0xD3732C} copies exactly 32
+	 * ({@code li r5,32} at {@code 0xD3774C}).
 	 */
 	@Test
-	public void clearingTheAccountsEntitlementsClearsTheBitOnTheWire() {
+	public void aNewAccountGrantsNoPaidEntitlement() {
+		var payload = loginThen(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
+			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
+
+		var trailer = 0x1d7 - 32;
+		assertThat(payload.getUnsignedByte(trailer + 3) & 1)
+			.as("bit 0 grants a PAID item; it must never be granted by default")
+			.isZero();
+		assertThat(payload.getUnsignedByte(trailer + 1))
+			.as("index 1 still carries the inherited 0x07 — unexamined, and nobody has looked for a"
+				+ " reader at its offset (485, not the 487 that was searched)")
+			.isEqualTo((short) 0x07);
+	}
+
+	/**
+	 * Granting it on the account sets the bit on the wire — no restart involved.
+	 * <p>
+	 * This is the point of V62: the byte was a compile-time constant, then an environment variable,
+	 * and neither could be changed for one account or without a restart. The experiment in
+	 * {@code POST_LAUNCH.md} was run this way and settled what the bit does — it gates the 32 codec
+	 * / preset messages, and gear was entirely unaffected.
+	 */
+	@Test
+	public void grantingTheCodecPackSetsTheBitOnTheWire() {
 		accountId = createAccount();
 		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update account set entitlements = 0 where id = :id")
+			handle.createUpdate("update account set entitlements = 1 where id = :id")
 				.bind("id", accountId).execute());
 
 		var payload = loginThenNoAccount(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
@@ -188,21 +201,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 
 		assertThat(payload.getUnsignedByte(0x1d7 - 32 + 3) & 1)
 			.as("read per request, so the UPDATE applies without a restart")
-			.isZero();
-	}
-
-	@Test
-	public void theEntitlementTrailerHasBitZeroSetAtIndexThree() {
-		var payload = loginThen(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
-			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
-
-		var trailer = 0x1d7 - 32;
-		assertThat(payload.getUnsignedByte(trailer + 3) & 1)
-			.as("index 3 bit 0 — clearing it removes 32 gated entries from the client")
 			.isEqualTo(1);
-		assertThat(payload.getUnsignedByte(trailer + 1))
-			.as("index 1 carries 0x07, which has no reader at all")
-			.isEqualTo((short) 0x07);
 	}
 
 	@Test
