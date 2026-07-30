@@ -1,4 +1,4 @@
-<title>EDIT EMBLEM</title>
+<title>TRAINING</title>
 This screen is a PLACEHOLDER.
 The original tip shown here has not
 yet been confirmed.

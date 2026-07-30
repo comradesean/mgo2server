@@ -23,8 +23,32 @@ TLSDIR = pathlib.Path(os.environ.get("MGO2SERVER_TLS_DIR") or pathlib.Path(__fil
 # with User-Agent "PS3Application libhttp/4.9.3-000 (CellOS)". Files under www/ are served at
 # their matching path; anything else still gets a stub so new endpoints show up in the log
 # rather than failing.
-TERMS = (b"nomad-ng test server.\r\n\r\n"
-         b"This is a private server for development testing.\r\n")
+# The fallback body, served whenever a path has no file behind it.
+#
+# Formatted as a HELP DOCUMENT on purpose. This stub's most likely audience is a player looking at
+# the TIPS panel for a topic we have not written yet, and that panel parses <title> and
+# <page-break> (see HELP.md). Written as flat prose it renders as one untitled page; written this
+# way it gets a title, a 1/3 counter and working L1/R1. Everywhere else the tags are simply text.
+#
+# Lines are hand-wrapped at <= 42 characters to match the documents in www/us/mgo2/help/, and the
+# line endings are LF for the same reason -- every file in the docroot is LF. This used to send
+# CRLF, which disagreed with every file it was standing in for.
+TERMS = (b"<title>UNEXPECTED SCREEN</title>\n"
+         b"You should not be seeing this message.\n"
+         b"\n"
+         b"The server was asked for a document it\n"
+         b"does not have, and this is the fallback.\n"
+         b"<page-break>\n"
+         b"Please report it through GitHub Issues.\n"
+         b"Include the screen you were on, what you\n"
+         b"did to get here, and any error code.\n"
+         b"<page-break>\n"
+         b"Steps to reproduce are the most useful\n"
+         b"part. The time it happened helps too --\n"
+         b"the server log records every address\n"
+         b"that was requested.\n"
+         b"\n"
+         b"Thank you for your support.\n")
 
 
 # Paths the application server owns. Everything else is answered by this harness.
