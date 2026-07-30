@@ -106,6 +106,59 @@ were sending four bytes into the void, not handing out unreleased content.
 
 ---
 
+## The two bits that are paid content — index 3, bits 0 and 1
+
+**These are the two we should not be setting by default, and as of 2026-07-29 we do not.**
+
+| bit | what | evidence |
+| --- | --- | --- |
+| **index 3, bit 0** | the **day-one MGO Codec Pack** — 32 preset-message phrases, a paid Konami-ID item | [ELF + LIVE + DISC] proven three ways: clearing it removed the codec list live, the predicate reads exactly this bit, and the 32 gated rows match the published product list 32/32 in order |
+| **index 3, bit 1** | almost certainly the **second codec pack**, and inert on this build | [ELF] no reader — the byte is read at two addresses and both test bit 0. Its referent is inference: it is the other bit of the same inherited constant, in the byte whose bit 0 is a codec pack, and a second pack is known to have existed |
+
+Both came from the same place: `0x03`, copied wholesale from reference servers and filed in
+`PROTOCOL.md` under *"fixed constants we emit without knowing why"* since 2026-07-19. Nobody chose
+to grant a paid item; it arrived with the transcription.
+
+**Why bit 1 cannot be served anyway.** A second pack had to extend the catalogue at `0xE1812C`,
+which has 82 populated rows — and **ten phrase ids are on the disc but absent from it** (27, 34, 35
+and 58..64), three with full 19-string voice blocks: *"What's our leader's position?"*,
+*"Pass! Pass!"*, *"Shoot!"*. Adding rows means patching the executable, so no server flag can do it.
+That is consistent with the second pack requiring a client update, and it means the bit is inert
+here rather than dangerous.
+
+### Current policy (2026-07-29)
+
+**Default zero.** `account.entitlements` defaults to `3` in the schema for historical reasons, but
+every existing account has been set to `0`, with the codec pack granted individually where wanted.
+Serving a paid day-one item to everyone by default is a decision, and it should be made per account
+rather than inherited from a constant.
+
+Reversible either way in one statement:
+
+```sql
+update account set entitlements = 1 where id = <account>;   -- grant the day-one Codec Pack
+update account set entitlements = 0 where id = <account>;   -- withhold it
+```
+
+### Still unexamined: index 1's three bits
+
+We send `0x07` at trailer index 1 — three more set bits from the same inherited constant, and
+**none has been tested**. The claim that index 1 "has no reader" does not hold up: the search behind
+it looked for `lbz r0,487(r3)`, which is **index 3's** offset (`ctx+21968 + 487 = ctx+22455`). Index
+1 is `485`. So nobody has actually looked.
+
+It is per-account (`account.entitlements_index1`, V63), so the test is the same shape:
+
+```sql
+update account set entitlements_index1 = 0 where id = <account>;   -- then reconnect
+```
+
+Left at `7` for now, because zeroing it is an experiment rather than a correction — but on the same
+reasoning as the two bits above, an inherited constant nobody can explain should not stay set
+forever.
+
+---
+
 ## Mailbox tabs 2 and 3
 
 Not post-launch content as far as anyone knows, but unresolved and adjacent, so noted here to keep
@@ -123,9 +176,12 @@ one restart.
 
 ---
 
-## Paid content we currently grant unconditionally
+## Paid content: what it is, and how it was found
 
-### The MGO Codec Pack — 32 preset messages, GRANTED (resolved live 2026-07-29)
+### The MGO Codec Pack — 32 preset messages (resolved live 2026-07-29)
+
+*Policy and the bit layout are under "The two bits that are paid content" above; this
+section is the evidence trail.*
 
 `0x3049` carries a 32-byte trailer whose **index 3 bit 0** is the only meaningful bit in it. The
 availability predicate `0x9B9DF0` walks an 85-entry table at `0xE1812C` and refuses any entry whose
@@ -157,7 +213,8 @@ none in loadout code, and the trailer byte has no third reader. The original "lo
 was a misread of the table's contents, not a mislabelled gate.
 
 **Granting it is therefore a live operator-policy decision**, and the only one in this subsystem:
-`account.entitlements` bit 0, per account. Set for the paid pack, clear to withhold it.
+`account.entitlements` bit 0, per account. Every account was set to `0` on 2026-07-29, with the pack
+granted individually where wanted.
 
 **This is an entitlement, and we grant it to everyone by default.** That is *operator policy*, not
 protocol, and it has never been a deliberate decision — the value was inherited. Whether those 32
