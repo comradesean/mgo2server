@@ -1058,6 +1058,35 @@ public class CharacterService {
 				.execute());
 	}
 
+	/** One colour reward: bit {@code bitIndex} of item {@code itemId} is unlocked. */
+	public record RewardUnlock(int itemId, int bitIndex) {
+	}
+
+	/**
+	 * A character's colour reward unlocks, oldest first, capped at the wire's sixteen slots.
+	 *
+	 * <p>These fill the 32 bytes at the end of the {@code 0x4124} / {@code 0x4133} gear payload —
+	 * [ELF] sixteen {@code {u8 item_id, u8 bit_index}} pairs, not a terminator. We filled all of
+	 * them with {@code 0xff}, which is skipped only because item id 255 exceeds the parser's
+	 * 128-entry bound: inert rather than correct.
+	 *
+	 * <p><b>Oldest first, deliberately.</b> Sixteen is a hard wire limit, so a character with more
+	 * unlocks than slots needs a stable rule — and {@code 0x4124} and {@code 0x4133} must select the
+	 * same sixteen, or the client's table depends on which packet arrived last.
+	 */
+	public java.util.List<RewardUnlock> rewardUnlocks(long charaId) {
+		return jdbi.withHandle(handle -> handle
+			.createQuery("""
+					select item_id, bit_index from reward_unlock
+					where chara_id = :chara
+					order by unlocked_at, item_id, bit_index
+					limit 16
+					""")
+			.bind("chara", charaId)
+			.map((rs, ctx) -> new RewardUnlock(rs.getInt("item_id"), rs.getInt("bit_index")))
+			.list());
+	}
+
 	/**
 	 * The skills a character owns — exactly what the table holds, with no top-up.
 	 * <p>
