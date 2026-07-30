@@ -111,8 +111,15 @@ public class CharacterGameController implements IGameController {
 	 * "32 of the 91 selectable loadout items" and that clearing it emptied the loadout screen; both
 	 * were wrong, and a live test showed gear entirely unaffected.
 	 * <p>
-	 * We send bit 1 clear. It is read by nothing here and is most likely the second codec pack,
-	 * which needed a client update — see {@code dev/docs/POST_LAUNCH.md}.
+	 * We send bit 1 clear, and it could not matter if we did not: {@code rlwinm r27,r0,4,27,27} and
+	 * {@code clrlwi r0,r0,31} mask to bit 0, so bit 1 is discarded by the instruction encoding, not
+	 * merely ignored. It is most likely the second codec pack, which needed a client update — see
+	 * {@code dev/docs/POST_LAUNCH.md}.
+	 * <p>
+	 * A caveat for anyone changing the trailer's length: the parser's 480-byte memset covers
+	 * {@code ctx+4..483} only, so <b>the trailer is never cleared</b> before a {@code 0x3049}.
+	 * Harmless while we always write all 32 bytes; a short-trailer variant would inherit stale
+	 * bytes rather than zeros.
 	 * <p>
 	 * <b>32 bytes, not 35</b> — independently confirmed from the parser side: {@code 0xD3732C} copies
 	 * exactly 32 (`li r5,32` at {@code 0xD3774C}). Subtracting the phantom three from the old

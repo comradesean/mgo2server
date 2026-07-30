@@ -110,11 +110,16 @@ public class Account {
 	 * The {@code 0x3049} trailer's byte at index 1. We have always sent {@code 0x07} and <b>no bit
 	 * of it is understood</b>.
 	 * <p>
-	 * Per account (V63) for the same reason as {@link #entitlementsByte3}: so the three set bits can be
-	 * isolated by an {@code UPDATE} and a reconnect instead of guessed at. Named by wire position
-	 * rather than by a guess at meaning, following the {@code unread_NNN} precedent.
+	 * <b>PROVEN DEAD [ELF 2026-07-30]</b>, and now sent as 0 (V66). Displacement 485 is read nowhere
+	 * in the binary: four searches covering every D-form access, a raw instruction-word scan, the
+	 * profile-relative displacement, and any pointer to the byte ever being formed — plus a
+	 * chain-of-custody check over all 16 ctx origination sites, whose complete offset set is 0, 1, 2,
+	 * 4+60·i and 487.
+	 *
+	 * <p>The {@code 0x07} we sent until then was cargo inherited from reference servers. Kept as a
+	 * column rather than deleted so a later build can be tested against it without a migration.
 	 */
-	private int entitlementsByte1 = 7;
+	private int entitlementsByte1 = 0;
 
 	public int getEntitlementsByte3() {
 		return entitlementsByte3;

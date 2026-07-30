@@ -176,9 +176,9 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 			.as("bit 0 grants a PAID item; it must never be granted by default")
 			.isZero();
 		assertThat(payload.getUnsignedByte(trailer + 1))
-			.as("index 1 still carries the inherited 0x07 — unexamined, and nobody has looked for a"
-				+ " reader at its offset (485, not the 487 that was searched)")
-			.isEqualTo((short) 0x07);
+			.as("byte 1 is proven dead — displacement 485 is read nowhere in the binary — so we stop"
+				+ " sending the inherited 0x07 (V66)")
+			.isZero();
 	}
 
 	/**
