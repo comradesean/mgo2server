@@ -36,11 +36,18 @@ import java.util.Set;
  * and stay zero — a full-width scan found no live consumer of any of them.</p>
  *
  * <b>We know the placeholders are wrong.</b> Observed automatch ran TDM at 5/4/25 where the client
- * default is 3/4/15, and SNE at 7/4/3 where the default is 8/4/3. Neither could have come from a
- * host's saved settings or from the defaults, so the original server authored its own table — we
- * simply have only two rows of it. Every remaining rule is served a default because a known-wrong
- * fixed value beats an invented one, and because the difference is one line to fix per rule as soon
- * as a game of that rule is observed. DM, RES, CAP and BASE are the four still missing.
+ * default is 3/4/15, SNE at 7/4/3 where the default is 8/4/3, and DM at 10 min / 50 tickets where
+ * the default is 5/30. None could have come from a host's saved settings or from the defaults, so
+ * the original server authored its own table — we simply have only three rows of it. Every
+ * remaining rule is served a default because a known-wrong fixed value beats an invented one, and
+ * because the difference is one line to fix per rule as soon as a game of that rule is observed.
+ * <b>RES, CAP and BASE are the three still missing.</b>
+ *
+ * <p><b>Deathmatch's observation corroborates the index layout.</b> It was reported as
+ * <em>1 round, 50 tickets, 10 minutes</em> — and DM is the one rule with <b>no rounds slot</b>,
+ * owning only indices 9 and 10 in the 2/2/2/3/2/2/2/2 shape. A rule whose round count is fixed at
+ * one is exactly the rule that would need no slot for it, so the missing slot and the reported
+ * value agree rather than conflict. Only the two real slots are written here.
  */
 public final class AutomatchSettingsBlock {
 
@@ -137,6 +144,7 @@ public final class AutomatchSettingsBlock {
 	 * artifacts. Each entry replaces a client default that is known to be wrong.
 	 */
 	private static final Map<Integer, int[]> AUTOMATCH_TIMERS = Map.of(
+		0, new int[] {10, 50},     // DM:  10 min, 50 tickets         (default is 5/30)
 		1, new int[] {5, 4, 25},   // TDM: 5 min, 4 rounds, 25 tickets (default is 3/4/15)
 		4, new int[] {7, 4});      // SNE: 7 min, 4 rounds            (default is 8/4)
 

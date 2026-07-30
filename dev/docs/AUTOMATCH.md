@@ -337,9 +337,16 @@ Sneaking (8/4) and Team Deathmatch (3/4/15) at exactly the predicted indices.
 | --- | --- | --- |
 | TDM | 3 / 4 / **15** | 5 / 4 / **25** |
 | SNE | **8** / 4 / 3 | **7** / 4 / 3 |
+| DM | **5** / — / **30** | **10** / 1 round / **50** |
 
-Both differ from the defaults, so the automatch server set its own timers rather than letting any
-host's saved settings through. **This retires the "maybe it just used the host's settings" reading
+All three differ from the defaults, so the automatch server set its own timers rather than letting
+any host's saved settings through.
+
+**Deathmatch also corroborates the index layout from a third direction.** It was reported as *1
+round*, and DM is the one rule with **no rounds slot** — it owns only indices 9 and 10 in the
+2/2/2/3/2/2/2/2 shape. A rule whose round count is fixed at one is exactly the rule that would need
+no slot for it, so a report of "1 round" and an absent slot agree rather than conflict. Only the two
+real slots are written. **This retires the "maybe it just used the host's settings" reading
 as an explanation of the retail behaviour** — it is now known not to be what Konami did, and the
 fallback in `AutomatchSettingsBlock` is a stand-in with a known-wrong provenance rather than an
 untested one.
@@ -427,6 +434,8 @@ the retail service authored its own values, and we have two of the six rows.
 
 The defaults are used rather than something invented because they are a real, fixed, self-consistent
 table from the game itself; swapping in a real row is one line in `AUTOMATCH_TIMERS` per rule.
+**DM was filled in 2026-07-30 (10 min / 50 tickets); RES, CAP and BASE are the three still
+served client defaults.**
 
 Also fixed by the server, and these parts are *not* placeholders:
 
