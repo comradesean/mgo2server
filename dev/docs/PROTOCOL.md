@@ -812,7 +812,7 @@ than they go on the wire.
 
 | offset | size | contents |
 | --- | --- | --- |
-| `0x00` | 1 | privacy A: bit 0 always **1** (unknown why), bits 4–5 online-status mode, bit 6 email-friends-only |
+| `0x00` | 1 | privacy A: bit 0 = **"settings already initialised" — LOAD-BEARING, must be 1** (see note below), bits 4–5 online-status mode, bit 6 email-friends-only |
 | `0x01` | 1 | normal view: bit 0 invert Y, bit 1 invert X, bits 4–7 speed (**stored 1-based, sent 0-based**) |
 | `0x02` | 1 | shoulder view, same packing |
 | `0x03` | 1 | first-person view: bit 0 invert Y, bit 1 invert X, bit 2 player direction, bits 4–7 speed |
@@ -827,12 +827,35 @@ than they go on the wire.
 | `0x11` | 1 | weapon recall: low nibble "before", high nibble "now" |
 | `0x12` | 1 | first-view memory: bit 1 |
 | `0x13` | 1 | privacy B: bit 0 receive notices, bit 4 receive invites |
-| `0x14` | 1 | bit 0 lock-on enabled, bits 4–7 BGM volume **+1** |
-| `0x15` | 1 | radar: bit 0 lock north, bit 4 hide floor |
-| `0x16` | 1 | HUD: bits 0–1 display size, bit 4 hide name tags |
+| `0x14` | 1 | bit 0 lock-on enabled, bits 4–7 BGM volume **+1** — *the BGM half is disputed, see below* |
+| `0x15` | 1 | radar: bit 0 lock north, bit 4 hide floor — *disputed, see below* |
+| `0x16` | 1 | HUD: bits 0–1 display size, bit 4 hide name tags — *disputed, see below* |
 | `0x17` | 9 | zero, purpose unknown |
-| `0x20` | 16 | codec entries 1–4, four bytes each (`a`,`b`,`c`,`d`) — meaning of the four bytes unknown |
+| `0x20` | 16 | codec entries 1–4, four bytes each — **each byte is a 1-based message id, 0 = unset** |
 | `0x30` | 256 | four codec names, 64 bytes each, ISO-8859-1 |
+
+**Byte `0x00` bit 0 is an "already initialised" marker and sending 0 discards this whole packet.**
+[ELF 2026-07-30] `0x9472CC` does `clrldi. r0,r3,63` / `bne 0x94753C`: if the bit is **clear**, the
+client memsets the 33 list-preference bytes and overwrites roughly thirty settings with hardcoded
+defaults the first time the options screen is entered. So the long-standing "always 1 (unknown why)"
+was load-bearing — it is not a constant we happen to send, it is the flag that tells the client our
+settings are real.
+
+**The codec entry bytes are message ids.** Each is 1-based with 0 meaning unset: the screen does
+`addi r31,r3,-1` and validates through `0x9B9DF0`, which searches an **82-entry, 6-byte table at
+`0xE1812C`** of `{u16 id, u16 gate, u16 str}`. Thirty-two of those rows are gated on `0x3049`
+trailer byte 3 bit 0 — the paid Codec Pack — which is the same 32 messages `AWARDS.md` and the
+entitlement migrations already track. The 4×4 grouping is read from the client (four slots, each
+fetching its own 64-byte name before its four indices), not assumed from the layout.
+
+**Bytes `0x14` bits 4–7, `0x15` and `0x16` are disputed** [flagged 2026-07-30, not resolved]. The
+accessor family `0x906xxx` is contiguous and stops at byte `0x14`'s **low** nibble; there is no
+accessor for byte `0x14` high, `0x15` or `0x16`, and no direct load or store at the corresponding
+`profile+4956/4957/4958`. Because `0x4110` echoes the raw 48 bytes back, **a live slider test cannot
+settle this** — the values round-trip whether or not the client reads them. Needs an argued check of
+its own. Two further gaps found at the same time: byte `0x0d` has **three** accessors (bits 0–1,
+2–3, 4–7) where this table lists two fields, and byte `0x10` has a **high**-nibble accessor
+(`0x90681C`, called three times) where this table says low nibble only.
 | `0x130` | 32 | **list preferences** — filter / sort / search, sixteen 4-bit fields in bytes 0-7 (below) |
 
 Trailer:
@@ -1406,8 +1429,8 @@ result slot and trips the error branch — so it targets some other build and wa
 | `0x004` | 4 | u32 | game id; if a game is currently selected the client requires this to match |
 | `0x008` | 16 | ISO-8859-1 | game name |
 | `0x018` | 128 | ISO-8859-1 | comment |
-| `0x098` | 1 | u8 | zero — a separate read, not half of a u16 |
-| `0x099` | 1 | u8 | zero — likewise |
+| `0x098` | 1 | u8 | **password_enabled** — `0xD444E0` → obj+150, the same destination as `0x4310`'s `src+150` |
+| `0x099` | 1 | u8 | **dedicated** — `0xD444FC` → obj+167, ditto `src+167`; consumed at `0xD494F0` → T+0x16 |
 | `0x09a` | 1 | u8 | lobby subtype |
 | `0x09b` | 4 | s32 | average experience across current players |
 | `0x09f` | 4 | u32 | host score |

@@ -99,6 +99,14 @@ seq:
       the +12 slot; and the character-edit screen's copy at `r29+26660` has **no instruction
       anywhere using displacement 26672**. The confirming observation would have been a load at
       profile+7660 or at +12 of any provable copy. None exists. Send 0 (we do).
+
+      **Negative re-run independently 2026-07-30 and it holds — but the 26672 clause needs a
+      qualifier.** A whole-image displacement sweep finds exactly two instructions at 7660
+      (`0x412D88`, the float-struct init already rejected, and `0xD3EEB8`, the `0x4103` parser) and
+      **fourteen** `addi rX,rY,26672` sites in `0x8DC398`..`0x8DFD48`. All fourteen are the low half
+      of a two-instruction 32-bit offset — each is preceded by `addis rX,rY,48`, so the real
+      displacement is `0x300000 + 26672` and none of them touches the edit-screen copy. Stated
+      precisely: no *load or store* uses displacement 26672, and no lone `addi` produces it.
   - id: appearance_b
     size: 14
     doc: "[CONFIRMED] (order per PROTOCOL.md) Wire 0x3e -> ctx+30152..30165, fourteen separate u8 reads. Appearance head … accessory-2 colour."
@@ -133,6 +141,16 @@ seq:
       profile-provenanced base, and nothing uses 26720 (the edit-screen copy's +60), so no UI reads
       or writes it — the client is a pure conduit. Send 0 (we do), but note the consequence: our
       0x4130 handler must preserve whatever we sent, or it is lost on the first appearance change.
+
+      **Negative re-run independently 2026-07-30 and it holds; the near-misses, so nobody re-chases
+      them.** Displacement 7708 has twelve hits: six are past the end of .text (`0xDE9328`) and
+      disassemble as data; `0x412DC0 stw r0,7708(r11)` belongs to the same dense engine-struct init
+      that already accounts for the 7660 near-miss; and `0x559D0`/`0x55A04`/`0x56144`/`0x56450`/
+      `0x56750` are `lwz`/`stw` **u32** traffic in the early runtime (`0x55xxx`), incompatible with
+      this being a byte and with no `0xD3A094` anywhere in their provenance. Displacement 26720 has
+      two hits, both outside .text. Same conclusion as before: the only readers are the `0x4130`
+      builder and the `0x4131` parser — see `mgo2_cmd_4131_s2c.ksy`'s `unknown_35`, which is this
+      byte on the way back in.
   - id: chara_id
     type: u4
     doc: "[ELF] Wire 0x6b -> ctx+30200. PROTOCOL.md: \"the original sends the character id here; its purpose is not documented\"."

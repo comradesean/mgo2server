@@ -161,7 +161,22 @@ this store *is* the peer-to-peer state layer.
 **MGS4 unlocks items based on time played in MGO**, and the unlock is driven by real play time — so
 something MGO writes must be read by the single-player game.
 
-**Three candidates are now eliminated** (2026-07-28):
+> ## ANSWERED 2026-07-30 — and the answer is that the server drives it
+>
+> **`0x4129` wire `+1172` is the play time**, and it is a *server-supplied* value. Its two readers
+> (`0x8F9850`, `0x8F98F8`) pass it to `0x7F6F70` in the `.sav` module, which divides by 3600 —
+> reciprocal magic `0x91A2B3C5`, `mulhwu` then `srwi 11` — and ORs cumulative bits into the
+> `mgof.sav` flag word at **0, 10, 20 and 50 hours**.
+>
+> That also explains the elimination below rather than contradicting it: `mgof.sav` really is a
+> single u32, and this is what writes it. "Only 4 bytes move" was a fact about the file, not about
+> where its contents come from — the two are different questions and the old reading conflated them.
+>
+> **Consequence, and it is live: we hardcode `0xffffff` into that slot** at
+> `HostGameController.java:733` — 16,777,215 seconds, 4,660 hours — on **every round end**. Every
+> player trips all four tiers immediately. See the corrected caution at the end of this section.
+
+**Three candidates were eliminated** (2026-07-28) — the second is now superseded by the box above:
 
 - **Not this record store.** It is not persisted at all (§5), and its dirty bitmap turned out to be
   P2P replication rather than write-back to disk.
@@ -189,9 +204,17 @@ separate from the record store.
 
 Two cautions for whoever picks this up:
 
-- **The server cannot help.** The unlock is client-side and will never appear in a packet. Our
-  `chara_training_time` and the `seconds_in_game` column are what *we* track for the stats screens
-  and are a different quantity; do not conflate them.
+- ~~**The server cannot help.** The unlock is client-side and will never appear in a packet.~~
+  **WRONG, corrected 2026-07-30. The server is the *only* thing that can drive it**, through
+  `0x4129` `+1172` — see the box at the top of this section. The unlock is client-side in the sense
+  that the client writes the file; it is server-side in the sense that the client writes whatever
+  number we send.
+
+  The rest of the old caution still stands and is now the useful half: `chara_training_time` and
+  `seconds_in_game` are what *we* track for the stats screens. `seconds_in_game` summed per
+  character is a plausible source for `+1172`, but it is **not the same quantity** — it counts time
+  in rounds, not time in MGO — so adopting it is an operator-policy decision to be argued, not a
+  substitution to be made quietly.
 - **The observed files are written at different times** (`helpdisp` mid-session, `mgof` days apart,
   `opt`/`scradj` older), so they are written by different triggers rather than dumped together at
   exit. Timestamps are evidence about which subsystem wrote what.

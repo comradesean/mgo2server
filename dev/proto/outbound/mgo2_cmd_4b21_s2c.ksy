@@ -133,12 +133,51 @@ seq:
     doc: "[CONFIRMED 2026-07-27] T+0x1c, the clan LEADER's name, 16 bytes fixed."
   - id: unknown_30
     type: u4
-    doc: "[ELF] T+0x30. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x30. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: name_c
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] T+0x34, 16 bytes fixed. [UNKNOWN] which name."
+    doc: |
+      [ELF] T+0x34, 16 bytes fixed. [UNKNOWN] which name — the id is inherited, and nothing in the
+      binary says this is a name at all beyond its 16-byte width.
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: unknown_48
     type: u4
     doc: |
@@ -153,7 +192,27 @@ seq:
       the emblem could still be re-displayed immediately. Back to zero.
 
       The emblem cooldown is therefore **operator policy**, enforced by refusing 0x4b50 with -1216,
-      not by any field in this packet.
+      not by any field in this packet. **The cooldown the client renders comes from `T+0x1B30`, not
+      from here** — see `emblem_display_cooldown_s` below, traced in the binary 2026-07-30. That is
+      the positive result the 2026-07-27 experiment was missing.
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: member_count
     type: u4
     doc: |
@@ -162,31 +221,171 @@ seq:
       rendering.
   - id: unknown_5c
     type: u4
-    doc: "[ELF] T+0x5c. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x5c. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: unknown_60
     type: u4
-    doc: "[ELF] T+0x60. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x60. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: unknown_64
     type: u4
-    doc: "[ELF] T+0x64. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x64. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: unknown_68
     type: u4
-    doc: "[ELF] T+0x68. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x68. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: unknown_6c
     type: u4
-    doc: "[ELF] T+0x6c. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x6c. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: flags_word
     type: u4
-    doc: "[ELF] T+0x70. A bitfield: the `flags_byte` below is merged into this same word, so the server must not treat the two as independent. [UNKNOWN] bit meanings."
+    doc: |
+      [ELF] T+0x70. A bitfield: the `flags_byte` below is merged into this same word, so the server
+      must not treat the two as independent. [UNKNOWN] bit meanings.
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
+      Because `T+0x70` has no reader, the three bits `flags_byte` ORs into it are dead as well.
+
   - id: unknown_74
     type: u1
-    doc: "[ELF] T+0x74. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x74. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
+      it can be re-run: the only producer of a pointer to this struct is the accessor
+      **`0xD54404`** — `GetClanProfile(session)`, body `addis r3,r3,1; addi r0,r3,-1968` at
+      `0xD5440C`-`0xD54414`, i.e. `T = session + 0x10000 - 1968` — plus the two parsers
+      (`0xD587AC`, `0xD58C74`) and the reset at `0xD344B8`. All **108** `bl 0xD54404` sites were
+      taint-scanned across their whole enclosing function, propagating through `mr` / `clrldi` /
+      `extsw` / `addi` and killing r0-r12 at every call. The complete set of `T+` displacements
+      touched anywhere in the image is
+      `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+      0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34`, plus pointers handed to other functions at `T+0x04`,
+      `T+0x1C`, `T+0x77`, `T+0x379`, `T+0x67A`, `T+0x700` and `T+0x908`. Exactly four sites let a
+      `T`-derived pointer escape into memory — `0xA8A418` (`stw r3,96(r31)`), `0xABCC24` /
+      `0xABD82C` (`stw r3,84(rN)`) and `0xAE2C04` (`T+0x67A` into `+176`); every reload of those
+      slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
+      functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
+      overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
   - id: flags_byte
     size: 1
     doc: |
       [ELF] Read as a 1-byte block (0xD58A80), then three bits are OR-ed into the 64-bit word at
       T+0x70 (0xD58A90-0xD58AD8): bit0 -> 0x00800000, bit1 -> 0x00400000, bit2 -> 0x00010000.
       Bits 3..7 are read and discarded. [UNKNOWN] meanings.
+
+      **[ELF 2026-07-30] The three surviving bits are dead too**, because their destination
+      `T+0x70` has no reader anywhere in the image — see `flags_word` above for the scan that
+      establishes it. Every bit of this byte is therefore inert on this client.
   - id: emblem_wip_flag
     type: u1
     doc: |
@@ -258,12 +457,92 @@ seq:
     type: str
     encoding: ASCII
     doc: "[CONFIRMED 2026-07-27] T+0x908, 16 bytes fixed: the name of whoever last set the notice. Drawn under the notice beside `notice_at`."
-  - id: unknown_1b2c
+  - id: disband_cooldown_s
     type: u4
-    doc: "[ELF] T+0x1B2C. [UNKNOWN]"
-  - id: unknown_1b30
+    doc: |
+      [ELF — NAMED 2026-07-30] T+0x1B2C. **Seconds remaining before this clan may be DISBANDED.**
+      Send 0 when there is no wait.
+
+      The whole chain, in order:
+
+      1. `0xAB5D7C` `bl 0xD54404` then `0xAB5D84` `lwz r4,6956(r3)` — this field, read straight off
+         the clan profile. Duplicated on the second clan screen at `0xABA138`/`0xABA140`.
+      2. `0xAAA7A0` converts it `fcfid`/`frsp` and stores it as a **float at screen+832**
+         (`stfs f0,832(r3)`, `0xAAA7BC`); a zero value is stored as integer 0 instead
+         (`0xAAA7CC`). The per-frame updater `0xAAAE88` then subtracts the frame delta from
+         screen+828 and screen+832 and clamps both at zero (`fsubs`/`fsel`, `0xAAAEC0`-`0xAAAEDC`),
+         which is what makes this a live countdown rather than a plain number.
+      3. `0xAB5568` reads it back — `lfs f0,832(r9)`, `fctidz`, then `mulhwu 0x88888889` + `srwi 5`
+         twice (`0xAB5588`, `0xAB55AC`) to get minutes and hours, rounding minutes UP on a nonzero
+         remainder (`0xAB55A0`).
+      4. The message is chosen on the screen's state word (`lwz r0,4(r27)` at `0xAB548C`): state 16
+         is this one. With hours != 0 it formats **clan string ordinal 101** (`li r4,101` at
+         `0xAB55E0`) with (hours, minutes); with hours == 0, **ordinal 102** (`0xAB5674`) with
+         minutes alone. Both go through `GetString(hash("clan"), n)` = `0x240708` after
+         `0xD25D0` hashes the literal `clan`.
+
+      The disc gives the sentences verbatim (set `[642318]`, headers 16524..16738, group hash
+      `0x333C8E` = `"clan"`, strings from 16739):
+        * **101** — `You cannot disband this clan for\nanother %d hours %d minutes.`
+        * **102** — `You cannot disband this clan for\nanother %d minutes.`
+
+      So this is a server-side cooldown the client only *displays*; the refusal itself must still
+      come from us. Units are seconds because the value is decremented by the frame delta and
+      divided by 60 twice.
+  - id: emblem_display_cooldown_s
     type: u4
-    doc: "[ELF] T+0x1B30. [UNKNOWN]"
+    doc: |
+      [ELF — NAMED 2026-07-30] T+0x1B30. **Seconds remaining before this clan's emblem may be put
+      on display again.** Send 0 when there is no wait. This is the countdown `unknown_48`'s
+      2026-07-27 experiment went looking for and did not find — it was in the wrong slot.
+
+      The chain, which is closed end to end:
+
+      1. `0xAB5D5C` `bl 0xD54404` then `0xAB5D64` `lwz r4,6960(r3)`. Duplicated at
+         `0xABA118`/`0xABA120` on the sibling clan screen.
+      2. `0xAAA768` stores it as a **float at screen+828** (`stfs f0,828(r3)`, `0xAAA784`), decayed
+         per frame by `0xAAAE88` exactly like `disband_cooldown_s`.
+      3. The **only** value-reader of screen+828 in the whole image is the clan screen's message
+         handler `0xAABC88`, case **16**: `lfs f0,828(r11)` / `fctidz` / `stw r0,0(r9)` at
+         `0xAABD34`-`0xAABD48`, writing the integer into the caller's out-parameter.
+      4. `0xA98A90` is the only sender of that message, and it has exactly **four** call sites in
+         the image — `0xAA51E8`, `0xAA5254`, `0xAA6954`, `0xAA69DC` — all inside the EMBLEM EDIT
+         screen. Two of them use code 16 (`li r4,16` at `0xAA5248` and `0xAA69C8`); the other two
+         use code 11, and `0xAABC88` handles exactly codes 11 and 16 (`cmpwi r4,11` at `0xAABD18`,
+         `cmpwi r4,16` at `0xAABD20`) — which is what identifies the object being messaged.
+      5. A non-zero result puts the emblem screen into state **8** carrying the value
+         (`stw r0,8(r9); li r0,8; stw r0,4(r9)` at `0xAA526C`-`0xAA5274`, and `0xAA69F0`).
+      6. State 8 (`cmpwi r0,8; beq 0xAA5098` at `0xAA4FF8`) runs the same /60 arithmetic
+         (`mulhwu 0x88888889` at `0xAA50A4`) and formats **clan string ordinal 90** with
+         (hours, minutes) at `0xAA50FC`, or **ordinal 91** with minutes alone at `0xAA5190`. The
+         second copy of the screen does the same at `0xAA6BDC` / `0xAA6C4C`.
+
+      Disc text (same set as `disband_cooldown_s`):
+        * **90** — `You must wait another %d hours %d minutes\nbefore you can put this emblem on display.`
+        * **91** — `You must wait another %d minutes\nbefore you can put this emblem on display.`
+
+      Note this only draws the countdown. Refusing the action is still ours — `0x4b50` answered
+      with `-1216` — so the two must be kept consistent by the server.
   - id: unknown_1b34
     type: u4
-    doc: "[ELF] T+0x1B34, last 4 bytes of the payload. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1B34, last 4 bytes of the payload. Meaning still [UNKNOWN], but the render path is
+      now tier 1 and it is **not** dead like its neighbours.
+
+      Two readers, both drawing it as a plain number through the formatter `0xCFD018(buf, 20, v)`:
+        * `0xA7D32C` `lwz r5,6964(r22)` -> element **`infoC_st-3`** of the clan-info popup
+          (element name resolved from the TOC at `0xA7D348`; the popup's other rows are
+          `infoC_st-1` = clan name at `0xA7D794`, `infoC_st-2` = leader name at `0xA7D7FC`,
+          `infoC_st-5` = `T+0xC68`).
+        * `0xA8A970` `lwz r5,6964(r9)` -> element **`STRING_0_3`** in the header of the CLAN RECORD
+          screen (`l_shib_y13_02_bg_clan_senseki`, named at `0xA8A414`), where `STRING_0_1` is the
+          clan name (`T+0x04`, copied at `0xA8A890`) and `STRING_0_2` is `T+0xC68` clamped to
+          9,999,999 at `0xA8A900`-`0xA8A91C`.
+
+      Both slots sit in a *clan record* header, so it is a clan-wide statistic rather than anything
+      about the viewer. Which one is [UNKNOWN]: the surrounding labels on that screen are
+      `STRING_s_TOTALre`, `STRING_s_TOURNAMENT`, `STRING_s_1st`, `STRING_s_2nd`, `STRING_s_BEST4`,
+      `STRING_s_SURVIVAL`, `STRING_s_WIN`, `STRING_s_WINS`, `STRING_s_WINZ`, `STRING_s_GRADE`, and
+      the binding of a header cell to one of those labels is in the layout file, not the ELF.
+      **0x4b81 sends the same slot** (mgo2_cmd_4b81_s2c.ksy), so a clan reached from search or the
+      clan list needs it too.

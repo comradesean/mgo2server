@@ -231,18 +231,30 @@ types:
       - id: unknown_172
         type: u4
         doc: "block +172. [UNKNOWN]"
-      - id: unknown_176
+      - id: common_flags_msb
         type: u1
-        doc: "block +176. [UNKNOWN]"
+        doc: |
+          block +176, struct **+928** — the **most significant byte** of the 32-bit flags word whose
+          middle bytes are `common_a` (+177) and `common_b` (+178) and whose low byte is
+          `common_flags_lsb` (+179). Renamed from `unknown_176` 2026-07-30.
+
+          [ELF] 117 sites do `lwz rX,928(rB)` and bit-test the result; **every tested bit lies in
+          bits 8-23**, i.e. in `common_a`/`common_b` only. Nothing tests bits 24-31, which are this
+          byte. Canonical block documentation lives in `mgo2_cmd_4313_s2c.ksy` — this packet carries
+          the identical 204-byte block, so findings there apply here unchanged.
       - id: common_a
         type: u1
         doc: "block +177. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: common_b
         type: u1
         doc: "block +178. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
-      - id: unknown_179
+      - id: common_flags_lsb
         type: u1
         doc: |
+          Renamed from `unknown_179` 2026-07-30, once `+176` was established as the same word's MSB.
+          Canonical block documentation is in `mgo2_cmd_4313_s2c.ksy`; the evidence below is this
+          file's own and is retained because it is the fuller derivation.
+
           [ELF 2026-07-29] A u8 with **its own read** — `0xD43B10` uses the u8 reader `0xd5cb8c`,
           while `+177`/`+178` are covered by a single raw-2 read at `0xD43AE4`. The builder splits the
           same way (`0xD44BD8` u8 at struct `931`; `0xD44BC0` raw-2 at `929`), and the game-list row
@@ -278,9 +290,18 @@ types:
       - id: team_kill_kick
         type: u2
         doc: "block +182. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
-      - id: unknown_184
+      - id: host_ping
         type: u4
-        doc: "block +184. [UNKNOWN]. Position and width exact; no reader has been traced."
+        doc: |
+          block +184, struct **+936**. Renamed from `unknown_184` 2026-07-30 — the note "no reader
+          has been traced" is superseded; one was.
+
+          [ELF] `0xD49548` does `lwz 936(r31)` and stores the result at `T+0x20`, which is the
+          `ping` field of a `0x4302` game-list row. That function is the client building a game-list
+          record straight out of a game-details object of this exact shape. Corroborated by the
+          game-selection picker at `0x934580`, which buckets the same value at 20 ms and 80 ms.
+
+          Canonical block documentation is in `mgo2_cmd_4313_s2c.ksy`.
       - id: capture_extra_time
         type: u1
         doc: "block +188. [ELF] position only; the name is a tier-4 label, meaning [UNKNOWN]."
@@ -293,6 +314,19 @@ types:
           which is what rules out a side index (0/1/2 drawn as a name or sprite). That it is a count
           is settled; that the count is specifically *kills of Snake* is **not decidable from the
           ELF** — that label lives on the disc.
-      - id: byte_timers_and_tail
+      - id: unread_tail
         size: 14
-        doc: "block +190..+203. [UNKNOWN as a unit] One 14-byte raw read; no field boundaries in the parser."
+        doc: |
+          block +190..+203, struct **+942..+955**. **One 14-byte raw read**, so the parser draws no
+          field boundaries here at all. Renamed from `byte_timers_and_tail` 2026-07-30, because that
+          name asserted a subdivision that is not ours to assert.
+
+          **The client never reads or writes any byte of it.** Three touch points image-wide: the
+          `0x4310` builder emitting it, the `0x4305` parser reading it, and the create-game
+          initialiser memsetting it to zero. Default is fourteen zero bytes.
+
+          The subdivision PROTOCOL.md carries — 8 byte-sized timers for Stealth DM, Interval, Solo
+          Capture and Race, then a flag byte and 4 zeros — is a reference-server reading, and it
+          names modes whose **strings do not exist on this disc**. Splitting this region needs live
+          divergence testing, not disassembly. Canonical block documentation is in
+          `mgo2_cmd_4313_s2c.ksy`.

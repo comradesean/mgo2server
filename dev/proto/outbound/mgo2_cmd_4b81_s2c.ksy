@@ -146,7 +146,18 @@ seq:
     doc: "[CONFIRMED 2026-07-27] T+0x67A, the clan comment / description, 128 bytes. Same slot as 0x4b21's clan_comment, and the same field 0x4b64 writes."
   - id: unknown_1b34
     type: u4
-    doc: "[UNKNOWN] T+0x1B34. Sent as zero."
+    doc: |
+      [ELF 2026-07-30] T+0x1B34 — the **same slot 0x4b21 sends**, and it is genuinely rendered, so
+      "sent as zero" is a choice we are making rather than a property of the packet.
+
+      Readers: `0xA7D32C` (`lwz r5,6964(r22)`) draws it into element `infoC_st-3` of the clan-info
+      popup, and `0xA8A970` (`lwz r5,6964(r9)`) into `STRING_0_3` in the CLAN RECORD header; both
+      via the number formatter `0xCFD018(buf, 20, v)`. Full trace and the reason its *meaning* is
+      still [UNKNOWN] are in mgo2_cmd_4b21_s2c.ksy under the same field name.
+
+      Note this contradicts the top-level doc's overlap list only in emphasis: `T+0x1B34` was
+      already listed as shared with 0x4b21. It is the one shared trailing slot that has a reader —
+      `T+0x1B2C` and `T+0x1B30`, the two cooldowns, are 0x4b21-only.
   - id: member_count
     type: u4
     doc: |
@@ -156,28 +167,197 @@ seq:
       experiment constrained this slot rather than that one.
   - id: unknown_1328
     type: u4
-    doc: "[ELF] T+0x1328 — outside anything 0x4b21 writes. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1328 — outside anything 0x4b21 writes. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,4904(rY)` in the
+      disassembly was listed. The only non-stack hits are `0x411FB4`
+      (`stw r0,4904(r9)`, an unrelated initialiser in the `0x41xxxx` block that never calls the
+      clan accessor) and `0xD81CCC` (`stw r15,4904(r29)`); neither base can be `T`.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1978
     type: u4
-    doc: "[ELF] T+0x1978. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1978. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6520(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6520(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_197c
     type: u4
-    doc: "[ELF] T+0x197C. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x197C. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6524(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6524(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1980
     type: u4
-    doc: "[ELF] T+0x1980. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1980. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6528(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6528(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1984
     type: u4
-    doc: "[ELF] T+0x1984. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1984. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6532(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6532(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1988
     type: u4
-    doc: "[ELF] T+0x1988. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1988. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6536(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6536(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_198c
     type: u4
-    doc: "[ELF] T+0x198C. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x198C. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6540(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6540(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1990
     type: u4
-    doc: "[ELF] T+0x1990. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1990. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6544(rY)` in the
+      disassembly was listed. The only hits are stores in the unrelated `0x4127xx` initialiser block (`stw ...,6544(r11)`) plus one or two `stb`/`sth` in `0xDFCxxx` / `0x536xxx` / `0xEFBxxx`; none of those functions can hold `T`, and there is **no load at all** at this displacement anywhere.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
   - id: unknown_1994
     type: u4
-    doc: "[ELF] T+0x1994, last 4 bytes of the payload. The eight u4 at T+0x1978..0x1994 are consecutive and read in order — a small counter/stat array. [UNKNOWN]"
+    doc: |
+      [ELF] T+0x1994, last 4 bytes of the payload. The eight u4 at T+0x1978..0x1994 are consecutive
+      and read in order — a small counter/stat array. [UNKNOWN]
+
+      **[ELF — PRECISE NEGATIVE 2026-07-30] No reader anywhere in the image.** Two independent
+      scans agree.
+
+      (a) Whole-image displacement scan. This offset can only be reached as a displacement off a
+      pointer to `T`, so every `lwz/lbz/lhz/ld/lwa/stw/stb/sth/std rX,6548(rY)` in the
+      disassembly was listed. The only hits are `stw r0,6548(r11)` in the unrelated
+      `0x4127xx` initialiser and `sth r14,6548(r7)` at `0xEFB1D4`; there is no load at this
+      displacement anywhere in the image.
+
+      (b) Taint scan from the accessor. `T` is only ever produced by `0xD54404`
+      (`GetClanProfile(session)` = `session + 0x10000 - 1968`, `0xD5440C`-`0xD54414`) and by the
+      two parsers. All 108 `bl 0xD54404` sites were followed across their enclosing functions
+      through `mr`/`clrldi`/`extsw`/`addi`, killing r0-r12 at each call, and the four sites that
+      spill a `T`-derived pointer to memory (`0xA8A418`, `0xABCC24`, `0xABD82C`, `0xAE2C04`) were
+      followed on reload. The complete set of offsets reached is
+      `0x00, 0x04, 0x18, 0x1C, 0x58, 0x77, 0x378, 0x379, 0x67A, 0x6FC, 0x700, 0x904, 0x908, 0xC68,
+      0x1730-0x174C, 0x1B2C, 0x1B30, 0x1B34`. This one is not in it.
+
+      All eight words of this block share that negative, so the whole run is inert on this client.
+      Whatever fills it in the retail server, nothing in `BLUS30109` reads it back.
