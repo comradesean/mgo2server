@@ -245,7 +245,7 @@ how a paid item ended up granted to everyone.
 | **Trailer bytes 0, 2, 4..31** | `0x3049` trailer | no ctx-derived reader at displacements 484, 486, 488..515 | sent as zero |
 | **`FACE_PAINT_UNLOCKED`** (`0xffffffff`) | `0x4131` wire `0xb6` | the parser stops at 182 bytes and never reaches it; face paint is a **single byte**, so a per-colour mask had no axis | **removed**, reply now 182 bytes |
 | **The sixteen `{item, bit}` pairs** | `0x4124` / `0x4133` tail, 32 bytes | the parser ORs a pair into record `+16` **only if the bit is already set** in the mask at `+12`, so it can only ever produce a subset of what we already sent — and `+16` drives a wardrobe *highlight*, not availability | filler `0xff`, which the parser skips (item 255 > its 128-entry bound) |
-| **`chara_gear.colours` bits 24-31** | `0x4124` / `0x4133` record `+12` | the highest colour index in the whole catalogue is **23**, used by one item; a set bit with no catalogue record is skipped **before** the mask is consulted (`0x9276F0`, `0x9254FC`) | still sent — see below |
+| **`chara_gear.colours` bits above each item's own count** | `0x4124` / `0x4133` record `+12` | the mask indexes a **per-item slot**, so the legal width is per item — 21 bits for most, but 1 for the six glove ids and the four single-colour accessories. A slot with no catalogue record is skipped **before** the mask is consulted (`0x9276F0`, `0x9254FC`). No item exceeds 24 | still sent as `0xFFFFFFFF` — see below |
 | **55 of the 122 gear ids** | `0x4124` / `0x4133` records | 29 exceed the parser's 128-entry bound (`cmplwi r9,128; bgt` at `0xD3CF00`); 26 fall in gaps no category window covers **and none has a colour-catalogue record** — padding, not future items | still sent — see below |
 | **Gear ids 28, 68, 86, 102** | `0x4124` / `0x4133` records | the "None" entries — unconditionally owned by a hardcoded id comparison at `0x92735C`-`0x927384`, and absent from the colour catalogue, so no mask bit can ever be read for them | still sent, harmlessly |
 | **`0x600000` per-skill experience** | `0x4122` / `0x4131` | `0x6000 << 8`, i.e. 256x the client's legal maximum of 24576; survived because `>> 13` clamps to 3 | **fixed** — both now send stored values |
@@ -309,11 +309,20 @@ that looked like an unlock is in the table above it.
 Not post-launch content, but the same species of finding — a category that exists on the wire and
 does nothing on screen.
 
-The lower-body arm covers **exactly one id (22) with no "None" entry**, and two things make it
-unusable: the arm at `0x927138` loads `r28 = 0` instead of a name string-group hash, so the client
-**never calls `0x240708`** and no label is ever fetched; and with a single item and nothing to
-switch to, there is no selection to make. An operator reported the category as offering nothing,
-which is exactly right.
+The lower-body arm covers **exactly one id (22) with no "None" entry**, and the arm at `0x927138`
+loads `r28 = 0` where every other arm loads a real 24-bit group hash — so the shared enumerator
+branches around the label lookup (`cmpwi cr7,r28,0 / beq` at `0x9274C4`) and no text is ever
+fetched.
+
+**Precisely: the category is not skipped and the row IS appended** (`0x9274F0`), with a null label
+pointer. The client draws **one blank row**. The empty-list fallback at `0x92751C`-`0x927568`
+behaves identically, so owning id 22 or not changes nothing observable — it is effectively always
+worn and never selectable. An operator reported the category as offering nothing, which is exactly
+what one unlabelled, unswappable row looks like.
+
+The **colour** is still reachable, though: id 22 carries the full 21-colour camo mask, and camo
+selection runs through its own screen ("Select Lower Body Camouflage"). Trousers are colourable but
+not swappable.
 
 The disc record is broken too, independently: id 22's header at sid 1115 points its EN ordinal at a
 JP string reading *"trousers (provisional name)"*, with a stray `Aucun` in the neighbouring slot.
