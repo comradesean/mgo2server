@@ -137,14 +137,16 @@ public abstract class BaseGameClientServerIT {
 	 * V44 that is true of gear too, and a character with no rows sends a count of zero — which is a
 	 * legitimate state, not a broken one.
 	 * <p>
-	 * Mirrors {@code CharacterService.create}: the starter set from {@code starter_gear} (V70), not
-	 * the whole catalogue. A fixture that granted everything would hide a narrowing bug in either
-	 * gear writer.
+	 * Mirrors {@code CharacterService.create}: a character owns only what it chose at creation, one
+	 * colour per item. A fixture that granted more would hide a narrowing bug in either gear writer.
+	 *
+	 * <p>Three items in one colour each, which is enough shape for the writers without pretending
+	 * to be a real creation. Tests that care about a specific item grant it themselves.
 	 */
 	protected static void grantStartingGear(long charaId) {
 		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
-					insert into chara_gear (chara_id, item_id, colours)
-					select :chara, s.item_id, s.colours from starter_gear s
+					insert into chara_gear (chara_id, item_id, colours) values
+						(:chara, 11, 16384), (:chara, 22, 16384), (:chara, 57, 16384)
 					on conflict (chara_id, item_id) do nothing
 					""")
 			.bind("chara", charaId)

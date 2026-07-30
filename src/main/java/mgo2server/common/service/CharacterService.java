@@ -1094,6 +1094,48 @@ public class CharacterService {
 			.list());
 	}
 
+	/** The five ids the client treats as unconditionally owned — each category's "None". */
+	private static final java.util.Set<Integer> ALWAYS_AVAILABLE =
+		java.util.Set.of(28, 46, 68, 86, 102);
+
+	/**
+	 * Grants the gear a character chose at creation, each in the single colour it chose.
+	 *
+	 * <p>See the call site for why this is the whole grant. The colour byte is the mask's bit
+	 * index, so a choice becomes {@code 1 << colour}; a second colour for the same item is
+	 * something only the post-launch reward system could have given, and we do not serve it.
+	 *
+	 * <p>Conflicting picks are ORed rather than overwritten — the two accessory slots share one
+	 * item list, so choosing the same accessory in both would otherwise drop one of the colours.
+	 */
+	private static void grantChosenGear(org.jdbi.v3.core.Handle handle, long charaId,
+			CharaAppearance a) {
+		int[][] chosen = {
+			{a.getHead(), a.getHeadColor()}, {a.getUpper(), a.getUpperColor()},
+			{a.getLower(), a.getLowerColor()}, {a.getChest(), a.getChestColor()},
+			{a.getWaist(), a.getWaistColor()}, {a.getHands(), a.getHandsColor()},
+			{a.getFeet(), a.getFeetColor()},
+			{a.getAccessory1(), a.getAccessory1Color()},
+			{a.getAccessory2(), a.getAccessory2Color()},
+		};
+		for (var pick : chosen) {
+			var item = pick[0];
+			if (item == 0 || ALWAYS_AVAILABLE.contains(item)) {
+				continue;
+			}
+			handle.createUpdate("""
+					insert into chara_gear (chara_id, item_id, colours)
+					values (:chara, :item, :colours)
+					on conflict (chara_id, item_id)
+						do update set colours = chara_gear.colours | excluded.colours
+					""")
+				.bind("chara", charaId)
+				.bind("item", item)
+				.bind("colours", 1L << (pick[1] & 31))
+				.execute();
+		}
+	}
+
 	/**
 	 * The skills a character owns — exactly what the table holds, with no top-up.
 	 * <p>
@@ -1277,26 +1319,25 @@ public class CharacterService {
 			// binary says which items a character should begin with, because the client never
 			// checks — it renders whatever the two gear writers agree on.
 			//
-			// THE STARTER SET, from `starter_gear` (V70). This used to grant the entire catalogue in
-			// every colour, which V44 did on purpose to stay behaviour-neutral and flagged as a
-			// policy decision left unmade: "Restricting a character to a starter set is now a
-			// DELETE, not a code change."
+			// A CHARACTER OWNS EXACTLY WHAT IT CHOSE AT CREATION, and nothing else.
 			//
-			// Operator policy, not protocol — nothing in the binary says what a character should
-			// begin with, and the table exists so changing it needs no rebuild. Colours come from
-			// the row because a bit indexes a PER-ITEM slot, so the same five colours are a
-			// different mask on a 21-slot camo item than on a 10-slot solid one.
+			// Corrected 2026-07-30. This granted the whole catalogue until V70, then a 28-item
+			// starter set — both wrong. On the original service a new character unlocked only the
+			// items it picked during creation, each in only the colour it picked; everything else
+			// stayed locked, and the only route to more was a REWARD SYSTEM ADDED AFTER LAUNCH.
 			//
-			// dev/docs/GEAR.md has the slot->colour tables, the category map and the item names.
-			// Do not compute a mask without it: bit 0 is Auscam Desert on one item and Black on
-			// another.
-			handle.createUpdate("""
-					insert into chara_gear (chara_id, item_id, colours)
-					select :charaId, s.item_id, s.colours from starter_gear s
-					on conflict (chara_id, item_id) do nothing
-					""")
-				.bind("charaId", charaId)
-				.execute();
+			// So for release-day scope there is no unlock mechanism at all: what you choose at
+			// creation is what you have. See dev/docs/POST_LAUNCH.md.
+			//
+			// The colour byte is the mask's own bit index — confirmed from live rows, where a
+			// 21-slot item stores 14 for Black (slot 14 -> name ordinal 15) and a 10-slot item
+			// stores 0 for the same colour. So the grant is literally `1 << colour`.
+			//
+			// The "None" ids (28, 46, 68, 86, 102) are skipped: they are hardcoded
+			// always-available at 0x92735C-0x927384, so a row would be a no-op. Lower body has no
+			// None, so id 22 is granted whenever it is chosen — which is always, the category
+			// having exactly one item.
+			grantChosenGear(handle, charaId, appearance);
 
 			// The starting skill set: ids 1..16 at level 1, and no skill 17.
 			//

@@ -122,28 +122,65 @@ three different masks:
 
 The 8-slot row differs because its ordinal list skips Green, shifting everything after it.
 
-## The starter set
+## What a character owns
 
-`starter_gear` (V70) is what a new character owns, and every existing character was brought to it.
-**Operator policy, not protocol** — nothing in the binary requires any particular set; the client
-renders whatever the two writers agree on. Editing it is an `UPDATE`, no rebuild:
+**Exactly what it chose at character creation, each in the single colour it chose. Nothing else.**
 
-```sql
-update starter_gear set colours = <mask> where item_id = <id>;
-insert into starter_gear (item_id, colours) values (<id>, <mask>);
-delete from starter_gear where item_id = <id>;
+That is the original service's behaviour, and the only route to more was a **reward system added
+after launch** — so for release-day scope there is no unlock mechanism at all. A character keeps its
+creation choices permanently.
+
+`CharacterService.create` grants it directly from the appearance, which is available at that point:
+
+```
+for each of head, upper, lower, chest, waist, hands, feet, accessory1, accessory2:
+    if the item is 0 or one of the always-available None ids -> skip
+    grant { item_id, colours = 1 << colour_byte }
 ```
 
-That changes new characters only. To change existing ones, write `chara_gear` directly. Unlocking
-everything again, if it is ever wanted, is one statement:
+**The colour byte IS the mask's bit index**, which is what makes this a one-line grant. Confirmed
+from live rows: a 21-slot item stores `14` for Black (slot 14 -> ordinal 15) while a 10-slot item
+stores `0` for the same colour. The two accessory slots share one item list, so picks are ORed
+rather than overwritten.
+
+### History, because this was got wrong twice
+
+| | what a new character owned |
+| --- | --- |
+| before V44 | all 123 items in every colour, from a constant |
+| V44 | the same, but from a table, so narrowing became possible |
+| V70 | an invented 28-item starter set with five colours each |
+| **V71** | **what it chose at creation** |
+
+V44 was deliberately behaviour-neutral and said so. V70 was a reasonable-looking policy that was
+simply not what the game did. Neither is recoverable from our artifacts — the client never checks
+ownership against anything, it renders whatever the two gear writers agree on — so this rests on
+operator knowledge of the original service, recorded as such.
+
+### Existing characters
+
+V71 narrowed them to **what they were wearing**, which is an approximation and should be read as
+one: their real creation choices are unrecoverable after V44 granted everything and V70 replaced
+that, with the empty-category fallback rewriting at least one appearance in between. Wearing-set is
+the closest honest thing, and it keeps everyone legally dressed — which matters, because the
+fallback rewrites the outfit of anyone left wearing an item they do not own.
+
+### Granting more, if it is ever wanted
+
+There is no supported unlock path in v1, by design. Operator intervention is a row:
+
+```sql
+insert into chara_gear (chara_id, item_id, colours) values (<chara>, <item>, 1 << <slot>)
+on conflict (chara_id, item_id) do update set colours = chara_gear.colours | excluded.colours;
+```
+
+Unlocking everything, using each item's real legal mask rather than `0xFFFFFFFF`:
 
 ```sql
 insert into chara_gear (chara_id, item_id, colours)
 select c.id, gi.item_id, gi.colour_mask from chara c cross join gear_item gi
 on conflict (chara_id, item_id) do update set colours = excluded.colours;
 ```
-
-Note `gi.colour_mask`, not `0xFFFFFFFF`: the per-item legal mask is the honest "everything".
 
 ## Item tables
 

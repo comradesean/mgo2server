@@ -54,7 +54,6 @@ public final class TestDatabase {
 					  and tablename != 'schema_version'
 					  and tablename != 'skill'
 					  and tablename != 'gear_item'
-					  and tablename != 'starter_gear'
 					""")
 				.mapTo(String.class)
 				.list();
