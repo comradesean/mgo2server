@@ -187,7 +187,35 @@ update account set entitlements_byte3 = 1 where id = <account>;   -- grant the d
 update account set entitlements_byte3 = 0 where id = <account>;   -- withhold it
 ```
 
-### Index 1: settled, and no longer sent
+### Index 1: zeroed for 1.0 — possible expansion/patch territory
+
+**Status: proven inert on this build, and deliberately not sent.**
+
+We shipped `0x07` here for months — three set bits inherited verbatim from the reference servers,
+never derived from anything. On 2026-07-30 the byte was searched properly and **displacement 485 is
+read nowhere in the binary**, so V66 stopped sending it.
+
+**Why it belongs in this file rather than just being deleted.** "No reader in *this* build" is not
+"no meaning". The reference servers that supplied the constant targeted **different client builds**,
+and the value did not come from nowhere — somebody's server sent `0x07` because something,
+somewhere, read it. The plausible readings are:
+
+- a **later patch** gave that byte a reader, exactly as the second codec pack required a client
+  update to extend a table; or
+- it belongs to the **expansion**, which the lobby model already knows about
+  (`lobby.expansion_required`), and this build simply never consults it; or
+- it is genuinely meaningless cargo that propagated between servers by copying.
+
+We cannot distinguish those from our artifacts, and the release-day rule settles what to do anyway:
+**a byte we cannot explain is not sent.** If a later version is ever served behind toggles, this is
+one of the first things to re-test against *that* binary — the column
+(`account.entitlements_byte1`) was kept rather than dropped precisely so it can be, with one
+`UPDATE` and no migration.
+
+Same reasoning applies to index 3 **bit 1**, which is discarded by the instruction encoding here and
+is the natural carrier for the second codec pack.
+
+### Index 1: the evidence
 
 We sent `0x07` here — three more set bits from the same inherited constant — until the search gap
 was closed properly on 2026-07-30. **Displacement 485 is read nowhere in the binary**, so the bits

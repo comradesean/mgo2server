@@ -367,7 +367,8 @@ public class CharacterConnectController implements IGameController {
 	private void writeGear(GameControllerContext ctx, long charaId) {
 		var gear = characterService.ownedGear(charaId);
 		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize(gear.size()));
-		LoadoutWriter.writeGear(buffer, gear);
+		LoadoutWriter.writeGear(buffer, gear,
+			characterService.rewardUnlocks(charaId));
 		ctx.write(new GamePacket(GEAR, buffer));
 	}
 

@@ -57,25 +57,50 @@ public final class LoadoutWriter {
 	 * one record per row given to it and never deduplicates.
 	 */
 	public static void writeGear(ByteBuf buffer, List<CharacterService.OwnedGear> items) {
+		writeGear(buffer, items, List.of());
+	}
+
+	/**
+	 * The gear payload with the character's colour reward unlocks filled in.
+	 *
+	 * @param rewards up to {@link #REWARD_SLOTS} unlocks; extras are ignored rather than truncating
+	 *     the payload, because the slot count is fixed by the wire and not by us
+	 */
+	public static void writeGear(ByteBuf buffer, List<CharacterService.OwnedGear> items,
+			List<CharacterService.RewardUnlock> rewards) {
 		buffer.writeInt(items.size());
 
 		for (var item : items) {
 			buffer.writeByte(item.itemId()).writeInt((int) item.colours());
 		}
 
-		// [ELF] Not a terminator, despite the name: these 32 bytes are sixteen
+		// [ELF] Not a terminator, despite the name it carried: these 32 bytes are sixteen
 		// {u8 item_id, u8 bit_index} colour-unlock pairs, read by both the 0x4124 parser and the
 		// 0x4133 one into the same table. Sixteen, not fifteen — the bound at 0xD3C8D4 is tested
 		// before the increment at 0xD3C8DC — and 4 + 615 + 32 = 651 only balances at sixteen.
 		//
-		// The 0xff filler works by accident rather than by design: item id 255 exceeds the
-		// parser's 128-entry bound, so every pair is skipped instead of applied. That is inert,
-		// not correct. Anything that starts granting colours per character has to write real
-		// pairs here, in both packets.
-		for (var i = 0; i < GEAR_TERMINATOR_LENGTH; i++) {
-			buffer.writeByte(0xff);
+		// DATABASE-DRIVEN since V67 (reward_unlock). Before that every pair was 0xff, which is
+		// skipped only because item id 255 exceeds the parser's 128-entry bound — inert rather
+		// than correct, and no character could ever be granted a colour reward.
+		//
+		// Unused slots keep the 0xff filler, which is the part of the old behaviour that was
+		// right: it is provably ignored. A character with no rows is byte-identical to before.
+		//
+		// Both packets must select the SAME sixteen or the client's table depends on which
+		// arrived last, which is why the query orders by unlocked_at rather than returning
+		// whatever the planner produces.
+		for (var slot = 0; slot < REWARD_SLOTS; slot++) {
+			if (slot < rewards.size()) {
+				buffer.writeByte(rewards.get(slot).itemId())
+					.writeByte(rewards.get(slot).bitIndex());
+			} else {
+				buffer.writeByte(0xff).writeByte(0xff);
+			}
 		}
 	}
+
+	/** Sixteen {@code {item, bit}} pairs — a hard wire limit, not a policy choice. */
+	public static final int REWARD_SLOTS = GEAR_TERMINATOR_LENGTH / 2;
 
 	/**
 	 * The skill table, from what the character actually owns.

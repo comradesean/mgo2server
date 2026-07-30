@@ -112,7 +112,8 @@ public class PersonalInfoController implements IGameController {
 
 		var gear = characterService.ownedGear(account.getCurrentCharaId());
 		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize(gear.size()));
-		LoadoutWriter.writeGear(buffer, gear);
+		LoadoutWriter.writeGear(buffer, gear,
+			characterService.rewardUnlocks(account.getCurrentCharaId()));
 		ctx.write(new GamePacket(COMMIT_OUTFIT_RESULT, buffer));
 	}
 
