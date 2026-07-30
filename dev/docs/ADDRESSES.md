@@ -304,6 +304,89 @@ replaces them.
 
 ---
 
+## 10. Gear and appearance — `0x4124` / `0x4133`
+
+The wardrobe subsystem, end to end. Narrative and the colour tables are in `GEAR.md`; this is the
+address index. The gear table is at **`charTable + 9888 + id*12`** — 12-byte records, three words at
+`+8`, `+12`, `+16`.
+
+### The packet parsers
+
+| address | what |
+| --- | --- |
+| `0xD3732C` | the `0x3049` parser. `0xD3774C` copies the 32-byte trailer to `ctx+484`; `0xD36C74` returns the ctx (`profile+21968`) |
+| `0xD3CF10`, `0xD3CFC0` | `0x4124`'s writers into the gear table |
+| `0xD3C85C`, `0xD3C90C` | `0x4133`'s writers — **the same table**, which is why the two packets must agree |
+| `0xD3CF00` | `cmplwi r9,128; bgt` — **records with id > 128 are silently dropped**. 29 of our 122 ids die here |
+| `0xD3CFBC`-`0xD3CFE4` | the sixteen `{item, bit}` tail pairs: ORs a bit into `+16` **only if already set in `+12`**, so they grant nothing |
+
+### The two gates
+
+| address | what |
+| --- | --- |
+| **`0x927350`** | **item ownership.** `lbz r8,8(r9)` — an item whose record byte is zero is never appended to the wardrobe list. The gate the server owns |
+| **`0x925538`, `0x92772C`** | **colour availability.** `lwz r0,12(r9)` then `and` against `1 << slot` |
+| `0x92740C`, `0x927744` | readers of `+16` — a highlight/"new" marker, **not** availability |
+
+### The wardrobe screen
+
+| address | what |
+| --- | --- |
+| `0x9270AC` | the 9-arm category table: `{base id, count, equipped-byte offset, name group hash}`. 67 reachable ids, max 116 |
+| `0x92735C`-`0x927384` | the five hardcoded always-available ids — 28, 46, 68, 86, 102, the "None" of each category that has one |
+| `0x927510` | `lwz r0,6604(r9)` — the built list's count, and the fallback's trigger |
+| **`0x92751C`-`0x927568`** | **the empty-category fallback.** `stb r23,20416(r11)` at `0x927544` force-equips the category's BASE id and appends one row. **It writes the equipped byte**, so a later outfit commit persists it |
+| `0x9274C4` | `cmpwi cr7,r28,0; beq` — skips the name lookup when the arm's group hash is zero |
+| `0x9274D4` | `bl 0x240708` — `GetString(groupHash, ordinal)`, the item label |
+| `0x9274F0` | `bl 0x94ad8c` — appends the row, **reached whether or not a label was fetched** |
+| `0x927138` | the lower-body arm: `li r28,0`, a zero group hash, which is why that category draws one unlabelled row |
+| `0x926D6C`, `0x926D74` | `cmpwi r0,35` / `cmpwi r0,38` off the head byte `+0x80` — special-cases Bush Hat and Fleece Cap, the two soft crushable hats. **The anchor that fixes the head category's ordinal order** |
+| `0x9A50D0`, `0xA459D0` | the only callers of `0x9B9DF0` — the shortcut-binding screen and one other. **Neither is loadout code**, which is why the codec predicate has nothing to do with gear |
+
+### The colour catalogue
+
+| address | what |
+| --- | --- |
+| **`0x10506BC`** | the item x colour catalogue: 1044 records of 36 bytes, `{u32 item_id, u32 slot, u32 colour_name_ordinal}`. **The mask indexes `slot`; the name is a separate field reaching 35** — so a bit means a different colour on a different item |
+| `0x105998C` | its terminator — a negative first word |
+| `0x7E2D98` | the scanner, `f(itemId, slot) -> colourNameOrdinal`. Linear, stride 36 |
+| `0x9276F0`, `0x9254FC` | its two call sites. **A miss here skips the swatch BEFORE the mask is consulted**, which is why bits above an item's slot count are unreadable |
+| `0x240708` | `GetString(groupHash, index)` — resolves both item names and colour names against the disc |
+
+Disc name group hashes are in `GEAR.md`; they are resource hashes, not ELF addresses.
+
+## 11. Mail, and the personal-info echo
+
+### The compose screen and GM mail
+
+| address | what |
+| --- | --- |
+| `0xD53F10` | the `0x4800` builder. Field order is wire order; the payload is 967 bytes |
+| **`0x8EEAA8`** | `li r0,3; stb r0,272(r24)` — **the only writer of the destination byte** at wire `0x3C5`. Value set is `{0, 3}`; 3 is the Game Master |
+| `0x8EE9C8`-`0x8EE9D0` | the send fork on the same flag: set, the builder memsets the recipient-name block and skips the recipient build entirely |
+| `0x8E4B30` | `rldicl. r9,r0,46,63` — tests **bit 18** of the compose flags at `screen+372`, which dims the recipient-list row. **Bit 18, not 17**: the rotate tests `64-46`, and two traces read it wrong before the arithmetic was checked |
+| `0x8EF098` | sets bit 18 — the **GM menu item**, dispatch case 3 |
+| `0x8E6ECC` | the other setter, a screen-entry arm gated on bit 3 |
+| `0x8EDF78` | the "View/Edit Address Book" handler. Requires `recipientCount > 0` or it plays deny SE 91 at `0x8EEE84` and returns. The English name is a mistranslation of *view/edit the RECIPIENT list* |
+| `0x8E4970` | the To-menu row painter, and the per-row dim conditions — Friend List dims on `byte 20190 == 0`, **recomputed as the friend count on every screen build** |
+| `0xD53D1C` | the `0x4801` parser. **Bit 0 of its flags byte must be set** or the client re-sends the whole letter as `0x4860` |
+
+### `0x4131`, the personal-info echo
+
+| address | what |
+| --- | --- |
+| `0xD3C3DC` | the parser. Last read is the 128-byte comment at `0xD3C6E0`, then straight into READ_END at `0xD3C6F4` — **182 bytes, not 186** |
+| `0xD5C858` | READ_END. **Performs no length check**, and the read helpers bound against the 1024-byte receive buffer rather than the payload — which is why over-sending went unnoticed for months |
+| `0x88426C` | the only reader of the face-paint byte (`profile+7652`) — the player-announce builder, which broadcasts it verbatim. **A single byte**, which is why a per-colour unlock mask was impossible |
+
+### Codec pack, additions to section 1b's neighbourhood
+
+| address | what |
+| --- | --- |
+| `0x9B9E30` | `rlwinm r27,r0,4,27,27` — `(trailer[3] & 1) << 4`, the availability threshold |
+| `0x9BADA4` | `clrlwi r0,r0,31` — the same bit again, choosing between two list-builders. **Both mask to bit 0, so bit 1 is discarded by the instruction encoding** |
+| `0x6FC838`-`0x6FCAEC` | the skill accrual and level-up path, for context on how the preset-message gate sits beside it |
+
 ## What actually worked, methodologically
 
 Worth keeping, because three readings were wrong before they were right:
