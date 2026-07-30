@@ -47,9 +47,10 @@ public class AutomatchSettingsBlockTest {
 	 */
 	@Test
 	public void composedBlockMatchesTheCaptureItReplaced() {
-		// Deathmatch only: rule 0 has no entry in AUTOMATCH_TIMERS, so no timer is overridden and
-		// the comparison covers the entire timer array.
-		var built = AutomatchSettingsBlock.build(Set.of(0), 2);
+		// Rescue only (rule 2): still has no entry in AUTOMATCH_TIMERS, so no timer is overridden
+		// and the comparison covers the entire timer array. This was Deathmatch until 2026-07-30,
+		// when DM's observed values arrived and rule 0 stopped being an untouched case.
+		var built = AutomatchSettingsBlock.build(Set.of(2), 2);
 
 		assertThat(built).hasSize(AutomatchSettingsBlock.SIZE);
 
@@ -89,6 +90,31 @@ public class AutomatchSettingsBlockTest {
 
 		assertThat(CAPTURED[67]).as("the capture really does carry zero here").isZero();
 		assertThat(built[67]).isEqualTo((byte) 1);
+	}
+
+	/**
+	 * Deathmatch's observed automatch values, and the rounds slot it does not have.
+	 * <p>
+	 * Reported live as <b>1 round, 50 tickets, 10 minutes</b>. DM owns only indices 9 and 10 —
+	 * time and tickets — because it is the one rule with no rounds slot in the 2/2/2/3/2/2/2/2
+	 * layout. A rule fixed at one round is exactly the rule that needs no slot for it, so the
+	 * report corroborates the index mapping rather than contradicting it.
+	 */
+	@Test
+	public void deathmatchServesItsObservedTimersAndHasNoRoundsSlot() {
+		var built = AutomatchSettingsBlock.build(Set.of(0), 2);
+
+		assertThat(readU32(built, 100 + 9 * 4)).as("DM time, 10 min").isEqualTo(10);
+		assertThat(readU32(built, 100 + 10 * 4)).as("DM tickets").isEqualTo(50);
+
+		assertThat(readU32(CAPTURED, 100 + 9 * 4)).as("the client default really is 5").isEqualTo(5);
+		assertThat(readU32(CAPTURED, 100 + 10 * 4)).as("and 30 tickets").isEqualTo(30);
+
+		// Index 11 is BASE's time. If DM ever grew a third value it would land here and silently
+		// corrupt another rule, so the boundary is asserted rather than assumed.
+		assertThat(readU32(built, 100 + 11 * 4))
+			.as("DM must not spill into BASE's slot")
+			.isEqualTo(readU32(CAPTURED, 100 + 11 * 4));
 	}
 
 	/**
