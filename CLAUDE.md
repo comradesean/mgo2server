@@ -78,6 +78,9 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
+- `dev/docs/FIELD_MAPPING.md` — **the mapping campaign**: the 44 packets we use that still carry
+  unknown fields, 178 of them, with the batching and the rules that keep it tier-1. The end state
+  is every field named and explained in its `.ksy`. Update the status column as batches land.
 - `dev/docs/PACKETS_NOT_OBSERVED.md` — **the parked set**: 19 commands whose byte layout and usage
   are both unknown, plus the ten that get counted with them and why they should not be. None is
   reachable in ordinary play, so none can stall a client. Read it before re-deriving a coverage
