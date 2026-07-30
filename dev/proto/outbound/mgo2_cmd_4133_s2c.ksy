@@ -56,7 +56,17 @@ types:
         doc: "[ELF] Must be <= 128 (0xd3c850) or the record is silently dropped."
       - id: value
         type: u4
-        doc: "[UNKNOWN] Written to record +12 and tested bitwise by the equipped_bits loop. Presumably the same colour/ownership mask `0x4124` carries, but unconfirmed for this command."
+        doc: |
+          Written to record +12 and tested bitwise by the equipped_bits loop — the **same
+          colour mask** `0x4124` carries, into the same table at `charTable + 9888 + id*12`.
+          Still "presumably" only in the sense that no capture of this command has been decoded;
+          the loop is instruction-for-instruction identical to `0x4124`'s, so the layout is not in
+          doubt. See `mgo2_cmd_4124_s2c.ksy` for what the bits mean, which colour indices exist per
+          item, and why the top 8 bits are dead.
+
+          **Both packets must agree.** They write the same table, so whichever arrives last wins —
+          which is why the server sources both from `chara_gear.colours` and selects the sixteen
+          reward pairs with the same ordering.
   equipped_pair:
     seq:
       - id: slot

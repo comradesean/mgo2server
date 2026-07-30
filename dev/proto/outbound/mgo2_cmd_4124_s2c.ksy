@@ -55,7 +55,33 @@ types:
         doc: "[ELF] Table index. Must be <= 128 or the record is silently dropped (0xd3cf00)."
       - id: colour_mask
         type: u4
-        doc: "[ELF] Written to gear-table record +12; the unlock_bits loop tests bits of it. We send 0xffffffff (every colour owned) for every item."
+        doc: |
+          [ELF] Written to gear-table record +12; the unlock_bits loop tests bits of it. Sourced
+          from `chara_gear.colours`, which still **defaults to `0xffffffff`** — every colour of
+          every item, a blanket unlock inherited from getting the screen working.
+
+          **Only bits 0..23 can ever mean anything, and most items use far fewer.** [ELF] the
+          client resolves a swatch through the colour catalogue at VA `0x10506BC` (36-byte records
+          `{u32 item_id, u32 colour_index, u32 colour_name_id, ...}`, 1044 rows, 71 item ids,
+          terminated by a negative first word at `0x105998C`), scanned by `0x7E2D98`. A miss there
+          **skips the swatch before this mask is consulted** (`0x9276F0`, `0x9254FC`), so a set bit
+          with no catalogue record does nothing.
+
+          The highest colour index in the whole catalogue is **23**, used by item 110 alone; the
+          next is 20, shared by 39 items. **So the top 8 bits of this u32 are dead** in every case.
+          The client does not reject them — the trailer parser accepts `bit_index` up to 31
+          (`cmplwi cr7,r0,31` at `0xD3CFB0` and `0xD3C8FC`) and the swatch loop runs 0..31
+          (`0x927A08`) — they are inert purely because the catalogue never matches.
+
+          **Every item's colour set is a contiguous `0..n-1` run**, so `mask == (1 << n) - 1`
+          exactly and there are only seven distinct legal masks across the 67 reachable items:
+          `0x001FFFFF` x39, `0x00000001` x10, `0x000003FF` x6, `0x000000FF` x3, `0x0000001F` x3,
+          `0x0000003F` x1, `0x00FFFFFF` x1. A per-item colour COUNT is therefore lossless; a
+          bitmask is only needed if policy wants to punch holes in a run.
+
+          **Items 28, 68, 86 and 102 have no catalogue records at all** and are the "None" entries
+          of their categories — already unconditionally owned by a hardcoded id comparison at
+          `0x92735C`-`0x927384`. Sending records for them is a no-op in both directions.
   unlock_pair:
     doc: "Grants one colour bit: if bit `bit_index` is set in the item's `colour_mask`, it is ORed into the item's record at +16."
     seq:
