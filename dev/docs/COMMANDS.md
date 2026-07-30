@@ -55,7 +55,8 @@ id in both directions with a one-line summary.
 
 ## Client → server (the client SENDS these)
 
-**112 unique ids** from 115 call sites; 49 have builders and are answered. Source: send-builder
+**112 unique ids** from 115 call sites; **83 are handled and 29 are gaps** (recounted from the
+source 2026-07-30 — see the note below the Handled list). Source: send-builder
 scan 2026-07-22 (`0xD5CF40`; every site a literal `li r4, imm`, so the list is exhaustive for the
 lobby packet library — the pre-lobby handshake carrying `0x0001` is outside it), **re-derived
 independently 2026-07-26** into [`dev/analysis/c2s_ids.txt`](../analysis/c2s_ids.txt) with the
@@ -73,7 +74,20 @@ inconsistent — the handled header said 50 over a 49-item list, and 49 + 60 = 1
 Address convention: `c2s_ids.txt` anchors on the `bl` to the builder; the addresses quoted in this
 file anchor on the preceding `li r4`, i.e. four bytes lower. Same sites.
 
-### Handled (50 listed; 49 with builders — `0x0001` has none, see below)
+### Handled — **83 ids as of 2026-07-30**, not the 50 this section lists
+
+> **The enumeration below is stale and was never the count.** Recounted mechanically from
+> `src/main/java/mgo2server/`: 80 distinct ids registered via `handlers.put(...)`, plus 2 registered
+> by `ClanGameController`'s `BLOCK_768` loop (`0x4b48`, `0x4b4c`) which a constant scan misses, plus
+> `0x0001`, which is answered in the pre-lobby handshake and has no builder. **83 handled, 29 gaps,
+> 83 + 29 = 112.**
+>
+> The drift is mostly the 23-command clan block, which landed 2026-07-27 — the day after this
+> section was last written. `PACKETS.md`'s per-command status column **is** current and was verified
+> against the source on 2026-07-30; prefer it over the prose lists here.
+>
+> The list that follows is kept because its per-command annotations are useful, not because its
+> membership is right.
 
 `0x0001` echo · `0x0003` disconnect · `0x0005` ping · `0x2005` lobby list · `0x2008` news ·
 `0x3003` check session · `0x3048` char list · `0x3101` create char · `0x3103` select char ·
@@ -94,7 +108,20 @@ relation · `0x4510` remove relation · `0x4580` roster fetch · `0x4600` player
 `0x4400` in-game chat *(reply `0x4401` is fanned out to every player in the game, not just the
 sender — the client has no local echo)*
 
-### Gaps — sendable, unanswered (63)
+### Gaps — sendable, unanswered — **29 as of 2026-07-30**, not the 63 below
+
+> Recounted from the source. The 29 are: `0x2006` `0x3040` `0x4210` `0x4348` `0x4394` `0x43B0`
+> `0x4860` `0x4904` `0x4908` `0x4910` `0x4912` `0x4914` `0x491B` `0x4920` `0x4923` `0x4930`
+> `0x4940` `0x4980` `0x4984` `0x4986` `0x4992` `0x49A0` `0x49B0` `0x49C0` `0x49C2` `0x4A25`
+> `0x4A30` `0x4A40` `0x4E00`.
+>
+> **Four of them are reachable in ordinary play and are the live stall candidates:**
+> `0x4210`, `0x4348`, `0x4394`, `0x43B0`. All four have real ELF-derived layouts in `dev/proto/`,
+> so they are implementable now rather than blocked on research. Everything else in the list sits
+> behind an unmodelled subsystem a player has to open deliberately.
+>
+> The grouped list that follows is from 2026-07-26 and over-counts; its reachability groupings are
+> still the useful part.
 
 Potential `FFFFFF60` stalls *if the triggering menu is reached*; grouped by reachability.
 (63 as of 2026-07-26, when `0x4400` was implemented; it was 64, and 60 before the corrected

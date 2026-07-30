@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4680_c2s
-  title: "MGO2 0x4680 \u2014 match history list request (client -> server)"
+  title: "MGO2 0x4680 — match history list request (client -> server)"
   endian: be
 doc: |
   Sender `0xD3B864`, builder call `0xD3B8D8`. Start/item/end triple `0x4681`/`0x4682`/`0x4683`,

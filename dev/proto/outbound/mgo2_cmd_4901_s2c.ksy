@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4901_s2c
-  title: "MGO2 0x4901 \u2014 game-lobby list START (server -> client)"
+  title: "MGO2 0x4901 — game-lobby list START (server -> client)"
   endian: be
 doc: |
   Start packet of the 0x4900 hub triple (0x4901 start / 0x4902 entries / 0x4903 end). Parser

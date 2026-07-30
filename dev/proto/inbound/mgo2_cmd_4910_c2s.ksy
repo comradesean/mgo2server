@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4910_c2s
-  title: "MGO2 0x4910 \u2014 create/configure game lobby entry (168 bytes) (client -> server)"
+  title: "MGO2 0x4910 — create/configure game lobby entry (168 bytes) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4AC20`, builder call `0xD4AD64`, subsystem index `0x3C` (`li r4,60` at `0xD4AEC0`).

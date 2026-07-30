@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4821_s2c
-  title: "MGO2 0x4821 \u2014 mailbox list START (server -> client)"
+  title: "MGO2 0x4821 — mailbox list START (server -> client)"
   endian: be
 doc: |
   Start packet of the 0x4820 mailbox triple (0x4821 start / 0x4822 entries / 0x4823 end).

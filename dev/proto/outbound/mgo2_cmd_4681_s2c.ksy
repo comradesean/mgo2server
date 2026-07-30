@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4681_s2c
-  title: "MGO2 0x4681 \u2014 match-history list START (server -> client)"
+  title: "MGO2 0x4681 — match-history list START (server -> client)"
   endian: be
 doc: |
   Start packet of the 0x4680 met-players-history triple. Parser 0xD3ADF4, dispatcher stub

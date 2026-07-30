@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4881_s2c
-  title: "MGO2 0x4881 \u2014 0x4880 mail-manage ack (server -> client)"
+  title: "MGO2 0x4881 — 0x4880 mail-manage ack (server -> client)"
   endian: be
 doc: |
   Reply to the unimplemented 0x4880 mail request. Parser 0xD52E88, dispatcher stub 0xD39534.

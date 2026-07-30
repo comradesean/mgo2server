@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4903_s2c
-  title: "MGO2 0x4903 \u2014 game-lobby list END (server -> client)"
+  title: "MGO2 0x4903 — game-lobby list END (server -> client)"
   endian: be
 doc: |
   End packet of the 0x4900 hub triple. Parser 0xD47714, dispatcher stub 0xD395B8.

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4820_c2s
-  title: "MGO2 0x4820 \u2014 get messages (client -> server)"
+  title: "MGO2 0x4820 — get messages (client -> server)"
   endian: be
 doc: |
   Two sender functions, both one byte long: `0xD53390` (builder call `0xD53414`) writes the

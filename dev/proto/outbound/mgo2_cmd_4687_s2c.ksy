@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4687_s2c
-  title: "MGO2 0x4687 \u2014 match-detail list END (server -> client)"
+  title: "MGO2 0x4687 — match-detail list END (server -> client)"
   endian: be
 doc: |
   End packet of the 0x4684 triple. Parser 0xD3AACC, dispatcher stub 0xD39160.

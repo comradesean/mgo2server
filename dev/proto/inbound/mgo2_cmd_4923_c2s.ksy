@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4923_c2s
-  title: "MGO2 0x4923 \u2014 game lobby request (one byte) (client -> server)"
+  title: "MGO2 0x4923 — game lobby request (one byte) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4DCF4`, builder call `0xD4DDCC`, subsystem index `0x43` (`li r4,67` after the send).

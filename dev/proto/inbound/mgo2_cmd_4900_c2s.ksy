@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4900_c2s
-  title: "MGO2 0x4900 \u2014 get game lobby info (client -> server)"
+  title: "MGO2 0x4900 — get game lobby info (client -> server)"
   endian: be
 doc: |
   Sender `0xD47C08`, builder call `0xD47C78`, subsystem index `0x38` (`li r4,56` at `0xD47C9C`).

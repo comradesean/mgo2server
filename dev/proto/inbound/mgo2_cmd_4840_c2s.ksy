@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4840_c2s
-  title: "MGO2 0x4840 \u2014 get mail contents (client -> server)"
+  title: "MGO2 0x4840 — get mail contents (client -> server)"
   endian: be
 doc: |
   Sender `0xD53264`, builder call `0xD532F8`, subsystem index `0x55` (`li r4,85` at `0xD5333C`).

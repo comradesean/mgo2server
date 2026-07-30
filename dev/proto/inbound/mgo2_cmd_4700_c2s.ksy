@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4700_c2s
-  title: "MGO2 0x4700 \u2014 update connection info (client -> server)"
+  title: "MGO2 0x4700 — update connection info (client -> server)"
   endian: be
 doc: |
   Sender `0xD38614`, builder call `0xD386C4`, subsystem index `0x73` (`li r4,115` at `0xD38748`).

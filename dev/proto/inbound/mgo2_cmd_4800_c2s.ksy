@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4800_c2s
-  title: "MGO2 0x4800 \u2014 send mail (client -> server)"
+  title: "MGO2 0x4800 — send mail (client -> server)"
   endian: be
 doc: |
   Sender `0xD53F10`, builder call `0xD53F98`, subsystem index `0x55` (`li r4,85` at `0xD54040`).

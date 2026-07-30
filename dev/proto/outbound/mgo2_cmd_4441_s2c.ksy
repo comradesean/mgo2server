@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4441_s2c
-  title: "MGO2 0x4441 \u2014 0x4440 ack (server -> client)"
+  title: "MGO2 0x4441 — 0x4440 ack (server -> client)"
   endian: be
 doc: |
   The only reply the client parses for the unidentified 0x4440 team/spectator request. Parser

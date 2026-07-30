@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4442_s2c
-  title: "MGO2 0x4442 \u2014 0x4440-family push notification (server -> client)"
+  title: "MGO2 0x4442 — 0x4440-family push notification (server -> client)"
   endian: be
 doc: |
   Parser 0xD52878, dispatcher stub 0xD394B4. Reads EXACTLY ONE u32 (0xD5CC64 at 0xD528D4) and

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4861_s2c
-  title: "MGO2 0x4861 \u2014 0x4860 mail-manage ack (server -> client)"
+  title: "MGO2 0x4861 — 0x4860 mail-manage ack (server -> client)"
   endian: be
 doc: |
   Only needed if `0x4801` is answered with flags bit 0 clear, which makes the client re-send the

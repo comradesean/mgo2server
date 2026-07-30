@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4685_s2c
-  title: "MGO2 0x4685 \u2014 match-detail list START (server -> client)"
+  title: "MGO2 0x4685 — match-detail list START (server -> client)"
   endian: be
 doc: |
   Start packet of the 0x4684 match-detail triple. Parser 0xD3ABC8, dispatcher stub 0xD39140.

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4920_c2s
-  title: "MGO2 0x4920 \u2014 game lobby request (u4, u1) (client -> server)"
+  title: "MGO2 0x4920 — game lobby request (u4, u1) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4BA94`, builder call `0xD4BB44`, subsystem index `0x42` (`li r4,66` at `0xD4BB84`

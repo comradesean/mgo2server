@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4904_c2s
-  title: "MGO2 0x4904 \u2014 game lobby info request variant (one id) (client -> server)"
+  title: "MGO2 0x4904 — game lobby info request variant (one id) (client -> server)"
   endian: be
 doc: |
   Sender `0xD47AFC`, builder call `0xD47B70`, subsystem index `0x39` (`li r4,57` at `0xD47BAC`).

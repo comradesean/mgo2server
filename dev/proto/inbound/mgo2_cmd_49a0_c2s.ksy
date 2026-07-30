@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_49a0_c2s
-  title: "MGO2 0x49a0 \u2014 game lobby request (one byte from a struct) (client -> server)"
+  title: "MGO2 0x49a0 — game lobby request (one byte from a struct) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4A1F8`, builder call `0xD4A298`, subsystem index `0x49` (`li r4,73` after the send).
