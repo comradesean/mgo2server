@@ -8,7 +8,8 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**44 packets, 178 unknown fields**, as of 2026-07-30. Regenerate with the script in this file's
+**42 packets, 151 unknown fields**, as of 2026-07-30 (batch 2). Was 44 / 178 at batch 1;
+`0x4302` and `0x4129` are the first two packets to reach zero and have left the list. Regenerate with the script in this file's
 history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
 
 ## Method, and the rules that keep it honest
@@ -34,24 +35,24 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | id | dir | fields | unknown | family | status |
 | --- | --- | --- | --- | --- | --- |
 | `0x4107` | s2c | 76 | **35** | stats | batch 1 done — 2 resolved (slots 33/34 = Team Sneaking), remaining 35 have **no reader in the image** |
-| `0x4313` | s2c | 52 | **16** | game | open |
-| `0x4b21` | s2c | 28 | **11** | clan | open |
-| `0x4b81` | s2c | 18 | **10** | clan | open |
+| `0x4313` | s2c | 52 | **12** | game | batch 2b done — 5 named (0x098 password_enabled, 0x099 dedicated, +176/+179 the flags word's two unread bytes, +184 host_ping); remaining 12 all carry precise negatives |
+| `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** (agent lost to quota) — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`; docs upgraded throughout |
+| `0x4b81` | s2c | 18 | **10** | clan | batch 2a **partial** — no renames; all 10 given precise negatives and tier-1 provenance |
 | `0x4221` | s2c | 17 | **9** | social | open |
-| `0x4310` | c2s | 31 | **8** | game | open |
-| `0x4120` | s2c | 27 | **7** | connect | open |
-| `0x4305` | s2c | 33 | **7** | game | open |
-| `0x4b54` | s2c | 11 | **7** | clan | open |
+| `0x4310` | c2s | 31 | **7** | game | batch 2b done — 0x0f7 = level_limit_tolerance; `common_c` renamed `common_flags_lsb`; the four echo-only negatives re-established independently |
+| `0x4120` | s2c | 27 | **2** | connect | batch 2c done — 5 named (`dead_settings_05`, `entry_id_0..3`); byte 0 bit 0 proven **load-bearing** |
+| `0x4305` | s2c | 33 | **7** | game | batch 2b done — count unchanged, but all 7 now carry tier-1 provenance; 4 stale tier-4 labels corrected (stance, tolerance, max_players, rule_timers) |
+| `0x4b54` | s2c | 11 | **5** | clan | batch 2a **partial, file was repaired** — 2 named: `lobby_id`, `location_kind`. Agent was killed mid-write and left 16 dedented doc lines; repaired 2026-07-30. **Re-verify before trusting the remaining 5.** |
 | `0x4991` | s2c | 14 | **6** | lobby | open |
-| `0x4101` | s2c | 13 | **5** | connect | open |
+| `0x4101` | s2c | 13 | **1** | connect | batch 2c done — 4 named: `beginner_flag`, `feature_flags`, `grade_points`, `dead_13100` |
 | `0x4582` | s2c | 8 | **5** | social | open |
 | `0x4602` | s2c | 8 | **5** | social | open |
-| `0x4302` | s2c | 21 | **4** | game | open |
-| `0x4b12` | s2c | 10 | **4** | clan | open |
-| `0x4b75` | s2c | 7 | **4** | clan | open |
-| `0x4129` | s2c | 18 | **3** | connect | open |
+| `0x4302` | s2c | 21 | **0** | game | batch 2b done — **all four named**: lobby_subtype, round_flags, selector_flags, selector_tiebreak |
+| `0x4b12` | s2c | 10 | **4** | clan | **not started** — batch 2a died first |
+| `0x4b75` | s2c | 7 | **4** | clan | **not started** — batch 2a died first |
+| `0x4129` | s2c | 18 | **0** | connect | batch 2c done — **all three named**; `play_time_seconds` drives the MGS4 single-player unlock |
 | `0x4105` | s2c | 21 | **2** | stats | batch 1 done — cols 13/15 have **no reader in the image**; both docs now carry the scan that establishes it |
-| `0x4122` | s2c | 17 | **2** | connect | open |
+| `0x4122` | s2c | 17 | **2** | connect | batch 2c done — no new tier-1 name available; both negatives independently re-run |
 | `0x4902` | s2c | 12 | **2** | lobby | open |
 | `0x3101` | c2s | 26 | **1** | other | open |
 | `0x4112` | c2s | 1 | **1** | other | open |
@@ -73,7 +74,7 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x2002` | s2c | 1 | **1** | other | open |
 | `0x2004` | s2c | 1 | **1** | other | open |
 | `0x3049` | s2c | 14 | **1** | other | open |
-| `0x4131` | s2c | 9 | **1** | other | open |
+| `0x4131` | s2c | 9 | **1** | other | batch 2c done — negative re-run and recorded with near-misses named |
 | `0x4682` | s2c | 5 | **1** | other | open |
 | `0x4822` | s2c | 9 | **1** | other | open |
 | `0x4841` | s2c | 2 | **1** | other | open |
@@ -118,9 +119,70 @@ every label by twelve files and the result still reads like a sensible list.
 4. **`0x4105` col 15's "post-game/ranking views" candidates are unsupported** — nothing outside two
    known ranges addresses that grid at all.
 
-### Flagged, not chased
+### Flagged, then resolved — it was a stale document, not an open question
 
-The only readers of the `0x4107` store are the two Personal Stats screens — **nothing in the
-title/medal evaluation reads it.** That sits awkwardly beside `OBSERVED.md`'s "titles and awards are
-computed by the client from the stat values themselves", which may derive from `0x4103` alone.
-Deserves its own argued check rather than a note in a batch report.
+The batch reported that the only readers of the `0x4107` store are the two Personal Stats screens,
+with **nothing in title/medal evaluation reading it**, and flagged the tension with `OBSERVED.md`'s
+"titles and awards are computed by the client from the stat values themselves".
+
+**The finding is right and there is no tension: nothing evaluates titles or medals client-side at
+all.** Both are server-driven and arrive as bits in `0x4103` — wire 563 (22-bit title mask), 541
+(worn title, 1-based) and 615 (16-byte medal bitfield). `GATES.md` §5a settled this on 2026-07-28
+and `AWARDS.md` documents the implemented policy; `OBSERVED.md` simply never got updated. Corrected
+2026-07-30 at all three sites.
+
+**Method note, and the reason this is worth recording rather than just fixing.** The original wrong
+inference came from watching awards regenerate in step with the stats our own fingerprint sender was
+writing — but that sender recomputed the award fields too, so the correlation was with our
+arithmetic, not the client's. *A stat and an award moving together cannot say which side derived
+which when one process emits both.* Expect more of this: a batch agent finding "no reader for X" is
+evidence about the **client**, and when it collides with a doc, check whether the doc's evidence was
+ever capable of distinguishing the two sides.
+
+## What batch 2 established
+
+**27 fields resolved, 178 → 151**, across three parallel agents on non-overlapping families. Two
+packets reached zero unknowns — `0x4302` and `0x4129`, the first in the campaign to do so.
+
+The naming ratio was far better than batch 1's 2-of-39, and the reason is worth generalising: **the
+wins came from finding a second, non-network path to the same struct**, not from grinding parsers.
+
+| lever | what it bought |
+| --- | --- |
+| `block+X = struct+752+X`, anchored four independent ways | every `0x4310` finding transfers to `0x4313`/`0x4305` *by destination offset*. This is the one legitimate form of the inference rule 4 forbids — it is not "the neighbour is called X", it is "these two writes provably land on the same byte" |
+| `0xD493CC` — the client fabricating a `0x4302` row for its **own hosted game**, no packet involved | the scratch buffer starts at `T+0x00`, so every store names a field by its source. Resolved all four `0x4302` unknowns in one function |
+| `0x8CA2BC`-`0x8CA900` — the post-create publisher into the property store | ~30 settings pushed with explicit key numbers, which names fields and gives their units |
+| dead-accessor detection (OPD present, `bl` count zero, `ET_EXEC` so no relocations) | turns "no reader" from a search result into a *proof*, and distinguishes "unused" from "not found yet" |
+
+### Three findings that were not documentation
+
+1. **`0x4129` `+1172` is play time in seconds and drives MGS4's single-player unlocks.** Its readers
+   feed `0x7F6F70`, which divides by 3600 and ORs cumulative bits into the `mgof.sav` flag word at
+   0, 10, 20 and 50 hours. **We hardcode `0xffffff`** (4,660 h) at every round end, tripping all
+   four tiers for everyone. Left in place deliberately — the replacement is a policy choice about
+   what "time played" means, and `seconds_in_game` is a different quantity. See `CLIENT_STORE.md` §6,
+   whose "the server cannot help" this overturned.
+2. **`0x4120` byte 0 bit 0 is an "already initialised" marker**, not the mystery constant
+   PROTOCOL.md called it. Clear it and the client memsets 33 list-preference bytes and overwrites
+   ~30 settings with defaults.
+3. **`0x4313` wire `0x098`/`0x099` are `password_enabled` and `dedicated`**, documented as "zero".
+   Checked the server: `HostSettingsReply` already copies the enclosing range, so no live bug.
+
+### An elimination that cannot work, recorded before someone runs it
+
+`PROTOCOL.md`'s BGM-volume / radar / HUD fields at `0x14`-`0x16` have **no accessor and no direct
+profile access**. The obvious test — move the slider in game and watch the bytes — **cannot settle
+it**, because `0x4110` echoes the raw 48 bytes and they round-trip whether or not the client reads
+them. Per CLAUDE.md, an elimination is only valid if the experiment could have produced the
+confirming observation. This one could not.
+
+### Batch 2a was lost to a quota limit, and the salvage is the lesson
+
+The clan agent died mid-write on `0x4b54`, leaving valid-looking YAML that **did not parse** — 16
+doc lines dedented out of their block scalars. Two files were complete and clean; one needed repair;
+two were never started.
+
+**A killed agent's output must be validated before it is trusted, not after it is committed.** The
+checks that caught it: `yaml.safe_load` over every schema, a `- id:` count against `HEAD` per file,
+and a grep for changed `type:`/`size:`/`repeat:`/`encoding:`/`enum:` lines across the whole diff.
+All three should run at the end of every batch regardless of how the agent exited.

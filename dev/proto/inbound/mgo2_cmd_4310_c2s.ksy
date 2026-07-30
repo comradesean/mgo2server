@@ -97,8 +97,16 @@ seq:
   - id: unknown_0d3
     type: u1
     doc: |
-      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
-      guessed. Parsed and pushed into the client's own property store (record 0, key 86 byte 1), and the only consumer is the accessor `0x7F4C98`, which has no callers and whose OPD word appears nowhere in the image.
+      [UNKNOWN — meaning; ELF — fate. 2026-07-29, producer pinned 2026-07-30] wire 0x0d3, src+800.
+      Position and width exact; no name is established and none is guessed. Pushed into the client's
+      own property store (record 0, key 86 byte 1); the only ELF-side consumer is the accessor
+      `0x7F4C98`, which has no callers and whose OPD word appears nowhere in the image.
+
+      **The push site is now named:** `0x8CA460` (`lbz r0,800(r9)`) → `stb r0,125(r1)`, into an
+      8-byte scratch zeroed at `0x8CA444`-`0x8CA450`, published by
+      `0x8CA6E4`-`0x8CA6F0` as `0x27F258(obj, key=86, len=8, src=r1+124)`. Byte 1 of that record is
+      this field, byte 5 is `unknown_0d4`. So the value's only destination is the lobby stage
+      script's namespace, which is outside the ELF and outside what disassembly can settle.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
@@ -108,8 +116,11 @@ seq:
   - id: unknown_0d4
     type: u1
     doc: |
-      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
-      guessed. As `unread_800`: store record 0 key 86 byte 5, dead accessor `0x7F4C50`.
+      [UNKNOWN — meaning; ELF — fate. 2026-07-29, producer pinned 2026-07-30] wire 0x0d4, src+801.
+      Position and width exact; no name is established and none is guessed. Store record 0 key 86
+      **byte 5**, dead accessor `0x7F4C50`; ELF-side accessor `0x907844` is likewise dead (no `bl`,
+      OPD only). Push site `0x8CA468` (`lbz r0,801(r9)` → `stb r0,129(r1)`), same key-86 record as
+      `unknown_0d3`.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
@@ -151,8 +162,15 @@ seq:
   - id: unknown_0ee
     type: u2
     doc: |
-      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
-      guessed. No reader anywhere in the binary.
+      [UNKNOWN, ECHO-ONLY — 2026-07-29; negative re-established 2026-07-30] wire 0x0ee, src+832 =
+      settings-block +80. Position and width exact; no name is established and none is guessed.
+      No reader anywhere in the binary.
+
+      Re-run independently: every displacement access at `832` in the text section resolves to a
+      **u32-strided TOC global** (`lwz r9,-32768(r30)`, read in contiguous `lwz` runs at `0x9D6508`,
+      `0x9DC66C`, `0x9DCFD4`, `0x9DDB30`, `0x9E1860`, `0xA0A684`) which cannot be this struct — it
+      reads `+846`/`+847` inside u32s where this struct has two u8 fields. There is **no
+      accessor-bank wrapper for +832**, unlike its neighbours `+834` and `+840`.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
@@ -162,8 +180,12 @@ seq:
   - id: unknown_0f0
     type: u4
     doc: |
-      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
-      guessed. No reader anywhere in the binary.
+      [UNKNOWN, ECHO-ONLY — 2026-07-29; negative re-established 2026-07-30] wire 0x0f0, src+836 =
+      settings-block +84. Position and width exact; no name is established and none is guessed.
+      No reader anywhere in the binary.
+
+      Re-run independently: all hits at `836` are the same u32-strided TOC global (`0x9D64C8`,
+      `0x9DC670`, `0x9DCFD8`, `0x9DDB48`, `0x9E1878`, `0xA0A68C`). No accessor-bank wrapper.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
@@ -173,8 +195,13 @@ seq:
   - id: unknown_0f4
     type: u2
     doc: |
-      [UNKNOWN, ECHO-ONLY — 2026-07-29] Position and width exact; no name is established and none is
-      guessed. No reader anywhere in the binary.
+      [UNKNOWN, ECHO-ONLY — 2026-07-29; negative re-established 2026-07-30] wire 0x0f4, src+844 =
+      settings-block +92. Position and width exact; no name is established and none is guessed.
+      No reader anywhere in the binary.
+
+      Re-run independently: all hits at `844` are the u32-strided TOC global (`0x9D64D0`,
+      `0x9DC678`, `0x9DCFE0`, `0x9DDB50`, `0x9E1880`, `0xA0A698`) or `+112` aliases of `+956` in the
+      create-game screen. No accessor-bank wrapper.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and
@@ -206,9 +233,32 @@ seq:
       is a strict subset of the same struct — name, comment, password flag, password, stance — and
       `0xA1` in *this* packet is `dedicated`. Reusing the offset writes the wrong field.
 
-  - id: unknown_0f7
+  - id: level_limit_tolerance
     type: u1
-    doc: "[UNKNOWN] wire 0x0f7, src+847. Same candidate pair as unknown_0f6."
+    doc: |
+      [CONFIRMED, RESOLVED 2026-07-30] wire 0x0f7, src+847. Previously `unknown_0f7`, "same
+      candidate pair as unknown_0f6" — a note left over from when the stance byte beside it was
+      also unnamed. **The level-limit tolerance**, the ± window around `level_limit_base`.
+
+      Three lines, all tier 1:
+
+      1. **Struct-offset identity.** `src+847` is settings-block +95 (`block+X = src+752+X`, proved
+         by the `0x4305` parser's inlined copy writing block+48 to `+800`, +66 to `+818`, +94 to
+         `+846`, +96 to `+848`, commonA/B to `+929`, +189 to `+941`). The reply specs
+         `mgo2_cmd_4305_s2c.ksy` and `mgo2_cmd_4313_s2c.ksy` both have block +95 as the tolerance,
+         and this file's own `level_limit_base` note already used the same +0x10 correspondence to
+         place `0xF8` at block +96.
+      2. **The client publishes it as its own property.** `0x8CA544` (`lbz r0,847(r9)`) →
+         `0x8CA72C` `0x27F258(obj, key=98, len=1, ...)`, immediately beside key 99 = `src+848`, the
+         level-limit base.
+      3. **The browser consumes it as a tolerance.** `0xD49550` copies `+847` into the `0x4302`
+         game-list entry at T+0x26 (`level_limit_tolerance` there, [CONFIRMED]), and the list picker
+         at `0x93452C`-`0x93455C` tests a candidate's level against `entry+40 + entry+38` and
+         `entry+40 − entry+38` — base plus and minus this byte.
+
+      This also resolves the standing disagreement `mgo2_cmd_4305_s2c.ksy` flagged on 2026-07-26:
+      "one byte cannot be capture-proven in the reply and unknown in the request." It is the
+      request spec that was behind.
   - id: level_limit_base
     type: u4
     doc: |
@@ -265,10 +315,16 @@ seq:
       game-list entry. Written as one 2-byte blob from src+929, so note the source gap: bytes
       src+922..928 exist in the client's struct and are **not** transmitted.
       Capture-proven: flipping only friendly fire moved exactly `0x142` bit 3.
-  - id: common_c
+  - id: common_flags_lsb
     type: u1
     doc: |
-      [INFERRED] wire 0x144, src+931. Our `HostSettingsReply` writes a constant here.
+      [ELF; renamed from `common_c` 2026-07-30] wire 0x144, src+931 — the **least significant byte
+      (bits 0-7) of the 32-bit Common Settings flags word** based at src+928. The old name implied a
+      third toggle byte in the commonA/commonB series; it is the same word's other end. The reply
+      specs use the same name, and `mgo2_cmd_4313_s2c.ksy` names the word's fourth byte
+      `common_flags_msb` (src+928, block +176, not carried on this wire).
+
+      Our `HostSettingsReply` used to write a constant here.
 
       [ELF 2026-07-29] It has **its own u8 read** (`0xD43B10` via `0xd5cb8c`), distinct from the
       raw-2 covering src+929/930, and the builder splits the same way. It is the **low byte of the

@@ -65,12 +65,17 @@ doc: |
   **What makes this command legible is where it writes, not what it is called.** Every tail
   destination is a slot some *other* command owns: `+6816` is `0x4122`'s clan id, `+6837`/`+6838`
   open `0x4122`'s unknown prefix, `+6872` is `0x4122`'s emblem flag, `+288`/`+292` are `0x4101`'s
-  experience and `unknown_13e`, and `+13097`/`+13100` are `0x4101`'s two unknown singles.
+  experience and `grade_points`, and `+13097`/`+13100` are `0x4101`'s `beginner_flag` and
+  `dead_13100`.
 
   So `0x4129` is a **partial re-send of the connect-burst character record after a match** —
   experience, title, skills and the clan block, patched in place. That is also the strongest hint
   available that `0x4101`'s and `0x4122`'s unknown slots at those addresses are **match-mutable**
   values rather than constants.
+
+  **`+1172` is the exception to "partial re-send"** — `play_time_seconds` is not a `0x4101` slot at
+  all. It has no connect-burst writer: `0x4129` is the only command in the protocol that sets it,
+  which is consistent with it being a cumulative counter the server updates at the end of a round.
 
   Wait slot **26** (`0x1a`).
 
@@ -117,11 +122,21 @@ types:
         doc: |
           [CONFIRMED 2026-07-29] wire `0x05` -> `profile+288` (`r27+22776`), stored at
           `0xD3CA5C`.
-      - id: unknown_09
+      - id: beginner_flag
         type: u1
         doc: |
-          [UNKNOWN] wire `0x09` -> `profile+13097`, stored at `0xD3CA78`. Position and width
-          exact; the meaning is not established. The server sends 0.
+          [CONFIRMED 2026-07-30] wire `0x09` -> `profile+13097`, stored at `0xD3CA78`.
+
+          **The character's beginners-only-lobby eligibility.** Non-zero passes the gate; zero
+          makes the client refuse such a lobby locally with error screen `0x933` / code `-0x194`
+          — "You cannot login to this lobby." The full derivation (six readers, the
+          `0x884300` lobby-list predicate on `restrictions` bit 0, the `0x885A08` dialog call) is
+          in `mgo2_cmd_4101_s2c.ksy` under the field of the same name, which writes this same
+          slot at connect.
+
+          **Must agree with what `0x4101` sent**, per this file's top-level rule: a round ending
+          would otherwise revoke the character's lobby eligibility mid-session. The server sends 0
+          in both, so they agree today by accident rather than by construction.
       - id: skill_count
         type: u4
         doc: |
@@ -140,11 +155,18 @@ types:
           These repeat what the `0x4125` catalogue advertised at connect: the parser writes
           the identical array and does **not** clear it first, so disagreeing between the
           two half-updates the client's view of what the player owns.
-      - id: unknown_b0
+      - id: dead_13100
         type: u4
         doc: |
-          [UNKNOWN] `B+0` -> `profile+13100`, stored at `0xD3CB64`, where `B = 0x0e + 4*N`.
-          The server sends 0.
+          [NO READER IN THE IMAGE 2026-07-30] `B+0` -> `profile+13100`, stored at `0xD3CB64`,
+          where `B = 0x0e + 4*N`.
+
+          Only three instructions in the image use displacement 13100: this store, `0xD3C358`
+          (`0x4101`'s field of the same name), and `0x4148C4`, which is rejected on provenance —
+          one `stw` inside an uninterrupted run at 12944..13100 stride 4, a u32 array in an engine
+          struct. Displacements 13098/13099/13101 have no .text hits, so nothing straddles it.
+          The confirming observation would be a load at `profile+13100` off a `0xD3A094` base;
+          none exists. The server sends 0.
       - id: grade_points
         type: u4
         doc: |
@@ -154,11 +176,48 @@ types:
           and render `"%s (%d)"` — a title for its level, then the raw number. So it is a
           **second experience-scale quantity**, distinct from the Level. The server mirrors
           `experience` into it.
-      - id: unknown_b8
+      - id: play_time_seconds
         type: u4
         doc: |
-          [UNKNOWN] `B+8` -> `profile+1172`, stored at `0xD3CB9C`. The server sends
-          `0xffffff`.
+          [CONFIRMED 2026-07-30] `B+8` -> `profile+1172`, stored at `0xD3CB9C`.
+
+          **Total MGO play time in seconds, and it drives the MGS4 single-player unlock.** This
+          closes CLIENT_STORE.md §6's open question about what MGO writes that the offline game
+          reads back: it is not written by MGO at all in the sense that was being looked for — the
+          *server* supplies the number and the client converts it straight into the `mgof.sav`
+          flag word.
+
+          Two readers, both `lwz r3,1172(r3)` with the base from `bl 0xD3A094` a few instructions
+          earlier — `0x8F9850` (base from `0x8F9840`) and `0x8F98F8` (base from `0x8F98E8`) —
+          and both immediately `bl 0x7F6F70`, which is inside the `.sav` module
+          (`0x7F6000`-`0x7F9300`). Those are its only two call sites.
+
+          `0x7F6F70` is short enough to read whole:
+
+          ```
+          7f6f70  lis r0,0x91A2 ; ori r0,r0,0xB3C5
+          7f6f84  mulhwu r3,r3,r0 ; srwi r3,r3,11      ; r3 = value / 3600  -> HOURS
+          7f6f8c  cmpwi cr7,r3,49 ; cmpwi cr6,r3,19
+          7f6f80  li r11,15                            ; > 49 h
+          7f6f9c  li r11,7                             ; > 19 h
+          7f6fd0  li r11,3                             ; > 9 h
+          7f6fd8  li r11,1                             ; otherwise
+          7f6fa8  lwz r10,-32768(r30) ; lwz r0,0(r10)
+          7f6fb4  oris r0,r0,0x8000 ; or r9,r11,r0
+          7f6fc4  stw r9,0(r10)                        ; only when a bit is new
+          ```
+
+          The divide is exact: `0x91A2B3C5` with `mulhwu` + `srwi 11` is the standard magic for
+          **/3600**, which is what fixes the unit as seconds. The tiers are cumulative bits at
+          **0, 10, 20 and 50 hours**, OR'd with `0x80000000`, into the single u32 that
+          CLIENT_STORE.md §6 measured `mgof.sav` moving.
+
+          **The server currently sends `0xffffff`** — 16,777,215 seconds, 4660 hours — which trips
+          every tier immediately. That is a policy decision nobody made on purpose; `chara_training_time`
+          / `seconds_in_game` is the quantity we actually track, and CLIENT_STORE.md's warning that
+          they are "a different quantity" was right about their provenance but wrong to conclude
+          the server could not influence the unlock. It can, through this field, and only through
+          this field.
       - id: clan_id
         type: u4
         doc: |

@@ -2044,7 +2044,13 @@ the tail is a flat packed field list — the first trace's "intermediate table /
 reading was wrong. Fingerprint v5 (page=0, matrix 3001–3144, byte-aligned tail values, real
 comment in the comment slot) is deployed.
 
-### Fingerprint v5: the full per-mode grid mapped; titles and awards are client-derived
+### Fingerprint v5: the full per-mode grid mapped; ~~titles and awards are client-derived~~
+
+> **SUPERSEDED 2026-07-30 on the titles/awards half only.** The grid mapping below stands. The
+> conclusion that titles and medals are computed by the client does **not** — see
+> [Titles and medals](#titles-and-medals-server-driven-catalogue-extracted-from-the-elf) below and
+> `AWARDS.md`. Both are carried on the wire in `0x4103` and are server-driven. Kept because the
+> reasoning is instructive: the observation was real and the inference from it was wrong.
 
 With `0x4105` page=0 the grid populated and the whole matrix fell out (values 3001–3144,
 mode-major, cell = 3001 + mode·18 + column):
@@ -2065,13 +2071,25 @@ mode-major, cell = 3001 + mode·18 + column):
   FP-STR-B); Host Rating denominator = `T+0x32DC`; Instructor Score denominator = `T+0x32F4`;
   comment end-to-end correct (empty in DB, blank on screen). `FP-STR-A`/`FP-STR-C` and the clan
   header field did not surface — clan is not any of this packet's strings.
-- **Titles and awards are computed by the client from the stat values themselves** — the award
-  list regenerated to exactly the thresholds our fingerprint numbers crossed ("10/25 consecutive
-  kills" ↔ slot 1 = 1001; "2/4 consecutive TDM survivals" ↔ 1025; "100 SOP destabilizer uses" ↔
-  1027; "500/10000 total kills/deaths" ↔ the 42k computed totals), and the title set changed
-  with the stats (v2's Foxhound/Fox/Doberman/Hound → v5's HOUND/CROCODILE/EAGLE/…). No separate
-  command feeds them; the earlier "different command flow fills the tables" reading conflated
-  storage with source. Award/title threshold enumeration is presentation-mapping, not protocol.
+- ~~**Titles and awards are computed by the client from the stat values themselves**~~ — **WRONG,
+  corrected 2026-07-30.** The observation was sound: the award list did regenerate to exactly the
+  thresholds our fingerprint numbers crossed ("10/25 consecutive kills" ↔ slot 1 = 1001; "2/4
+  consecutive TDM survivals" ↔ 1025; "100 SOP destabilizer uses" ↔ 1027; "500/10000 total
+  kills/deaths" ↔ the 42k computed totals), and the title set did change with the stats (v2's
+  Foxhound/Fox/Doberman/Hound → v5's HOUND/CROCODILE/EAGLE/…).
+
+  **The inference was not.** Both are carried on the wire, in the same `0x4103` this page was
+  already dissecting: **wire 563** is a 22-bit title mask, **541** the 1-based worn title, **615** a
+  16-byte medal bitfield. The client draws those bits and computes nothing (`GATES.md` §5a).
+
+  What actually happened is that *our own fingerprint sender* recomputed the fields from the stats
+  it was writing, so the correlation was with our server's arithmetic, not the client's. **A stat
+  and an award moving together does not say which side did the deriving** when the same process
+  emits both — that is the general lesson, and it is why an elimination has to name the observation
+  that would have distinguished the two.
+
+  Threshold enumeration is therefore **operator policy**, not presentation-mapping: the numbers are
+  ours to choose and live in `src/main/resources/awards.json`. See `AWARDS.md`.
 
 ### Fingerprint v6: the ALL columns are stored; OTHER is derived
 
@@ -2117,13 +2135,32 @@ clamped ≥ 0 — v6's 44990 = 51000 − 3003 − 3007 stands). Consequence for 
 "ALL" is stored; the schema stores other_* and the 0x4105 sender computes each of wire columns
 0/1/4/5 as other + hs + lockon.
 
-## Titles and medals: the client-side catalogue, extracted from the ELF
+## Titles and medals: server-driven catalogue, extracted from the ELF
+
+**`AWARDS.md` is the current page for this, and it supersedes the framing here.** What survives
+below is the static extraction — the catalogue, the tier table, the slot mappings — which is still
+good. What does not is the sentence about who computes them.
 
 Static extraction 2026-07-23 (medal tier table VA 0xe139c0, title resource keys VA 0xe14eb0,
 sprites VA 0xe152d0). "Awards" are "MEDALS" in the client's own tab naming (TAB_TITLE /
-TAB_MEDAL). Both are derived client-side from the raw stats; no command carries them. The two
-record tables earlier suspected as their source (T+0x26d14, T+0x3330) are actually match-history
-list storage (0x4682 / 0x4212 records) — that note is corrected.
+TAB_MEDAL). The two record tables earlier suspected as their source (T+0x26d14, T+0x3330) are
+actually match-history list storage (0x4682 / 0x4212 records) — that note is corrected.
+
+> **CORRECTED 2026-07-30.** This section used to read *"Both are derived client-side from the raw
+> stats; no command carries them."* **Three commands' worth of wire carries them**, all in
+> `0x4103`: wire **563** (22-bit title unlock mask, LSB-first), **541** (worn title, 1-based, 0 =
+> none) and **615** (16-byte medal bitfield, keyed by medal **id**, not row index). The client
+> renders those bits and derives nothing.
+>
+> Implemented server-side in `AwardService` against `src/main/resources/awards.json`; titles latch
+> once unlocked, medals derive from current stats, and the worn title is the best unlocked one by
+> `rank`. **Every threshold on this page is therefore operator policy** — the original service's
+> rules are unobservable — and the title numbers in particular should be assumed wrong until
+> somebody tunes them.
+>
+> Hard constraint worth repeating here because this section lists 22 titles: **never set title bit
+> 22 or above.** The client's popcount loop runs 23 iterations over a 22-entry table and corrupts
+> the scrollbar.
 
 **Titles (22, table order):** Foxhound, Fox, Doberman, Hound, Crocodile, Eagle, Shark?, Water
 Bear, Sloth, Flying Squirrel, Pigeon, Night Owl (indices 0–11, the playstyle/rank animals;

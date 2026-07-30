@@ -89,7 +89,22 @@ types:
           Level is derived, never sent: `min(experience >> 13, 3)` at `0x6FC580`.
       - id: unknown_35
         type: u1
-        doc: "[UNKNOWN] Wire 0x35 -> struct +60. The lone byte after the experience array, matching `0x4122`'s `unknown_6a`."
+        doc: |
+          [UNKNOWN meaning; PROVED round-tripped 2026-07-30] Wire 0x35 -> struct +60, i.e.
+          `profile+7708` once the struct is memcpy'd over `profile+7648`. **The same byte as
+          `0x4122`'s `unknown_6a`** — same appearance struct, same offset — read here at
+          `0xD3C6AC`/`0xD3C6C0`.
+
+          The negative is shared and was re-run 2026-07-30: nothing in the image loads
+          `profile+7708` off a base provenanced to `0xD3A094`, and nothing uses 26720 (the
+          character-edit screen's copy of +60). The twelve raw displacement-7708 hits are all
+          either past the end of .text, part of the `0x412Dxx` engine-struct init, or u32 traffic
+          in the early runtime at `0x55xxx`. Full working, including the `0x4130` request builder's
+          `0xD3BD88 addi r4,r31,60` that is the only *writer* of it back to us, is in
+          `mgo2_cmd_4122_s2c.ksy`.
+
+          Consequence for this packet: the byte is a pure conduit, so whatever we echo here must be
+          whatever `0x4122` sent, or the value is lost on the first appearance change.
       - id: comment
         size: 128
         type: str
