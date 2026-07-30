@@ -332,6 +332,29 @@ Worth recording because a later build with more than one lower-body item would n
 carry a real group hash. If a future version is ever served, this is a cheap tell for whether its
 wardrobe grew.
 
+## The gear reward system — post-launch, and the reason v1 grants nothing
+
+**A character owns only what it chose at creation.** On the original service the sole route to any
+further item or colour was a **reward system added after launch**.
+
+That makes generosity here a release-day violation rather than a matter of taste, which is why v1
+has **no unlock mechanism at all**: no drops, no achievements, no purchases, nothing that writes a
+`chara_gear` row after creation. A character keeps its creation choices permanently, and that is
+correct for the target version.
+
+We got this wrong twice in the permissive direction — granting the whole catalogue (V44 and
+earlier), then an invented 28-item starter set (V70) — before it was corrected in V71. Both were
+plausible and neither was what the game did.
+
+**Evidence tier:** operator knowledge of the original service. The client cannot settle it — it
+never checks ownership against anything, it renders whatever the two gear writers agree on — so no
+amount of ELF work would have produced this, and it is recorded as testimony rather than dressed up
+as a finding.
+
+**When a later version is served**, the reward system is the thing to design, and the shape is
+already in place: rewards write `chara_gear` rows, ORing colour bits into the existing mask. What
+they should be granted *for* is unknown and is not in our artifacts.
+
 ---
 
 ## Mailbox tabs 2 and 3

@@ -489,14 +489,14 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 	/** Rows in gear_item, seeded by V44. 0x86 appears twice, so 123 rows and 122 distinct ids. */
 	/**
-	 * The starter set's size, from {@code starter_gear} (V70) — not the catalogue's 123.
+	 * What the fixture grants — three items, mirroring "a character owns only its creation choices".
 	 * <p>
-	 * A new character used to be granted every item in every colour, so this was 123 rows and the
-	 * "known-good 651 bytes". Granting a real starter set is operator policy, chosen 2026-07-30, and
-	 * the payload is now sized by what the character owns. 651 was never a required length: it was
-	 * simply what the full catalogue came to.
+	 * This was 123 (every item in every colour) and then 28 (an invented starter set). Both were
+	 * wrong: the original unlocked only what was picked at creation, and further unlocks came from
+	 * a post-launch reward system. 651 was never a required payload length — it was simply what
+	 * the full catalogue came to.
 	 */
-	private static final int STARTER_GEAR_ROWS = 28;
+	private static final int STARTER_GEAR_ROWS = 3;
 
 	@Test
 	public void gearAndSkillCataloguesAreAdvertised() {
@@ -509,7 +509,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		var gear = replies.get(6).getPayload();
 		assertThat(gear.getInt(0)).isEqualTo(STARTER_GEAR_ROWS);
 		assertThat(gear.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize(STARTER_GEAR_ROWS));
-		assertThat(gear.readableBytes()).isEqualTo(176);
+		assertThat(gear.readableBytes()).isEqualTo(51);
 		// The count is the character's row count now, not a constant in the writer. A new character
 		// is granted 1..16; skill 17 is withheld to be earned.
 		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.STARTING_MAX_ID);

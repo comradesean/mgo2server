@@ -672,11 +672,11 @@ public class PersonalStatsControllerIT extends BaseGameClientServerIT {
 
 		// Byte-identical to what 0x4124 sends -- THE property that matters, because the two writers
 		// fill one client table and whichever arrives last wins. 4 + 28x5 + 32 = 176 for the
-		// starter set (V70); it was 651 when creation granted the whole catalogue.
+		// the fixture's three items; it was 651 when creation granted the whole catalogue.
 		//
 		// The trailing 32 bytes are sixteen {u8 item_id, u8 bit_index} pairs, not a terminator.
-		assertThat(payload.getInt(0)).isEqualTo(28);
-		assertThat(payload.readableBytes()).isEqualTo(176);
+		assertThat(payload.getInt(0)).isEqualTo(3);
+		assertThat(payload.readableBytes()).isEqualTo(51);
 	}
 	/**
 	 * The last row of matrix 0 carries the player-details card's PLAY TIME and LEVEL.
