@@ -246,7 +246,7 @@ how a paid item ended up granted to everyone.
 | **`FACE_PAINT_UNLOCKED`** (`0xffffffff`) | `0x4131` wire `0xb6` | the parser stops at 182 bytes and never reaches it; face paint is a **single byte**, so a per-colour mask had no axis | **removed**, reply now 182 bytes |
 | **The sixteen `{item, bit}` pairs** | `0x4124` / `0x4133` tail, 32 bytes | the parser ORs a pair into record `+16` **only if the bit is already set** in the mask at `+12`, so it can only ever produce a subset of what we already sent — and `+16` drives a wardrobe *highlight*, not availability | filler `0xff`, which the parser skips (item 255 > its 128-entry bound) |
 | **`chara_gear.colours` bits 24-31** | `0x4124` / `0x4133` record `+12` | the highest colour index in the whole catalogue is **23**, used by one item; a set bit with no catalogue record is skipped **before** the mask is consulted (`0x9276F0`, `0x9254FC`) | still sent — see below |
-| **55 of the 122 gear ids** | `0x4124` / `0x4133` records | 29 exceed the parser's 128-entry bound (`cmplwi r9,128; bgt` at `0xD3CF00`); 26 fall in gaps no category window covers | still sent — see below |
+| **55 of the 122 gear ids** | `0x4124` / `0x4133` records | 29 exceed the parser's 128-entry bound (`cmplwi r9,128; bgt` at `0xD3CF00`); 26 fall in gaps no category window covers **and none has a colour-catalogue record** — padding, not future items | still sent — see below |
 | **Gear ids 28, 68, 86, 102** | `0x4124` / `0x4133` records | the "None" entries — unconditionally owned by a hardcoded id comparison at `0x92735C`-`0x927384`, and absent from the colour catalogue, so no mask bit can ever be read for them | still sent, harmlessly |
 | **`0x600000` per-skill experience** | `0x4122` / `0x4131` | `0x6000 << 8`, i.e. 256x the client's legal maximum of 24576; survived because `>> 13` clamps to 3 | **fixed** — both now send stored values |
 
@@ -273,11 +273,21 @@ are the interesting group — they land in the trailing headroom of *every* cate
 | waist | 86-97 | 98-100 |
 | accessories | 102-116 | 117-119 |
 
-Adding a post-launch item means bumping a `li r25,N` count immediate and taking the next free id, so
-**this is what expansion-era gear would look like from here** — the same shape as the
-weapon-restriction table already recorded in `OBSERVED.md`, where our inherited list is a strict
-superset of the shipped roster. That is inference from the pattern, not proof; what is proven is
-that this build never enumerates them.
+That distribution *looked* like expansion headroom — bump a `li r25,N` count immediate, take the
+next free id — and this file said so. **Tested 2026-07-30, and it does not hold: none of the 26
+appears in the client's colour catalogue at `0x10506BC`. Zero rows, all twenty-six.** Every real
+gear item has colour records; these have none, so they are **padding in an inherited list, not
+later-build items**.
+
+The one apparent exception is **id 4**, which is catalogued with 11 colours — but it sits in the
+`0..7` run, and those eight share a colour vocabulary (ids 0-11) no gear category uses.
+`o/slotdat/slot_online_face.slot` holds exactly eight models (`mgo_faceM01_whiteA` …
+`mgo_faceM08_latinoB`), and the 9-arm switch has **no arm for face**, so 0-7 are face ids with their
+skin/hair palette, handled outside this path. Id 4 is inert in `0x4124` either way.
+
+So the honest reading is duller than the one it replaces: we inherited a longer list than this
+client has, and there is no evidence the surplus was ever anything. Deleting the 55 is safe on the
+client's side and loses nothing.
 
 # What the unlocks mean for v1
 
@@ -293,6 +303,25 @@ For contrast, the complete list of things we send that **do** control content on
 
 Four items, and only the first two are entitlements in the shop sense. Everything else on the wire
 that looked like an unlock is in the table above it.
+
+## Lower body: one item, and the client cannot show it
+
+Not post-launch content, but the same species of finding — a category that exists on the wire and
+does nothing on screen.
+
+The lower-body arm covers **exactly one id (22) with no "None" entry**, and two things make it
+unusable: the arm at `0x927138` loads `r28 = 0` instead of a name string-group hash, so the client
+**never calls `0x240708`** and no label is ever fetched; and with a single item and nothing to
+switch to, there is no selection to make. An operator reported the category as offering nothing,
+which is exactly right.
+
+The disc record is broken too, independently: id 22's header at sid 1115 points its EN ordinal at a
+JP string reading *"trousers (provisional name)"*, with a stray `Aucun` in the neighbouring slot.
+So `gear_item.name` is **NULL** for 22 — a defect in the data, not a gap in ours.
+
+Worth recording because a later build with more than one lower-body item would need that arm to
+carry a real group hash. If a future version is ever served, this is a cheap tell for whether its
+wardrobe grew.
 
 ---
 
