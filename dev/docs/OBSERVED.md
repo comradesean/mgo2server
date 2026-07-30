@@ -40,6 +40,54 @@ previous claim that it was the founding date came from an experiment that swappe
 and saw the member count render epoch seconds — which proved `T+0x58` and said nothing about
 `T+0x18`. Second invalid elimination found in this packet family in one day.
 
+### Both gear gates confirmed live, and the empty-category fallback with them (2026-07-30)
+
+Test: strip one character's `chara_gear` to a single row — item 33 (Beret), `colours = 1` — and
+reconnect. `0x4124` went from 651 bytes to 41.
+
+**Observed, and all four predictions held:**
+
+| | expected | seen |
+| --- | --- | --- |
+| HEAD | None + Beret only | ✔ |
+| Beret colours | Black alone, not ten | ✔ |
+| chest / waist / accessories / hands | None only (hardcoded exempt ids) | ✔ |
+| **upper body / feet** | **empty — no None entry and nothing owned** | **✘ — see below** |
+
+So **item ownership (`0x927350`, record `+8`) and colour availability (`0x925538`/`0x92772C`,
+record `+12`) are both real, server-controlled, and working.** That closes the loop on the claim
+withdrawn earlier the same day, which had said gear was ungated.
+
+#### The empty-category fallback, live
+
+The two categories with no "None" entry did not come up empty. They showed **Tactical Jacket** and
+**Tactical Boots & Knee Guards (Type A)**, each with **no colour swatches**.
+
+That is the fallback at `0x92751C`-`0x927568` doing exactly what the trace said: when the built
+list is zero-length (`lwz r0,6604(r9); cmpwi 0` at `0x927510`) the client **force-equips the
+category's base id** (`stb r23,20416(r11)` at `0x927544`) and appends one row labelled ordinal 0.
+
+Base ids are **11** (upper body) and **57** (feet) — precisely the two items that appeared. The
+swatches are empty because the forced item has no `chara_gear` row, so no colour mask reaches
+record `+12`.
+
+**Consequence worth knowing before stripping gear on a live character:** the fallback *writes* the
+equipped byte. A character left in this state and then committing an outfit would persist
+`upper = 11` and `feet = 57`, replacing whatever they were actually wearing — here a T-shirt and
+Tactical Boots. The strip is reversible; the outfit commit that follows it may not be.
+
+#### Two category names upgraded from ordering-derived to observed
+
+The names above were flagged as *"ordering-derived, counts verified, NOT hash-resolved"* for upper
+body, hands, feet, chest and waist, because the flat string dump's group boundaries are unreliable.
+
+The fallback renders **ordinal 0 of the category**, and the client displayed "Tactical Jacket" for
+upper body and "Tactical Boots & Knee Guards (Type A)" for feet — matching `gear_item.name` for ids
+11 and 57. **Those two categories' index-0 alignment is now observed rather than inferred**, which
+is the specific thing that could not be certified from the dump. Hands, chest and waist remain
+ordering-derived; the same trick would settle each of them, since all three have a None at ordinal 0
+that the fallback would render.
+
 ### Gear item names: what is anchored and what is only ordering (2026-07-30)
 
 All 67 reachable gear ids are named in `gear_item.name` (V69). **The confidence is not uniform**,
