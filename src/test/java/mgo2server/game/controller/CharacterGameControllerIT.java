@@ -193,7 +193,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	public void grantingTheCodecPackSetsTheBitOnTheWire() {
 		accountId = createAccount();
 		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update account set entitlements = 1 where id = :id")
+			handle.createUpdate("update account set entitlements_byte3 = 1 where id = :id")
 				.bind("id", accountId).execute());
 
 		var payload = loginThenNoAccount(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),

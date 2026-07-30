@@ -125,7 +125,7 @@ public class CharacterGameController implements IGameController {
 	/**
 	 * The trailer's entitlement byte — index 3, and the only byte in the 32 with any reader.
 	 *
-	 * <p>Sourced from {@code account.entitlements} (V62) rather than a constant, so it is
+	 * <p>Sourced from {@code account.entitlements_byte3} (V62, renamed V65) rather than a constant, so it is
 	 * <b>per account and editable live</b>: an {@code UPDATE} takes effect on the next
 	 * character-list fetch, with no restart and without touching anyone else.
 	 *
@@ -176,8 +176,8 @@ public class CharacterGameController implements IGameController {
 	 */
 	private static byte[] trailerFor(Account account) {
 		var trailer = new byte[TRAILER_SIZE];
-		trailer[TRAILER_INDEX1] = (byte) (account.getEntitlementsIndex1() & 0xff);
-		trailer[TRAILER_ENTITLEMENT_INDEX] = (byte) (account.getEntitlements() & 0xff);
+		trailer[TRAILER_INDEX1] = (byte) (account.getEntitlementsByte1() & 0xff);
+		trailer[TRAILER_ENTITLEMENT_INDEX] = (byte) (account.getEntitlementsByte3() & 0xff);
 		return trailer;
 	}
 

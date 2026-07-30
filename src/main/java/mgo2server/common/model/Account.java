@@ -104,32 +104,32 @@ public class Account {
 	 * See {@code CharacterGameController} for what the bit does and {@code dev/docs/POST_LAUNCH.md}
 	 * for the policy and the second-pack question.
 	 */
-	private int entitlements = 0;
+	private int entitlementsByte3 = 0;
 
 	/**
 	 * The {@code 0x3049} trailer's byte at index 1. We have always sent {@code 0x07} and <b>no bit
 	 * of it is understood</b>.
 	 * <p>
-	 * Per account (V63) for the same reason as {@link #entitlements}: so the three set bits can be
+	 * Per account (V63) for the same reason as {@link #entitlementsByte3}: so the three set bits can be
 	 * isolated by an {@code UPDATE} and a reconnect instead of guessed at. Named by wire position
 	 * rather than by a guess at meaning, following the {@code unread_NNN} precedent.
 	 */
-	private int entitlementsIndex1 = 7;
+	private int entitlementsByte1 = 7;
 
-	public int getEntitlements() {
-		return entitlements;
+	public int getEntitlementsByte3() {
+		return entitlementsByte3;
 	}
 
-	public int getEntitlementsIndex1() {
-		return entitlementsIndex1;
+	public int getEntitlementsByte1() {
+		return entitlementsByte1;
 	}
 
-	public void setEntitlementsIndex1(int entitlementsIndex1) {
-		this.entitlementsIndex1 = entitlementsIndex1;
+	public void setEntitlementsByte1(int entitlementsByte1) {
+		this.entitlementsByte1 = entitlementsByte1;
 	}
 
-	public void setEntitlements(int entitlements) {
-		this.entitlements = entitlements;
+	public void setEntitlementsByte3(int entitlementsByte3) {
+		this.entitlementsByte3 = entitlementsByte3;
 	}
 
 	public Long getCurrentCharaId() {

@@ -106,6 +106,35 @@ were sending four bytes into the void, not handing out unreleased content.
 
 ---
 
+## The trailer, byte by byte
+
+`0x3049` ends with a **32-byte array** — the client's `tail[32]`. It is not one value; each byte is
+separate, and only two carry anything:
+
+```
+index:  0     1     2     3     4 .......................... 31
+        00    07    00    03    00 .......................... 00
+              ^           ^
+              |           `- account.entitlements_byte3  (displacement 487)
+              `------------- account.entitlements_byte1  (displacement 485)
+```
+
+Displacement is off the context base returned by `0xD36C74` (`base+21968`), which is how the client
+addresses these after the parser at `0xD3732C` copies all 32 bytes in.
+
+| index | we send | status |
+| --- | --- | --- |
+| 0 | `0x00` | never set, never searched |
+| **1** | `0x07` | three inherited bits, **none understood**; readership open |
+| 2 | `0x00` | never set, never searched |
+| **3** | `0x03` | bit 0 = day-one paid Codec Pack (proven); bit 1 no reader |
+| 4..31 | `0x00` | never set, never searched |
+
+"Never searched" is meant literally for everything except index 3: the one search that reported the
+other bytes inert tested displacement **487**, which is index 3's own offset. The columns are named
+`entitlements_byte1` / `entitlements_byte3` (V65) after the byte each carries, because the earlier
+`entitlements` / `entitlements_index1` pair read as a value and a variant of it.
+
 ## The two bits that are paid content — index 3, bits 0 and 1
 
 **These are the two we should not be setting by default, and as of 2026-07-29 we do not.**
@@ -133,14 +162,14 @@ here rather than dangerous.
 remembering to run an `UPDATE`. Serving a paid day-one item to everyone is a decision, and it is now
 made per account rather than inherited from a constant.
 
-`entitlements_index1` deliberately still defaults to `7` — see below; zeroing it would be an
+`entitlements_byte1` deliberately still defaults to `7` — see below; zeroing it would be an
 experiment, not a correction.
 
 Reversible either way in one statement:
 
 ```sql
-update account set entitlements = 1 where id = <account>;   -- grant the day-one Codec Pack
-update account set entitlements = 0 where id = <account>;   -- withhold it
+update account set entitlements_byte3 = 1 where id = <account>;   -- grant the day-one Codec Pack
+update account set entitlements_byte3 = 0 where id = <account>;   -- withhold it
 ```
 
 ### Still unexamined: index 1's three bits
@@ -150,10 +179,10 @@ We send `0x07` at trailer index 1 — three more set bits from the same inherite
 it looked for `lbz r0,487(r3)`, which is **index 3's** offset (`ctx+21968 + 487 = ctx+22455`). Index
 1 is `485`. So nobody has actually looked.
 
-It is per-account (`account.entitlements_index1`, V63), so the test is the same shape:
+It is per-account (`account.entitlements_byte1`, V63), so the test is the same shape:
 
 ```sql
-update account set entitlements_index1 = 0 where id = <account>;   -- then reconnect
+update account set entitlements_byte1 = 0 where id = <account>;   -- then reconnect
 ```
 
 Left at `7` for now, because zeroing it is an experiment rather than a correction — but on the same
@@ -216,7 +245,7 @@ none in loadout code, and the trailer byte has no third reader. The original "lo
 was a misread of the table's contents, not a mislabelled gate.
 
 **Granting it is therefore a live operator-policy decision**, and the only one in this subsystem:
-`account.entitlements` bit 0, per account. Every account was set to `0` on 2026-07-29, with the pack
+`account.entitlements_byte3` bit 0, per account. Every account was set to `0` on 2026-07-29, with the pack
 granted individually where wanted.
 
 **This is an entitlement, and we grant it to everyone by default.** That is *operator policy*, not
@@ -273,11 +302,11 @@ The number is what makes it worth testing: the bit unlocks **32** gated entries,
 Codec Pack adds **32** phrases. Matching counts are not evidence — but they are a reason to look,
 and the test is one restart.
 
-**How to settle it.** The byte lives in `account.entitlements` (V62) and is read on every
+**How to settle it.** The byte lives in `account.entitlements_byte3` (V62, renamed V65) and is read on every
 character-list fetch, so this needs **no restart and affects only the account you pick**:
 
 ```sql
-update account set entitlements = 0 where id = <account>;   -- then reconnect
+update account set entitlements_byte3 = 0 where id = <account>;   -- then reconnect
 ```
 
 Then check *both* screens:
@@ -292,7 +321,7 @@ Then check *both* screens:
 | both | one bit is the whole shop | |
 | neither | the bit does not reach either screen, and the trace needs revisiting | |
 
-Restore with `update account set entitlements = 3 where id = <account>`. The default is unchanged
+Restore with `update account set entitlements_byte3 = 3 where id = <account>`. The default is unchanged
 at 3, and two tests hold the line: one pins the default on the wire, one proves the column reaches
 it, so neither the default nor the plumbing can drift silently.
 
