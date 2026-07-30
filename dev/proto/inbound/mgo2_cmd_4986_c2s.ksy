@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4986_c2s
-  title: "MGO2 0x4986 \u2014 game lobby request (one u4) (client -> server)"
+  title: "MGO2 0x4986 — game lobby request (one u4) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4A90C`, builder call `0xD4A994`, subsystem index `0x48` (`li r4,72` after the send).

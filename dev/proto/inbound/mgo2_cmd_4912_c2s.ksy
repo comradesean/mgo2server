@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4912_c2s
-  title: "MGO2 0x4912 \u2014 game lobby request with id and optional 16-byte name (client -> server)"
+  title: "MGO2 0x4912 — game lobby request with id and optional 16-byte name (client -> server)"
   endian: be
 doc: |
   Sender `0xD4AA48`, builder call `0xD4AB4C`, subsystem index `0x40` (`li r4,64` at `0xD4ABBC`).

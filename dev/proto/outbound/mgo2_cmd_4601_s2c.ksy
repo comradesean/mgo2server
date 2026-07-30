@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4601_s2c
-  title: "MGO2 0x4601 \u2014 player search, list START (server -> client)"
+  title: "MGO2 0x4601 — player search, list START (server -> client)"
   endian: be
 doc: |
   Start packet of the 0x4600 player-search triple. Parser 0xD45DF0, dispatcher stub 0xD39370.

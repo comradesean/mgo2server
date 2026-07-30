@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4930_c2s
-  title: "MGO2 0x4930 \u2014 game lobby request (boolean byte) (client -> server)"
+  title: "MGO2 0x4930 — game lobby request (boolean byte) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4A324`, builder call `0xD4A3B0`, subsystem index `0x41` (`li r4,65` after the send).

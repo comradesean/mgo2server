@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4992_c2s
-  title: "MGO2 0x4992 \u2014 game entry info request (one u4) (client -> server)"
+  title: "MGO2 0x4992 — game entry info request (one u4) (client -> server)"
   endian: be
 doc: |
   Sender `0xD47938`, builder call `0xD479AC`, subsystem index `0x47` (`li r4,71` at `0xD479E0`).

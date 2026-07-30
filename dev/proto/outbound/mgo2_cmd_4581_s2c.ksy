@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4581_s2c
-  title: "MGO2 0x4581 \u2014 bulk roster fetch, list START (server -> client)"
+  title: "MGO2 0x4581 — bulk roster fetch, list START (server -> client)"
   endian: be
 doc: |
   Implementing this packet is not enough on its own: `0x4583` (`mgo2_cmd_4583_s2c.ksy`) discards

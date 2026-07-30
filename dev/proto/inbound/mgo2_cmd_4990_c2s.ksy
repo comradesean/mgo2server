@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4990_c2s
-  title: "MGO2 0x4990 \u2014 get game entry info (client -> server)"
+  title: "MGO2 0x4990 — get game entry info (client -> server)"
   endian: be
 doc: |
   Sender `0xD47A24`, builder call `0xD47A94`, subsystem index `0x46` (`li r4,70` at `0xD47AB8`).

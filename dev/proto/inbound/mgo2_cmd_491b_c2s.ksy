@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_491b_c2s
-  title: "MGO2 0x491b \u2014 game lobby request (u4, u2, u1, u4) (client -> server)"
+  title: "MGO2 0x491b — game lobby request (u4, u2, u1, u4) (client -> server)"
   endian: be
 doc: |
   Sender `0xD4D9E4`, builder call `0xD4DAA8`. Unhandled. Arguments: r4 = u32 (spilled

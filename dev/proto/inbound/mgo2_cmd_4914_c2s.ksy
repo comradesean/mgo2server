@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4914_c2s
-  title: "MGO2 0x4914 \u2014 game lobby request, empty body (client -> server)"
+  title: "MGO2 0x4914 — game lobby request, empty body (client -> server)"
   endian: be
 doc: |
   Sender `0xD4A75C`, builder call `0xD4A7CC`, subsystem index `0x3D`

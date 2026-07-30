@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4683_s2c
-  title: "MGO2 0x4683 \u2014 match-history list END (server -> client)"
+  title: "MGO2 0x4683 — match-history list END (server -> client)"
   endian: be
 doc: |
   End packet of the 0x4680 triple. Parser 0xD3ACF8, dispatcher stub 0xD39130.

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4823_s2c
-  title: "MGO2 0x4823 \u2014 mailbox list END (server -> client)"
+  title: "MGO2 0x4823 — mailbox list END (server -> client)"
   endian: be
 doc: |
   End packet of the 0x4820 mailbox triple. Parser 0xD52F5C, dispatcher stub 0xD39514.

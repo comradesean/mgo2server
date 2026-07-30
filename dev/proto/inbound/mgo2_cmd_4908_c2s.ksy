@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4908_c2s
-  title: "MGO2 0x4908 \u2014 game lobby info request variant (one byte) (client -> server)"
+  title: "MGO2 0x4908 — game lobby info request variant (one byte) (client -> server)"
   endian: be
 doc: |
   Sender `0xD47D2C`, builder call `0xD47DA0`, subsystem index `0x3A` (`li r4,58` at `0xD47DD4`).

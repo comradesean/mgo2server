@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4684_c2s
-  title: "MGO2 0x4684 \u2014 match detail request (client -> server)"
+  title: "MGO2 0x4684 — match detail request (client -> server)"
   endian: be
 doc: |
   Sender `0xD3B778`, builder call `0xD3B7EC`. Start/item/end triple `0x4685`/`0x4686`/`0x4687`,

@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_43f3_s2c
-  title: "MGO2 0x43f3 \u2014 unidentified in-match notification (server -> client)"
+  title: "MGO2 0x43f3 — unidentified in-match notification (server -> client)"
   endian: be
 doc: |
   Parser 0xD5B4D0, dispatcher stub 0xD39D8C. One of the four 0x43Fx ids in the in-match

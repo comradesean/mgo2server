@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4860_c2s
-  title: "MGO2 0x4860 \u2014 file / forward mail (client -> server)"
+  title: "MGO2 0x4860 — file / forward mail (client -> server)"
   endian: be
 doc: |
   ## THE `0xD53B6C` SENDER IS THE `0x4801` FAILURE PATH, NOT A USER ACTION

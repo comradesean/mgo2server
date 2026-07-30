@@ -155,3 +155,26 @@ accident, and it must not be made without checking both sides.
 3. `dev/docs/OBSERVED.md` — live-capture facts, including disproven hypotheses.
 
 Nothing else. In particular no other server's source.
+
+## `unread` — a payload the client parses nothing of
+
+**Distinct from a blank, and distinct from `seq: []`.** Three states look similar in a mechanical
+count and mean different things:
+
+| form | meaning |
+| --- | --- |
+| `seq: []` | **positively established empty payload** — the command carries no bytes |
+| `seq:` with all `unknown_<off>` fields | the layout was **not recovered**; positions may be known, meanings are not |
+| **`unread`** | the payload **exists and has length**, but the client **opens no reader and parses none of it** |
+
+The third is a *result*, not a gap, and until 2026-07-30 the tree had no way to say so. Five specs
+assert it in prose while using the all-`unknown_body` form, which reads as the opposite:
+`0x2002`, `0x2004`, `0x43F4`, `0x43F5` and `0x4802`. `PACKETS.md` already gives them their own
+`unread` legend entry.
+
+Express it by naming the field `unread_body` and saying in its `doc` which parser was traced and
+where it returns without reading. A coverage count that treats `unknown_` as "unmapped" then stops
+overstating the blanks by five.
+
+Note `0x4112` is the one honest use of an opaque `unknown_body`: exact size (32 bytes), contents
+genuinely unknown, because the client memcpys a struct rather than parsing fields.

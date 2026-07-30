@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4880_c2s
-  title: "MGO2 0x4880 \u2014 manage mail (client -> server)"
+  title: "MGO2 0x4880 — manage mail (client -> server)"
   endian: be
 doc: |
   Sender `0xD53138`, builder call `0xD531CC`, subsystem index `0x55` (`li r4,85` at `0xD53210`).
