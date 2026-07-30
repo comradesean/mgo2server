@@ -78,6 +78,10 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
+- `dev/docs/PACKETS_NOT_OBSERVED.md` — **the parked set**: 19 commands whose byte layout and usage
+  are both unknown, plus the ten that get counted with them and why they should not be. None is
+  reachable in ordinary play, so none can stall a client. Read it before re-deriving a coverage
+  number; the counting method is written down so the figure is reproducible.
 - `dev/docs/POST_LAUNCH.md` — **content we deliberately do not serve**, because it was not active
   on release day, plus findings that only make sense as later-version features. Not a to-do list —
   `BACKLOG.md` holds deferred *work*, this holds deferred *content* and the evidence a version

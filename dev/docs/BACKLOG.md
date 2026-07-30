@@ -872,6 +872,20 @@ persisting on the next commit. What is not established is *when* the write-back 
 entry, on commit, or on any outfit save — and therefore whether an operator narrowing someone's gear
 can expect their outfit to survive. Worth pinning before any bulk gear change on live characters.
 
+## The 19 unmapped, unobserved commands — parked 2026-07-30
+
+Inventoried in `PACKETS_NOT_OBSERVED.md` rather than left implicit. Neither shape nor usage is
+known for any of them, and **none is reachable in ordinary play**, so nothing stalls today.
+
+Deferred because there is no lead to pull: no capture, no reachable menu, and a schema whose fields
+are positioned but nameless. The way in is a live client rather than a disassembler — reach the
+game-lobby / roster / GHQ screens, since 17 of the 19 are `0x49xx`/`0x4Axx`, and see what goes out.
+One observation would turn several of them from unknown into merely undescribed.
+
+Not to be confused with the four unhandled commands that ARE reachable — `0x4210`, `0x4348`,
+`0x4394`, `0x43B0`. Those have real layouts and are implementable now; they are tracked in
+`COMMANDS.md`, not here.
+
 ## Convention: no wire offsets in migrations
 
 *Set 2026-07-29.* Column comments say what the data **means**; wire offsets and widths belong to the
