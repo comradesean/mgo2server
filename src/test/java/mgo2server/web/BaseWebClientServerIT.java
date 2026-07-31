@@ -32,10 +32,9 @@ public abstract class BaseWebClientServerIT {
 		host = "http://localhost:" + port;
 
 		var jooby = new Jooby();
-		jooby.setServerOptions(new ServerOptions().setPort(port));
 		var webServer = WebServerFactory.createWebServer(services, database.dataSource());
 		webServer.use(jooby);
-		server = jooby.start();
+		server = Server.loadServer(new ServerOptions().setPort(port)).start(jooby);
 	}
 
 	@AfterEach
