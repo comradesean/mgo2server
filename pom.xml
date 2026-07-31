@@ -29,7 +29,7 @@
         <!-- Test -->
         <junit.version>5.12.2</junit.version>
         <assertj.version>3.27.3</assertj.version>
-        <mockito.version>5.17.0</mockito.version>
+        <mockito.version>5.23.0</mockito.version>
         <testcontainers.version>1.21.3</testcontainers.version>
         <docker.api.version>1.44</docker.api.version>
 
