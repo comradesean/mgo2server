@@ -22,6 +22,29 @@ public class Game {
 
 	private int map;
 
+	private int flags;
+
+
+	private short[] rotationRules;
+
+	private short[] rotationMaps;
+
+	private short[] rotationFlags;
+
+	private byte[] weaponRestrictions;
+
+	private int[] ruleTimers;
+
+	private int uniqueRed;
+
+	private int uniqueBlue;
+
+	private boolean captureExtraTime;
+
+	private int sneakingSnakeKills;
+
+	private byte[] unreadTail;
+
 	private int ping;
 
 	private int hostScore;
@@ -131,6 +154,104 @@ public class Game {
 	public void setRule(int rule) {
 		this.rule = rule;
 	}
+
+	public int getFlags() {
+		return flags;
+	}
+
+	public void setFlags(int flags) {
+		this.flags = flags;
+	}
+
+	public short[] getRotationRules() {
+		return rotationRules;
+	}
+
+	public void setRotationRules(short[] rotationRules) {
+		this.rotationRules = rotationRules;
+	}
+
+	public short[] getRotationMaps() {
+		return rotationMaps;
+	}
+
+	public void setRotationMaps(short[] rotationMaps) {
+		this.rotationMaps = rotationMaps;
+	}
+
+	public short[] getRotationFlags() {
+		return rotationFlags;
+	}
+
+	public void setRotationFlags(short[] rotationFlags) {
+		this.rotationFlags = rotationFlags;
+	}
+
+	public byte[] getWeaponRestrictions() {
+		return weaponRestrictions;
+	}
+
+	public void setWeaponRestrictions(byte[] weaponRestrictions) {
+		this.weaponRestrictions = weaponRestrictions;
+	}
+
+	public int[] getRuleTimers() {
+		return ruleTimers;
+	}
+
+	public void setRuleTimers(int[] ruleTimers) {
+		this.ruleTimers = ruleTimers;
+	}
+
+	public int getUniqueRed() {
+		return uniqueRed;
+	}
+
+	public void setUniqueRed(int uniqueRed) {
+		this.uniqueRed = uniqueRed;
+	}
+
+	public int getUniqueBlue() {
+		return uniqueBlue;
+	}
+
+	public void setUniqueBlue(int uniqueBlue) {
+		this.uniqueBlue = uniqueBlue;
+	}
+
+	public boolean isCaptureExtraTime() {
+		return captureExtraTime;
+	}
+
+	public void setCaptureExtraTime(boolean captureExtraTime) {
+		this.captureExtraTime = captureExtraTime;
+	}
+
+	public int getSneakingSnakeKills() {
+		return sneakingSnakeKills;
+	}
+
+	public void setSneakingSnakeKills(int sneakingSnakeKills) {
+		this.sneakingSnakeKills = sneakingSnakeKills;
+	}
+
+	/**
+	 * The 14 bytes the client writes as one raw block. Its first eight are the byte-sized timers the
+	 * game-details reply replays.
+	 * <p>
+	 * <b>The client never writes any of it.</b> Its initialiser memsets the block to zero
+	 * ({@code 0x89B5E8}) and nothing reads or writes it thereafter — all 214 archived captures carry
+	 * it entirely zero. The {@code non_stat} bit we decode from byte 10 is therefore reading back
+	 * our own echo, not a host's choice.
+	 */
+	public byte[] getUnreadTail() {
+		return unreadTail;
+	}
+
+	public void setUnreadTail(byte[] unreadTail) {
+		this.unreadTail = unreadTail;
+	}
+
 
 	public int getMap() {
 		return map;

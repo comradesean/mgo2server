@@ -4,7 +4,10 @@ MGO2 runs NAT discovery before it will allow online play, shown as **"Adjusting 
 Matches are peer to peer, so the client needs to know how its UDP port looks from outside. If the
 server gets this wrong the game hangs on that screen with no error and no timeout.
 
-Our responder is `dev/runtime/stun_probe.py`, run as the `probe-stun` service. `dev/docs/PROTOCOL.md` covers the
+Our responder is **coturn**, run as the `probe-stun` service and configured by
+`dev/runtime/turnserver.conf`. (It replaced a hand-rolled responder on 2026-07-21; that script is
+kept for reference at `dev/tools/retired/stun_probe.py` and is not part of the stack.)
+`dev/docs/PROTOCOL.md` covers the
 TCP lobby protocol and has no bearing here: this is UDP, on its own thread in the client, sharing
 nothing with the lobby servers — and none of the ciphers in `dev/docs/CRYPTO.md` either. STUN packets
 are plaintext.
@@ -160,7 +163,7 @@ not fix it, and the client learns it from the CHANGED-ADDRESS we send, so any fr
 long as it is reported consistently. Our responder uses `primary + 1`.
 
 ```
-python3 dev/runtime/stun_probe.py 3478 <A1> <A2>
+python3 dev/tools/retired/stun_probe.py 3478 <A1> <A2>
 ```
 
 RFC 5780 §6 goes further: a server that cannot provide a second address **MUST** reject
@@ -226,9 +229,15 @@ preserves Vovida attribute ordering. Being conformant it ignores `0xf000`.
 stunserver --mode full --primaryinterface <A1> --altinterface <A2>
 ```
 
-**coturn will not work as a drop-in.** It defines `OLD_STUN_ATTRIBUTE_XOR_MAPPED_ADDRESS (0x8020)`
-but never uses it: in old-STUN mode it sends MAPPED-ADDRESS, SOURCE-ADDRESS and CHANGED-ADDRESS and
-no XOR attribute at all.
+**coturn works, and is now the shipped responder** (`instrumentisto/coturn`, `stun-only`, two
+`listening-ip`s — see `dev/runtime/turnserver.conf`). This corrects an earlier claim here that it
+would not. Verified against `BLUS30109` on 2026-07-21: full two-address classification (change-IP
+answered from the secondary) and Create Game succeeding. Its reply, decoded off the wire, carries
+`0x0020 XOR-MAPPED-ADDRESS` (the RFC 5389 standard code), `0x0001 MAPPED-ADDRESS`, `0x802b
+RESPONSE-ORIGIN` and `0x802c OTHER-ADDRESS` — the client accepts the standard `0x0020` XOR
+attribute, so it did **not** need the non-standard `0x8020` after all. The earlier "no XOR at all"
+reading was of coturn's legacy *old-STUN* mode, which is not the default. `stun_probe.py` is kept
+as a reference/diagnostic and still sends the classic `0x8020`/SOURCE/CHANGED shape.
 
 ## Confidence
 
@@ -249,8 +258,9 @@ checked across all sixteen arrival/flag combinations.
 - Whether MAPPED, SOURCE and CHANGED are each individually required. **XOR-MAPPED is not in
   question: it is mandatory.** An early responder sent three attributes and the client rejected the
   reply; adding `0x8020` is what made the port check proceed. That was an accidental bisection, but
-  a decisive one. (coturn's old-STUN mode sends no XOR attribute at all, so it would not work here
-  as a drop-in — noted under Off-the-shelf alternatives.)
+  a decisive one. **The type code is *not* pinned to `0x8020`, though:** coturn sends XOR-MAPPED at
+  the standard `0x0020` and the client accepts it (verified 2026-07-21). So the requirement is "an
+  XOR-MAPPED attribute", not specifically the non-standard code — see Off-the-shelf alternatives.
 - Behaviour against a STUN error response, or under packet loss.
 - **Where the keepalives come from.** The heartbeat in this module (`0x2408`, via
   `mrdUPnP_STUN_hartbeat` at `0xD8AB78`) sends a 40-byte request with a `0x14` body. What we
@@ -270,6 +280,60 @@ is why a plain responder passes.
 
 **A mapped address equal to the server address does not force a symmetric verdict.** We pass with
 both equal.
+
+## Where the checked address actually goes — the peer descriptor, traced 2026-07-26
+
+The port check is not an end in itself: it feeds a **20-byte peer descriptor** the client publishes
+to everyone in a game, carrying *two* address/port pairs. Traced while chasing in-game chat (the
+chat speaker id turned out to live in the same structure) and then re-verified instruction by
+instruction against `MGO2.elf` — every address below was disassembled directly, not taken from the
+original trace, because one of them had been transcribed with a stray separator.
+
+The descriptor is built at **`0x9444BC`** into a stack buffer at `r1+0x70`:
+
+| offset | width | source | meaning |
+| --- | --- | --- | --- |
+| `0x00` | u32 | `0xD36F8C(netctx)` = `*(netctx+0x57D8)` | the local player's **character id**, i.e. the value the server sent at offset `0x000` of its `0x4101` |
+| `0x04` | u16 | `li r0,2` at `0x9444FC` | constant `2`. [UNKNOWN] — a version or address-family tag is the obvious guess, unproven |
+| `0x06` | 2 B | — | **not written by this builder.** Whatever the stack held, unless zeroed elsewhere. Worth knowing before treating the struct as fully specified |
+| `0x08` | u32 | property `0xF0`, len 4 (`0x27F160` at `0x944528`) | address A |
+| `0x0C` | u16 | property `0xF8`, len 2 (`0x944540`) | port A |
+| `0x0E` | u32 | property `0xF4`, len 4 (`0x944558`) | address B |
+| `0x12` | u16 | property `0xFA`, len 2 (`0x944570`) | port B |
+
+Total `0x14` = 20 bytes. Note address B at `0x0E` is not 4-byte aligned, so the struct is packed
+after the header — but it is *copied* as five aligned words (see below), which is why it reads as
+20 and not 18.
+
+Built once, stored via `0x262E60`, read back via `0x262EB8`. The copy into a roster entry is at
+**`0x2707C8`**: five consecutive `stw` into `entry+0x60`, `+0x64`, `+0x68`, `+0x6C`, `+0x70`, from
+`0(r3)`/`4(r3)`/`8(r3)`/`0xC(r3)`/`0x10(r3)` where `r3` is `0x262EB8`'s return. A verbatim 20-byte
+structure copy, no reinterpretation.
+
+The roster itself is 24 entries of stride `0x74` reached through `0x26E9C0` (which bounds its slot
+argument at `0xFF`, `cmpwi cr7,r3,255`). Relevant entry fields: `+0x40` name, `+0x58` u32, `+0x5C`
+u8, `+0x60..0x73` this descriptor.
+
+**Two pairs is the shape of a NAT candidate pair** — a local/private address and a
+mapped/reflexive one, which is exactly what the port check exists to discover. Which of A and B is
+which is **[UNKNOWN]**: the properties are read here but their *writers* were not traced, so
+nothing yet ties property `0xF0`/`0xF8` or `0xF4`/`0xFA` to the XOR-MAPPED address our responder
+returns. That is the next question, and it is answerable from the binary alone — find the setter
+counterpart to the getter `0x27F160` for those four ids.
+
+### Why this matters to us
+
+- **It is the join flow's payload, not ours to send.** The descriptor travels on Channel B (the
+  in-game peer link), not on any command our server answers. We influence it only indirectly, by
+  what the port check tells the client its mapped address is.
+- **It explains a chat symptom.** `roster_entry+0x60` is the field `0x4401`'s speaker id is matched
+  against (`0xC9FFD8`), and `+0x60` is the descriptor's first word — the character id. So chat
+  attribution and P2P peer identity are the *same* field, populated by the peer-join stream at
+  `0x276660`, which reads a u32 and compares it against `netctx+0x57D8` at `0x276694`
+  (`lwz r0,22488(r3)`, `cmpw`, `beq`) to recognise itself. Confirmed live 2026-07-26: chat renders
+  with names, so this path is populated correctly under our deployment — which is incidental
+  evidence that peer registration works at least that far.
+- **A wrong mapped address would fail silently here.** Nothing in this path validates the pairs.
 
 ## Sources
 

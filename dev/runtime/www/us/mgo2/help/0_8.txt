@@ -1,0 +1,9 @@
+<title>AUTOMATCHING LOBBY</title>
+Welcome to the Automatching Lobby!
+
+In this lobby you will automatically be
+matched up with other players of
+similar ability and enter a game.
+<page-break>
+You will not know the rules of
+the game until the game begins.

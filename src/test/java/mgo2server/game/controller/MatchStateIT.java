@@ -1,0 +1,1390 @@
+package mgo2server.game.controller;
+
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import mgo2server.TestDatabase;
+import mgo2server.common.crypto.SessionField;
+import mgo2server.common.service.CharacterService;
+import mgo2server.game.BaseGameClientServerIT;
+import mgo2server.game.GameDetails;
+import mgo2server.common.model.CharaSkill;
+import mgo2server.game.GameError;
+import mgo2server.game.HostSettingsReply;
+import mgo2server.game.LobbyType;
+import mgo2server.game.packet.GamePacket;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.*;
+
+/**
+ * The in-match host commands: settings persistence and replay (0x4310/0x4304), rotation advance
+ * (0x4392), ping reports (0x4398), the round snapshot (0x43ca), stat application (0x4390) and
+ * pass-host (0x43a0).
+ * <p>
+ * The request layouts exercised here are transcribed from GHzGangster/Nomad (tier 4) — these are
+ * <b>regression guards for the transcription</b>, not proof the layouts fit {@code BLUS30109};
+ * each command still needs a live-client pass.
+ * <p>
+ * A quirk these tests work around: closing the connection tears down any game the character still
+ * hosts ({@code HostGameController.onDisconnect}), so a test that wants to inspect the game row
+ * after the exchange either asserts through a protocol reply instead, or ends the exchange by
+ * passing the game to another character so it survives the close.
+ */
+public class MatchStateIT extends BaseGameClientServerIT {
+	private static final String TOKEN = "abcd1234abcd1234";
+
+	private long accountId;
+
+	private long charaId;
+
+	@Override
+	protected LobbyType lobbyType() {
+		return LobbyType.GAME;
+	}
+
+	private void givenSelectedCharacter(String name) {
+		accountId = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createUpdate("""
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :session, 3)
+					""")
+				.bind("name", name)
+				.bind("session", SessionField.stored(TOKEN))
+				.executeAndReturnGeneratedKeys("id")
+				.mapTo(Long.class)
+				.one());
+
+		charaId = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 500)")
+				.bind("account", accountId)
+				.bind("name", name)
+				.executeAndReturnGeneratedKeys("id")
+				.mapTo(Long.class)
+				.one());
+
+		grantStartingSkills(charaId);
+
+		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
+					update account set current_chara_id = :chara, main_chara_id = :chara where id = :id
+					""")
+			.bind("chara", charaId).bind("id", accountId).execute());
+	}
+
+	/** A game hosted by the selected character, materialised directly so its id is known. */
+	private long givenHostedGame() {
+		var jdbi = TestDatabase.get().jdbi();
+		var gameId = jdbi.withHandle(handle ->
+			handle.createUpdate("""
+					insert into game (lobby_id, host_chara_id, name) values (:lobby, :host, 'g')
+					""")
+				.bind("lobby", lobbyId)
+				.bind("host", charaId)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		// Settings go in through the real parse path rather than being written straight to a
+		// column. That was a blob insert until the blob was dropped, and routing it through
+		// applyHostSettings is closer to what a host actually does anyway.
+		services.getGameService().applyHostSettings(gameId, settingsBlob());
+		jdbi.useHandle(handle ->
+			handle.createUpdate("insert into game_player (game_id, chara_id) values (:g, :c)")
+				.bind("g", gameId).bind("c", charaId).execute());
+		return gameId;
+	}
+
+	/** A second character on another account, inserted straight into the roster. */
+	/** A character on its own account that never joined the game — the attribution negative. */
+	private long givenStrangerNotInTheGame(String name) {
+		var jdbi = TestDatabase.get().jdbi();
+		var account = jdbi.withHandle(handle ->
+			handle.createUpdate("""
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :name, 3)
+					""")
+				.bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		return jdbi.withHandle(handle ->
+			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+				.bind("account", account).bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+	}
+
+	private long givenJoinedPlayer(long gameId, String name) {
+		var jdbi = TestDatabase.get().jdbi();
+		var otherAccount = jdbi.withHandle(handle ->
+			handle.createUpdate("""
+					insert into account (username, password, session, slots)
+					values (:name, 'x', :name, 3)
+					""")
+				.bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		var otherChara = jdbi.withHandle(handle ->
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 100)")
+				.bind("account", otherAccount).bind("name", name)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		jdbi.useHandle(handle ->
+			handle.createUpdate("insert into game_player (game_id, chara_id) values (:g, :c)")
+				.bind("g", gameId).bind("c", otherChara).execute());
+		return otherChara;
+	}
+
+	/**
+	 * Logs in, then plays the requests one at a time, advancing after each reply — every command
+	 * used here answers with exactly one packet.
+	 */
+	private List<GamePacket> exchange(GamePacket... requests) {
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+
+		// Appended from the netty read thread; synchronized so the returned snapshot cannot race
+		// a late read after the run times out (seen once as a ConcurrentModificationException).
+		var replies = java.util.Collections.synchronizedList(new ArrayList<GamePacket>());
+		var sent = new int[] { 0 };
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+
+				if (packet.getCommand() != AccountGameController.CHECK_SESSION_RESULT) {
+					replies.add(packet);
+				}
+
+				if (sent[0] < requests.length) {
+					ctx.writeAndFlush(requests[sent[0]++]);
+				} else {
+					ctx.close();
+				}
+			}
+		});
+
+		synchronized (replies) {
+			return new ArrayList<>(replies);
+		}
+	}
+
+	/** A synthetic 0x4310 blob: name, two rotation entries, and marker bytes in the tail. */
+	private static byte[] settingsBlob() {
+		var blob = new byte[0x156];
+		blob[0] = 'S';
+		blob[1] = 'S';
+		// Rotation entry 0: rule 3, map 7, flags 1. Entry 1: rule 4, map 8, flags 2.
+		blob[0xA3] = 3;
+		blob[0xA4] = 7;
+		blob[0xA5] = 1;
+		blob[0xA6] = 4;
+		blob[0xA7] = 8;
+		blob[0xA8] = 2;
+		blob[0xE5] = 12;           // max players
+		blob[0x142] = (byte) 0x24; // stored opaquely; see BACKLOG on the 0x142/0x143 conflict
+		blob[0x155] = 0x02;        // host options
+		return blob;
+	}
+
+	private static GamePacket pushSettings() {
+		return new GamePacket(HostGameController.CHECK_HOST_SETTINGS,
+			Unpooled.wrappedBuffer(settingsBlob()));
+	}
+
+	private static GamePacket getDetails(long gameId) {
+		var payload = Unpooled.buffer();
+		payload.writeInt((int) gameId);
+		return new GamePacket(GameListGameController.GET_GAME_DETAILS, payload);
+	}
+
+	private GamePacket hostQuitElecting(long target) {
+		var payload = Unpooled.buffer();
+		payload.writeInt((int) charaId).writeInt((int) target);
+		return new GamePacket(HostGameController.HOST_MIGRATION, payload);
+	}
+
+	@Test
+	public void savedSettingsComeBackRemapped() {
+		givenSelectedCharacter("Snake");
+
+		var replies = exchange(pushSettings(),
+			new GamePacket(HostGameController.GET_HOST_SETTINGS));
+
+		assertThat(replies).hasSize(2);
+		var settings = replies.get(1);
+		assertThat(settings.getCommand()).isEqualTo(HostGameController.HOST_SETTINGS_RESULT);
+		// 0x4305 is Blowfish-encrypted outbound, so the wire payload is the reply zero-padded to
+		// the cipher's 8-byte boundary; the real client sees the same padded length.
+		assertThat(settings.getPayload().readableBytes())
+			.isEqualTo((HostSettingsReply.SIZE + 7) / 8 * 8);
+		assertThat(settings.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		// Name re-based from request 0x00 to reply 0x04; rotation from 0xA3 to 0xA6.
+		assertThat(settings.getPayload().getByte(0x04)).isEqualTo((byte) 'S');
+		assertThat(settings.getPayload().getByte(0xA6)).isEqualTo((byte) 3);
+		assertThat(settings.getPayload().getByte(0xE8)).isEqualTo((byte) 12);
+	}
+
+	@Test
+	public void aCharacterWithNothingSavedGetsTheEmptyBlock() {
+		givenSelectedCharacter("Snake");
+
+		var replies = exchange(new GamePacket(HostGameController.GET_HOST_SETTINGS));
+
+		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(128);
+	}
+
+	/** Asserted through the details reply: the game row is torn down when the host disconnects. */
+	@Test
+	public void setGameAdvancesTheRotation() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var setGame = new GamePacket(HostGameController.SET_GAME,
+			Unpooled.wrappedBuffer(new byte[] { 1 }));
+		var replies = exchange(setGame, getDetails(gameId));
+
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.SET_GAME_RESULT);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		var details = replies.get(1).getPayload();
+		// Round 0 of the details rotation (offset 0xA8) reflects the entry the host advanced to.
+		assertThat(details.getByte(0x0A8)).isEqualTo((byte) 4);
+		assertThat(details.getByte(0x0A9)).isEqualTo((byte) 8);
+		assertThat(details.getByte(0x0AA)).isEqualTo((byte) 2);
+	}
+
+	/**
+	 * Ends with a pass-host so the game row survives the disconnect teardown and the ping columns
+	 * can be read back — which makes this test depend on pass-host working (covered on its own
+	 * below).
+	 */
+	@Test
+	public void pingReportsLandOnTheGameAndTheRoster() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var report = Unpooled.buffer();
+		report.writeInt(48); // the host's own ping
+		report.writeInt((int) joiner).writeInt(96);
+		report.writeInt(0).writeInt(999); // a zero id is skipped, as in the reference
+
+		var replies = exchange(new GamePacket(HostGameController.UPDATE_PINGS, report),
+			getDetails(gameId), hostQuitElecting(joiner));
+
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_PINGS_RESULT);
+		// 4 bytes, not empty, since 2026-07-26: the 0x4399 parser (0xD40530) reads a u32
+		// unconditionally and feeds it to wait slot 44. The empty reply only ever "worked" because
+		// the read primitives bound-check the 1023-byte receive buffer instead of the payload
+		// length, so the client took four bytes of stale buffer as its result code. This assertion
+		// used to require the empty form.
+		assertThat(replies.get(0).getPayload().readableBytes()).isEqualTo(Integer.BYTES);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		// The joiner's entry is second (host first); ping sits 20 bytes into the 28-byte entry.
+		var details = replies.get(1).getPayload();
+		assertThat(details.getInt(GameDetails.FIXED_SIZE + GameDetails.PLAYER_SIZE + 20))
+			.isEqualTo(96);
+
+		var jdbi = TestDatabase.get().jdbi();
+		var hostPing = jdbi.withHandle(handle ->
+			handle.createQuery("select ping from game where id=:id")
+				.bind("id", gameId).mapTo(Integer.class).one());
+		assertThat(hostPing).isEqualTo(48);
+	}
+
+	/**
+	 * The snapshot's reason to exist: a player who leaves mid-round must still receive the host's
+	 * end-of-round report. The roster row is deleted between round start and the report, mid
+	 * exchange, exactly as a quit would do it.
+	 */
+	@Test
+	public void statsStillApplyToAPlayerWhoLeftMidRound() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var stats = new byte[0xB8];
+		writeInt(stats, 0, (int) joiner);
+		writeInt(stats, 0x27, 2500);
+
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				switch (packet.getCommand()) {
+					case AccountGameController.CHECK_SESSION_RESULT ->
+						ctx.writeAndFlush(new GamePacket(HostGameController.START_ROUND));
+					case HostGameController.START_ROUND_RESULT -> {
+						// The joiner quits after the round started.
+						TestDatabase.get().jdbi().useHandle(handle ->
+							handle.createUpdate("delete from game_player where chara_id=:c")
+								.bind("c", joiner).execute());
+						ctx.writeAndFlush(new GamePacket(HostGameController.UPDATE_STATS,
+							Unpooled.wrappedBuffer(stats)));
+					}
+					case HostGameController.UPDATE_STATS_RESULT -> ctx.close();
+					default -> { }
+				}
+			}
+		});
+
+		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("""
+					select c.experience from chara c
+					where c.id = :c
+					""")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(joinerExp).isEqualTo(2500);
+	}
+
+	@Test
+	public void statsApplyOnlyToPlayersInTheRound() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		// Nomad's read: target id at 0, experience at 0x27, aborted byte at 0xB7.
+		var stats = new byte[0xB8];
+		writeInt(stats, 0, (int) joiner);
+		writeInt(stats, 0x27, 4321);
+		var stranger = new byte[0xB8];
+		writeInt(stranger, 0, 999999);
+		writeInt(stranger, 0x27, 7777);
+
+		var replies = exchange(
+			new GamePacket(HostGameController.START_ROUND),
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(stats)),
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(stranger)));
+
+		assertThat(replies).extracting(GamePacket::getCommand).containsExactly(
+			HostGameController.START_ROUND_RESULT,
+			HostGameController.UPDATE_STATS_RESULT,
+			HostGameController.UPDATE_STATS_RESULT);
+
+		// The joiner is not their account's main character, so the alt pool takes the total.
+		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("""
+					select c.experience from chara c
+					where c.id = :c
+					""")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(joinerExp).isEqualTo(4321);
+	}
+
+	/**
+	 * The report length this client actually sends — 167 bytes, confirmed live 2026-07-22 with
+	 * the experience field matching a 50,000-exp account to the byte. Shorter than Nomad's
+	 * assumed minimum, so it has no aborted byte; it must still apply.
+	 */
+	@Test
+	public void a167ByteStatReportApplies() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var stats = new byte[167];
+		writeInt(stats, 0, (int) joiner);
+		writeInt(stats, 0x27, 1234);
+
+		var replies = exchange(
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(stats)));
+
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.UPDATE_STATS_RESULT);
+		var joinerExp = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("""
+					select c.experience from chara c
+					where c.id = :c
+					""")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(joinerExp).isEqualTo(1234);
+	}
+
+	/**
+	 * Each report is stored verbatim as one round_report row — the single source every stats
+	 * and history screen derives from. Lifetime totals are sums over these rows, so two reports
+	 * for the same character make two rows, not one accumulated row.
+	 */
+	@Test
+	public void statReportStoresOneRoundReportRowPerReport() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		// Two rounds: kills 5 then 3, deaths 2 then 4, score 26 then -3, headshots 5 then 2,
+		// headshot-deaths 2 then 0, stuns 1 then 0.
+		var r1 = statReport((int) joiner, 5, 2, 26, 5, 2, 1);
+		var r2 = statReport((int) joiner, 3, 4, -3, 2, 0, 0);
+		exchange(
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r1)),
+			new GamePacket(HostGameController.UPDATE_STATS, Unpooled.wrappedBuffer(r2)));
+
+		var rows = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from round_report where chara_id=:c order by id")
+				.bind("c", joiner).mapToMap().list());
+		assertThat(rows).hasSize(2);
+		assertThat(((Number) rows.get(0).get("game_id")).longValue()).isEqualTo(gameId);
+		assertThat(((Number) rows.get(0).get("host_chara_id")).longValue()).isEqualTo(charaId);
+		assertThat(((Number) rows.get(0).get("kills")).intValue()).isEqualTo(5);
+		assertThat(((Number) rows.get(0).get("deaths")).intValue()).isEqualTo(2);
+		assertThat(((Number) rows.get(0).get("score")).intValue()).isEqualTo(26);
+		assertThat(((Number) rows.get(0).get("headshots")).intValue()).isEqualTo(5);
+		assertThat(((Number) rows.get(0).get("headshot_deaths")).intValue()).isEqualTo(2);
+		assertThat(((Number) rows.get(0).get("stuns")).intValue()).isEqualTo(1);
+		assertThat(((Number) rows.get(1).get("kills")).intValue()).isEqualTo(3);
+		assertThat(((Number) rows.get(1).get("score")).intValue()).isEqualTo(-3);
+
+		// Wire 0x23 is {u16 team-win flag, u16 seconds}; zeros in this frame land as 0/0.
+		assertThat(((Number) rows.get(0).get("team_win")).intValue()).isEqualTo(0);
+		assertThat(((Number) rows.get(0).get("seconds_in_game")).intValue()).isEqualTo(0);
+
+		// The 167-byte long form carries the 58-slot struct-B block (zeros in this frame).
+		var lifetimeKills = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select sum(kills) from round_report where chara_id=:c")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(lifetimeKills).isEqualTo(8);
+	}
+
+	/** A 167-byte report with the confirmed scoreboard slots set (signed s16 at 0x05 + 2*i). */
+	private static byte[] statReport(int charaId, int kills, int deaths, int score, int headshots,
+			int headshotDeaths, int stuns) {
+		var r = new byte[167];
+		writeInt(r, 0, charaId);
+		writeShort(r, 0x05, kills);
+		writeShort(r, 0x07, deaths);
+		writeShort(r, 0x0b, score);
+		writeShort(r, 0x0d, stuns);
+		writeShort(r, 0x11, headshots);
+		writeShort(r, 0x13, headshotDeaths);
+		return r;
+	}
+
+	private static void writeShort(byte[] bytes, int offset, int value) {
+		bytes[offset] = (byte) (value >>> 8);
+		bytes[offset + 1] = (byte) value;
+	}
+
+	@Test
+	public void hostQuitRekeysTheGameToTheElectedSuccessor() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var replies = exchange(hostQuitElecting(joiner));
+
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.HOST_MIGRATION_RESULT);
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		var jdbi = TestDatabase.get().jdbi();
+		var newHost = jdbi.withHandle(handle ->
+			handle.createQuery("select host_chara_id from game where id=:id")
+				.bind("id", gameId).mapTo(Long.class).one());
+		assertThat(newHost).isEqualTo(joiner);
+		var oldHostRows = jdbi.withHandle(handle ->
+			handle.createQuery("select count(*) from game_player where chara_id=:c")
+				.bind("c", charaId).mapTo(Integer.class).one());
+		assertThat(oldHostRows).isZero();
+	}
+
+	/**
+	 * The 0x4310 toggle decode, pinned at the offsets the live capture confirmed (2026-07-22:
+	 * flipping only friendly fire moved bit 3 of byte 0x142; the disabled level limit read 0 at
+	 * 0xF8). Bit map is Nomad's, identical to GameListEntry's packers.
+	 */
+	@Test
+	public void appliedBlobDecodesTheToggleBitfields() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var blob = settingsBlob();
+		blob[0xA1] = 1;            // dedicated
+		blob[0xF8] = 0;
+		blob[0xF9] = 0;
+		blob[0xFA] = 0;
+		blob[0xFB] = 42;           // level-limit base, u32
+		blob[0x142] = 0b00101101;  // commonA: idle-kick enable, always-set, friendly fire, auto-aim
+		blob[0x143] = (byte) 0b11010101; // commonB: switch, silent, level limit, voice, tk enable
+		blob[0x146] = 5;           // idle-kick count
+		blob[0x148] = 3;           // team-kill count
+		blob[0x155] = 0b10;        // host options: non-stat
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from game where id=:id").bind("id", gameId)
+				.mapToMap().one());
+		assertThat(row.get("friendly_fire")).isEqualTo(true);
+		assertThat(row.get("ghosts")).isEqualTo(false);
+		assertThat(row.get("auto_aim")).isEqualTo(true);
+		assertThat(row.get("uniques_enabled")).isEqualTo(false);
+		assertThat(row.get("teams_switch")).isEqualTo(true);
+		assertThat(row.get("auto_assign")).isEqualTo(false);
+		assertThat(row.get("silent_mode")).isEqualTo(true);
+		assertThat(row.get("enemy_nametags")).isEqualTo(false);
+		assertThat(row.get("voice_chat")).isEqualTo(true);
+		assertThat(row.get("level_limit_enabled")).isEqualTo(true);
+		assertThat(((Number) row.get("level_limit_base")).intValue()).isEqualTo(42);
+		assertThat(((Number) row.get("idle_kick")).intValue()).isEqualTo(5);
+		assertThat(((Number) row.get("team_kill_kick")).intValue()).isEqualTo(3);
+		assertThat(row.get("non_stat")).isEqualTo(true);
+		assertThat(row.get("dedicated")).isEqualTo(true);
+	}
+
+	/** With the enable bits off, the kick counts are zeroed even when the sliders carry values. */
+	@Test
+	public void disabledKicksAreZeroedRegardlessOfTheirCounts() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		var blob = settingsBlob();
+		blob[0x142] = 0b00000100;  // enables off
+		blob[0x143] = 0;
+		blob[0x146] = 5;
+		blob[0x148] = 3;
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select idle_kick, team_kill_kick from game where id=:id")
+				.bind("id", gameId).mapToMap().one());
+		assertThat(((Number) row.get("idle_kick")).intValue()).isZero();
+		assertThat(((Number) row.get("team_kill_kick")).intValue()).isZero();
+	}
+
+	/**
+	 * The ADDLIST cycle: add friend (0x4500 → 0x4502), then clear it (0x4510 → 0x4512). Layouts
+	 * and reply ids are ELF-confirmed; a live client ran the full none→friend→blocked→none loop
+	 * in one session 2026-07-22.
+	 */
+	@Test
+	public void addListSetsAndClearsARelationship() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var target = givenJoinedPlayer(gameId, "Raiden");
+
+		var add = Unpooled.buffer();
+		add.writeByte(1).writeInt((int) target); // state 1 = blocked
+		var remove = Unpooled.buffer();
+		remove.writeByte(1).writeInt((int) target);
+
+		var replies = exchange(
+			new GamePacket(HostGameController.ADD_LIST, add),
+			new GamePacket(HostGameController.REMOVE_LIST, remove));
+
+		// 0x4502 add reply: {u32 0, u32 id, u8 state, name[16]} = 25 bytes.
+		var added = replies.get(0);
+		assertThat(added.getCommand()).isEqualTo(HostGameController.ADD_LIST_ENTRY);
+		assertThat(added.getPayload().readableBytes()).isEqualTo(25);
+		assertThat(added.getPayload().getInt(0)).isZero();
+		assertThat(added.getPayload().getInt(4)).isEqualTo((int) target);
+		assertThat(added.getPayload().getByte(8)).isEqualTo((byte) 1);
+
+		// 0x4512 remove reply: {u32 0, u8 state, u32 id} = 9 bytes, and the row the add wrote is
+		// gone (the add is proven by the 0x4502 above; both requests run before this returns).
+		var removed = replies.get(1);
+		assertThat(removed.getCommand()).isEqualTo(HostGameController.REMOVE_LIST_ENTRY);
+		assertThat(removed.getPayload().readableBytes()).isEqualTo(9);
+		assertThat(removed.getPayload().getByte(4)).isEqualTo((byte) 1);
+		assertThat(removed.getPayload().getInt(5)).isEqualTo((int) target);
+		var remaining = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_relation where chara_id=:c")
+				.bind("c", charaId).mapTo(Integer.class).one());
+		assertThat(remaining).isZero();
+	}
+
+	/** The stored relations replay into the 0x4101 login arrays — friend ids at 0x29, blocked at 0xA9. */
+	@Test
+	public void relationsPopulateTheLoginArrays() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var friend = givenJoinedPlayer(gameId, "Otacon");
+		var blocked = givenJoinedPlayer(gameId, "Ocelot");
+		services.getCharacterService().setRelation(charaId, friend, CharacterService.RELATION_FRIEND);
+		services.getCharacterService().setRelation(charaId, blocked, CharacterService.RELATION_BLOCKED);
+
+		var replies = exchange(new GamePacket(CharacterConnectController.CONNECT));
+
+		var info = replies.stream()
+			.filter(p -> p.getCommand() == CharacterConnectController.CHARACTER_INFO)
+			.findFirst().orElseThrow().getPayload();
+		assertThat(info.getInt(0x29)).isEqualTo((int) friend);  // first friend id
+		assertThat(info.getInt(0xA9)).isEqualTo((int) blocked); // first blocked id
+	}
+
+	/**
+	 * Start round ({@code 0x43c8}) replies {@code {u32 result, u32 saved_instructor}} — result 0 lets
+	 * the round proceed, and <b>the second word must be zero</b>.
+	 * <p>
+	 * It is not a round token. The parser stores a nonzero second word into {@code profile+0x32F8}
+	 * ({@code 0xD3FF6C}, guarded on {@code != 0}), which the join announcement carries to every peer
+	 * as P2P message 36 and which suppresses the post-graduation recognition prompt. We used to send
+	 * the game id here, which stamped every character that ever started a round. (Renumbered from
+	 * the dead {@code 0x43ca}.)
+	 */
+	@Test
+	public void startRoundReplyLeavesTheSavedInstructorUntouched() {
+		givenSelectedCharacter("Snake");
+		givenHostedGame();
+
+		var replies = exchange(new GamePacket(HostGameController.START_ROUND));
+
+		var reply = replies.get(0);
+		assertThat(reply.getCommand()).isEqualTo(HostGameController.START_ROUND_RESULT);
+		assertThat(reply.getPayload().readableBytes()).isEqualTo(8);
+		assertThat(reply.getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(reply.getPayload().getInt(4))
+			.describedAs("nonzero here permanently suppresses the recognition prompt")
+			.isZero();
+	}
+
+	/** Joining records round membership so a quitter's later stats still apply (0x43c8-independent). */
+	@Test
+	public void joiningRecordsRoundMembership() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		services.getGameService().addPlayer(gameId, joiner);
+
+		var inRound = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from game_round where game_id=:g and chara_id=:c")
+				.bind("g", gameId).bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(inRound).isEqualTo(1);
+	}
+
+	/**
+	 * The standalone roster fetch ({@code 0x4580}) returns the requested state's relations as a
+	 * count-led {@code 0x4581}/{@code 0x4582}/{@code 0x4583} triple, 59-byte entries. ELF-derived,
+	 * not yet client-verified.
+	 */
+	@Test
+	public void rosterFetchReturnsTheRequestedStatesRelations() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var friend = givenJoinedPlayer(gameId, "Otacon");
+		var blocked = givenJoinedPlayer(gameId, "Ocelot");
+		services.getCharacterService().setRelation(charaId, friend, CharacterService.RELATION_FRIEND);
+		services.getCharacterService().setRelation(charaId, blocked, CharacterService.RELATION_BLOCKED);
+
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+		var replies = new ArrayList<GamePacket>();
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
+					var req = Unpooled.buffer();
+					req.writeByte(CharacterService.RELATION_FRIEND); // ask for the friends list
+					ctx.writeAndFlush(new GamePacket(HostGameController.LIST_ROSTER, req));
+					return;
+				}
+				replies.add(packet);
+				if (packet.getCommand() == HostGameController.LIST_ROSTER_END) {
+					ctx.close();
+				}
+			}
+		});
+
+		assertThat(replies).extracting(GamePacket::getCommand).containsExactly(
+			HostGameController.LIST_ROSTER_START,
+			HostGameController.LIST_ROSTER_ENTRIES,
+			HostGameController.LIST_ROSTER_END);
+		// The start is a RESULT CODE, not a count. Sending the count here is what produced
+		// "Unable to acquire Friend List.(1002:00000001)" live on 2026-07-26: the parser at
+		// 0xD469C0 stores a nonzero value as the transaction's failure code, so one friend
+		// became error 1. This assertion used to expect 1 and was pinning the bug.
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+		var entry = replies.get(1).getPayload();
+		assertThat(entry.readableBytes()).isEqualTo(59);
+		assertThat(entry.getInt(0)).isEqualTo((int) friend);
+		var name = new byte[16];
+		entry.getBytes(4, name);
+		assertThat(new String(name, java.nio.charset.StandardCharsets.ISO_8859_1).replace("\0", ""))
+			.isEqualTo("Otacon");
+		// The u16 at wire 0x14 must be nonzero or the 0x4583 end handler drops the record from
+		// the display array (0xD466D4) — the roster would render empty with every record parsed.
+		assertThat(entry.getUnsignedShort(0x14)).isNotZero();
+		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+	}
+
+	/**
+	 * Training time is accumulated from presence, not from the host's reports — because the host
+	 * only reports when someone leaves early, and a host that quits first reports nobody. The
+	 * teardown path is the one that used to lose a whole session.
+	 */
+	/**
+	 * The instructor review ({@code 0x43c8} from a student in a combat-training lobby) records the
+	 * relationship when the student recognised the instructor, but grants nothing on its own — the
+	 * skill and the announcement ride the end-of-round stats report instead.
+	 */
+	@Test
+	public void reviewingAnInstructorRecordsTheGraduationWithoutAwardingYet() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		services.getCharacterService().recordGraduation(student, charaId, 4, true, 0x01);
+
+		var instructor = services.getCharacterService().instructorOf(student).orElseThrow();
+		assertThat(instructor.instructorName()).isEqualTo("Snake");
+		assertThat(instructor.rating()).isEqualTo(4);
+		// The instructor has no record of their own, so they are first generation.
+		assertThat(instructor.generation()).isEqualTo(2);
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.doesNotContain(CharacterService.INSTRUCTOR_SKILL_ID);
+	}
+
+	/** Konami's documented instructor rule: "Level 3 or above and 20 or more hours of gameplay". */
+	private static void givenInstructorEligible(long charaId) {
+		TestDatabase.get().jdbi().useHandle(handle -> {
+			// Play time comes from round_report now, not from a stored counter — the gate reads the
+			// same sum the stats screen shows. One round carrying the whole requirement is enough;
+			// the rule must be a playable mode (0..5) because training time deliberately does not
+			// count toward "20 or more hours of gameplay".
+			handle.createUpdate("""
+					insert into round_report (game_id, host_chara_id, chara_id, rule, seconds_in_game)
+					values (777, :id, :id, 0, :seconds)
+					""")
+				.bind("id", charaId)
+				.bind("seconds", CharacterService.INSTRUCTOR_MIN_SECONDS)
+				.execute();
+			// Level comes from experience, not rank, and the check reads whichever pool applies to
+			// that character — a joined player's account has an alt pool and no main character.
+			handle.createUpdate("""
+					update chara set experience = :exp where id = :id
+					""")
+				.bind("exp", CharacterService.LEVEL_3_EXPERIENCE)
+				.bind("id", charaId)
+				.execute();
+		});
+	}
+
+	/** The stats report is what actually hands over the skill and the announcement. */
+	@Test
+	public void theStatsReportAwardsTheSkillAndAnnouncementAfterARecognisedGraduation() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		givenInstructorEligible(student);
+		var graduation = services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
+		assertThat(graduation.recognised()).isTrue();
+
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isTrue();
+		// Idempotent: every later report finds the skill already held and sends no second letter.
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isFalse();
+
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.contains(CharacterService.INSTRUCTOR_SKILL_ID);
+
+		var mail = services.getCharacterService().mailbox(student, 8);
+		assertThat(mail).hasSize(1);
+		assertThat(mail.get(0).counterparty()).isEqualTo("GameMaster");
+		assertThat(mail.get(0).subject()).contains("Instructor Skill");
+	}
+
+	/**
+	 * Answering <b>no</b> to "Save current instructor ... as the instructor for your personal data?"
+	 * ({@code 0x43c8} answer byte {@code 0x00}) leaves the rating on file and nothing else — no
+	 * relationship, and no skill however many stats reports follow.
+	 */
+	@Test
+	public void decliningToRecogniseTheInstructorRecordsOnlyTheRating() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		givenCombatTrainingLobby();
+
+		var graduation = services.getCharacterService()
+			.recordGraduation(student, charaId, 5, false, 0x00);
+
+		assertThat(graduation.recognised()).isFalse();
+		assertThat(services.getCharacterService().instructorOf(student)).isEmpty();
+		assertThat(services.getCharacterService().awardPendingInstructorSkill(student)).isFalse();
+		assertThat(services.getCharacterService().getSkills(student))
+			.extracting(mgo2server.common.model.CharaSkill::getSkillId)
+			.doesNotContain(CharacterService.INSTRUCTOR_SKILL_ID);
+		assertThat(services.getCharacterService().mailbox(student, 8)).isEmpty();
+	}
+
+	/** Graduating again re-parents the student without a second letter. */
+	@Test
+	public void regraduatingReplacesTheInstructorWithoutAnotherAnnouncement() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+		var second = givenJoinedPlayer(gameId, "Meryl");
+		givenCombatTrainingLobby();
+
+		givenInstructorEligible(student);
+		services.getCharacterService().recordGraduation(student, charaId, 5, true, 0x01);
+		services.getCharacterService().awardPendingInstructorSkill(student);
+		services.getCharacterService().recordGraduation(student, second, 2, true, 0x01);
+		services.getCharacterService().awardPendingInstructorSkill(student);
+
+		var instructor = services.getCharacterService().instructorOf(student).orElseThrow();
+		assertThat(instructor.instructorName()).isEqualTo("Meryl");
+		assertThat(instructor.rating()).isEqualTo(2);
+		assertThat(services.getCharacterService().mailbox(student, 8)).hasSize(1);
+	}
+
+	private void givenCombatTrainingLobby() {
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("update lobby set subtype = 8 where id = :id")
+				.bind("id", lobbyId).execute());
+	}
+
+	@Test
+	public void endingAGameCreditsEveryPlayersTrainingTime() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var student = givenJoinedPlayer(gameId, "Otacon");
+
+		var jdbi = TestDatabase.get().jdbi();
+		// Combat training, and both players joined a minute ago.
+		jdbi.useHandle(handle -> {
+			handle.createUpdate("update lobby set subtype = 8 where id = :id")
+				.bind("id", lobbyId).execute();
+			handle.createUpdate("""
+					update game_player set joined_at = now() - interval '60 seconds'
+					where game_id = :game
+					""").bind("game", gameId).execute();
+		});
+
+		services.getGameService().deleteGame(gameId);
+
+		var instructor = services.getCharacterService().trainingSeconds(charaId);
+		var learner = services.getCharacterService().trainingSeconds(student);
+
+		// The host's seconds land in the instructor column, everyone else's in the student column.
+		assertThat(instructor.instructor()).isBetween(59L, 62L);
+		assertThat(instructor.student()).isZero();
+		assertThat(learner.student()).isBetween(59L, 62L);
+		assertThat(learner.instructor()).isZero();
+		// Subtype 8 is combat training, so neither is training-mode time.
+		assertThat(instructor.trainingMode()).isZero();
+		assertThat(learner.trainingMode()).isZero();
+	}
+
+	/** A Free Battle round is not training time, whoever hosted it. */
+	@Test
+	public void ordinaryGamesCreditNoTrainingTime() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		TestDatabase.get().jdbi().useHandle(handle -> handle.createUpdate("""
+					update game_player set joined_at = now() - interval '60 seconds'
+					where game_id = :game
+					""").bind("game", gameId).execute());
+
+		services.getGameService().deleteGame(gameId);
+
+		var totals = services.getCharacterService().trainingSeconds(charaId);
+		assertThat(totals.trainingMode()).isZero();
+		assertThat(totals.instructor()).isZero();
+		assertThat(totals.student()).isZero();
+	}
+
+	/**
+	 * {@code 0x4129}'s first byte writes the <b>same slot</b> as {@code 0x4122} wire {@code 0xef} —
+	 * charBlock+{@code 0x1EA5}, via this parser at {@code 0xD3CA30}.
+	 * <p>
+	 * So it must carry the worn title too. Sending {@code chara.rank} here would reset the in-game
+	 * scorecard's animal-rank badge to nothing after the first match, undoing what the connect burst
+	 * set — a regression that would present as an entirely different bug from the original one.
+	 */
+	@Test
+	public void postGameInfoCarriesTheWornTitleAndExperience() {
+		givenSelectedCharacter("Snake");
+		TestDatabase.get().jdbi().useHandle(handle ->
+			// Bit 0 is the lowest-ranked title, so it is worn; the wire value is 1-based.
+			handle.createUpdate("insert into chara_title (chara_id, title_bit) values (:id, 0)")
+				.bind("id", charaId).execute());
+
+		var replies = exchange(new GamePacket(HostGameController.GET_POST_GAME_INFO));
+
+		var payload = replies.get(0).getPayload();
+		assertThat(replies.get(0).getCommand()).isEqualTo(HostGameController.POST_GAME_INFO_RESULT);
+		// 39 fixed bytes plus one 4-byte record per skill the character owns. 0x8b was this same
+		// arithmetic back when the table was a hard-coded 25 entries; it is now the character's
+		// rows, and a new character is granted 1..16.
+		assertThat(payload.readableBytes()).isEqualTo(39 + CharaSkill.STARTING_MAX_ID * 4);
+		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
+		assertThat(payload.getByte(4)).as("the worn title, not chara.rank").isEqualTo((byte) 1);
+		assertThat(payload.getInt(5)).isEqualTo(500);              // main-pool experience
+		// Skill 1's experience, from the character's own row — the starting grant is level 1.
+		assertThat(payload.getShort(0x0E + 1))
+			.isEqualTo((short) CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+		// The tail sits after the skill records, so its offsets move with the table size; they were
+		// 0x76 and 0x86 when the table was a fixed 25 entries.
+		var tail = 14 + CharaSkill.STARTING_MAX_ID * 4;
+		assertThat(payload.getInt(tail + 4)).isEqualTo(500);       // grade points mirror exp
+		assertThat(payload.getInt(tail + 20)).isEqualTo((int) charaId);
+	}
+
+	private static void writeInt(byte[] bytes, int offset, int value) {
+		bytes[offset] = (byte) (value >>> 24);
+		bytes[offset + 1] = (byte) (value >>> 16);
+		bytes[offset + 2] = (byte) (value >>> 8);
+		bytes[offset + 3] = (byte) value;
+	}
+	/**
+	 * The 134 bytes that were understood and simply not stored now land in typed columns.
+	 * <p>
+	 * The rotation is the one worth asserting in full: only round 0 was kept before, so a game's
+	 * later rounds were lost on any round trip through storage. A zero map terminates the client's
+	 * walk over the array, so trailing zeros are inert rather than invalid — which is why all
+	 * sixteen entries are stored rather than only the populated ones.
+	 * <p>
+	 * Weapon restrictions stay a 16-byte bitfield rather than 128 booleans. That is opaque <b>by
+	 * evidence</b> — a bitmask whose assignment belongs to the client — rather than an unknown. The
+	 * per-weapon map <em>is</em> established: 19 bits confirmed weapon-by-weapon against the live
+	 * client, in {@code PROTOCOL.md}. It stays whole because the remaining bits are
+	 * reference-transcribed and unverifiable on this build, and expanding the field would harden
+	 * those guesses into schema.
+	 */
+	@Test
+	public void hostSettingsDecodeTheRotationTimersAndRestrictions() throws java.sql.SQLException {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var blob = settingsBlob();
+
+		// Three rotation entries then a terminator, at wire 0xa3 with stride 3.
+		blob[0xA3] = 4; blob[0xA4] = 12; blob[0xA5] = 0;   // Sneaking on map 12
+		blob[0xA6] = 1; blob[0xA7] = 3;  blob[0xA8] = 2;   // TDM on map 3, option 2
+		blob[0xA9] = 0; blob[0xAA] = 7;  blob[0xAB] = 0;   // Deathmatch on map 7
+		blob[0xAC] = 0; blob[0xAD] = 0;  blob[0xAE] = 0;   // terminator
+
+		blob[0xD5] = (byte) 0x81;   // weapon restrictions: first and eighth bits
+		blob[0xE4] = 0x40;          // and one in the last byte
+
+        // Rule timer slot 0 = 8, slot 16 = 4, as u32 big-endian.
+		blob[0xFC + 3] = 8;
+		blob[0xFC + 16 * 4 + 3] = 4;
+
+		blob[0x140] = 2;            // unique red
+		blob[0x141] = 3;            // unique blue
+
+		services.getGameService().applyHostSettings(gameId, blob);
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select * from game where id=:id").bind("id", gameId)
+				.mapToMap().one());
+
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_rules")).getArray())
+			.as("all sixteen entries, not just round 0")
+			.hasSize(16)
+			.startsWith((short) 4, (short) 1, (short) 0, (short) 0);
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_maps")).getArray())
+			.startsWith((short) 12, (short) 3, (short) 7, (short) 0);
+		assertThat((Object[]) ((java.sql.Array) row.get("rotation_flags")).getArray())
+			.startsWith((short) 0, (short) 2, (short) 0, (short) 0);
+
+		assertThat((byte[]) row.get("weapon_restrictions"))
+			.as("16 bytes, stored verbatim: the bit assignment is the client's")
+			.hasSize(16)
+			.startsWith((byte) 0x81);
+
+		var timers = (Object[]) ((java.sql.Array) row.get("rule_timers")).getArray();
+		assertThat(timers).as("seventeen slots").hasSize(17);
+		assertThat(timers[0]).isEqualTo(8);
+		assertThat(timers[16]).isEqualTo(4);
+
+		assertThat(row.get("unique_red")).isEqualTo(2);
+		assertThat(row.get("unique_blue")).isEqualTo(3);
+	}
+
+	/**
+	 * The in-game host edit saves CONDITIONS as well as name, comment and password.
+	 * <p>
+	 * "Conditions" is the host stance — a {@code u8} enum the client names {@code HOST_STANCE_*}
+	 * internally. It did not save because {@code 0x43c0} carries exactly four editable values and we
+	 * read three; the byte was parsed by nobody, so the client re-read the stale value on every
+	 * refresh and the edit looked ignored.
+	 * <p>
+	 * <b>The offset is the trap.</b> {@code 0x43c0} is a strict subset of the same 968-byte settings
+	 * struct as {@code 0x4310} — name, comment, password flag, password, stance, then it stops — so
+	 * stance sits at {@code 0xA1} here and at {@code 0xF6} in {@code 0x4310}, where {@code 0xA1}
+	 * means {@code dedicated}. Reusing the other packet's offset writes the wrong field.
+	 */
+	@Test
+	public void inGameEditSavesConditionsAlongsideNameAndComment() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		services.getGameService().applyHostSettings(gameId, settingsBlob());
+
+		var edit = new byte[0xA2];
+		System.arraycopy("Renamed".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0, edit, 0x00, 7);
+		System.arraycopy("New comment".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0, edit, 0x10, 11);
+		edit[0x90] = 0;      // password cleared
+		edit[0xA1] = 3;      // Conditions -> "Everyone Welcome"
+
+		exchange(new GamePacket(HostGameController.IN_GAME_INFO, Unpooled.wrappedBuffer(edit)));
+
+		var row = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select name, comment, stance from game where id=:id")
+				.bind("id", gameId).mapToMap().one());
+
+		assertThat(row.get("name")).isEqualTo("Renamed");
+		assertThat(row.get("comment")).isEqualTo("New comment");
+		assertThat(row.get("stance")).isEqualTo(3);
+
+		// And the rebuilt block carries it, which is what the details refresh and the Create Game
+		// pre-fill are built from. While a blob sat beside the columns this had to be mirrored into
+		// it by hand, in two tables; the column is now the only copy.
+		assertThat(services.getGameService().rebuildHostSettings(gameId)[0xF6])
+			.as("stance reaches the rebuilt block")
+			.isEqualTo((byte) 3);
+	}
+
+	/**
+	 * The typed columns reproduce the host-settings block byte for byte.
+	 * <p>
+	 * <b>This is the test that decides whether the blob can be dropped.</b> Storing bytes we hand
+	 * back to a client without knowing what they are was a bridge; the columns are complete only if
+	 * they can produce the same bytes the client sent. Until this passes the blob stays as the
+	 * source of truth, because a reconstruction one byte wrong would corrupt every Create Game
+	 * pre-fill and the symptom would be a screen full of plausible values.
+	 * <p>
+	 * The fixture is deliberately not all-zeros: every field carries a distinct value, so a
+	 * mis-mapped offset swaps two things visibly rather than cancelling out.
+	 */
+	@Test
+	public void typedColumnsRebuildTheHostSettingsBlockExactly() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		// The shared fixture is 342 bytes — enough for applyHostSettings, which needs 0x156 — but a
+		// full block runs to 0x159 because the unread tail ends there. Extend it so the round trip
+		// covers every byte the client actually sends.
+		var sent = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		System.arraycopy("Rat Patrol".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x00, 10);
+		System.arraycopy("hello".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x10, 5);
+		sent[0x90] = 1;
+		System.arraycopy("hunter2".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x91, 7);
+		sent[0xA1] = 1;                       // dedicated
+		sent[0xA2] = 2;                       // lobby subtype as sent
+		sent[0xA3] = 4; sent[0xA4] = 12; sent[0xA5] = 0;
+		sent[0xA6] = 1; sent[0xA7] = 3;  sent[0xA8] = 2;
+		sent[0xD3] = 0x11; sent[0xD4] = 0x22;
+		sent[0xD5] = (byte) 0x81; sent[0xE4] = 0x40;
+		sent[0xEA] = 0x02;                    // the no-reader u32's first byte
+		sent[0xEE] = 0x33;
+		sent[0xF0] = 0x44;
+		sent[0xF4] = 0x55;
+		sent[0xF6] = 3;                       // stance
+		sent[0xF7] = 9;                       // level-limit tolerance
+		sent[0xFC + 3] = 8;
+		sent[0xFC + 16 * 4 + 3] = 4;
+		sent[0x140] = 2; sent[0x141] = 3;
+		sent[0x144] = 0x20;
+		sent[0x149] = 1;                      // capture extra time on
+		sent[0x14A] = 5;                      // SNAKE kills
+		sent[0x155] = 0b10;                   // host options: non-stat, inside the unread tail
+		sent[0x158] = 0x77;                   // last byte of the tail, and of the block
+
+		services.getGameService().applyHostSettings(gameId, sent);
+
+		var rebuilt = services.getGameService().rebuildHostSettings(gameId);
+
+		assertThat(rebuilt).as("a game with stored settings rebuilds").isNotNull();
+		assertThat(rebuilt).hasSize(mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+
+		// Byte-for-byte, and reported by offset so a failure names the field rather than dumping
+		// 345 bytes of hex.
+		for (var at = 0; at < rebuilt.length; at++) {
+			assertThat(rebuilt[at])
+				.as("byte 0x%s", Integer.toHexString(at))
+				.isEqualTo(sent[at]);
+		}
+	}
+
+	/**
+	 * A game whose host never pushed settings rebuilds to null rather than to a block of zeros.
+	 * <p>
+	 * That state is real: a game row exists between {@code createGame} and {@code applyHostSettings},
+	 * and a block of zeros there would be indistinguishable from a host who genuinely chose every
+	 * default.
+	 */
+	@Test
+	public void rebuildingSettingsThatWereNeverSentGivesNull() {
+		givenSelectedCharacter("Snake");
+		var gameId = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createUpdate("insert into game (lobby_id, host_chara_id, name) "
+					+ "values (:lobby, :host, 'bare')")
+				.bind("lobby", lobbyId).bind("host", charaId)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+
+		assertThat(services.getGameService().rebuildHostSettings(gameId)).isNull();
+	}
+
+	/**
+	 * The Create Game pre-fill rebuilds byte-for-byte from its typed columns.
+	 * <p>
+	 * Same structure as the game's copy, keyed per (character, lobby subtype) instead. Both share
+	 * one field map deliberately — two maps of the same bytes is how one silently stops matching the
+	 * other — so this test and its sibling guard the same code from opposite tables.
+	 */
+	@Test
+	public void charaHostSettingsRebuildExactly() {
+		givenSelectedCharacter("Snake");
+
+		var sent = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		System.arraycopy("Pre-fill".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x00, 8);
+		sent[0x90] = 1;
+		System.arraycopy("secret".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1), 0,
+			sent, 0x91, 6);
+		sent[0xA1] = 1;
+		sent[0xA2] = 2;
+		sent[0xA3] = 2; sent[0xA4] = 7; sent[0xA5] = 2;
+		sent[0xD3] = 0x0A; sent[0xD4] = 0x0B;
+		sent[0xD5] = (byte) 0xFF;
+		sent[0xEA] = 0x02;
+		sent[0xF6] = 5;
+		sent[0xF7] = 11;
+		sent[0xFC + 3] = 6;
+		sent[0x140] = 1; sent[0x141] = 4;
+		sent[0x144] = 0x20;
+		sent[0x149] = 1;
+		sent[0x14A] = 2;
+		sent[0x155] = 0b10;
+		sent[0x158] = 0x5A;
+
+		services.getGameService().saveHostSettingsBlob(charaId, 2, sent);
+
+		var rebuilt = services.getGameService().getHostSettingsBlob(charaId, 2).orElseThrow();
+
+		for (var at = 0; at < sent.length; at++) {
+			assertThat(rebuilt[at]).as("byte 0x%s", Integer.toHexString(at)).isEqualTo(sent[at]);
+		}
+	}
+
+	/** A character that has never hosted has no pre-fill, rather than a block of zeros. */
+	@Test
+	public void charaWithNoStoredSettingsHasNoPrefill() {
+		givenSelectedCharacter("Snake");
+
+		assertThat(services.getGameService().getHostSettingsBlob(charaId, 2)).isEmpty();
+	}
+
+	/**
+	 * The inert-field watcher records what arrives, and flags a field that stops being constant.
+	 * <p>
+	 * The alert fires on the <b>second</b> distinct value rather than the first: the first is the
+	 * baseline being established, and warning about that would train everyone to ignore this.
+	 */
+	@Test
+	public void inertFieldWatcherNoticesAFieldThatChanges() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+
+		// givenHostedGame already pushes one settings blob, so counts are asserted RELATIVE to
+		// whatever that established. An absolute assertion here silently depends on the fixture.
+		var baseline = distinctWatched("host_settings.824");
+		assertThat(baseline).as("the fixture's push is the baseline").isPositive();
+
+		var first = java.util.Arrays.copyOf(settingsBlob(),
+			mgo2server.common.service.GameService.HOST_SETTINGS_SIZE);
+		first[0xEA] = 0x02;
+		services.getGameService().applyHostSettings(gameId, first);
+		var afterFirst = distinctWatched("host_settings.824");
+
+		// A patched client sending something new in a field this build never reads.
+		var second = java.util.Arrays.copyOf(first, first.length);
+		second[0xEA] = 0x77;
+		services.getGameService().applyHostSettings(gameId, second);
+
+		assertThat(distinctWatched("host_settings.824"))
+			.as("a new value adds a row, which is the signal")
+			.isEqualTo(afterFirst + 1);
+
+		// Repeats accumulate against the existing value rather than creating rows.
+		services.getGameService().applyHostSettings(gameId, second);
+		assertThat(distinctWatched("host_settings.824")).isEqualTo(afterFirst + 1);
+		long repeats = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select observations from inert_field_watch "
+					+ "where field='host_settings.824' and value_hex='77000000'")
+				.mapTo(Long.class).one());
+		assertThat(repeats).as("repeats accumulate rather than adding rows").isEqualTo(2L);
+	}
+
+	private int distinctWatched(String field) {
+		return TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from inert_field_watch where field=:f")
+				.bind("f", field).mapTo(Integer.class).one());
+	}
+
+
+	/** Builds a 0x43a4 payload: {u32 chara, s32 count, count x {u8 skill, u16 experience}}. */
+	private static byte[] skillReport(long charaId, int... skillThenExperience) {
+		var records = skillThenExperience.length / 2;
+		var out = new byte[8 + records * 3];
+		writeInt(out, 0, (int) charaId);
+		writeInt(out, 4, records);
+		for (var i = 0; i < records; i++) {
+			var at = 8 + i * 3;
+			out[at] = (byte) skillThenExperience[i * 2];
+			out[at + 1] = (byte) (skillThenExperience[i * 2 + 1] >> 8);
+			out[at + 2] = (byte) skillThenExperience[i * 2 + 1];
+		}
+		return out;
+	}
+
+	private static int skillExperience(long charaId, int skillId) {
+		return TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery(
+					"select experience from chara_skill where chara_id=:c and skill_id=:s")
+				.bind("c", charaId).bind("s", skillId).mapTo(Integer.class).one());
+	}
+
+	/**
+	 * The host's skill-experience report is applied, which is the ONLY way skill progression can
+	 * persist: skills level by use, the server cannot observe use, and the client reports it here.
+	 * <p>
+	 * The value is an absolute total, not a delta — [ELF 0x27D140] the builder computes a delta only
+	 * to decide whether the skill moved, then overwrites it with the live value.
+	 */
+	@Test
+	public void aSkillExperienceReportIsStoredAsAnAbsoluteTotal() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		assertThat(skillExperience(joiner, 2))
+			.as("starts at the granted level-1 value")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 16384, 5, 24576))));
+
+		assertThat(replies.get(0).getCommand())
+			.as("the report opens wait slot 53; unanswered it is a latent FFFFFF60")
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		assertThat(skillExperience(joiner, 2)).isEqualTo(16384);
+		assertThat(skillExperience(joiner, 5)).isEqualTo(24576);
+		assertThat(skillExperience(joiner, 3))
+			.as("a skill absent from the report is left alone")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+	}
+
+	/**
+	 * An over-cap report is clamped to the client's legal maximum, not to the wire's u16 range.
+	 * <p>
+	 * [ELF 0x93E418] the client's validator ZEROES any skill record above 24576, so storing a
+	 * larger value would make the skill vanish from the player's list the next time we sent it
+	 * back — a silent loss, not a rendering quirk.
+	 */
+	@Test
+	public void anOverCapSkillReportIsClampedToTheClientsLegalMaximum() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 65535))));
+
+		assertThat(skillExperience(joiner, 2))
+			.isEqualTo(mgo2server.game.PersonalInfoWriter.MAX_SKILL_EXPERIENCE);
+	}
+
+	/**
+	 * Attribution is the character id in the payload, not the connection — the host sweeps all 24
+	 * slots and reports for every player whose skills moved. A character that is not in the game
+	 * is still refused, exactly as 0x4390 refuses one.
+	 */
+	@Test
+	public void aSkillReportForSomeoneElsesCharacterIsRefused() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var stranger = givenStrangerNotInTheGame("Otacon");
+		grantStartingSkills(stranger);
+
+		exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(stranger, 2, 24576))));
+
+		assertThat(skillExperience(stranger, 2))
+			.as("a host may not move experience for a player it does not have")
+			.isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+	}
+
+	/** A record for a skill the character does not own is not a grant; 0x4125 decides ownership. */
+	@Test
+	public void aReportForAnUnownedSkillGrantsNothing() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(skillReport(joiner, 2, 24576))));
+
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		var rows = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from chara_skill where chara_id=:c")
+				.bind("c", joiner).mapTo(Integer.class).one());
+		assertThat(rows).isZero();
+	}
+
+	/**
+	 * The count on the wire is the authority, not end-of-stream — the client's loop bound is re-read
+	 * from it each pass. A declared count the payload cannot cover is dropped rather than
+	 * half-applied, and still answered so the client does not stall.
+	 */
+	@Test
+	public void aTruncatedSkillReportIsDroppedButStillAnswered() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var joiner = givenJoinedPlayer(gameId, "Raiden");
+		grantStartingSkills(joiner);
+
+		var truncated = new byte[8 + 3];
+		writeInt(truncated, 0, (int) joiner);
+		writeInt(truncated, 4, 9);
+
+		var replies = exchange(new GamePacket(HostGameController.REPORT_SKILL_EXPERIENCE,
+			Unpooled.wrappedBuffer(truncated)));
+
+		assertThat(replies.get(0).getCommand())
+			.isEqualTo(HostGameController.REPORT_SKILL_EXPERIENCE_RESULT);
+		assertThat(skillExperience(joiner, 2)).isEqualTo(CharaSkill.MINIMUM_VISIBLE_EXPERIENCE);
+	}
+
+}

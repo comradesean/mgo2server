@@ -7,6 +7,7 @@ import mgo2server.common.Config;
 import mgo2server.common.Database;
 import mgo2server.common.ServicesFactory;
 import mgo2server.common.database.Migrations;
+import mgo2server.common.model.Lobby;
 import mgo2server.game.GameServerFactory;
 import mgo2server.game.LobbyType;
 import mgo2server.web.WebServerFactory;
@@ -52,8 +53,42 @@ public final class Main {
 		Migrations.migrate(database.dataSource());
 
 		var services = ServicesFactory.createServices(database.jdbi());
+
+		// Write our own lobby row, if we were told an address to advertise.
+		//
+		// Skipped when MGO2SERVER_ADVERTISE_IP is unset, and that is the important half: the ip
+		// column is what the client is told to dial next, so a wrong value breaks login for
+		// everyone. An unconfigured instance leaves whatever dev/tools/seed.sql put there rather
+		// than overwriting it with a guess.
+		if (!config.advertiseIp().isBlank()) {
+			var lobby = new Lobby();
+			lobby.setId(config.lobbyId());
+			lobby.setType(config.lobbyType());
+			lobby.setSubtype(config.lobbySubtype());
+			lobby.setIp(config.advertiseIp());
+			lobby.setPort(config.gamePort());
+			lobby.setBeginnersOnly(config.lobbyBeginnersOnly());
+			lobby.setName("Lobby " + config.lobbyId());
+
+			var name = services.getLobbyService().register(lobby, config.lobbyNames());
+			logger.info("Registered lobby {} as \"{}\" ({}:{}, subtype {}{}).", config.lobbyId(),
+				name, config.advertiseIp(), config.gamePort(), config.lobbySubtype(),
+				config.lobbyBeginnersOnly() ? ", beginners only" : "");
+		}
+
+		// Games do not survive the server that hosts their lobby: the host's connection is gone,
+		// so any game row left over from a previous run is a ghost that clutters the browser.
+		var lobbyType = LobbyType.fromId(config.lobbyType());
+		if (lobbyType == LobbyType.GAME) {
+			var purged = services.getGameService().deleteGamesInLobby(config.lobbyId());
+			if (purged > 0) {
+				logger.info("Cleared {} stale game(s) from lobby {} on startup.",
+					purged, config.lobbyId());
+			}
+		}
+
 		GameServerFactory.createGameServer(services, config.gamePort(),
-			LobbyType.fromId(config.lobbyType()), config.lobbyId(), config.lobbySubtype()).run();
+			lobbyType, config.lobbyId(), config.lobbySubtype()).run();
 	}
 
 	private static void runWeb(Config config, String[] args) {

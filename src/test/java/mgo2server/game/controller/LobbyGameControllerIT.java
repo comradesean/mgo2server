@@ -98,8 +98,49 @@ public class LobbyGameControllerIT extends BaseGameClientServerIT {
 			.isEqualTo("10.0.0.5");
 
 		assertThat(entries.getShort(39)).isEqualTo((short) 5730);
-		// Player count is not tracked yet.
+		// Occupancy derives from players in games; with no games running it reads 0.
 		assertThat(entries.getShort(41)).isEqualTo((short) 0);
+	}
+
+	/**
+	 * Occupancy is players-in-games per lobby (the cheapest BACKLOG sketch), so two players in a
+	 * game hosted in a lobby show up in that lobby's count and nowhere else. Operator policy, not
+	 * protocol — nothing pins what the original counted, only that the field exists.
+	 */
+	@Test
+	public void countsPlayersInGamesPerLobby() {
+		addLobby("Gate", 0, "127.0.0.1", 5730);
+		addLobby("Game", 2, "127.0.0.1", 5732);
+
+		var jdbi = mgo2server.TestDatabase.get().jdbi();
+		var gameLobbyId = jdbi.withHandle(h ->
+			h.createQuery("select id from lobby where type = 2").mapTo(Long.class).one());
+		var accountId = jdbi.withHandle(h -> h.createUpdate("""
+				insert into account (username, password, session, slots)
+				values ('host', '', 'feed', 2)
+				""").executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		var hostChara = jdbi.withHandle(h ->
+			h.createUpdate("insert into chara (account_id, name) values (:a, 'Snake')")
+				.bind("a", accountId).executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		var joinerChara = jdbi.withHandle(h ->
+			h.createUpdate("insert into chara (account_id, name) values (:a, 'Otacon')")
+				.bind("a", accountId).executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		var gameId = jdbi.withHandle(h ->
+			h.createUpdate("insert into game (lobby_id, host_chara_id, name) values (:l, :c, 'g')")
+				.bind("l", gameLobbyId).bind("c", hostChara)
+				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
+		jdbi.useHandle(h -> {
+			h.createUpdate("insert into game_player (game_id, chara_id) values (:g, :c)")
+				.bind("g", gameId).bind("c", hostChara).execute();
+			h.createUpdate("insert into game_player (game_id, chara_id) values (:g, :c)")
+				.bind("g", gameId).bind("c", joinerChara).execute();
+		});
+
+		var entries = requestLobbyList().get(1).getPayload();
+
+		// Entry 0 is the gate (no games), entry 1 the game lobby with two players in a game.
+		assertThat(entries.getShort(41)).isEqualTo((short) 0);
+		assertThat(entries.getShort(ENTRY_SIZE + 41)).isEqualTo((short) 2);
 	}
 
 	/** More lobbies than fit in one payload must be split across several entry packets. */

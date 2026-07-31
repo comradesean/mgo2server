@@ -17,7 +17,10 @@ public record Config(
 	int webPort,
 	int lobbyType,
 	long lobbyId,
-	int lobbySubtype
+	int lobbySubtype,
+	String advertiseIp,
+	java.util.List<String> lobbyNames,
+	boolean lobbyBeginnersOnly
 ) {
 	public static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/mgo2server";
 
@@ -46,8 +49,31 @@ public record Config(
 			integer(env, "MGO2SERVER_WEB_PORT", DEFAULT_WEB_PORT),
 			integer(env, "MGO2SERVER_LOBBY_TYPE", DEFAULT_LOBBY_TYPE),
 			integer(env, "MGO2SERVER_LOBBY_ID", DEFAULT_LOBBY_ID),
-			integer(env, "MGO2SERVER_LOBBY_SUBTYPE", 0)
+			integer(env, "MGO2SERVER_LOBBY_SUBTYPE", 0),
+			string(env, "MGO2SERVER_ADVERTISE_IP", ""),
+			names(env, "MGO2SERVER_LOBBY_NAMES"),
+			bool(env, "MGO2SERVER_LOBBY_BEGINNERS_ONLY")
 		);
+	}
+
+	/**
+	 * The pool a lobby picks its display name from, comma-separated. Empty means "keep whatever
+	 * name the row already has", which is what every lobby did before self-registration existed.
+	 */
+	private static java.util.List<String> names(UnaryOperator<String> env, String name) {
+		var value = env.apply(name);
+		if (value == null || value.isBlank()) {
+			return java.util.List.of();
+		}
+		return java.util.Arrays.stream(value.split(","))
+			.map(String::trim)
+			.filter(n -> !n.isEmpty())
+			.toList();
+	}
+
+	private static boolean bool(UnaryOperator<String> env, String name) {
+		var value = env.apply(name);
+		return value != null && ("true".equalsIgnoreCase(value.trim()) || "1".equals(value.trim()));
 	}
 
 	private static String string(UnaryOperator<String> env, String name, String fallback) {

@@ -12,6 +12,7 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | `STUN.md` | The UDP port check. Separate transport, separate thread, shares nothing with the lobby servers. |
 | `CRYPTO.md` | Every cipher, key and hash, where each is applied, and how to obtain them. |
 | `OBSERVED.md` | What was observed and verified against a real client, including the hypotheses that turned out wrong. Read before re-testing anything. |
+| `BACKLOG.md` | Deliberately deferred work, with enough context to pick each item up cold. |
 
 ## Required by the running stack
 
@@ -20,8 +21,9 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | path | role |
 | --- | --- |
 | `http_probe.py` | Serves the HTTP and HTTPS endpoints (`probe-http`, `probe-https`), terminates TLS and proxies to the web service. Holds the TLS-1.0 and `SECLEVEL=0` settings the console needs. |
-| `stun_probe.py` | The STUN responder (`probe-stun`). Answers the port check. |
-| `www/` | Static documents, and the TLS certificate chain. |
+| `turnserver.conf` | coturn config for the `probe-stun` service — the STUN responder that answers the port check. |
+| `www/` | Static documents only — the document root the probes copy in and serve. |
+| `tls/` | The certificate chain and its private keys. Deliberately **not** under `www/`: that directory is served, and keys have no business in a document root. Mounted separately at `/tls`. |
 
 ## Run once
 
@@ -36,11 +38,12 @@ Not normally running. Each exists because it answered a question once and would 
 
 | path | role |
 | --- | --- |
-| `stun_selftest.py` | Asserts the STUN reply format against a running responder. Run it after touching `stun_probe.py`; a regression there produces no error, just a hung game. |
+| `stun_selftest.py` | Asserts the STUN reply format against a running responder — coturn, these days. A regression there produces no error, just a hung game. |
 | `upnp_probe.py` | Answers the client's UPnP discovery. The game carries its own IGD client. |
 | `dnsmasq.conf` | A logging DNS server. **DNS is not needed to play** — this is for discovering the hostnames a different disc or region asks for. |
+| `retired/` | Superseded implementations, kept because they document a working approach rather than because anything runs them. `stun_probe.py` is the hand-rolled STUN responder coturn replaced on 2026-07-21; run it standalone with `python stun_probe.py 3478 <ip> <secondary-ip>`. |
 
-## About `www/`
+## About `tls/`
 
 `ca-cert.pem` and `ca-key.pem` are a certificate authority generated for this project. The console
 validates the server certificate against its own store, so the CA has to be installed into the
@@ -57,8 +60,8 @@ if you would rather not: sign a leaf with `ext.cnf`'s SANs and install your CA i
 Swapping them in via `MGO2SERVER_TLS_CERT` makes the client report `070B` instead of `090B`, which is how
 the certificate branch was identified in the first place.
 
-## About `upstream/`
+## About the other MGO2 servers
 
-Referenced by these documents but **not part of the repository** — it is gitignored. It holds local
-clones of other MGO2 servers, kept for comparison only. Nothing here depends on them, and
-`CLAUDE.md` explains why they are not specifications.
+echo, mgo2-server and the Nomad servers are cited by these documents for comparison, but are **not
+vendored in this repository** — consult them on GitHub if a comparison is genuinely needed. Nothing
+here depends on them, and `CLAUDE.md` explains why they are not specifications.

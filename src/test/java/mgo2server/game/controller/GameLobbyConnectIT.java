@@ -9,6 +9,7 @@ import mgo2server.common.model.ChatMacro;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
 import mgo2server.game.GameplaySettingsWriter;
+import mgo2server.common.model.CharaSkill;
 import mgo2server.game.LoadoutWriter;
 import mgo2server.game.PersonalInfoWriter;
 import mgo2server.game.LobbyType;
@@ -46,8 +47,8 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 	private void givenSelectedCharacter(String name) {
 		accountId = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createUpdate("""
-					insert into account (username, password, session, slots, main_exp, alt_exp)
-					values ('player', 'x', :session, 3, 1234, 99)
+					insert into account (username, password, session, slots)
+					values ('player', 'x', :session, 3)
 					""")
 				.bind("session", SessionField.stored(TOKEN))
 				.executeAndReturnGeneratedKeys("id")
@@ -57,16 +58,21 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		// Identity sequences restart between tests, so without this the account and character ids
 		// both come out as 1 and a test that confuses the two would pass by coincidence.
 		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, 'Filler')")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, 'Filler', 99)")
 				.bind("account", accountId).execute());
 
 		charaId = TestDatabase.get().jdbi().withHandle(handle ->
-			handle.createUpdate("insert into chara (account_id, name) values (:account, :name)")
+			handle.createUpdate("insert into chara (account_id, name, experience)"
+					+ " values (:account, :name, 1234)")
 				.bind("account", accountId)
 				.bind("name", name)
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
+
+		grantStartingSkills(charaId);
+		grantStartingGear(charaId);
 
 		assertThat(charaId).isNotEqualTo(accountId);
 
@@ -131,29 +137,53 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 	}
 
-	/** Sending the account id, as an account lobby would expect, must be refused here. */
+	/**
+	 * Claiming a character this account does not own must be refused.
+	 * <p>
+	 * This used to send the account id, on the reasoning that an account lobby expects one and a
+	 * game lobby must not. That worked by accident: both identity sequences start at 1 in a fresh
+	 * test database, so the "account id" was frequently a character id this account really owned,
+	 * and the test only passed because check-in compared against the selected character rather than
+	 * ownership. It now claims an id that exists nowhere.
+	 */
 	@Test
-	public void rejectsAccountIdInGameLobby() {
+	public void rejectsCharacterTheAccountDoesNotOwn() {
 		givenSelectedCharacter("Snake");
 
-		var replies = connect(accountId, 1);
+		var replies = connect(charaId + 9999, 1);
 
 		assertThat(replies).hasSize(1);
+		// A GAME lobby says "You must login again to connect to the lobby." rather than the masked
+		// generic — the instruction the player can actually act on. Gated on lobby type: the same
+		// handler serves account lobbies, where -240 reads as "Unable to connect to server." and is
+		// worse than that chain's default, so those keep INVALID_SESSION.
 		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+			.isEqualTo(GameError.LOBBY_LOGIN_AGAIN.result());
 	}
 
+	/**
+	 * A stale or absent selection is not a reason to refuse: the client names the character it is
+	 * entering with, and check-in adopts it.
+	 * <p>
+	 * The old rule demanded that the claim equal {@code current_chara_id}, which broke a real login
+	 * — creating a character points the selection at the new one, so entering the lobby as any other
+	 * character failed with "Unable to connect to lobby.(0925:C0FFEE02)".
+	 */
 	@Test
-	public void rejectsCheckInWithNoCharacterSelected() {
+	public void adoptsTheClaimedCharacterWhenTheSelectionIsStale() {
 		givenSelectedCharacter("Snake");
 		TestDatabase.get().jdbi().useHandle(handle ->
 			handle.createUpdate("update account set current_chara_id = null where id = :id")
 				.bind("id", accountId).execute());
 
-		var replies = connect(charaId, 1);
+		var replies = connect(charaId, BURST_REPLIES);
 
-		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+		assertThat(replies.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+
+		var current = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select current_chara_id from account where id=:id")
+				.bind("id", accountId).mapTo(Long.class).findOne());
+		assertThat(current).contains(charaId);
 	}
 
 	/** Check-in must not clear the selection here, unlike in an account lobby. */
@@ -243,12 +273,29 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(info.getInt(0)).isZero();
 	}
 
+	/**
+	 * Wire {@code 0xef} of {@code 0x4122} carries the worn title — the animal-rank badge the in-game
+	 * scorecard draws — and it has to arrive in the <b>connect burst</b>, not only when the player
+	 * opens Personal Stats.
+	 * <p>
+	 * That is the whole bug this pins. The byte used to carry {@code chara.rank}, which is dead
+	 * (always 0), so the badge never appeared in a session while the stats screen showed the title
+	 * correctly: {@code 0x4103} fills a scratch block, this fills the local character record at
+	 * charBlock+{@code 0x1EA5}, and only the local one is published to peers as record slot+1 key
+	 * 358. Asserting a title the character actually holds is what makes this test able to catch a
+	 * regression rather than just observe a zero.
+	 */
 	@Test
-	public void personalInfoCarriesCommentAndRank() {
+	public void personalInfoCarriesCommentAndWornTitle() {
 		givenSelectedCharacter("Snake");
-		TestDatabase.get().jdbi().useHandle(handle ->
-			handle.createUpdate("update chara set comment = 'Hello', rank = 4 where id = :id")
-				.bind("id", charaId).execute());
+		TestDatabase.get().jdbi().useHandle(handle -> {
+			handle.createUpdate("update chara set comment = 'Hello' where id = :id")
+				.bind("id", charaId).execute();
+			// Bit 0 is the lowest-ranked title in awards.json, so it is the one worn, and the wire
+			// value is 1-based — bit 0 goes out as 1.
+			handle.createUpdate("insert into chara_title (chara_id, title_bit) values (:id, 0)")
+				.bind("id", charaId).execute();
+		});
 
 		var info = connect(charaId, BURST_REPLIES).get(5).getPayload();
 
@@ -256,7 +303,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		info.getBytes(111, comment);
 		assertThat(new String(comment, StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Hello");
-		assertThat(info.getByte(239)).isEqualTo((byte) 4);
+		assertThat(info.getByte(239)).as("wire 0xef, the worn title, 1-based").isEqualTo((byte) 1);
 	}
 
 	@Test
@@ -272,15 +319,22 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(new String(name, StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Snake");
 
-		// This character is the account's main, so it draws on the main experience pool.
+		// Experience is the character's own since V59, not a pool shared with its siblings.
 		assertThat(info.getInt(28)).isEqualTo(1234);
 		// The client's parser consumes exactly this much: header, 32+32 ids, 25-byte tail.
 		assertThat(info.readableBytes()).isEqualTo(0x142);
 	}
 
-	/** An alt draws on the other pool. */
+	/**
+	 * A character that is not its account's main keeps its OWN experience.
+	 * <p>
+	 * This used to assert that such a character drew on a shared "alt pool" — which is exactly the
+	 * bug V59 removed. Two non-main characters on one account shared a single value, so playing one
+	 * moved the other's level. The filler character here carries 99 and the subject carries 1234;
+	 * demoting the subject from main must not make it read the sibling's number.
+	 */
 	@Test
-	public void alternateCharacterUsesAltExperience() {
+	public void aNonMainCharacterKeepsItsOwnExperience() {
 		givenSelectedCharacter("Snake");
 		TestDatabase.get().jdbi().useHandle(handle ->
 			handle.createUpdate("update account set main_chara_id = null where id = :id")
@@ -288,7 +342,7 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 
 		var info = connect(charaId, BURST_REPLIES).get(1).getPayload();
 
-		assertThat(info.getInt(28)).isEqualTo(99);
+		assertThat(info.getInt(28)).isEqualTo(1234);
 	}
 
 	/** Both macro packets are full-width, with the type byte leading each. */
@@ -329,30 +383,46 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 			.isEqualTo("Enemy spotted");
 	}
 
-	/** The connect burst is only served to an authenticated connection. */
+	/**
+	 * The connect burst is only served to an authenticated connection — and an unauthenticated one
+	 * is answered with <b>nothing</b>.
+	 * <p>
+	 * This used to assert a 4-byte {@code 0x4101} carrying {@code INVALID_SESSION}. That reply was
+	 * worse than silence: {@code 0x4101} has no result field, its first field is the character id,
+	 * and no read primitive consults the payload length — so the masked code landed in the id and
+	 * the client entered the lobby as character {@code 0xC0FFEE02}, carrying it in every subsequent
+	 * packet. A zero id is no better.
+	 * <p>
+	 * There is no way to refuse this command; the refusal belongs to {@code 0x3003}/{@code 0x3004},
+	 * which discriminates properly and already rejects all of these conditions. Reaching here at all
+	 * means a race, so the server logs and drops, and the client times out with
+	 * {@code 1037:FFFFFF60}.
+	 */
 	@Test
-	public void refusesConnectBurstBeforeCheckIn() {
+	public void refusesConnectBurstBeforeCheckInBySayingNothing() {
 		givenSelectedCharacter("Snake");
 
 		var replies = new ArrayList<GamePacket>();
-		client.run(10, new ChannelInboundHandlerAdapter() {
+		client.run(3, new ChannelInboundHandlerAdapter() {
 			@Override
 			public void channelActive(ChannelHandlerContext ctx) {
 				ctx.writeAndFlush(new GamePacket(CharacterConnectController.CONNECT));
+				// Nothing will close this channel for us, because the whole point is that no reply
+				// arrives. Give the server long enough to have sent one, then close.
+				ctx.executor().schedule((Runnable) ctx::close, 1, java.util.concurrent.TimeUnit.SECONDS);
 			}
 
 			@Override
 			public void channelRead(ChannelHandlerContext ctx, Object msg) {
 				if (msg instanceof GamePacket packet) {
 					replies.add(packet);
-					ctx.close();
 				}
 			}
 		});
 
-		assertThat(replies).hasSize(1);
-		assertThat(replies.get(0).getPayload().getInt(0))
-			.isEqualTo(GameError.INVALID_SESSION.result());
+		assertThat(replies)
+			.as("a malformed 0x4101 would be parsed as a character record, not as an error")
+			.isEmpty();
 	}
 
 	/** A game lobby must not answer commands that belong to other lobby types. */
@@ -417,15 +487,31 @@ public class GameLobbyConnectIT extends BaseGameClientServerIT {
 		assertThat(skillSets).isEqualTo(3);
 	}
 
+	/** Rows in gear_item, seeded by V44. 0x86 appears twice, so 123 rows and 122 distinct ids. */
+	/**
+	 * What the fixture grants — three items, mirroring "a character owns only its creation choices".
+	 * <p>
+	 * This was 123 (every item in every colour) and then 28 (an invented starter set). Both were
+	 * wrong: the original unlocked only what was picked at creation, and further unlocks came from
+	 * a post-launch reward system. 651 was never a required payload length — it was simply what
+	 * the full catalogue came to.
+	 */
+	private static final int STARTER_GEAR_ROWS = 3;
+
 	@Test
 	public void gearAndSkillCataloguesAreAdvertised() {
 		givenSelectedCharacter("Snake");
 
 		var replies = connect(charaId, BURST_REPLIES);
 
-		assertThat(replies.get(6).getPayload().readableBytes())
-			.isEqualTo(LoadoutWriter.gearPayloadSize());
-		assertThat(replies.get(7).getPayload().getInt(0))
-			.isEqualTo(LoadoutWriter.SKILL_COUNT);
+		// The count is the character's own row count -- gear comes from chara_gear as of V44, and
+		// creation grants the starter set as of V70.
+		var gear = replies.get(6).getPayload();
+		assertThat(gear.getInt(0)).isEqualTo(STARTER_GEAR_ROWS);
+		assertThat(gear.readableBytes()).isEqualTo(LoadoutWriter.gearPayloadSize(STARTER_GEAR_ROWS));
+		assertThat(gear.readableBytes()).isEqualTo(51);
+		// The count is the character's row count now, not a constant in the writer. A new character
+		// is granted 1..16; skill 17 is withheld to be earned.
+		assertThat(replies.get(7).getPayload().getInt(0)).isEqualTo(CharaSkill.STARTING_MAX_ID);
 	}
 }

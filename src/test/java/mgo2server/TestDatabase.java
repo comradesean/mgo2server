@@ -43,9 +43,17 @@ public final class TestDatabase {
 		db.jdbi().useHandle(handle -> {
 			// Uses != rather than <>: Jdbi renders through StringTemplate, which reads <...> as an
 			// expression and fails to compile the statement.
+			// `skill` and `gear_item` are reference data a migration seeds, not test state —
+			// truncating them would leave every character with no skills or gear to own, since
+			// chara_skill and chara_gear both seed by selecting from them. Same reasoning as
+			// schema_version: if a migration put the rows there, a reset has no business removing
+			// them. Anything else added as a seeded catalogue belongs in this list too.
 			var tables = handle.createQuery("""
 					select tablename from pg_tables
-					where schemaname = 'public' and tablename != 'schema_version'
+					where schemaname = 'public'
+					  and tablename != 'schema_version'
+					  and tablename != 'skill'
+					  and tablename != 'gear_item'
 					""")
 				.mapTo(String.class)
 				.list();

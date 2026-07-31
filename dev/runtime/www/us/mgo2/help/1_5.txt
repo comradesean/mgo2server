@@ -1,0 +1,15 @@
+<title>CHARACTER</title>
+This screen is a PLACEHOLDER.
+The original tip shown here has not
+yet been confirmed.
+<page-break>
+If you have screenshots, notes or other
+reference material showing the original
+text, please submit it through
+GitHub Issues.
+<page-break>
+Your cooperation helps us restore
+METAL GEAR ONLINE as faithfully as
+possible.
+
+Thank you for your support.
