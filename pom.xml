@@ -165,13 +165,15 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Renamed in testcontainers 2.x: the BOM manages testcontainers-postgresql /
+                 testcontainers-junit-jupiter now, not the old bare postgresql / junit-jupiter. -->
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
