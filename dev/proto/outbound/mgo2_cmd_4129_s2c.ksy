@@ -212,12 +212,12 @@ types:
           **0, 10, 20 and 50 hours**, OR'd with `0x80000000`, into the single u32 that
           CLIENT_STORE.md §6 measured `mgof.sav` moving.
 
-          **The server currently sends `0xffffff`** — 16,777,215 seconds, 4660 hours — which trips
-          every tier immediately. That is a policy decision nobody made on purpose; `chara_training_time`
-          / `seconds_in_game` is the quantity we actually track, and CLIENT_STORE.md's warning that
-          they are "a different quantity" was right about their provenance but wrong to conclude
-          the server could not influence the unlock. It can, through this field, and only through
-          this field.
+          **Fixed 2026-07-31.** The server used to send `0xffffff` — 16,777,215 seconds, 4660 hours —
+          which tripped every tier immediately, a policy nobody made on purpose. It now sends
+          `CharacterService.displayedPlaySeconds(charaId)`: `sum(round_report.seconds_in_game)`
+          across the six playable modes, the same total the personal stats screen and `0x4b48` show.
+          That is round time only, not menu or lobby presence — a deliberate choice, argued in that
+          method's doc, not an oversight.
       - id: clan_id
         type: u4
         doc: |

@@ -730,22 +730,18 @@ public class HostGameController implements IGameController {
 		}
 		buffer.writeInt(0)
 			.writeInt(experience) // grade points mirror experience in both references
-			// PLAY TIME IN SECONDS, and this constant is wrong -- flagged 2026-07-30, left in place
-			// deliberately because changing it is an operator-policy call, not a bug fix.
+			// PLAY TIME IN SECONDS. [ELF] Both readers (0x8F9850, 0x8F98F8) hand this to 0x7F6F70 in
+			// the .sav module, which divides by 3600 (reciprocal magic 0x91A2B3C5, mulhwu then srwi
+			// 11) and ORs cumulative bits into the mgof.sav flag word at 0, 10, 20 and 50 hours -- the
+			// word MGS4's single-player reads to unlock its MGO-time items. See CLIENT_STORE.md
+			// section 6: that "the server cannot help" was about whether the store is server-visible,
+			// a different question this field doesn't touch.
 			//
-			// [ELF] Both readers (0x8F9850, 0x8F98F8) hand this to 0x7F6F70 in the .sav module, which
-			// divides by 3600 (reciprocal magic 0x91A2B3C5, mulhwu then srwi 11) and ORs cumulative
-			// bits into the mgof.sav flag word at 0, 10, 20 and 50 hours. That word is what MGS4's
-			// single-player reads to unlock its MGO-time items -- see CLIENT_STORE.md section 6,
-			// whose "the server cannot help" was corrected by this finding.
-			//
-			// 0xffffff is 16,777,215 seconds = 4,660 hours, so we trip ALL FOUR TIERS on the first
-			// round any player finishes. It is inherited cargo, not a considered value.
-			//
-			// The honest replacement is a real per-character total. We have `seconds_in_game` summed
-			// per round (StatsService), but that counts time in ROUNDS, not time in MGO, so adopting
-			// it is a policy decision about what "time played" means -- argue it before changing it.
-			.writeInt(0xffffff)
+			// The same total the personal stats screen and 0x4b48 show: sum(seconds_in_game) across
+			// the six playable modes (CharacterService.displayedPlaySeconds). Previously a hardcoded
+			// 0xffffff -- 16,777,215 seconds, 4,660 hours -- which tripped all four unlock tiers on
+			// the first round any player finished.
+			.writeInt((int) characterService.displayedPlaySeconds(charaId))
 			// The same clan record 0x4122 carries, and this parser writes the same profile slots,
 			// so disagreeing between the two would half-update the client's view.
 			.writeInt((int) clan.id())

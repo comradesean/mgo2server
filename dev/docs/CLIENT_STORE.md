@@ -172,9 +172,11 @@ something MGO writes must be read by the single-player game.
 > single u32, and this is what writes it. "Only 4 bytes move" was a fact about the file, not about
 > where its contents come from — the two are different questions and the old reading conflated them.
 >
-> **Consequence, and it is live: we hardcode `0xffffff` into that slot** at
-> `HostGameController.java:733` — 16,777,215 seconds, 4,660 hours — on **every round end**. Every
-> player trips all four tiers immediately. See the corrected caution at the end of this section.
+> **Fixed 2026-07-31.** The slot had hardcoded `0xffffff` — 16,777,215 seconds, 4,660 hours — on
+> every round end, tripping all four tiers immediately for every player. It now sends
+> `CharacterService.displayedPlaySeconds(charaId)`: `sum(round_report.seconds_in_game)` across the
+> six playable modes, the same total the personal stats screen and `0x4b48` show. See the resolved
+> caution at the end of this section for why that quantity and not another.
 
 **Three candidates were eliminated** (2026-07-28) — the second is now superseded by the box above:
 
@@ -204,17 +206,17 @@ separate from the record store.
 
 Two cautions for whoever picks this up:
 
-- ~~**The server cannot help.** The unlock is client-side and will never appear in a packet.~~
-  **WRONG, corrected 2026-07-30. The server is the *only* thing that can drive it**, through
-  `0x4129` `+1172` — see the box at the top of this section. The unlock is client-side in the sense
-  that the client writes the file; it is server-side in the sense that the client writes whatever
-  number we send.
+- **The server cannot help** was true of the question this section was actually asking in
+  2026-07-28 — whether the store (§1–§5, the 26-record P2P property list) is server-visible. It
+  isn't, and nothing here overturns that. It just wasn't the same question as "can the server drive
+  the MGS4 unlock", which turned out to have the opposite answer once `0x4129 +1172` was found —
+  this section had no way to know that yet.
 
-  The rest of the old caution still stands and is now the useful half: `chara_training_time` and
-  `seconds_in_game` are what *we* track for the stats screens. `seconds_in_game` summed per
-  character is a plausible source for `+1172`, but it is **not the same quantity** — it counts time
-  in rounds, not time in MGO — so adopting it is an operator-policy decision to be argued, not a
-  substitution to be made quietly.
+  What we track for the stats screens — `chara_training_time` and `seconds_in_game` — turned out to
+  double as the answer: `seconds_in_game` summed across the six playable modes
+  (`CharacterService.displayedPlaySeconds`) is what `+1172` now sends. We don't track time in menus
+  or the pre-round wait, only time in a round, which is deliberate — see that method's doc for why
+  presence time was rejected in favor of per-mode round time.
 - **The observed files are written at different times** (`helpdisp` mid-session, `mgof` days apart,
   `opt`/`scradj` older), so they are written by different triggers rather than dumped together at
   exit. Timestamps are evidence about which subsystem wrote what.

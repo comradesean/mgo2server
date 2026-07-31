@@ -159,10 +159,10 @@ wins came from finding a second, non-network path to the same struct**, not from
 
 1. **`0x4129` `+1172` is play time in seconds and drives MGS4's single-player unlocks.** Its readers
    feed `0x7F6F70`, which divides by 3600 and ORs cumulative bits into the `mgof.sav` flag word at
-   0, 10, 20 and 50 hours. **We hardcode `0xffffff`** (4,660 h) at every round end, tripping all
-   four tiers for everyone. Left in place deliberately — the replacement is a policy choice about
-   what "time played" means, and `seconds_in_game` is a different quantity. See `CLIENT_STORE.md` §6,
-   whose "the server cannot help" this overturned.
+   0, 10, 20 and 50 hours. It hardcoded `0xffffff` (4,660 h) at every round end, tripping all four
+   tiers for everyone; **fixed 2026-07-31** to send `sum(seconds_in_game)` across the six playable
+   modes. See `CLIENT_STORE.md` §6 for why that quantity, and for the "the server cannot help"
+   caution it turned out not to touch — that was about a different question.
 2. **`0x4120` byte 0 bit 0 is an "already initialised" marker**, not the mystery constant
    PROTOCOL.md called it. Clear it and the client memsets 33 list-preference bytes and overwrites
    ~30 settings with defaults.
