@@ -40,16 +40,26 @@ public final class GameCrypto {
 	 * rather than from a table, so there is nothing to read off. Only `0x3003`, `0x4700` and
 	 * `0x4990` are handled here, and of those only `0x3003` is <em>confirmed</em>: its payload
 	 * decrypts to a correct account id, which a wrong list or key could not produce.
+	 * <p>
+	 * Independently reproduced 2026-07-26 from the send side: across all 112 client-to-server
+	 * builders, the only ones that call the in-place Blowfish routine {@code 0xD5D124} are exactly
+	 * the ids listed here. The membership is therefore tier 1 even though the list's provenance is
+	 * tier 4.
 	 */
 	private static final int[] DECRYPT_COMMANDS = { 0x3003, 0x4310, 0x4320, 0x43c0, 0x4700, 0x4990 };
 
 	/**
 	 * Commands whose payload the server encrypts on the way out.
 	 * <p>
-	 * <b>Entirely unverified.</b> Nothing in this server sends `0x4305`, so this cipher has never
-	 * encrypted a byte the client has seen, and whether the client expects it encrypted is unknown
-	 * — the id appears as a code immediate in the binary but never near the crypto path. Inherited
-	 * from the reference servers. If `0x4305` is ever implemented, confirm this before trusting it.
+	 * <b>Corrected 2026-07-26.</b> This used to read "nothing in this server sends `0x4305`", which
+	 * has been false since the Create Game pre-fill was implemented:
+	 * {@code HostGameController.getHostSettings} sends it every time that screen opens, and
+	 * {@code MatchStateIT} asserts the Blowfish-padded wire length. So this is the <em>only</em>
+	 * exercise of the encrypt direction in the whole server, not dead parity code.
+	 * <p>
+	 * Still inherited from the reference servers, and still <b>not</b> confirmed against a client
+	 * that the reply must be encrypted — a live client did accept the encrypted form (the Create
+	 * Game screen pre-filled on 2026-07-22), which is evidence it is at least not rejected.
 	 */
 	private static final int[] ENCRYPT_COMMANDS = { 0x4305 };
 

@@ -13,17 +13,51 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DOCROOT = pathlib.Path(__file__).parent / "www"
 
+# TLS material is deliberately NOT under DOCROOT: www/ is a document root that gets copied into the
+# container and served, and private keys have no business inside it. Overridable because the
+# container mounts the two directories separately.
+TLSDIR = pathlib.Path(os.environ.get("MGO2SERVER_TLS_DIR") or pathlib.Path(__file__).parent / "tls")
+
 # Confirmed from a real client: MGO2 fetches
 #   GET http://mgo2web.konami.com/us/mgo2/policy/policy.txt
 # with User-Agent "PS3Application libhttp/4.9.3-000 (CellOS)". Files under www/ are served at
 # their matching path; anything else still gets a stub so new endpoints show up in the log
 # rather than failing.
-TERMS = (b"nomad-ng test server.\r\n\r\n"
-         b"This is a private server for development testing.\r\n")
+# The fallback body, served whenever a path has no file behind it.
+#
+# Formatted as a HELP DOCUMENT on purpose. This stub's most likely audience is a player looking at
+# the TIPS panel for a topic we have not written yet, and that panel parses <title> and
+# <page-break> (see HELP.md). Written as flat prose it renders as one untitled page; written this
+# way it gets a title, a 1/3 counter and working L1/R1. Everywhere else the tags are simply text.
+#
+# Lines are hand-wrapped at <= 42 characters to match the documents in www/us/mgo2/help/, and the
+# line endings are LF for the same reason -- every file in the docroot is LF. This used to send
+# CRLF, which disagreed with every file it was standing in for.
+TERMS = (b"<title>UNEXPECTED SCREEN</title>\n"
+         b"You should not be seeing this message.\n"
+         b"\n"
+         b"The server was asked for a document it\n"
+         b"does not have, and this is the fallback.\n"
+         b"<page-break>\n"
+         b"Please report it through GitHub Issues.\n"
+         b"Include the screen you were on, what you\n"
+         b"did to get here, and any error code.\n"
+         b"<page-break>\n"
+         b"Steps to reproduce are the most useful\n"
+         b"part. The time it happened helps too --\n"
+         b"the server log records every address\n"
+         b"that was requested.\n"
+         b"\n"
+         b"Thank you for your support.\n")
 
 
 # Paths the application server owns. Everything else is answered by this harness.
-PROXY_PREFIXES = ("/us/mgo2/kid/",)
+#
+# /rank/ is the Rankings screen: mgogetrank.html and mgogetrank_clan.html, both POSTs with a
+# form-urlencoded body. Their replies are binary and XOR-obfuscated, so they must come from the
+# application rather than from the stub below — default_body() would answer a single 0x00 byte,
+# which the client reads as a zero-record board with a garbage total.
+PROXY_PREFIXES = ("/us/mgo2/kid/", "/us/mgo2/rank/")
 
 WEB_SERVER = os.environ.get("MGO2SERVER_WEB_URL", "http://web:8080")
 
@@ -144,7 +178,7 @@ if __name__ == "__main__":
         # OBSERVED.md, "The certificate branch".
         chain = os.environ.get("MGO2SERVER_TLS_CERT", "cert.pem")
         tls_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        tls_ctx.load_cert_chain(str(DOCROOT / chain), str(DOCROOT / "key.pem"))
+        tls_ctx.load_cert_chain(str(TLSDIR / chain), str(TLSDIR / "key.pem"))
         # The PS3's TLS stack is from 2008; allow the old ciphers and versions it offers.
         tls_ctx.minimum_version = ssl.TLSVersion.TLSv1
         tls_ctx.set_ciphers("ALL:@SECLEVEL=0")

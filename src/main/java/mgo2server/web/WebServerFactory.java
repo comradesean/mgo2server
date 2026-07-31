@@ -5,6 +5,7 @@ import mgo2server.web.controller.AccountWebController;
 import mgo2server.web.controller.AuthWebController;
 import mgo2server.web.controller.HealthWebController;
 import mgo2server.web.controller.NewsWebController;
+import mgo2server.web.controller.RankingWebController;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -20,6 +21,8 @@ public class WebServerFactory {
 		controllers.add(new AccountWebController(services.getAccountService()));
 
 		controllers.add(new NewsWebController(services.getNewsService()));
+
+		controllers.add(new RankingWebController(services.getRankingService()));
 
 		return new WebServer(controllers);
 	}

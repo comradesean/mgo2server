@@ -1,0 +1,118 @@
+meta:
+  id: mgo2_cmd_4b51_s2c
+  title: "MGO2 0x4b51 — clan emblem upload result (server -> client)"
+  endian: be
+doc: |
+  Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md).
+
+  **Emblem upload.** The reply to 0x4b50, `{u8 mode, byte[768]}` (builder 0xD5804C, reached from
+  the emblem screen through task kind 25). Mode 3 is "put on display" and is the only value the
+  client post-processes; 2 and 4 also occur and are [UNKNOWN]. [CONFIRMED LIVE 2026-07-27].
+
+  **Result routing is at 0xAD3E20**, and the codes it can select are the client's own, resolved
+  through the error table at 0x106D714 (664 entries of {u32 dialogId, i32 ordinal}, scanned by
+  0xB8F988, raised by 0x885A08, resolved via 0x240708):
+
+      -1216  "A fixed amount of time must pass in order for the emblem to be updated."
+      -1202  "Unable to update clan emblem"
+      -1207  "Unable to locate designated clan"
+      -1215  "Use of the clan emblem is currently forbidden"
+      -1218  "You do not have emblem editing rights"
+
+  The chain was verified against a case already shipping: -260 on character creation resolves to
+  "Desired PC name is already in use", which is exactly what the client shows. That is the
+  observation that would have falsified the model.
+
+  **CAVEAT — two traces of this dispatcher disagree, and both stay on the record.**
+
+    * An EARLIER trace concluded that only -1207 and -1202 reach a dialog, and that every other
+      non-zero value **memsets the client's 768-byte emblem buffer**, destroying a player's
+      work-in-progress. If that is true, a refusal must be one of those two codes and nothing else.
+    * A LATER, deeper trace **could not reproduce it**: every branch of 0xAD3E20 raises a dialog,
+      and neither that dispatcher nor the 0x4b51 handler itself (0xD555D4) contains a memset. So
+      the wipe, if it happens at all, lives in the emblem screen's event-104 consumer, which nobody
+      has located.
+
+  Neither has been settled by a live experiment that would distinguish them. The confirming
+  observation is simple and has not been made: refuse an upload with -1216 while a work-in-progress
+  emblem is on screen and see whether it survives. Until then, -1202 is the safe fallback.
+
+  Whether an emblem re-display cooldown exists at all is **operator policy**: nothing client-side
+  enforces one, and 0x4b21's T+0x48 was tried as the countdown feed and eliminated live
+  (mgo2_cmd_4b21_s2c.ksy). The countdown strings 17246/17247 and 17252/17253 are reachable from no
+  instruction in the binary, so this build cannot display a remaining time even if it wanted to.
+
+  Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD555D4**,
+  which re-checks the id (`cmpwi r0,19281` = 0x4b51) before reading anything.
+
+  Whole payload is ONE s4. The parser reads it, closes pending-request slot 104
+  (0xD32E08 state=2) and publishes the value as that request's result (0xD32E70).
+  Nothing else is read; a longer payload would simply be ignored, a shorter one would read
+  stale receive-buffer bytes (the readers bound-check the 1023-byte buffer, not the payload
+  length — see PROTOCOL.md).
+
+  Read primitives (all confirmed by disassembling the primitive table at 0xD5C844+):
+  0xD5CB8C / 0xD5CB54 u1, 0xD5CC14 / 0xD5CBC4 u2, 0xD5CC64 / 0xD5CCD8 u4 (each pair identical
+  twins — see the CORRECTION below), 0xD5D018 fixed-size
+  byte block of `len` bytes (memcpy + a client-side NUL written at dest[len], so the wire
+  consumes exactly `len`), 0xD5CEB0 "cursor < payload_length?" (returns -1 at end — this is
+  what makes a list size-driven), 0xD5C844/0xD5C858 begin/end read. An earlier revision added:
+  "In each signed/unsigned pair the LOWER address is the signed accessor (proved on the write
+  side, where 0xD5C95C uses `sraw` and 0xD5C9BC uses `srw`; and here 0xD5CC64's value is
+  reloaded with `lwa`)." **That claim is SUPERSEDED — see the CORRECTION below.** Only the
+  `lwa` half of it survives, and it is a fact about the caller, not the primitive.
+
+  CORRECTION (verified 2026-07-26, whole-function compare at every width): that rule is wrong,
+  and it is wrong on the READ side at ALL widths, not just at u32. Each "signed/unsigned pair"
+  is instruction-for-instruction identical — same bound check, same byte-assembly loop, same
+  `extsb` on each byte, same store width:
+    * u8:  0xD5CB54 == 0xD5CB8C  (bound `cmpwi 1023`, `lbzx`/`stb`, cursor += 1)
+    * u16: 0xD5CBC4 == 0xD5CC14  (bound `cmpwi 1022`, two `lbzx`, `sth`,  cursor += 2)
+    * u32: 0xD5CC64 == 0xD5CCD8  (bound `cmpwi 1020`, 4-iteration loop, `stw`, cursor += 4)
+    * u64: 0xD5CD4C == 0xD5CDC0  (bound `cmpwi 1016`, 8-iteration loop, `std`, cursor += 8)
+  So **no read primitive is a signed accessor at any width**, and "0xD5CBC4 s2" / "0xD5CC64 s4"
+  are as unfounded as the u32 claim. Signedness comes from the CALLER — the value being
+  reloaded with `lwa`, or being compared against known-negative error constants — never from
+  the primitive's address.
+
+  The write side does not rescue the rule either. There are **three** u32 write primitives, not
+  a signed/unsigned pair: 0xD5C95C (`sraw`), 0xD5C9BC (`srw`) and 0xD5CA1C (`sraw`). The
+  sraw/srw difference is inert because each iteration masks with `and r0,r4,r0` where r0 =
+  `slw r7,r10` of 255, and then stores only the low byte with `stbx`: for shifts 16/8/0 the
+  masked operand is non-negative in 32 bits so the two shifts agree outright, and for shift 24
+  they differ only in bits above bit 7, which `stbx` discards. Identical bytes on the wire.
+
+  Request-slot machinery: 0xD32E08(session, slot, state) writes session+0x160+slot*4+8 and
+  0xD32E70(session, slot, value) writes session+0x330+slot*4+12 — the client's pending-request
+  table (117 slots). A reply that calls these is the terminator of a request; `value` is the
+  s4 the packet carried. 0xD33CD8(session, event, arg) is the UI event dispatch instead.
+
+  DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
+  the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
+  0xD38804. GATE: function 0xD361A4, tree head 0xD361E8. ACCOUNT: function 0xD37024, tree head
+  0xD37074. It is also not a "literal compare chain": each tree head is immediately followed by
+  a `bgt` (0xD3880C / 0xD361F0 / 0xD3707C) that splits the id space, i.e. a binary search, so
+  ids are not tested in listed order and a "chain position" carries no meaning.
+  **UI event dispatch, traced 2026-07-26.** This spec cites `0xD33CD8`. That helper is generic
+  ("command N arrived") and does two things on the net-session context: it calls a callback at
+  `netctx+0x11388 + 4*id` **immediately and synchronously inside the parse** if one is registered
+  (`0xD33D24`), and it bumps a saturating one-byte pending counter at `netctx+0x11468 + id`
+  (`0xD33D4C`), read and cleared by the poller `0xD33F8C`. Only ten ids are ever polled — `3`,
+  `0x1C`, `0x1D`, `0x1E`, `0x22`, `0x24`, `0x27`, `0x28`, `0x29`, `0x37` — so any other event
+  reaches the game **only** through the callback table. The value is handed to the callback and
+  otherwise dropped; nothing queues. Enumerating every `bl 0xD33CD8` gives 49 sites with 49
+  distinct ids, one per command parser, so the id says which command arrived and nothing about what
+  is rendered. Full mechanism and its consequences: `dev/docs/PROTOCOL.md` "UI events: how
+  0xD33CD8 dispatches".
+
+seq:
+  - id: result
+    type: s4
+    doc: |
+      [CONFIRMED 2026-07-27] Emblem-upload result. 0 = the emblem was accepted; the five negative
+      codes and their strings are listed in the top-level doc, along with the unresolved question
+      of whether a refusal wipes the client's work-in-progress buffer.
+
+      It is typed s4 because the CALLER reloads it with `lwa`, not because of the primitive:
+      0xD5CC64 is byte-identical to 0xD5CCD8 and is not a signed accessor (see the CORRECTION in
+      the top-level doc).

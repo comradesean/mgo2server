@@ -1,0 +1,130 @@
+package mgo2server.game.controller;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.HexFormat;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * The empty-rotation guard on {@code 0x4310}, tested against real captured payloads.
+ *
+ * <p><b>The bug.</b> Creating a game without selecting any rule or stage was accepted, and the
+ * client then hung on an infinite load — there is no round for it to start. The client ships the
+ * sentence for this itself (dialog 2944, <i>"Game rules and map have not been set. / Please set
+ * game rules and map."</i>) but the check does not fire, so the settings reach the server.
+ *
+ * <p><b>Every payload below is a real {@code 0x4310}</b>, taken verbatim from the 214 stored in
+ * {@code dev/proto/samples/4310/captures.psv}. Two of those 214 carry a completely empty rotation —
+ * both from character 3 on 2026-07-28 — which is what proves this reaches us in practice rather
+ * than only in theory. The valid ones are included so the guard is shown to admit real games, not
+ * merely to reject one shape.
+ */
+public class HostSettingsRotationGuardTest {
+
+	/** Character 3, 2026-07-28T05:26:30. No rule or stage selected in any of the 16 rounds. */
+	private static final String EMPTY_A =
+			"706f6f7000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000010000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000100000000200000000000000000000000000160000000000000008"
+			+ "000000040000000400000004000000040000000400000003000000040000000f"
+			+ "000000050000001e00000005000000040000001e000000040000000a00000004"
+			+ "0001240000000000030003000000000000000000000000000000000000000000";
+
+	/** Character 3, 2026-07-28T14:15:28. The second of the two. */
+	private static final String EMPTY_B =
+			"706f6f7000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000010000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000100000000202000000000000000000000000160000000000000008"
+			+ "000000040000000400000004000000040000000400000003000000040000000f"
+			+ "000000050000001e00000005000000040000001e000000040000000a00000004"
+			+ "0001240020000000030003000000000000000000000000000000000000000000";
+
+	/** Character 1, 2026-07-22T13:53:01. One round: rule 1, map 2 — the common shape, 206 of 214. */
+	private static final String ONE_ROUND =
+			"64656661756c7400000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000010102000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000100000000200000000000000000000000000160000000000000008"
+			+ "000000040000000400000004000000040000000400000003000000040000000f"
+			+ "000000050000001e00000005000000040000001e000000040000000a00000004"
+			+ "0001240000000000030003000000000000000000000000000000000000000000";
+
+	/** Character 1, 2026-07-22T22:13:09. Six rounds, the longest rotation captured. */
+	private static final String SIX_ROUNDS =
+			"64656661756c7400000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "000001020c000402000004020507000302000102020000000000000000000000"
+			+ "0000000000000000000000000000000000000000000000000000000000000000"
+			+ "0000000000100000000202000000000000000000000000160000000000000063"
+			+ "0000000200000063000000020000006300000002000000630000000200000005"
+			+ "000000630000000200000063000000020000001e000000040000000a00000004"
+			+ "00012c0020000000030003000000000000000000000000000000000000000000";
+
+	private static byte[] blob(String hex) {
+		return HexFormat.of().parseHex(hex);
+	}
+
+	@Test
+	public void theTwoCapturedEmptyRotationsAreRejected() {
+		assertThat(HostGameController.hasAnyRound(blob(EMPTY_A)))
+			.as("a captured payload with every rotation triple zeroed selects no round")
+			.isFalse();
+		assertThat(HostGameController.hasAnyRound(blob(EMPTY_B))).isFalse();
+	}
+
+	@Test
+	public void realRotationsAreAccepted() {
+		assertThat(HostGameController.hasAnyRound(blob(ONE_ROUND)))
+			.as("one round, rule 1 map 2 — the shape 206 of the 214 captures carry")
+			.isTrue();
+		assertThat(HostGameController.hasAnyRound(blob(SIX_ROUNDS))).isTrue();
+	}
+
+	/**
+	 * Rule 0 is Deathmatch, so the test has to be the map. A rotation of {@code [0, 2, 0]} is a
+	 * perfectly ordinary Deathmatch on map 2 and must survive the guard; getting this backwards
+	 * would refuse every Deathmatch on the server.
+	 */
+	@Test
+	public void ruleZeroIsDeathmatchAndNotEmptiness() {
+		var deathmatch = blob(EMPTY_A);
+		deathmatch[163] = 0;
+		deathmatch[164] = 2;
+
+		assertThat(HostGameController.hasAnyRound(deathmatch))
+			.as("rule 0 with a real map is Deathmatch, not an unset round")
+			.isTrue();
+	}
+
+	/** A blob too short to hold the rotation cannot describe a startable game either. */
+	@Test
+	public void aTruncatedBlobHasNoRounds() {
+		assertThat(HostGameController.hasAnyRound(new byte[100])).isFalse();
+		assertThat(HostGameController.hasAnyRound(new byte[0])).isFalse();
+	}
+
+	/** All 214 captures are 352 bytes; the guard must not depend on a shorter reading. */
+	@Test
+	public void theCapturesAreTheFullThreeHundredAndFiftyTwoBytes() {
+		assertThat(blob(EMPTY_A)).hasSize(352);
+		assertThat(blob(SIX_ROUNDS)).hasSize(352);
+	}
+}

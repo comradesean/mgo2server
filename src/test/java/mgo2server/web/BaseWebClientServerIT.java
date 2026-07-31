@@ -4,7 +4,6 @@ import io.jooby.Jooby;
 import io.jooby.Server;
 import io.jooby.ServerOptions;
 import mgo2server.TestDatabase;
-import mgo2server.TestUtil;
 import mgo2server.common.Services;
 import mgo2server.common.ServicesFactory;
 import okhttp3.OkHttpClient;
@@ -28,13 +27,14 @@ public abstract class BaseWebClientServerIT {
 
 		services = ServicesFactory.createServices(database.jdbi());
 
-		var port = TestUtil.freePort();
-		host = "http://localhost:" + port;
-
 		var jooby = new Jooby();
 		var webServer = WebServerFactory.createWebServer(services, database.dataSource());
 		webServer.use(jooby);
-		server = Server.loadServer(new ServerOptions().setPort(port)).start(jooby);
+		// Port 0, not a pre-picked free port: jooby's Netty server only blocks for the bind to
+		// finish (Server.start()) when the port is ephemeral. A pre-picked, explicit port binds
+		// asynchronously and races the first request.
+		server = Server.loadServer(new ServerOptions().setPort(0)).start(jooby);
+		host = "http://localhost:" + server.getOptions().getPort();
 	}
 
 	@AfterEach

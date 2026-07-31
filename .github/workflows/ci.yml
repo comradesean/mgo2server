@@ -65,7 +65,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: nomad-ng:ci
+          tags: mgo2server:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -73,7 +73,7 @@ jobs:
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: nomad-ng:ci
+          image-ref: mgo2server:ci
           format: table
           exit-code: "1"
           ignore-unfixed: true

@@ -15,6 +15,8 @@ public class Lobby {
 
 	private boolean beginnersOnly;
 
+
+
 	private boolean expansionRequired;
 
 	private boolean noHeadshots;

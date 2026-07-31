@@ -7,6 +7,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
+import mgo2server.common.service.ClanService;
 import mgo2server.game.GameError;
 import mgo2server.game.packet.GamePacket;
 import org.junit.jupiter.api.Test;
@@ -152,6 +153,55 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 		assertThat(payload.getInt(0)).isEqualTo(GameError.NONE.result());
 		assertThat(payload.getByte(4)).isEqualTo((byte) 3);   // slots
 		assertThat(payload.getByte(5)).isEqualTo((byte) 0);   // character count
+	}
+
+	/**
+	 * A new account grants NO paid entitlement — index 3 bit 0 is clear by default.
+	 * <p>
+	 * That bit grants the day-one <b>MGO Codec Pack</b>, a paid Konami-ID item: the predicate
+	 * {@code 0x9B9DF0} refuses any catalogue phrase whose gate exceeds {@code (byte & 1) << 4}, and
+	 * the 32 rows gating on 16 match the published product list 32/32 in order. It defaulted to set
+	 * until V64, which handed purchased content to every account that had ever existed.
+	 * <p>
+	 * The 32-byte width is [ELF]: the parser at {@code 0xD3732C} copies exactly 32
+	 * ({@code li r5,32} at {@code 0xD3774C}).
+	 */
+	@Test
+	public void aNewAccountGrantsNoPaidEntitlement() {
+		var payload = loginThen(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
+			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
+
+		var trailer = 0x1d7 - 32;
+		assertThat(payload.getUnsignedByte(trailer + 3) & 1)
+			.as("bit 0 grants a PAID item; it must never be granted by default")
+			.isZero();
+		assertThat(payload.getUnsignedByte(trailer + 1))
+			.as("byte 1 is proven dead — displacement 485 is read nowhere in the binary — so we stop"
+				+ " sending the inherited 0x07 (V66)")
+			.isZero();
+	}
+
+	/**
+	 * Granting it on the account sets the bit on the wire — no restart involved.
+	 * <p>
+	 * This is the point of V62: the byte was a compile-time constant, then an environment variable,
+	 * and neither could be changed for one account or without a restart. The experiment in
+	 * {@code POST_LAUNCH.md} was run this way and settled what the bit does — it gates the 32 codec
+	 * / preset messages, and gear was entirely unaffected.
+	 */
+	@Test
+	public void grantingTheCodecPackSetsTheBitOnTheWire() {
+		accountId = createAccount();
+		TestDatabase.get().jdbi().useHandle(handle ->
+			handle.createUpdate("update account set entitlements_byte3 = 1 where id = :id")
+				.bind("id", accountId).execute());
+
+		var payload = loginThenNoAccount(new GamePacket(CharacterGameController.GET_CHARACTER_LIST),
+			CharacterGameController.CHARACTER_LIST_RESULT).get(0).getPayload();
+
+		assertThat(payload.getUnsignedByte(0x1d7 - 32 + 3) & 1)
+			.as("read per request, so the UPDATE applies without a restart")
+			.isEqualTo(1);
 	}
 
 	@Test
@@ -326,6 +376,65 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 		assertThat(row.get("active")).isEqualTo(false);
 		assertThat(row.get("old_name")).isEqualTo("Snake");
 		assertThat(row.get("name")).isEqualTo(":#" + snake);
+	}
+
+	/**
+	 * A clan leader is refused the delete, and told the two ways out.
+	 * <p>
+	 * {@code -1212} renders as "You are the leader of a clan. Either disband the clan or assign
+	 * another character as leader." — both of which the client can already do ({@code 0x4b04},
+	 * {@code 0x4b60}).
+	 * <p>
+	 * The refusal matters beyond the sentence. The delete is a <b>soft</b> delete, so
+	 * {@code clan.leader_chara_id}'s {@code on delete set null} never fires; a leader who got
+	 * through left the clan pointing at a character nobody could log in as, with no in-game way to
+	 * repair it.
+	 * <p>
+	 * <b>This replaces an auto-succession test written earlier the same day</b>, which asserted that
+	 * the longest-standing member was promoted. That behaviour was a policy invention adopted while
+	 * {@code -1212} was believed unestablished; it is established, so the game's own answer wins.
+	 */
+	@Test
+	public void refusesToDeleteACharacterThatLeadsAClan() {
+		accountId = createAccount();
+		var leader = insertCharacter("Snake", true);
+
+		var clans = services.getClanService();
+		var clanId = clans.createClan(leader, "Rat Patrol", "").orElseThrow();
+
+		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 0),
+			CharacterGameController.DELETE_CHARACTER_RESULT);
+
+		assertThat(resultOf(replies.get(0)))
+			.isEqualTo(GameError.CHARACTER_IS_CLAN_LEADER.result());
+
+		// Still there, still active, still leading — the refusal left nothing half-done.
+		var active = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select active from chara where id=:id")
+				.bind("id", leader).mapTo(Boolean.class).one());
+		assertThat(active).isTrue();
+		assertThat(clans.membershipOf(leader).state()).isEqualTo(ClanService.STATE_LEADER);
+		assertThat(clans.clanById(clanId)).isPresent();
+	}
+
+	/** An ordinary member is not a leader, so nothing blocks their delete. */
+	@Test
+	public void aPlainClanMemberCanStillBeDeleted() {
+		accountId = createAccount();
+		var leader = insertCharacter("Snake", true);
+		var member = insertCharacter("Otacon", true);
+
+		var clans = services.getClanService();
+		var clanId = clans.createClan(leader, "Rat Patrol", "").orElseThrow();
+		clans.apply(member, clanId);
+		clans.approve(clanId, member);
+
+		// Index 1 — delete clamps to the last character, and this asserts we refuse on LEADERSHIP
+		// rather than on clan membership.
+		var replies = loginThenNoAccount(withIndex(CharacterGameController.DELETE_CHARACTER, 1),
+			CharacterGameController.DELETE_CHARACTER_RESULT);
+
+		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.NONE.result());
 	}
 
 	/** Freshly created characters are protected by the cooldown. */

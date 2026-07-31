@@ -7,14 +7,33 @@
 
 name: mgo2server
 
+# Operator-tunable values live in server.env at the repository root, one documented file rather
+# than scattered through this one. It is committed and holds no secrets.
+#
+# Note the two mechanisms compose has and do not confuse them: a `.env` file is interpolated into
+# THIS file's ${...} placeholders, while `env_file:` puts variables into the CONTAINER. These
+# tunables are read by the server process, so they want the second.
+#
+# Precedence runs `environment:` over `env_file:`, so anything named in a service's environment
+# block below cannot be overridden from server.env. That is deliberate for the per-lobby wiring
+# (lobby type, id, port) — those differ per container and are not operator policy.
+x-server-env-file: &server-env-file
+  - server.env
+
 x-server-env: &server-env
   # Set to DEBUG to trace every packet, including hex dumps, when testing a real client.
-  MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-INFO}
-  # Third field of the login reply; see AuthWebController. Set to try alternatives.
-  MGO2SERVER_LOGIN_PERKS: ${MGO2SERVER_LOGIN_PERKS:-}
+  MGO2SERVER_LOG_LEVEL: ${MGO2SERVER_LOG_LEVEL:-DEBUG}
   MGO2SERVER_DB_URL: jdbc:postgresql://postgres:5432/mgo2server
   MGO2SERVER_DB_USER: mgo2server
   MGO2SERVER_DB_PASSWORD: ${MGO2SERVER_DB_PASSWORD:-mgo2server}
+  # The address each lobby advertises in the gate list -- what the client is told to dial next.
+  # It MUST be reachable from the console or RPCS3, so 127.0.0.1 only works when the emulator runs
+  # on this host. Override per deployment: MGO2SERVER_ADVERTISE_IP=192.168.1.200 docker compose up
+  #
+  # Unset it entirely to stop the servers writing their own lobby rows, leaving whatever
+  # dev/tools/seed.sql put there. Setting it wrong breaks login for everyone, so it has no default
+  # beyond the one below.
+  MGO2SERVER_ADVERTISE_IP: ${MGO2SERVER_ADVERTISE_IP:-192.168.1.200}
 
 services:
   postgres:
@@ -32,9 +51,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Every other long-lived service is unless-stopped; without this postgres defaulted to "no".
+    # When the Docker daemon restarts (observed twice on 2026-07-29, WSL taking the whole daemon
+    # down), all eleven servers came back and the one thing they depend on did not — so they
+    # crash-looped until someone started it by hand. Restarting the database is exactly the case
+    # that must not need a human.
+    restart: unless-stopped
 
   # Runs migrations once, then exits. Both servers wait for it so neither races the schema.
   migrate:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["migrate"]
@@ -47,21 +73,30 @@ services:
   # One server per lobby, matching the lobby rows created by dev/tools/seed.sql. Each instance answers
   # only its own lobby's commands, so all three must run for a client to get past the gate.
   gate:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking, not a published port. Under WSL2 mirrored networking, Docker's userland
+    # proxy binds published ports inconsistently — sometimes to 0.0.0.0 (reachable only via
+    # loopback, NOT the mirrored LAN interface), so LAN/VM clients get connection-refused. Host
+    # networking (like probe-stun) skips the proxy: the server binds the LAN interface directly, so
+    # the game dials the gate on 15731 straight through. The container listens on 15731 itself.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "0"
       MGO2SERVER_LOBBY_ID: "1"
-    ports:
       # Observed from a real client: MGO2 dials the gate on 15731, not 5730.
-      - "${MGO2SERVER_GATE_PORT:-15731}:5730"
+      MGO2SERVER_LOBBY_NAMES: "Gate"
+      MGO2SERVER_GAME_PORT: "15731"
+      # Host networking loses the "postgres" service DNS name; reach it via the published host port.
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5730"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15731"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -69,43 +104,179 @@ services:
     restart: unless-stopped
 
   account:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "1"
       MGO2SERVER_LOBBY_ID: "2"
-      MGO2SERVER_GAME_PORT: "5731"
-    ports:
-      - "${MGO2SERVER_ACCOUNT_PORT:-15732}:5731"
+      MGO2SERVER_LOBBY_NAMES: "Account"
+      MGO2SERVER_GAME_PORT: "15732"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5731"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15732"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 20s
     restart: unless-stopped
 
-  gamelobby:
+  # One instance per game-lobby row in dev/tools/seed.sql. A row in that table is an address the
+  # client will dial: the gate hands out its ip and port, and picking that lobby — or the port
+  # check picking the first game lobby in the list — opens a socket to it. A row with no server
+  # behind it is not an empty lobby, it is "unable to connect to lobby".
+  #
+  # MGO2SERVER_LOBBY_ID must be the row's id and MGO2SERVER_LOBBY_SUBTYPE its subtype: hosted
+  # games are inserted against that id, and the game list filters on it.
+  freebattle1:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
     environment:
       <<: *server-env
       MGO2SERVER_LOBBY_TYPE: "2"
-      MGO2SERVER_LOBBY_ID: "3"
-      MGO2SERVER_GAME_PORT: "5732"
-    ports:
-      - "${MGO2SERVER_LOBBY_PORT:-15733}:5732"
+      MGO2SERVER_LOBBY_ID: "4"
+      MGO2SERVER_LOBBY_SUBTYPE: "1"
+      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
+      # so three of these starting together get three different names.
+      MGO2SERVER_LOBBY_NAMES: "OTACON,MERYL"
+      MGO2SERVER_GAME_PORT: "15733"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5732"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15733"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  freebattle2:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    # Host networking — see the gate service for why.
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "7"
+      MGO2SERVER_LOBBY_SUBTYPE: "1"
+      # Free Battle #1. Names are a pool, not a value: whichever is free at startup is taken,
+      # so three of these starting together get three different names.
+      MGO2SERVER_LOBBY_NAMES: "VAMP:BEGINNER,JOHNNY:BEGINNER"
+      # Beginners-only. WARNING: the client refuses entry to a lobby with this bit
+      # set unless the player's own profile+13097 byte is nonzero, and nothing sets
+      # that yet -- so today this lobby shows in the list and rejects EVERYONE with
+      # "You cannot login to this lobby." (dialog 2355). Set to false to make it an
+      # ordinary Free Battle lobby until the profile byte is wired.
+      # Beginners-only. The lobby half of the restriction: it sets bit 0 of the gate list's
+      # restriction byte (0x2003 wire 0x2d), which IS delivered and IS read by the client.
+      #
+      # It does not currently restrict anything. Observed 2026-07-28: a character joined this
+      # lobby with the bit confirmed on the wire and no refusal, and the connect burst was logged
+      # server-side, so the client's own gate (0x884300 -> 0x892220 -> dialog 2355) does not fire
+      # on this path. Enforcement, if we want it, belongs on the server -- refuse the join rather
+      # than trust the client to.
+      MGO2SERVER_LOBBY_BEGINNERS_ONLY: "true"
+      MGO2SERVER_GAME_PORT: "15734"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15734"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  automatching:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "3"
+      MGO2SERVER_LOBBY_SUBTYPE: "2"
+      MGO2SERVER_LOBBY_NAMES: "RAIDEN,SNAKE,LIQUID"
+      MGO2SERVER_GAME_PORT: "15740"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15740"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  basictraining:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "5"
+      MGO2SERVER_LOBBY_SUBTYPE: "7"
+      MGO2SERVER_LOBBY_NAMES: "Basic Training"
+      MGO2SERVER_GAME_PORT: "15737"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15737"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  combattraining:
+    env_file: *server-env-file
+    build: .
+    image: mgo2server:local
+    command: ["game"]
+    network_mode: host
+    environment:
+      <<: *server-env
+      MGO2SERVER_LOBBY_TYPE: "2"
+      MGO2SERVER_LOBBY_ID: "6"
+      # Subtype 8, not 7. Every row in the training menu is gated by 0x884584(n), which matches the
+      # CURRENT lobby's subtype exactly — 7 renders the basic-training rows, 8 the combat-training
+      # rows. The 7/8 grouping applies only to listing, not to contents.
+      MGO2SERVER_LOBBY_SUBTYPE: "8"
+      MGO2SERVER_LOBBY_NAMES: "Combat Training"
+      MGO2SERVER_GAME_PORT: "15738"
+      MGO2SERVER_DB_URL: jdbc:postgresql://127.0.0.1:5432/mgo2server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/15738"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -113,12 +284,13 @@ services:
     restart: unless-stopped
 
   web:
+    env_file: *server-env-file
     build: .
     image: mgo2server:local
     command: ["web"]
     environment: *server-env
     ports:
-      - "${MGO2SERVER_WEB_PORT:-8080}:8080"
+      - "192.168.1.200:${MGO2SERVER_WEB_PORT:-8080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -138,14 +310,14 @@ services:
   # resolver stub do not collide with these.
   probe-http:
     image: python:3.12-alpine
-    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 80'
+    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 80'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
     ports:
-      - "${MGO2SERVER_PROBE_HTTP:-192.168.1.100:80}:80"
+      - "${MGO2SERVER_PROBE_HTTP:-192.168.1.200:80}:80"
     depends_on:
       web:
         condition: service_healthy
@@ -153,17 +325,21 @@ services:
 
   probe-https:
     image: python:3.12-alpine
-    command: sh -c 'cp -r /wwwsrc /www && python /probe.py 443 tls'
+    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 443 tls'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
       # cert-expired.pem swaps in a chain whose only defect is its validity window, which the
       # client reports as 070B rather than 090B. See OBSERVED.md, "The certificate branch".
       MGO2SERVER_TLS_CERT: ${MGO2SERVER_TLS_CERT:-cert.pem}
+      MGO2SERVER_TLS_DIR: /tls
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
       - ./dev/runtime/www:/wwwsrc:ro
+      # Mounted separately from the document root: /wwwsrc is copied into /www and served, and the
+      # private keys must not be inside it.
+      - ./dev/runtime/tls:/tls:ro
     ports:
-      - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.100:443}:443"
+      - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.200:443}:443"
     depends_on:
       web:
         condition: service_healthy
@@ -172,16 +348,20 @@ services:
   # MGO2 is peer-to-peer for matches, so the client discovers its public address before it will
   # enter a lobby. Without a reachable STUN server it retries UPnP and then fails, which presents
   # as a lobby error rather than a NAT one.
+  # coturn, STUN-only, is the responder. It replaced the hand-rolled stun_probe.py on 2026-07-21:
+  # coturn is what echo (the reference server confirmed to play online) uses, and swapping it in
+  # got a client past the port check into clean hosting. stun_probe.py is kept under dev/tools/retired as
+  # a reference/diagnostic; run it with `python stun_probe.py 3478 <ip> <secondary-ip>` if needed.
+  #
+  # A second address is what makes NAT classification possible at all: the client asks the server
+  # to reply from a different address and infers its type from whether that reply arrives. The
+  # secondary must be a real address the host owns on the LAN — a secondary IP on the primary
+  # adapter (see SETUP.md). Edit both IPs in turnserver.conf for a different deployment.
   probe-stun:
-    image: python:3.12-alpine
-    # A second address is what makes NAT classification possible at all: the client asks the
-    # server to reply from a different address and infers its type from whether that reply
-    # arrives. With one address the responder can only answer change-IP from the alternate port,
-    # which lets the client conclude but not distinguish full-cone from symmetric. The secondary
-    # must be a real address on the host (ip addr add ... dev <iface>).
-    command: python /stun.py 3478 ${MGO2SERVER_PUBLIC_IP:-192.168.1.100} ${MGO2SERVER_STUN_SECONDARY_IP:-192.168.1.201}
+    image: instrumentisto/coturn
+    command: -c /etc/turnserver.conf
     volumes:
-      - ./dev/runtime/stun_probe.py:/stun.py:ro
+      - ./dev/runtime/turnserver.conf:/etc/turnserver.conf:ro
     # Host networking, not published ports. Docker's UDP proxy rewrites the source port of
     # replies, and a STUN client checks which address answered — that is the entire mechanism by
     # which it classifies its NAT. Behind the proxy every reply appears to come from a random
@@ -191,6 +371,6 @@ services:
 
 volumes:
   postgres-data:
-    # Pinned to the name the volume already has. The compose project was renamed, and without
-    # this that rename would silently create an empty volume and orphan the existing database.
-    name: nomad-ng_postgres-data
+    # Pinned to the name the volume already has. Without this pin, a compose project rename
+    # would silently create an empty volume and orphan the existing database.
+    name: mgo2server_postgres-data
