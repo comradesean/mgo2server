@@ -64,9 +64,9 @@ SELECT setval(pg_get_serial_sequence('public.lobby', 'id'),
 -- AuthWebController when the player logs in. Seeding a session by hand is meaningless now -- the
 -- column holds 32 hex characters, not the 8-character token this used to write.
 --
--- The password is the MD5 the client sends, so log in with the password 'nomad'.
+-- The password is the MD5 the client sends, so log in with the password 'mgo2server'.
 INSERT INTO public.account (username, password, slots, main_exp)
-VALUES ('tester', md5('nomad'), 3, 0)
+VALUES ('tester', md5('mgo2server'), 3, 0)
 ON CONFLICT (username) DO NOTHING;
 
 -- Something for the news screen, which is one of the first things the client asks for.

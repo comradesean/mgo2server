@@ -1,10 +1,9 @@
 # mgo2server
 
-A Metal Gear Online 2 server emulator, continuing [GHzGangster/mgo2server](https://github.com/GHzGangster/mgo2server).
+A Metal Gear Online 2 server emulator for the retail MGS4 disc BLUS30109.
 
-This tree is the `mgo2server` rewrite with its infrastructure completed and the protocol layer ported
-from the original [Nomad](https://github.com/GHzGangster/Nomad). Most game logic is still to come:
-Nomad implements 78 commands.
+This tree is a rewrite with its infrastructure completed and the protocol layer built up from a
+reference implementation. Most game logic is still to come: the reference implements 78 commands.
 
 ## Protocol
 
@@ -84,9 +83,8 @@ a wrong bit surfaces as an unrelated option appearing set in the browser rather 
 | `compose.yaml` | The local stack: Postgres, migrations, three lobby servers, the web service, the probes. |
 | `CLAUDE.md` | Conventions, chiefly the evidence hierarchy and how to run the tests. |
 
-Other MGO2 servers (echo, mgo2-server, the Nomad servers) are cited in the docs for comparison but
-are not vendored here — consult them on GitHub if needed. `CLAUDE.md` explains why they are not
-treated as specifications.
+Other MGO2 servers are cited in the docs for comparison but are not vendored here — consult them on
+GitHub if needed. `CLAUDE.md` explains why they are not treated as specifications.
 
 ## Requirements
 
@@ -146,9 +144,9 @@ All configuration is read from the environment. Nothing secret is baked into the
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MGO2SERVER_DB_URL` | `jdbc:postgresql://localhost:5432/nomad` | JDBC URL |
-| `MGO2SERVER_DB_USER` | `nomad` | Database user |
-| `MGO2SERVER_DB_PASSWORD` | `nomad` | Database password |
+| `MGO2SERVER_DB_URL` | `jdbc:postgresql://localhost:5432/mgo2server` | JDBC URL |
+| `MGO2SERVER_DB_USER` | `mgo2server` | Database user |
+| `MGO2SERVER_DB_PASSWORD` | `mgo2server` | Database password |
 | `MGO2SERVER_DB_POOL_MAX_SIZE` | `10` | Hikari maximum pool size |
 | `MGO2SERVER_GAME_PORT` | `5730` | Game server port (`0` binds an ephemeral port) |
 | `MGO2SERVER_WEB_PORT` | `8080` | Web API port |
