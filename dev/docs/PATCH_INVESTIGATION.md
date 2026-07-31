@@ -5,7 +5,80 @@ Session log for reconstructing the MGO2 auto-patch mechanism (`checkver.html` �
 The durable findings from this investigation already live in `ADDRESSES.md` §12 and `OBSERVED.md`
 ("Auto-patch — checkver.html and the update flow"); this file is the working narrative, including
 evidence that doesn't belong in those two (fan-tool internals, in-progress stub design) and the
-plan for the live test that hasn't happened yet.
+full run log that got the stub working end to end.
+
+**Status: done.** As of 2026-07-31 a real RPCS3 client runs the whole flow — checkver → relnote →
+`.inf` → confirmation dialog → HTTP download → completion → release note display — against this
+stub. See §0 below for how to run it, or finding 11 (§7) for the live-test log.
+
+## 0. Quickstart — running the stub end to end
+
+Everything is static files served out of `dev/runtime/www/`; no Java web-controller code is
+involved in this flow (`http_probe.py` only proxies `/us/mgo2/kid/` and `/us/mgo2/rank/`, and
+serves the docroot for everything else). The two builder scripts are the only things that need
+running by hand.
+
+1. **Set the target host and versions** in `dev/tools/build_checkver_stub.py`:
+   ```python
+   HOST = "http://192.168.1.200"      # your server's LAN IP
+   FROM_VERSION = (1, 0, 0)
+   TO_VERSION = (1, 36, 0)
+   DISC_ID = "BLUS30109"
+   ```
+   `build_inf_stub.py` imports this module, so it always stays in sync — never edit versions in
+   both places.
+2. **Build the checkver reply and release note**:
+   ```
+   cd dev/tools && python3 build_checkver_stub.py
+   ```
+   Writes `dev/runtime/www/us/mgo2/patch/checkver.html` and
+   `.../patch/<to-version>/relnote.txt`. Also prints `SLOT7_KEY`/`SLOT8_KEY` — the keys
+   `build_inf_stub.py` must build the `.inf` against; they're fixed constants, not per-run
+   secrets, so nothing needs to be copied by hand.
+3. **Build the `.inf` files and stub payloads**:
+   ```
+   python3 build_inf_stub.py
+   ```
+   Writes one `.inf` + one placeholder payload file per record (currently two: disc-qualified and
+   generic) into the same version directory.
+4. **Redeploy** — both files are bind-mounted, so a container restart picks them up without a
+   rebuild:
+   ```
+   docker restart mgo2server-probe-http-1 mgo2server-probe-https-1
+   ```
+5. **Point a real client at it** (see `HOSTS.md` for the `d/testhk` override — the supported route
+   for repointing the five Konami hostnames) and trigger the version check. Expected flow, all
+   live-confirmed:
+   - `POST /us/mgo2/patch/checkver.html` → `0x01` reply → client fetches `relnote.txt`
+   - Client fetches the disc-qualified record's `.inf`, decrypts and parses it
+   - "An update has been uploaded" dialog → **choose HTTP Download**, not Peer-to-Peer (no
+     BitTorrent tracker is implemented) → download completes instantly against the tiny stub
+     payload
+   - Triangle/display-details shows the release note text
+   - **Hitting X to apply produces the generic error dialog — this is expected.** The payload is
+     32 bytes of placeholder text, not a structurally valid patch package, so the install step
+     rejecting its content is the correct outcome; building a real installable payload is a
+     separate, out-of-scope problem (no real Konami patch content is recoverable — §3, §4).
+
+**Sanity-check the crypto without a client**, useful after any change to either builder script:
+```python
+import zlib, hmac, hashlib
+from Crypto.Cipher import Blowfish
+import build_checkver_stub as checkver
+
+data = open("../runtime/www/us/mgo2/patch/1.36.0/BLUS30109.1.0.0to1.36.0.inf", "rb").read()
+ciphertext, outer_tag = data[:-16], data[-16:]
+assert hmac.new(checkver.SLOT8_KEY, ciphertext, hashlib.md5).digest() == outer_tag
+plaintext = Blowfish.new(checkver.SLOT7_KEY[8:64], Blowfish.MODE_CBC,
+                          checkver.SLOT7_KEY[0:8]).decrypt(ciphertext)
+pad = plaintext[-1]
+decompressed = zlib.decompress(plaintext[:-pad])   # raises if the zlib stage is missing/wrong
+print("entries+slack:", decompressed[28:])
+```
+
+**Known cosmetic quirks, not yet fixed** (see finding 11 in §7 for detail): the confirmation
+dialog reads "Ver. 0.00" instead of a real version number, and the release-note text (built in
+`build_checkver_stub.py`'s `build_relnote()`) runs off the bottom of the display screen.
 
 ## 1. The protocol, from the ELF [tier 1]
 
