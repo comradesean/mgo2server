@@ -1,15 +1,15 @@
-<title>PERSONAL DATA</title>
-This is your Personal Data.
+<title>SKILL SETTINGS</title>
+This screen is a PLACEHOLDER.
+The original tip shown here has not
+yet been confirmed.
+<page-break>
+If you have screenshots, notes or other
+reference material showing the original
+text, please submit it through
+GitHub Issues.
+<page-break>
+Your cooperation helps us restore
+METAL GEAR ONLINE as faithfully as
+possible.
 
-Here you can view and
-adjust settings related to your character.
-<page-break>
-You can set skills, player options,
-and gear settings,
-and also view your record and friends.
-<page-break>
-You can set skills and play options at
-the start of a game as well,
-but there is a time limit.
-This is a good place to become familiar
-with what kinds of options are available.
+Thank you for your support.

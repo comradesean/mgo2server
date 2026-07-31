@@ -1,9 +1,15 @@
-<title>AUTOMATCHING LOBBY</title>
-Welcome to the Automatching Lobby!
-
-In this lobby you will automatically be
-matched up with other players of
-similar ability and enter a game.
+<title>AUTOMATCHING</title>
+This screen is a PLACEHOLDER.
+The original tip shown here has not
+yet been confirmed.
 <page-break>
-You will not know the rules of
-the game until the game begins.
+If you have screenshots, notes or other
+reference material showing the original
+text, please submit it through
+GitHub Issues.
+<page-break>
+Your cooperation helps us restore
+METAL GEAR ONLINE as faithfully as
+possible.
+
+Thank you for your support.
