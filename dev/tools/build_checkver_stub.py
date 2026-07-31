@@ -88,6 +88,15 @@ def record(text):
 
 def build_reply():
     from_s, to_s = version_text(FROM_VERSION), version_text(TO_VERSION)
+    # Two records: disc-qualified, then generic -- matches the real Konami 1.36 patch tree.
+    # Tried dropping to one record 2026-07-31 on the theory that uupdate.cc's per-record loop
+    # (0xBB8BCC footer, tail at 0xBB7FA4) was dying while building the SECOND record's .inf
+    # request (0xBB7D88), landing on a generic-error exit -- leading suspect 0xBB7E2C, an
+    # HTTP-object construction check -- before the confirmation dialog. The one-record reply
+    # made things WORSE and reproducibly so: the client didn't even reach relnote.txt, which
+    # it always fetched with two records present. So the paired structure looks load-bearing,
+    # not incidental. Back to two records; the real fix has to be in what differs about
+    # BUILDING the second record's request, not in removing it.
     records = [
         record(f"{DISC_ID}.{from_s}to{to_s}."),
         record(f"{from_s}to{to_s}."),

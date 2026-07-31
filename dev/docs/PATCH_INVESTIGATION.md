@@ -262,15 +262,75 @@ Phases, in ascending order of risk:
    Also resolved in the same pass and worth keeping: the `dl` "mount" isn't a VFS mount (no mount
    table exists anywhere), `dl/p/.l`'s `ENOENT` at boot is a dead read with no consequence, and the
    real archive path is `dl/.p`.
-4. **Found the actual bug, 2026-07-31: the keystore decrypts on `get()`, and every reply built so
-   far sent the two key blobs raw.** Slot mapping (`T+7`→slot 7, `T+71`→slot 8) was confirmed
-   correct — not transposed — but `get()` unconditionally Blowfish-CBC-decrypts whatever `set()`
-   stored, under a master key resident in the ELF at `0xE26DA8`. Sending the desired key raw on the
-   wire means the client's effective key is *Decrypt(our key)* — deterministic garbage, which fails
-   the HMAC tag every time regardless of how correct the `.inf` itself is. This is the real
-   explanation for every rejection since round 2: the `.inf` really has been byte-correct since
-   round 3, and the checkver reply carrying its keys was the actual bug. `build_checkver_stub.py`
-   now Blowfish-CBC-encrypts `SLOT7_KEY`/`SLOT8_KEY` under the master key before writing them into
-   the reply; round-tripped through both directions before redeploying. Not yet re-tested live.
-5. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
-   standing up a working BitTorrent tracker for the `.torrent` path. Not started.
+4. **The keystore-decrypt fix (found 2026-07-31): confirmed correct, twice.** `get()`
+   unconditionally Blowfish-CBC-decrypts whatever `set()` stored, under a master key resident in
+   the ELF at `0xE26DA8`; `build_checkver_stub.py` now sends the two key blobs pre-encrypted under
+   that key so the client's effective key equals `SLOT7_KEY`/`SLOT8_KEY`. This was re-derived
+   independently via an *executed* opcode-faithful trace (master key bytes re-dumped from the ELF,
+   IV/key split re-confirmed at `0xD645C8`, CBC direction re-confirmed at `0xD64690`) and separately
+   confirmed **live**: a debugger breakpoint mid-`.inf`-verification showed the literal ASCII string
+   `"mgo2server_slot7"` sitting in registers — i.e. the client really does end up holding our chosen
+   plaintext key, not decrypted garbage. This fix is settled; do not re-litigate it without new
+   evidence.
+5. **The two-record structure is load-bearing, not incidental — tested live 2026-07-31.** Tried
+   dropping the checkver reply to a single record (disc-qualified only) on the theory that the
+   client was dying while building the *second* record's `.inf` request. Result: reproducibly
+   *worse* — the client didn't even reach `relnote.txt`, which it always fetches when both records
+   are present. Reverted to two records. Whatever the real bug is, sending only one record is not
+   the fix.
+6. **A record-loop control-flow correction, live-traced 2026-07-31: `uupdate.cc`'s four
+   generic-error exits each abort the whole function, not just the current record.** The earlier
+   theory that record 0 succeeds and record 1's *request-building* fails was wrong — the loop can
+   only advance to the next record via its footer (`0xBB8BCC`), so "record 1's `.inf` was never
+   fetched" means record 0's own iteration hit one of the four exits (`0xBB7E2C`, `0xBB7F4C`,
+   `0xBB8730`->`0xBB8904`/`0xBB8910`, `0xBB88B8`), not a problem specific to the second record.
+   `0xBB7E2C` was mis-identified as an HTTP-object-construction check; it's actually
+   `sendRequest`'s (`0xBB2B70`) own internal "HTTP status wasn't 200" case — ruled out by both a
+   direct `curl`+`HEAD` check of the probe (clean `200`, byte-identical body) and, later, live
+   register captures (`r0=200`, `CR7 EQ=1`) at the exact comparison instruction (`0xBB2D14`),
+   confirmed multiple times across different requests (`policy.txt`, `checkver.html`, the `.inf`
+   itself).
+7. **Live breakpoint trace, 2026-07-31, reached the real failure point for the first time:
+   `0xBB7D88` (build record-0 request) → `0xBB2D14` (status 200, passes) → `0xBB7E2C` (sendRequest
+   succeeded, not taken) → `0xBB7F4C` (passes) → `0xBB8730`, where `r3`/`r18 = -1` and `CR7 LT=1` —
+   then the generic error dialog appears.** `r17`/`r21` at this point held the literal ASCII string
+   `"mgo2server_slot7"`, independently confirming finding 4 above. The immediate (now-corrected)
+   assumption that `r3=-1` meant the CBC-decrypt/PKCS7-pad check failed does **not** hold up: a
+   direct, from-scratch re-decrypt of the real on-disk `.inf` (outer HMAC-MD5 under `SLOT8_KEY`,
+   Blowfish-CBC under `SLOT7_KEY[8:64]`/IV=`SLOT7_KEY[0:8]`) reproduces a clean plaintext ending in
+   eight `0x08` bytes — valid PKCS7 padding, no ambiguity. So the `.inf`'s own crypto is not what's
+   failing at `0xBB8730`; `r3=-1` is more likely the return of something else entirely (a
+   filesystem `stat()` on a resume-tracking path that legitimately doesn't exist on a fresh install
+   is one live candidate — `build_inf_stub.py`'s docstring already documents a per-entry flag that
+   gates exactly this kind of stat). **Open at end of session**: a targeted opcode trace of
+   `0xBB8600`-`0xBB8960` was dispatched to identify the actual call target at `LR=0xBB871C` and
+   what `0xBB8730` really tests, before assuming it's even the instruction that leads to the error
+   dialog.
+8. **A separate, unimplemented endpoint found in passing: `GET /VT006-U1/info/`.** Documented in
+   `HOSTS.md` as disc-string slot 11 (`http://info.service.konamionline.com/VT006-U1/info/`, the
+   "info service" host, region-specific suffix `-U1`/`-E1`/`-J1`) but its expected reply shape was
+   never determined; `http_probe.py` currently answers it with the generic TERMS fallback stub,
+   which is almost certainly wrong. Seen once, mid-session, on a different host/thread than the
+   `uupdate.cc` record loop — likely a periodic check-in unrelated to the patch flow rather than
+   part of it. Not yet fixed; flagged for follow-up.
+9. **`http_probe.py` gained `do_HEAD` support, 2026-07-31.** `BaseHTTPRequestHandler` answers any
+   verb without a `do_*` method with a bare `501 Unsupported method`, and — critically — that path
+   never calls this harness's own `_log()`, since logging only happens inside the `do_GET`/`do_POST`
+   methods written here. A `HEAD` request would therefore fail *and* leave zero trace in the log.
+   Added `do_HEAD` (same body-lookup as `do_GET`, headers only, logged) as a precaution; no live
+   evidence yet that the client actually issues `HEAD` requests in this flow, so treat this as a
+   defensive fix, not a confirmed root cause.
+10. **Debugging methodology, worth keeping**: the patch flow runs across at least two named PPU
+    threads — `uupdate.cc` (coordinates the record loop and `.inf` handling) and `udldata`
+    (performs at least the `policy.txt`/terms fetch, and possibly generic downloads) — both calling
+    into the same shared `sendRequest` (`0xBB2B70`). Breakpoints must be set on the correct thread
+    in RPCS3's Debugger window; setting them on `MGS4 MAIN` never fires. The PPU decoder must be
+    set to **Interpreter (static)** for breakpoints to work reliably — but the interpreter's speed
+    hit was severe enough in one test to stall the *unrelated* `policy.txt`/terms-of-service screen
+    on a loading spinner, a new symptom that had nothing to do with the actual bug and disappeared
+    once the CPU decoder was switched back for a plain (non-debugger) repro. Do not diagnose from a
+    single register snapshot without following it up against an independent, from-scratch
+    re-verification (as in finding 7) — this session had a false-positive "crypto is broken" read
+    from live registers that a direct offline recheck immediately disproved.
+11. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
+    standing up a working BitTorrent tracker for the `.torrent` path. Not started.

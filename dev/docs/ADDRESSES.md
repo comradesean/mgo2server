@@ -427,6 +427,13 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 
 ### The keystore — `get()` is a decrypt, not a copy
 
+**Live-confirmed 2026-07-31**, on top of the ELF resolution below: a real client, run under
+RPCS3's debugger against a checkver reply carrying the keys pre-encrypted per this section, showed
+the literal ASCII string `"mgo2server_slot7"` sitting in registers mid-`.inf`-verification — i.e.
+the client really does end up holding the plaintext key `build_checkver_stub.py` intended, not
+`Decrypt(intended key)`. This closes the loop opened below; treat the master-key address, IV/key
+split and CBC direction as settled unless a new observation specifically contradicts them.
+
 **Resolved 2026-07-31**, closing the "keystore vtable could not be resolved statically" gap. The
 vtable *is* statically initialised; it lives in a **writable** data section (`0xFB00B8`-`0xFBBEE0`),
 which is why earlier scans of `.rodata` missed it.
@@ -508,6 +515,17 @@ block-aligned still needs a full padding block of `08`× 8).
 A failed tag on either HMAC is **fatal**, not silent: a bad check makes the filter's `read` return
 `-1`, and both `0xBB7F4C` and `0xBB88B8` route that into update error state 10 — the same fatal
 path as a bad checkver record.
+
+**Live-verified 2026-07-31: neither HMAC is where the current stub fails.** A real RPCS3 debugger
+trace through a real `.inf` fetch reached `0xBB7F4C` and passed through it without taking the
+error store, then continued to `0xBB8730` (a different, not-yet-fully-identified check — see
+`PATCH_INVESTIGATION.md` finding 7) before the client's error dialog appeared. Registers at that
+point held the literal ASCII plaintext `"mgo2server_slot7"`, confirming the keystore-decrypt fix
+(below) really does deliver the correct key to the client. A from-scratch offline re-decrypt of the
+exact on-disk `.inf` file (independent of any prior "verified" claim) also confirms both HMAC tags
+match and the CBC plaintext ends in valid `08`×8 PKCS7 padding. So as of this session, the `.inf`'s
+own two-HMAC pipeline is the best-confirmed-correct part of this whole chain — do not re-suspect it
+without a new observation that specifically implicates it again.
 
 Stream header, 12 bytes at the start of stage 2's plaintext (`0xBB87C8`-`0xBB882C`, big-endian):
 

@@ -58,6 +58,13 @@ STUN is 3478 in all three. The US block in full:
 EU and JP are the same twelve slots with `/eu/` + `VT006-E1` and `/jp/` + `VT006-J1`.
 `id.konami.net/`, `/community/` and `/reward/` are identical across all three.
 
+**Slot 11 (`/VT006-U1/info/`) observed live, 2026-07-31**, while testing the auto-patch flow —
+`GET /VT006-U1/info/` on the same plain-HTTP probe. Expected reply shape is not yet known;
+`dev/runtime/http_probe.py` currently answers it with the generic TERMS fallback stub, which is
+almost certainly wrong for whatever this "info service" actually returns. Seen on a different
+thread than the patch flow, so probably an independent periodic check-in rather than part of
+`checkver.html`/`.inf` processing — see `PATCH_INVESTIGATION.md` finding 8. Not yet implemented.
+
 **Record encoding** (verified against all 28693 records): `07 <strlen+1> <ascii…> 00` for a string,
 `01 <lo> <hi>` for a **little-endian** u16, trailing `00` ends the record.
 

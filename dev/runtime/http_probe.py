@@ -136,6 +136,24 @@ class Probe(BaseHTTPRequestHandler):
         else:
             self._respond(default_body(self.path))
 
+    def do_HEAD(self):
+        # BaseHTTPRequestHandler answers any verb without a do_* method with a bare "501
+        # Unsupported method" -- and that path never calls _log(), since logging only happens
+        # inside the do_* methods we wrote. So a HEAD request (a plausible pre-download
+        # size/existence check) would fail with a non-200 status AND leave zero trace in this
+        # log. Found 2026-07-31 while chasing why the client won't advance past the .inf fetch
+        # despite the .inf itself being byte-verified: MGO2.elf's sendRequest (0xBB2B70) treats
+        # any non-200 status as failure (0xBB7E2C), so an invisible HEAD 501 fits the symptom
+        # exactly. Answered the same as GET, just without a body, per HTTP semantics.
+        self._log()
+        body = from_docroot(self.path)
+        if body is None:
+            body = default_body(self.path)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
