@@ -9,7 +9,7 @@
 #   docker manifest inspect -v <tag> | jq -r '.Descriptor.digest'
 
 # ---------- build ----------
-FROM maven:3.9-eclipse-temurin-25@sha256:4ae259079c38a5544bccdbf874dddc84b6d59cbc13b985576c92d905ba0dcd42 AS build
+FROM maven:3-eclipse-temurin-26@sha256:d5617b9a6307e1b51dc7c55edf09bacb66f1c91fb861949c34a3a0d4e16bd241 AS build
 
 WORKDIR /build
 
