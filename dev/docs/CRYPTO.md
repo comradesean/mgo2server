@@ -185,6 +185,12 @@ Two things make this unguessable from captures alone: the block is **decrypted**
 encrypted, and the XOR is against the **previous plaintext** block rather than the previous
 ciphertext.
 
+**Not actually a separate mode.** Confirmed 2026-07-31 while tracing the auto-patch `.inf` cipher
+(`ADDRESSES.md` §12): `0xD645C8`, the one-shot helper this scheme uses, is textbook CBC decrypt
+(`P[i] = D(C[i]) XOR C[i-1]`) — the *same* routine `.inf`'s Blowfish-CBC stream (`0xD66CF0`) is
+built on. `C[i] = decrypt(P[i]) XOR P[i-1]` here is just that decrypt primitive run with the roles
+of plaintext and ciphertext swapped, not a second chaining mode implemented anywhere in the binary.
+
 The IV is `b0 78 1d 53 65 e3 91 0e`, a constant in `SessionField`. The 56-byte key is not shipped
 directly — `crypto/session.key` is the **4168-byte expanded schedule** built from it, which is what
 the cipher actually consumes.

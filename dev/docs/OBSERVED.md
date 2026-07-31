@@ -1517,17 +1517,33 @@ fallback body, failed to parse it as ciphertext, and raised a clean, generic err
 crashing. This is the first field evidence that the reply's top-level layout and the record→URL
 construction are both correct.
 
-**`.inf` decryption is three stages, and the third key is not server-supplied.** Stage 1
-(`0xBB7E7C`, slot 8) drains 1 KB at a time and discards it — reads as a validate/probe pass, purpose
-unconfirmed. Stage 2 (`0xBB8618`, slot 7, over the file minus its last 16 bytes) produces a 256 KB
-plaintext buffer. Stage 3 (`0xBB8848`) runs the same cipher again over stage 2's output, keyed by a
-**64-byte blob resident in the ELF at `0xE20000`**
-(`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero padding, same 16-significant-bytes shape
-as the keystore slots). Whether stage 3 transforms in place or is itself a discarded verification
-pass could not be established from disassembly. **This means the earlier claim — "the server
-supplies both keys, nothing needs cracking" — needs qualifying**: it's true for the reply's own two
-keys, but a self-hosted `.inf` also has to satisfy this third, fixed, ELF-resident key correctly,
-which is a real constraint on hand-authoring one, not a free choice.
+**Corrected 2026-07-31: `.inf`'s three stages are HMAC-MD5 verify → Blowfish-CBC decrypt →
+HMAC-MD5 verify, not three cipher layers.** `0xD652E0`, previously assumed to be a second Blowfish
+decryptor, is the constructor of an HMAC-MD5 verifying stream filter; the real Blowfish-CBC stream
+(`0xD66CF0`) is stage 2, sitting between two integrity checks rather than surrounded by more
+decryption:
+
+- Stage 1 (`0xBB7E7C`) HMAC-MD5-verifies the whole downloaded file against keystore slot 8's full
+  64 bytes (used as an HMAC key block — not split, not a cipher key).
+- Stage 2 (`0xBB8618`) Blowfish-CBC-decrypts the file minus its last 16 bytes — those 16 bytes are
+  stage 1's tag, not padding or an IV. Keystore slot 7's 64 bytes split **8 (IV) + 56 (key)**,
+  through the standard Blowfish schedule (pi table confirmed at `0xE25AEC`) — a stock CBC library
+  given the raw key/IV reproduces this with no pre-expanded schedule needed.
+- Stage 3 (`0xBB8848`) HMAC-MD5-verifies stage 2's plaintext against a **64-byte blob resident in
+  the ELF at `0xE20000`** (`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero padding). **This
+  key is still not server-supplied** — real constraint on hand-authoring an `.inf`. **Settled: this
+  is verification only** — the drain target is stack scratch assigned once, not the 256 KB
+  plaintext buffer, so stage 2's output is final and stage 3 neither transforms nor aliases it.
+
+Padding on the CBC layer is **PKCS#7**, last byte checked as `1..8` (`0` rejected, so block-aligned
+plaintext still needs a full pad block). Either HMAC failing is **fatal** (error state 10), the
+same path as a bad checkver record — not silent. Both keys are exactly the MD5 block size (64
+bytes), so a stock `hmac` implementation uses them verbatim.
+
+This also resolves an open question in `CRYPTO.md`'s Blowfish section: the session-field's
+"non-standard chaining" (`C[i] = decrypt(P[i]) XOR P[i-1]`) is not a second mode — `0xD645C8`, the
+routine it's built on, is the identical textbook-CBC-decrypt primitive `.inf`'s stage 2 uses, just
+run with plaintext/ciphertext roles swapped.
 
 The **plaintext grammar downstream of stage 3 is now known**, not just partially provable. A 12-byte
 big-endian header (`offset 4` = region length handed to stage 3, `offset 0`/`8` unread elsewhere,

@@ -409,7 +409,7 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xBB7950`/`0xBB7B9C` | install Blowfish keys from the reply's two trailing 64-byte blobs into keystore slots **7** (payload files, at reply offset `T+7` where `T` is the record-list terminator) and **8** (`.inf`, at `T+71`), via singleton `0xD64498`. Reply also carries an opaque u32 at offset 1 (copied to obj+1060, never read back — safe to zero) and, after the terminator, an opaque u16 at `T+1` and u32 at `T+3` (obj+1000/obj+996, read but never branched on in this module). Minimum reply length is `T+135` |
 | `0xBB7BF4` | builds `%s/%u.%u.%u/relnote.txt` (string A base) and fetches it into the update object at **offset +2506, 64 KiB cap** (`bzero` at `0xBB7BD8` sizes the object: `2506+65536=68042` of the `0x109D0`-byte allocation). **The body is rendered — corrects the earlier "fetched and not displayed" claim, scoped too narrowly to this TU.** It leaves the module as a `char*` at offset +36 of the 44-byte status struct filled by virtual `getStatus` (`0xBB4C20`, vtable `0xFBB168` slot +4); the owning screen (ctor `0xBB6EC0`, screen ctors `0x95E670`/`0x95F160`, update object at screen+16) polls that getter every frame (`0x9610BC`) and, in flow state 1, sub-state machine `0x95CBCC` sub-states 6/7 word-wrap the body into up to 62 lines and render 5 at a time through UI widgets `0x521FD0`-`0x521FD4` with scroll arrows. Static analysis only — state 1 has never been reached against a real client |
 | `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot**, the record text must supply its own trailing `.` for the on-disk name to read `...to1.34.0inf` |
-| `0xBB7E7C`-`0xBB7F4C` | `.inf` is decrypted in **three stages**, not one — see "The `.inf` pipeline" below for the full byte layout, the hard-coded third key, and the entry grammar |
+| `0xBB7E7C`-`0xBB7F4C` | `.inf` goes through **HMAC-MD5 verify → Blowfish-CBC decrypt → HMAC-MD5 verify**, not three cipher stages — see "The `.inf` pipeline" below for the full byte layout, the ELF-resident HMAC key, and the entry grammar |
 | `0xBB8E6C`-`0xBB903C` | **the actual disk install**: `open("dl/p/ar/"+name, device 1, O_RDONLY)`, `open(same path, device 7, O_CREAT\|O_WRONLY, flags@0xFF23F8)`, plain `read`/`write` loop (no cipher in this loop), close both, then `unlink` the device-1 copy. A real cross-device copy-then-delete, not a passive overlay. **Confirmed closed**: the copied name is `lwz r4,0(r27)` — entry offset +0, the name pointer read straight out of the `.inf` plaintext, gated on `(entry+12 & 0x13) == 0x12` |
 | `0xBB9150`-`0xBB9170` | the HTTP-fallback writer: same `dl/p/ar/%s` path, device chosen per-entry by flag bit `,27,27` (7 if set, else 1) |
 | `0xBB9BC0`-`0xBBA0D4` | `.torrent`: URL `%s/%u.%u.%u/%s.%u.%u.%uto%u.%u.%u.torrent` (string A base, `"BLUS30109"`, from/to versions) fetched raw (no cipher), then handed unmodified to statically-linked Transmission (`tr_torrentInitData` at `0xD92180`, `tr_init("dl")` at `0xD8B710`) — genuine BitTorrent, bencode parser and tracker announce/scrape strings present at `0xE1D470`-`0xE1F5C8` |
@@ -423,32 +423,49 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 
 ### The `.inf` pipeline
 
-Three stages per record, not one Blowfish layer:
+**Corrected 2026-07-31 — the "three Blowfish stages" framing above was wrong.** `0xD652E0` is not
+a cipher; it is the constructor of an **HMAC-MD5 verifying stream filter** (ipad/opad expansion at
+`0xD65B08`, `xori r0,r0,54`/`xori r11,r11,92`; drives MD5 Init/Update/Final at `0xDC83D8`/
+`0xDC8438`/`0xDC85F0`, init constants `67452301 efcdab89 98badcfe 10325476` literal at `0xDC83DC`).
+The actual Blowfish-CBC stream is `0xD66CF0`, and it is stage 2, not stages 1 and 3. Real shape:
 
-1. `0xBB7E7C` — keystore **slot 8** key → stream wrapper `0xBBD880` → decryptor `0xD652E0`,
-   drained 1 KB at a time and **discarded** (nothing accumulates). Reads as a validate/probe pass;
-   functional purpose not confirmed.
-2. `0xBB8618` — keystore **slot 7** key → same decryptor, but over the downloaded blob **minus its
-   last 16 bytes** (`addi r5,r26,-16` at `0xBB8650`) → reader object (ctor `0xD66CF0`) → read loop
-   `0xBB86E8` filling a 256 KB buffer (`obj+1064`; separate from the 128 KB download buffer at
-   `obj+1068`).
-3. `0xBB8848` — `0xD652E0` again, over the stage-2 output, keyed by a **64-byte blob resident in
-   the ELF itself at `0xE20000`** (16 significant bytes + zero padding, same shape as the keystore
-   slots): `93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce`. **This key is not server-supplied** —
-   OBSERVED.md's "the server supplies both keys, nothing needs cracking" holds for slots 7 and 8
-   but not for this stage. Whether stage 3 transforms the buffer in place or is a verification pass
-   whose output is discarded is **not resolved** — the drain writes into `r21` and whether `r21`
-   aliases the record's plaintext could not be established; parsing reads `r23+12` directly,
-   consistent with either.
+1. `0xBB7E7C` — **HMAC-MD5 verify** (`0xD652E0`) over the whole downloaded file, keyed by keystore
+   slot 8's full 64 bytes (used as an HMAC key block, not a cipher key — no split). Output
+   discarded; this is integrity verification of the ciphertext, not a probe pass.
+2. `0xBB8618` — **Blowfish-CBC decrypt** (`0xD66CF0`, confirmed via the block engine at `0xD65660`:
+   `P[i] = D(C[i]) XOR C[i-1]`, textbook CBC) over the file **minus its last 16 bytes**
+   (`addi r5,r26,-16` at `0xBB8650`). Those 16 bytes are stage 1's HMAC-MD5 tag, not padding or an
+   IV — the two readings are consistent once stage 1 is understood as HMAC. Key material is
+   keystore slot 7's 64-byte blob, **split 8+56**: bytes `[0:8]` seed the CBC register directly
+   (`memcpy` at `0xD6855C`, into the context's IV slot at `ctx+4212`), bytes `[8:64]` go through the
+   standard Blowfish key schedule (`0xD5EBB8`, pi table at `0xE25AEC`, confirmed by dump) as an
+   ordinary 56-byte key. **A stock Blowfish-CBC library given the raw key and IV reproduces this
+   exactly — no pre-expanded schedule needed.** Output is 256 KB plaintext at `obj+1064`.
+3. `0xBB8848` — **HMAC-MD5 verify again**, over stage 2's plaintext region `[0 .. hdr[4]-16)`,
+   keyed by the **64-byte blob resident in the ELF at `0xE20000`**
+   (`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero pad — used whole as the HMAC key block,
+   the "16 significant + padding" framing was describing the wrong primitive). **Settled: this is
+   verification only.** The drain target (`r21 = addi r21,r1,384`, stack scratch, assigned exactly
+   once) is not the 256 KB buffer — stage 3 neither transforms the plaintext nor aliases it. Stage
+   2's output is final. **This key is still not server-supplied** — it's the one real constraint on
+   hand-authoring an `.inf`, since it must be used correctly even though it isn't a free choice.
 
-Stream header, 12 bytes read from the start of the record's produced plaintext (`0xBB87C8`-
-`0xBB882C`, big-endian):
+Both HMAC keys are exactly 64 bytes, the MD5 block size, so a stock `hmac` implementation uses them
+verbatim with no pre-hashing. Padding is **PKCS#7 on the CBC layer**: last plaintext byte is the
+pad count, checked as `1..8` (`0xD6570C`-`0xD65808`; `0` is rejected, so a plaintext that's already
+block-aligned still needs a full padding block of `08`× 8).
+
+A failed tag on either HMAC is **fatal**, not silent: a bad check makes the filter's `read` return
+`-1`, and both `0xBB7F4C` and `0xBB88B8` route that into update error state 10 — the same fatal
+path as a bad checkver record.
+
+Stream header, 12 bytes at the start of stage 2's plaintext (`0xBB87C8`-`0xBB882C`, big-endian):
 
 | offset | size | meaning |
 | --- | --- | --- |
-| 0 | 4 | unknown, read but use not traced |
-| 4 | 4 | length of the region handed to stage 3; also the entry-scan bound (`plaintext + hdr[4] - 16`) |
-| 8 | 4 | unknown, read but use not traced |
+| 0 | 4 | unknown, read but no consumer traced — zero is a guess, not a finding |
+| 4 | 4 | length of the region stage 3 verifies (header + entries + the 16-byte inner HMAC tag); also the entry-scan bound (`plaintext + hdr[4] - 16`) |
+| 8 | 4 | unknown, read but no consumer traced — zero is a guess, not a finding |
 | 12 | — | entry list starts here |
 
 No magic or version field is checked anywhere in the header.
