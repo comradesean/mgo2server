@@ -75,11 +75,15 @@ the crash root cause, see §3. Root-level entries also show a base/`_e`-suffix s
 filenames inside both trees** — not a language-dub pair, more likely an alternate
 encoding/asset-set. Not confidently decoded.
 
-Two things not resolved this session: the actual `DLT2`-reading function could not be located
-anywhere in `MGO2.elf` (zero references to the `DLT2` string or the digest-constant pool found —
-it may live in MGS4's own `EBOOT.BIN`, unverified, no decrypted copy available), and the 16-byte
-digest's hash algorithm is unidentified (so it's a strong size check but not yet a runnable
-checksum).
+**Update 2026-07-31: the `DLT2` reader was found.** A later pass, digging into why the auto-patch
+install was failing (§7), located the whole patch-archive subsystem at `0xD5EE00`-`0xD64C00`
+(self-identifying via a `ptsys:` debug-string family) — it opens `dl/.p` (not `dl/p/.p`), checks
+the `DLT2` magic, and gates the archive on a digest check keyed by the same 16-byte constant that
+heads the `.inf` stage-3 HMAC key (`0xE20000`) — a real lead on the digest algorithm, though the
+algorithm itself is still unconfirmed. Confirmed, and important for anyone hoping to hand-author an
+archive: **nothing in `MGO2.elf` can create `dl/.p`** — the magic is `memcmp`'d, never written — so
+this reader really is read-only, and the writer really does live elsewhere (presumably `EBOOT.BIN`,
+still unverified, no decrypted copy available).
 
 ## 3. The crash, and why `MGO2.SELF` matters
 
@@ -232,17 +236,23 @@ docroot). The risky part is entirely in the *bytes*, not the deployment.
 Phases, in ascending order of risk:
 1. `checkver.html` reply + `relnote.txt` — byte-exact known from the ELF, live-tested 2026-07-31,
    works.
-2. `.inf` — two rounds so far. Round 1 (`dev/tools/build_inf_stub.py`, first version) implemented
-   what turned out to be a wrong pipeline model ("three Blowfish stages") and was rejected — the
-   client raised the same generic error a garbage file gets. A follow-up ELF pass corrected the
-   pipeline itself (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean, but was
-   *also* rejected live — same error, meaning the crypto was right but something else in the
-   plaintext layout was wrong. A third pass, hand-tracing the actual rejected bytes against the
-   disassembly rather than re-deriving abstractly, found the real bug: the plaintext holds **two**
-   entry scans at different strides, and the one that actually drives the install starts *after*
-   the inner HMAC tag, not at header offset 12. Fixed in `build_inf_stub.py`; not yet re-tested
-   live. Three rounds to get here is the expected cost of this kind of reverse engineering — each
-   wrong attempt narrowed the next one, and each failure was diagnosable (the client errored
-   cleanly rather than hanging) rather than a dead end.
-3. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
+2. `.inf` — **byte-correct, confirmed two independent ways.** Three build rounds: round 1
+   implemented a wrong pipeline model ("three Blowfish stages") and was rejected. Round 2 corrected
+   the pipeline (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean, but was
+   *also* rejected live — crypto right, plaintext layout wrong (two entry scans at different
+   strides, entries start after the inner tag, not at offset 12). Round 3 fixed the layout and was
+   rejected *again*, but this time an opcode-faithful reference implementation — transcribing the
+   actual disassembled instructions rather than describing them in English, run against the real
+   rejected bytes — validated every stage and found the intended entry cleanly. So the `.inf` was
+   never actually the problem after round 3; the rejection was coming from somewhere else (below).
+3. **The real blocker, found 2026-07-31: the client never creates a directory, anywhere.** The
+   install loop opens `dl/p/ar/<name>` on device 7 with `O_CREAT|O_WRONLY`, which creates the file
+   but not missing parent directories. The test install had no `dl` folder at all, so that open
+   failed `ENOENT` and the install bailed silently — no crash, no further network request, matching
+   exactly what was observed. Also resolved in the same pass: the `dl` "mount" registered at boot
+   isn't a VFS mount (no mount table exists), `dl/p/.l`'s `ENOENT` at boot is a dead read with no
+   consequence, and the real archive path is `dl/.p` — none of which the install write path needs.
+   **Fix: `mkdir -p USRDIR/dl/p/ar/t/0/` on the test install, no archive required.** Not yet
+   re-tested live after creating the directory.
+4. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
    standing up a working BitTorrent tracker for the `.torrent` path. Not started.

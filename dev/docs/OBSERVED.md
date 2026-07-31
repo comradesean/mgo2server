@@ -1578,11 +1578,34 @@ The full PRX import table (28 modules, 349 functions, read from `sys_proc_prx_pa
 system-update package involved. Downloaded files land under `dl/p/ar/` on one device (device 1),
 and the install loop at `0xBB8E6C`-`0xBB903C` does a straight `read`/`write` copy of each file onto
 a **different** device (device 7) at the same relative path, then `unlink`s the device-1 copy. That
-copy-then-delete is a real install, distinct from the download cache. What device 7 actually is —
-specifically, whether it's the same live mount the archive driver reads `.p`/`.l` from, so a copied
-file is visible immediately — is populated at runtime (`0x214E0`'s device-root table) and could not
-be resolved statically; whether a fresh install takes effect mid-session or needs a restart is open
-for the same reason.
+copy-then-delete is a real install, distinct from the download cache.
+
+**Corrected 2026-07-31, and the real root cause of a live install failure: device 7 has no archive
+involvement at all, and the client never creates a directory, anywhere.** Devices 1/2/3/6/7 all
+resolve through the same handler straight to `cellFsOpen`; only device 2 has a populated root
+(`/dev_bdvd/PS3_GAME/USRDIR/o/`), and nothing in `MGO2.elf` ever writes to the device-root table —
+it's load-time/external data, not client-managed, so "what device 7 is" was the wrong question:
+it's just `USRDIR` (an empty-string root). The install loop is
+`sprintf path → open(dev 1, RD) → open(dev 7, O_CREAT|O_WRONLY) → read/write → close ×2 → unlink`,
+and `O_CREAT` creates the file, not missing parent directories. **With no `dl` folder on disk, the
+device-7 open fails `ENOENT` and the loop bails silently** — no crash, no further network request.
+Live-tested: a hand-authored `checkver.html` + `.inf` (both independently confirmed byte-correct,
+via an opcode-faithful reference implementation for the `.inf`) were rejected by a real client with
+a generic error and no request past the `.inf` fetch; `RPCS3.log` showed `dl/.l` failing `ENOENT` at
+boot (see below) and no `dl` folder existed on the test install at all. Creating the empty tree
+`USRDIR/dl/p/ar/t/0/` resolved the missing piece — no archive needed for the install *write* to
+succeed. Whether a fresh install takes effect mid-session or needs a restart remains open.
+
+**The `dl` "mount" is not a VFS mount, and `dl/p/.l` is a red herring.** `0x2FD50` constructs a
+patch-archive *service object* with `"dl"` as a plain path prefix, not a mount name — there's no
+mount table. The archive it actually opens is **`dl/.p`** (not `dl/p/.p`), matching the user's real
+1.36 artifact exactly. `dl/p/.l` (opened once, `FSStart` thread) is dead: its only effect feeds two
+getters with zero call sites anywhere in the binary. **Nothing in `MGO2.elf` can create `dl/.p`** —
+its `DLT2` magic is compared, never written — so a from-scratch archive has to be seeded
+externally, confirming `PATCH_INVESTIGATION.md` §2's inference that the writer lives in `EBOOT.BIN`
+rather than here. New lead on that section's unidentified digest algorithm, though: the archive's
+own digest check (`0xD640C4`) is keyed by the **same 16 bytes** that head the `.inf` stage-3 HMAC
+key at `0xE20000` — the two checks likely share a primitive.
 
 **There is real update UI — this section previously understated it.** `uupdate.cc` itself carries
 no display strings (`0xE20040`-`0xE201F8` is wire-format templates, paths and thread/method names
