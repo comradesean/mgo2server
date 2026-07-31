@@ -1,6 +1,7 @@
 package mgo2server;
 
 import io.jooby.Jooby;
+import io.jooby.Server;
 import io.jooby.ServerOptions;
 import mgo2server.common.Config;
 import mgo2server.common.Database;
@@ -64,8 +65,8 @@ public final class Main {
 		var services = ServicesFactory.createServices(database.jdbi());
 		var webServer = WebServerFactory.createWebServer(services, database.dataSource());
 
-		Jooby.runApp(args, app -> {
-			app.setServerOptions(new ServerOptions().setPort(config.webPort()));
+		var server = Server.loadServer(new ServerOptions().setPort(config.webPort()));
+		Jooby.runApp(args, server, app -> {
 			// Jooby defaults its tmpdir to <working dir>/tmp. In the container the working
 			// directory is not writable by the runtime user, and it should stay that way.
 			app.setTmpdir(Path.of(System.getProperty("java.io.tmpdir")));
