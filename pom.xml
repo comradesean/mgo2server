@@ -24,7 +24,7 @@
         <hikari.version>6.3.0</hikari.version>
         <postgresql.version>42.7.13</postgresql.version>
         <log4j.version>2.26.1</log4j.version>
-        <okhttp.version>4.12.0</okhttp.version>
+        <okhttp.version>5.4.0</okhttp.version>
 
         <!-- Test -->
         <junit.version>5.12.2</junit.version>
@@ -183,8 +183,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Not "okhttp": as of 5.x that artifact is a Kotlin-multiplatform umbrella with no
+                 classes of its own (Gradle metadata picks the right target; plain Maven POM
+                 consumers do not). okhttp-jvm is the actual JVM artifact. -->
             <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
+            <artifactId>okhttp-jvm</artifactId>
             <version>${okhttp.version}</version>
             <scope>test</scope>
         </dependency>
