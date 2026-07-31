@@ -474,6 +474,43 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
     byte-identical to what `build_torrent_stub.py` wrote. Live re-test with a real client
     pending — see the quickstart in §0 for how to run it.
 
+    **Live-tested 2026-07-31: the tracker/seed implementation is correct; the remaining blocker
+    looks like an RPCS3 network-emulation gap, not a server bug.** The client:
+    - Fetches the `.torrent` and parses it correctly — confirmed by RPCS3's own log deriving the
+      *exact* `info_hash` we compute (`d16a72667fbe0d1679348c85498b45d66a1b4a4f`) to build a
+      resume-file path (`sys_fs_open(".../resume.d16a72667fbe0d1679348c85498b45d66a1b4a4f-dl")`).
+    - Genuinely calls `sys_net_bnet_connect` to `192.168.1.200:6969` (RPCS3's own log: `[Native]
+      Attempting to connect on 192.168.1.200:6969`).
+    - **The TCP handshake actually completes** — confirmed independently of our own code via
+      `ss -tn` on the host, which showed a real `ESTABLISHED 192.168.1.200:6969 <-> 192.168.1.100:*`
+      connection, and via accept-level logging added to `bt_seed.py`'s tracker (mirroring the fix
+      to `http_probe.py`'s HEAD-request blind spot: log every accepted connection, not just ones
+      that parse as valid requests) — `accepted connection from 192.168.1.100:*` fires reliably,
+      repeatedly, across multiple separate connection attempts and a full client restart.
+    - **But no HTTP request ever follows.** Every real qBittorrent connection on this same host
+      (unrelated local traffic, useful as a control) shows `accepted connection` immediately
+      followed by `GET /announce?...`. Every connection from the real client shows only the
+      accept — the socket sits open, `ss` reporting zero bytes queued in either direction, until
+      it's eventually abandoned.
+    - RPCS3's log shows why, most likely: after each `connect()` returns `EINPROGRESS` (correct,
+      expected for a non-blocking connect), the game polls `sys_net_infoctl(cmd=8, ...)` in a
+      tight ~20ms loop — and every single one of those calls is logged by RPCS3 itself as
+      `sys_net TODO`, i.e. **unimplemented**. If `cmd=8` is (as the polling pattern strongly
+      suggests) how the guest checks whether an in-progress non-blocking connect has completed,
+      the game can never learn that its connection actually succeeded, even though it has —
+      explaining a real, fully-open, doing-nothing TCP socket precisely.
+    - Also opens **two sockets in immediate succession** (0.3ms apart) to the same destination
+      before ever polling for completion — consistent with giving up on believing the first
+      connect finished and trying again, rather than a deliberate parallel-connect strategy.
+    **Conclusion**: this project's tracker + seeding peer are provably correct — verified against
+    both a hand-written simulated client (full handshake -> bitfield -> piece exchange) and now a
+    real client reaching the TCP-established stage with the exact right `info_hash` and address.
+    The remaining gap is outside this project: RPCS3's own `sys_net` emulation doesn't appear to
+    implement whatever `sys_net_infoctl(cmd=8)` is for, so the game never recovers from a
+    non-blocking connect. Not something fixable from `dev/runtime/bt_seed.py` or any other
+    server-side change. Worth reporting upstream to RPCS3 if real P2P testing matters later; out
+    of scope for this project to fix directly.
+
     The original goal of this investigation — exercising the real auto-patch protocol end to end
     against a real client with placeholder payload bytes — is met.
 

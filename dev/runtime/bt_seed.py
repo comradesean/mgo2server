@@ -50,6 +50,12 @@ print(f"seeding info_hash {INFO_HASH.hex()}, {TOTAL_LEN} bytes across {NUM_PIECE
 class Tracker(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
+        # Log every request, not just ones that match /announce -- a silent 404 here would be
+        # the exact same blind spot http_probe.py's missing do_HEAD was (see its docstring):
+        # if the real client requests something other than what we expect, this print is the
+        # only way to ever find out.
+        print(f"  GET {self.path} from {self.client_address[0]} "
+              f"(User-Agent: {self.headers.get('User-Agent', '?')})", flush=True)
         if parsed.path != "/announce":
             self.send_response(404)
             self.end_headers()
@@ -81,6 +87,16 @@ class Tracker(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_HEAD(self):
+        print(f"  HEAD {self.path} from {self.client_address[0]}", flush=True)
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        print(f"  POST {self.path} from {self.client_address[0]}", flush=True)
+        self.send_response(404)
+        self.end_headers()
 
     def log_message(self, *args):
         pass  # replaced by the explicit print() above
@@ -180,9 +196,21 @@ def run_peer_server():
         threading.Thread(target=handle_peer, args=(conn, addr), daemon=True).start()
 
 
+class LoggingTrackerServer(ThreadingHTTPServer):
+    """Logs every accepted TCP connection before any HTTP parsing happens. Without this, a
+    connection that's accepted but never sends a valid HTTP request line (or is closed before
+    one arrives) is invisible -- do_GET only runs after BaseHTTPRequestHandler successfully
+    parses a request, same blind spot http_probe.py's missing do_HEAD used to be."""
+
+    def get_request(self):
+        conn, addr = super().get_request()
+        print(f"accepted connection from {addr[0]}:{addr[1]}", flush=True)
+        return conn, addr
+
+
 def main():
     threading.Thread(target=run_peer_server, daemon=True).start()
-    tracker = ThreadingHTTPServer(("0.0.0.0", torrentlib.TRACKER_PORT), Tracker)
+    tracker = LoggingTrackerServer(("0.0.0.0", torrentlib.TRACKER_PORT), Tracker)
     print(f"tracker listening on 0.0.0.0:{torrentlib.TRACKER_PORT}", flush=True)
     tracker.serve_forever()
 
