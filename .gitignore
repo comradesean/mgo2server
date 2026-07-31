@@ -54,5 +54,10 @@ tmp/
 dev/analysis/strings/
 dev/analysis/logs/
 dev/tools/__pycache__/
+
+# Third-party binaries, not ours to redistribute. Keep them here locally (see ASSETS.md for what
+# they're for).
+dev/tools/gcx/
+dev/tools/solideye/
 *.bak
 *.bak2
