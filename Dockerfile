@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn -B -q package -DskipTests
 
 # ---------- runtime ----------
-FROM eclipse-temurin:25-jre-noble@sha256:7161e12dbcd2791d1fc8b9cf6f1c1519a84c4acea5706c6a0659bc254a4c55d7 AS runtime
+FROM eclipse-temurin:25-jre-noble@sha256:2f1da100788559b397bcf48c736169ea5b070bde84e55f203bbee8e83d87a175 AS runtime
 
 LABEL org.opencontainers.image.title="mgo2server" \
       org.opencontainers.image.description="Metal Gear Online 2 server emulator" \
