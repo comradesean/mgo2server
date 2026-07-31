@@ -59,5 +59,10 @@ dev/tools/__pycache__/
 # they're for).
 dev/tools/gcx/
 dev/tools/solideye/
+
+# Konami's actual EULA text, served verbatim to a real client by the dev HTTP-probe harness (not
+# part of the built image -- see compose.yaml's probe-http/probe-https mounts). Keep it here
+# locally; it is not ours to redistribute.
+dev/runtime/www/us/mgo2/policy/policy.txt
 *.bak
 *.bak2
