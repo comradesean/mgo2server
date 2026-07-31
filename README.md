@@ -2,8 +2,16 @@
 
 A Metal Gear Online 2 server emulator for the retail MGS4 disc BLUS30109.
 
-This tree is a rewrite with its infrastructure completed and the protocol layer built up from a
-reference implementation. Most game logic is still to come: the reference implements 78 commands.
+This tree is a rewrite with its infrastructure completed and the protocol layer built up from the
+game binary. 83 of the 112 client→server commands are implemented; see `dev/docs/COMMANDS.md`,
+which also enumerates the server→client side and is the living source of truth for coverage.
+`dev/docs/PACKETS.md` cross-indexes both directions per command id, and `dev/docs/PROTOCOL.md`
+documents field-level detail for 59 distinct command codes (some grouped).
+
+The binary runs two independent packet stacks. Our lobby TCP protocol (Channel A) is what this
+server implements end to end. The in-game host↔peer P2P link (Channel B) is entirely outside
+server scope — so "hosting is implemented" below means the lobby-side bookkeeping around a game,
+not that the actual match is server-controlled.
 
 ## Protocol
 
@@ -33,14 +41,15 @@ entered with a character already selected, so it sends that character's id inste
 
 ### Commands implemented
 
-Deliberately not listed here. **`dev/docs/PROTOCOL.md`** documents every command with its payload broken
-down field by field, and a summary in two places drifts — this table went stale within a day of the
-last six commands being added, which is exactly the failure this project keeps paying for.
+Deliberately not listed here. **`dev/docs/COMMANDS.md`** and **`dev/docs/PROTOCOL.md`** document
+every command, and a summary in two places drifts — this table went stale within a day of the last
+six commands being added, which is exactly the failure this project keeps paying for.
 
 The short version: the gate serves the lobby list and news; the account lobby handles check-session,
 the character list, and creating, checking, selecting and deleting characters; the game lobby
-handles check-session, the connect burst, personal-info updates, connection info, messages, the hub
-and the game list.
+handles check-session, the connect burst, personal-info updates, connection info, messages, the hub,
+the game list, hosting and joining games, clans, awards, mail, friends/blocked lists and match
+history, and the STUN-backed port check the client requires before entering a lobby.
 
 Characters are addressed by their index in the last list the client was sent, so every command
 that takes an index resolves it through one ordering rule: live characters by id, with the
@@ -53,20 +62,37 @@ cannot be deleted within seven days of creation.
 The game lobby connect burst is complete: `0x4100` answers with all eight of the original's
 responses, in nine packets (chat macros are one packet per type).
 
-Gear and skills are catalogues rather than per-character state — the original advertises every item
-and skill as owned, with no persistence behind either, and that is reproduced here. Progression
-does not exist yet, and inventing a partial one would be worse than granting everything, which is
-at least a state the client renders coherently.
+Gear and skills are real per-character state, not catalogues. Gear ownership and per-item
+colour-mask availability are both server-decided and persisted (`V44__gear_ownership.sql`,
+`V69__gear_names_and_colour_masks.sql`, `V70__starter_gear.sql`; written by
+`LoadoutWriter.writeGear`; see `dev/docs/GEAR.md`). Skills are persisted per character with
+experience-based leveling (`V20__skills.sql`, `V60__skill_names_from_the_disc.sql`; `CharaSkill`
+for levels, `SkillSet` for the three equipped-skill loadouts), and skill experience reported by the
+client (`0x43a4`) is applied and persisted.
 
-Clans are not modelled, so `0x4122` reports every character as unaffiliated — a real state every
-character starts in rather than a placeholder. Character settings and equipped skills materialise
+Clans are a complete subsystem (`ClanService`, `ClanGameController`): creation, membership,
+apply/approve/decline, withdraw with cooldown, banish, transfer leadership, emblem get/set, disband
+with cooldown, and search/list/count, covering the full `0x4bxx` family. `0x4122` reports real
+membership — id, name and state (pending/member/leader/none) — and state 99 (none) is a real state
+a character starts in, not a placeholder. Character settings and equipped skills still materialise
 with defaults on first use, matching the original, so a character that has never opened the options
-screen still gets a coherent one.
+screen gets a coherent one.
 
-Hosting is likewise partial. A game can be created from the character's stored host settings
-(`0x4316`) and appears in the browser (`0x4300`), but the client cannot yet push new settings
-(`0x4310`), read them back (`0x4304`), inspect a game (`0x4312`), join one (`0x4320`), or
-administer it once running (`0x4340` onwards).
+Hosting and joining are both implemented. `HostGameController` covers reading and pushing settings
+(`0x4304`/`0x4310`), create/quit (`0x4316`/`0x4380`), peer-registration round trips
+(`0x4340`/`0x4342`/`0x4344`/`0x4346`), and round-lifecycle admin commands (in-game info, start
+round, set game, stats, round end, host migration) — acknowledged, though match state such as score
+and round progression is not yet tracked server-side (see the class's own javadoc). Joining
+(`0x4320`, in `GameListGameController`) validates session, character, ban and password, checks
+capacity, and returns the host's P2P endpoints via `0x4321`. Automatch (`Automatch`,
+`AutomatchGameController`) backs the `automatching` lobby: search, queue, panel push and match
+forming are confirmed live, but an automatch game hangs on the loading screen — slot-in isn't built
+(`dev/docs/AUTOMATCH.md`).
+
+What's still genuinely missing: `0x4210`, `0x4348`, `0x4394`, `0x43B0`; the `0x49xx` block (roughly
+18 ids — game-lobby/roster/GHQ — largely unmodelled); a few unidentified `0x4axx` ids; and mail read
+(`0x4840`) and file (`0x4860`), while mail send (`0x4800`) and delete (`0x4880`) are served. See
+`dev/docs/COMMANDS.md` for the live gap list.
 
 Where the original stores game and host settings as JSON blobs it re-parses on every list request,
 they are typed columns here. The fields are a fixed set defined by the client, and the game list
@@ -80,7 +106,7 @@ a wrong bit surfaces as an unrelated option appearing set in the browser rather 
 | --- | --- |
 | `src/` | The server. Java, Netty, Postgres. |
 | `dev/` | Documentation, the probes the stack depends on, and diagnostics — see `dev/README.md`. |
-| `compose.yaml` | The local stack: Postgres, migrations, three lobby servers, the web service, the probes. |
+| `compose.yaml` | The local stack: Postgres, migrations, seven lobby server instances (`gate`, `account`, `freebattle1`/`freebattle2`, `automatching`, `basictraining`, `combattraining`), the web service (which also serves the ranking HTML pages), and the dev-harness probes (HTTP(S) proxy for console endpoints, coturn STUN responder). |
 | `CLAUDE.md` | Conventions, chiefly the evidence hierarchy and how to run the tests. |
 
 Other MGO2 servers are cited in the docs for comparison but are not vendored here — consult them on
@@ -166,7 +192,8 @@ raw TCP only so the runtime image need not carry a HTTP client.
 
 ## Notes
 
-`maven-failsafe-plugin` sets the `api.version` system property to pin the Docker API version.
-Docker 29 removed API versions below 1.44, while the docker-java client shaded into Testcontainers
-1.21.x still negotiates 1.32 and is refused. Drop that property once Testcontainers ships a client
-that negotiates a supported version.
+`maven-failsafe-plugin` sets the `api.version` system property to pin the Docker API version to
+1.44 (`docker.api.version` in `pom.xml`). Testcontainers has since been bumped to 2.0.5 (from
+1.21.3), but the pin is still in place — the bump only changed the version number and two artifact
+ids for the 2.x BOM, not this workaround. Nobody has recorded removing the pin and confirming tests
+still pass without it, so it stays until someone does.
