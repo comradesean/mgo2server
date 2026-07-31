@@ -1545,22 +1545,26 @@ This also resolves an open question in `CRYPTO.md`'s Blowfish section: the sessi
 routine it's built on, is the identical textbook-CBC-decrypt primitive `.inf`'s stage 2 uses, just
 run with plaintext/ciphertext roles swapped.
 
-The **plaintext grammar downstream of stage 3 is now known**, not just partially provable. A 12-byte
-big-endian header (`offset 4` = region length handed to stage 3, `offset 0`/`8` unread elsewhere,
-no magic/version checked) precedes an entry list starting at header offset 12:
-`<name> 00 <u32 size, BE>`, repeated, next entry at `NUL+5`, name inline in the plaintext (not a
-string-table pointer). **≤31 entries per record is a checked bound**, unlike the record cap above.
-A hand-authored `.inf` needs only **name and size** per entry — there is no flags field on the wire;
-the three flag bits tested elsewhere (device selection, skip, resume) are runtime-only, set by the
-client itself, never read from the file. One loose end: a second grammar-shaped pass at
-`0xBB89B0`-`0xBB8AC0`, walking the same bytes but advancing by `NUL+6` and testing a bit on the
-byte at `NUL+5`, runs *before* the entry-recording loop and its purpose was not established — it is
-the one thing that could make a correctly-shaped `.inf` still misbehave.
+**Corrected 2026-07-31, after two hand-built `.inf` files decrypted and verified cleanly but still
+produced zero entries.** The plaintext holds **two entry scans, not one**, and the one that
+actually records entries starts *after* the inner HMAC tag, not at header offset 12 as the prior
+pass assumed. Scan A (`0xBB89B0`-`0xBB8AC0`, the "second grammar-shaped pass" below, now resolved —
+not a pre-pass over the same list) reads `<name> 00 <u32 size, BE> <u8 flags>` at stride `NUL+6`,
+starting at offset 12, bounded by `hdr[4]-16`; it's display-only (feeds a KB counter that's copied
+onward but never branched on). At `hdr[4]` the cursor jumps 16 bytes — over the inner HMAC tag —
+into scan B (`0xBB8B00`-`0xBB8BC8`), which reads `<name> 00 <u32 size, BE>` at stride `NUL+5`,
+bounded by `total_plaintext-16`, into the array that actually drives the install (**≤31 entries,
+checked**, `obj+1072`). Name is inline in the plaintext, not a string-table pointer. A hand-authored
+`.inf` therefore wants scan A left empty (`hdr[4] = 28`: 12-byte header + 16-byte inner tag, so
+scan A's bound equals its start) and needs ≥16 bytes of trailing slack after the last scan-B entry,
+or that entry falls outside `total_plaintext-16` and is silently dropped. Whether a real Konami
+`.inf` populates scan A too (entries listed twice, once with flags, once without) is unverified —
+we don't.
 
 The **install loop is now confirmed closed**: `0xBB8E6C` reads the destination filename straight
 from entry offset +0 (the name pointer out of the `.inf` plaintext), gated on the runtime flags
-word equalling `0x12`. So the full chain from "`.inf` entry" to "file written to `dl/p/ar/<name>`"
-has no remaining unknowns except the two stage-3/pre-pass questions above.
+word equalling `0x12`. With the two-scan layout above resolved, the full chain from "`.inf` bytes on
+the wire" to "file written to `dl/p/ar/<name>`" has no remaining unknowns.
 
 **`.torrent` is genuine BitTorrent**, not a naming convention — the client statically links
 Transmission (bencode parser, tracker announce/scrape query string, peer-ID fingerprint table, the

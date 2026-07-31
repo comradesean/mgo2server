@@ -7,10 +7,37 @@ guess -- every step below mirrors a disassembled function:
     outer tag   = HMAC-MD5(slot 8 key, ciphertext)                  0xD652E0 @ 0xBB7E7C
     ciphertext  = Blowfish-CBC-encrypt(slot7[8:64], IV=slot7[0:8],   0xD66CF0 @ 0xBB8618
                       PKCS7-pad(inner))
-    inner       = header(12) + entries + HMAC-MD5(ELF key, header+entries)   0xD652E0 @ 0xBB8848
+    inner       = header(12) + HMAC-MD5(ELF key, header) + entries + 16 slack  0xD652E0 @ 0xBB8848
 
-    header: u32 unknown(0) | u32 total-inner-length | u32 unknown(0)
-    entries: repeated  <name> 00 <u32 size, big-endian>   (name/size only -- no flags on the wire)
+    header: u32 unknown(0) | u32 L | u32 unknown(0)
+      -- hdr[0] and hdr[8] are copied to r1+116/r1+124 at 0xBB87DC and never read again anywhere
+         in the function; only hdr[4] (r1+120) is consumed. Zero is safe.
+      -- L is BOTH the stage-3 HMAC stream length (0xBB881C) and the bound of the *first* entry
+         scan (0xBB89B8). Set L = 28 so that first scan is empty; see below.
+
+    THE LAYOUT TRAP (found 2026-07-31, cost two rejected .inf files):
+    The plaintext holds TWO entry scans, not one, and the one that actually records entries
+    starts AFTER the inner HMAC tag, not at offset 12.
+
+      0xBB89B0-0xBB8AC0  scan A: cursor starts at base+12, bound base+L-16, stride NUL+6
+                         (<name> 00 <u32 size BE> <u8 flags>), flags bit 0x20 gates a
+                         stat of "dl/p/<name>" for resume accounting. Feeds obj+1012, a
+                         display counter only -- nothing gates on it.
+      0xBB8AF0           cursor += 16          <- steps over the inner HMAC tag
+      0xBB8B00-0xBB8BC8  scan B: bound base+total_plaintext-16, stride NUL+5
+                         (<name> 00 <u32 size BE>).  THIS is the scan that fills the entry
+                         array at obj+1072 and drives the download/install.
+
+    With L = 28, scan A exits on its first bound test with the cursor untouched at base+12, so
+    scan B starts at base+28 -- immediately after a 16-byte tag placed at [12, 28). The two
+    scans cannot be the same list: their strides differ by one byte, so a list parsed correctly
+    by A desyncs under B and vice versa.
+
+    The 16 trailing bytes are required, not decorative: scan B's bound is
+    total_plaintext - 16, so without them the final entry falls outside the bound and is
+    dropped. Contents are never read.
+
+    entries: repeated  <name> 00 <u32 size, big-endian>   (name/size only -- no flags in scan B)
 
 File on disk = ciphertext || outer tag  (outer tag is NOT encrypted, appended raw, 16 bytes)
 
@@ -48,13 +75,20 @@ def build_entries(entries):
     return bytes(body)
 
 
+# Scan B's bound is (decrypted length - 16), so the entry list needs this much dead space after
+# it or the last entry is never reached.  0xBB8AEC-0xBB8AF8, 0xBB8BB8-0xBB8BC8.
+TRAILING_SLACK = b"\x00" * 16
+
+# hdr[4].  12-byte header + 16-byte inner tag, i.e. scan A is empty and scan B starts at 28.
+HEADER_LEN = 28
+
+
 def build_inf(entries):
     body = build_entries(entries)
-    inner_len = 12 + len(body) + 16  # header + entries + inner (stage-3) HMAC tag
-    header = (0).to_bytes(4, "big") + inner_len.to_bytes(4, "big") + (0).to_bytes(4, "big")
-    inner = header + body
-    inner_tag = hmac.new(ELF_HMAC_KEY, inner, hashlib.md5).digest()
-    plaintext = pkcs7_pad(inner + inner_tag)
+    header = (0).to_bytes(4, "big") + HEADER_LEN.to_bytes(4, "big") + (0).to_bytes(4, "big")
+    # Stage 3 verifies plaintext[0 .. hdr[4]-16) against the tag at [hdr[4]-16, hdr[4]).
+    inner_tag = hmac.new(ELF_HMAC_KEY, header, hashlib.md5).digest()
+    plaintext = pkcs7_pad(header + inner_tag + body + TRAILING_SLACK)
 
     cipher = Blowfish.new(checkver.SLOT7_KEY[8:64], Blowfish.MODE_CBC, checkver.SLOT7_KEY[0:8])
     ciphertext = cipher.encrypt(plaintext)

@@ -230,12 +230,19 @@ proxies only `/us/mgo2/kid/` and `/us/mgo2/rank/`, and serves everything else st
 docroot). The risky part is entirely in the *bytes*, not the deployment.
 
 Phases, in ascending order of risk:
-1. `checkver.html` reply + `relnote.txt` — byte-exact known from the ELF, safe to author now.
-2. `.inf` — grammar is now fully known (§5), but building one still means implementing the
-   three-stage cipher correctly, including the ELF-resident stage-3 key, with two genuine unknowns
-   left (whether stage 3 is in-place or a discarded check, and the unexplained `NUL+6` pre-pass).
-   Worth a first attempt now, but with the expectation that a hang or silent failure at this step
-   is diagnosable (RPCS3 crash-log / disassembly cross-reference, as used elsewhere this session)
-   rather than a dead end.
+1. `checkver.html` reply + `relnote.txt` — byte-exact known from the ELF, live-tested 2026-07-31,
+   works.
+2. `.inf` — two rounds so far. Round 1 (`dev/tools/build_inf_stub.py`, first version) implemented
+   what turned out to be a wrong pipeline model ("three Blowfish stages") and was rejected — the
+   client raised the same generic error a garbage file gets. A follow-up ELF pass corrected the
+   pipeline itself (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean, but was
+   *also* rejected live — same error, meaning the crypto was right but something else in the
+   plaintext layout was wrong. A third pass, hand-tracing the actual rejected bytes against the
+   disassembly rather than re-deriving abstractly, found the real bug: the plaintext holds **two**
+   entry scans at different strides, and the one that actually drives the install starts *after*
+   the inner HMAC tag, not at header offset 12. Fixed in `build_inf_stub.py`; not yet re-tested
+   live. Three rounds to get here is the expected cost of this kind of reverse engineering — each
+   wrong attempt narrowed the next one, and each failure was diagnosable (the client errored
+   cleanly rather than hanging) rather than a dead end.
 3. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
-   standing up a working BitTorrent tracker for the `.torrent` path.
+   standing up a working BitTorrent tracker for the `.torrent` path. Not started.

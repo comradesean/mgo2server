@@ -463,12 +463,56 @@ Stream header, 12 bytes at the start of stage 2's plaintext (`0xBB87C8`-`0xBB882
 
 | offset | size | meaning |
 | --- | --- | --- |
-| 0 | 4 | unknown, read but no consumer traced — zero is a guess, not a finding |
-| 4 | 4 | length of the region stage 3 verifies (header + entries + the 16-byte inner HMAC tag); also the entry-scan bound (`plaintext + hdr[4] - 16`) |
-| 8 | 4 | unknown, read but no consumer traced — zero is a guess, not a finding |
-| 12 | — | entry list starts here |
+| 0 | 4 | unknown. **Settled 2026-07-31: provably unused.** The header copy lands at `r1+116`/`r1+120`/`r1+124`; the only `lwz`s of `116(r1)` and `124(r1)` anywhere in `0xBB7000`-`0xBB9C00` are at `0xBB754C`/`0xBB7654`, in the version-record parser, reading `strtoul` results stored long before the copy. Nothing reads either field after the header is copied. Zero is safe |
+| 4 | 4 | `L`: the stage-3 HMAC stream length (`0xBB881C`), and the bound of **scan A** (`0xBB89B8`) — see the two-scan note below. Set it to **28** |
+| 8 | 4 | unknown, same proof as offset 0 — provably unused |
+| 12 | — | the **inner HMAC tag** sits at `[L-16, L)`; with `L = 28` that is `[12, 28)`, and the recorded entry list starts at 28 |
 
 No magic or version field is checked anywhere in the header.
+
+### The two entry scans — the thing that made two hand-built `.inf` files fail
+
+**Corrected 2026-07-31, from the bytes of two rejected files.** The plaintext holds *two* entry
+scans with *different strides*, and the one that actually records entries starts **after** the
+inner HMAC tag, not at offset 12. Both prior passes described only the second scan and placed the
+entry list at offset 12, so a file that passed all three crypto stages still produced zero entries.
+
+| VA | scan | cursor start | bound | stride | grammar |
+| --- | --- | --- | --- | --- | --- |
+| `0xBB89B0`-`0xBB8AC0` | **A** | `base+12` | `base + L - 16` | NUL**+6** | `<name> 00 <u32 size BE> <u8 flags>` |
+| `0xBB8AF0` | — | `cursor += 16` — steps over the inner tag | | | |
+| `0xBB8B00`-`0xBB8BC8` | **B** | `base+28` (i.e. `L`) | `base + total_plaintext - 16` | NUL**+5** | `<name> 00 <u32 size BE>` |
+
+They cannot be the same list: a byte stream parsed correctly at stride 6 desyncs at stride 5 and
+vice versa. Scan A is **display-only** — for each entry it `strncpy`s the name into scratch, and
+if bit `0x20` of the flags byte is *clear* it `strcat`s the name onto `"dl/p/"`
+(TOC `-32736` → `0xE20068`, six bytes with the NUL), `open`s it, `lseek(SEEK_END)`s to get how much
+is already on disk (`0xBB8BF4`-`0xBB8C3C`), and accumulates remaining KB into `obj+1012`. That
+counter is copied to `obj+1020` at `0xBB84C8`/`0xBB85AC` and never branched on. Scan B is the one
+that fills the entry array at `obj+1072` and drives the download and install.
+
+Consequences for a hand-authored `.inf`:
+
+- Set `hdr[4] = 28`. Scan A then exits on its first bound test (`base+12 <= base+12`) with the
+  cursor **untouched**, so the `+= 16` at `0xBB8AF0` lands scan B exactly on `base+28`.
+- Put the inner HMAC tag at `[12, 28)` — stage 3 verifies `plaintext[0, hdr[4]-16)`, so with
+  `hdr[4] = 28` the MAC covers **only the 12-byte header**. Cryptographically pointless, but it is
+  what the code does, and stage 1's HMAC covers the whole file anyway.
+- Append **≥16 bytes of anything** after the last entry. Scan B's bound is
+  `total_plaintext - 16` (`0xBB8AEC`-`0xBB8AF8` and `0xBB8BB8`-`0xBB8BC8`), so without the slack
+  the final entry falls outside the bound and is silently dropped. Nothing reads those bytes.
+- A populated scan A is optional. A real Konami `.inf` almost certainly carries one (that is the
+  only way `obj+1012` is ever non-zero), which would mean the entry list appears **twice** — once
+  with flags bytes, once without. Unverified; we serve an empty scan A.
+
+The three crypto stages were **re-verified byte-by-byte on 2026-07-31 and are correct as
+documented** — standard HMAC-MD5 (`xori 54`/`xori 92` over 64-byte pads at `0xD65FEC`-`0xD65FF0`,
+inner `MD5_Update(key^ipad, 64)` at open `0xD660D4`, outer `Init/Update(opad,64)/Update(digest,16)/
+Final` at `0xD663DC`-`0xD6641C`, `memcmp` of 16 bytes at `0xD66580`), the filter holds back the
+trailing 16 bytes itself (`0xD661D8`-`0xD66218`) so both stages MAC exactly `message[0 .. len-16)`,
+and the Blowfish split is confirmed as `blob[0:8]` → IV at `ctx+4212` and `blob[8:64]` → 56-byte
+key at `ctx+4220`, from the two copy blocks at `0xD66D18` and `0xD66D64`-`0xD66F20`. The failure
+was entirely the plaintext layout above.
 
 **Entry grammar in the plaintext** (from the array-filling loop `0xBB8B00`-`0xBB8BC8`):
 
@@ -489,10 +533,9 @@ No magic or version field is checked anywhere in the header.
   every entry in a batch (selects device 7 vs 1), `0x4` tested backwards from the last entry (set ⇒
   skip), `0x2` tested for resume-vs-fresh (`Range:` request vs plain fetch, HTTP 206 accepted).
 
-**Not resolved**: a *preceding* loop at `0xBB89B0`-`0xBB8AC0` walks the same name/NUL/size grammar
-but advances by NUL+6 instead of NUL+5, and tests bit `0x20` of the byte at NUL+5. Runs before the
-recording loop above; purpose not established. This is the one thing that could make a
-hand-authored `.inf` fail in a way the entry grammar above doesn't explain.
+**Resolved 2026-07-31** — the NUL+6 loop at `0xBB89B0`-`0xBB8AC0` is scan A, a separate
+display-only entry list ahead of the inner HMAC tag. See "The two entry scans" above; it is not a
+pre-pass over the same bytes, and the stride difference is what proves that.
 
 In-memory entry (16 bytes, array `obj+1072`, count `obj+1584`):
 
