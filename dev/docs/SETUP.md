@@ -220,7 +220,7 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 
 | symptom | check |
 | --- | --- |
-| Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST |
+| Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST; also confirm `dev/runtime/www/us/mgo2/policy/policy.txt` exists locally (gitignored — copy it from `policy.txt.example`'s instructions) rather than falling through to the dev harness's generic "document not found" fallback |
 | `0519:8002AA0C` | PSN status is not RPCN |
 | Login screen rejects, `090B` | certificate not installed, or wrong slot |
 | Stuck on "Adjusting port settings" | `probe-stun` running? `python3 dev/tools/stun_selftest.py` should pass every check it runs (13 under WSL, where the change-request leg skips; 17 from a separate host) |
