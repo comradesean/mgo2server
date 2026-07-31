@@ -156,6 +156,15 @@ class Probe(BaseHTTPRequestHandler):
             self._respond(payload, upstream_type)
             return
 
+        # checkver.html is POSTed, not GETted (the client sends its version in the body), but
+        # it's still a static reply out of the docroot -- do_GET already knows how to serve one.
+        # Without this, a hand-authored checkver.html sits on disk and is never actually served,
+        # because every .html POST used to fall straight through to the "up to date" stub below.
+        served = from_docroot(self.path)
+        if served is not None:
+            self._respond(served)
+            return
+
         self._respond(default_body(self.path))
 
     def log_message(self, *args):

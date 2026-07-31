@@ -1487,10 +1487,35 @@ concatenation to read `...1.34.0inf`. The historical URL set the user has —
 is consistent with a checkver reply carrying two version-range records for the same upgrade, one
 disc-qualified and one generic.
 
-**Fetch order:** checkver → `relnote.txt` (fetched, never rendered — no display string or text
-renderer touches it in this module) → one `.inf` per accepted record → `.torrent`, or, if flag bits
-at obj+1036 select it, a plain per-file HTTP fetch from string B with `Range:` resume instead of
-BitTorrent.
+**Fetch order:** checkver → `relnote.txt` → one `.inf` per accepted record → `.torrent`, or, if flag
+bits at obj+1036 select it, a plain per-file HTTP fetch from string B with `Range:` resume instead
+of BitTorrent.
+
+**`relnote.txt` is rendered — corrects an earlier claim that it was fetched and never displayed.**
+That claim was scoped only to `uupdate.cc`'s own code, which is true as far as it goes (the module
+fetches the body into the update object at offset +2506, 64 KiB cap, and touches it no further),
+but the body is exported through the object's virtual `getStatus` (offset +36 of a 44-byte status
+struct) to the owning screen, which polls it every frame and, in flow state 1, word-wraps the body
+into up to 62 lines and renders 5 at a time through a scrollable UI pane (widgets `0x521FD0`-
+`0x521FD4`, sub-state machine `0x95CBCC` sub-states 6/7). Static analysis only — flow state 1 has
+never been reached against a real client, since our server has always sent `checkver.html` status
+`0x00`. Two more corrections fell out of the same pass: update-vtable slot +0 (`0xBB4BF8`) is a real
+download-progress percentage (`bytes-done*100/bytes-total`), and while neither of the two dialog
+raisers used elsewhere in the client (`0x8858F0`, `0x885A08`) appears anywhere in this screen's
+code, a **third** raiser (`0x8BE974`, 74 call sites binary-wide) does, called with a version string
+from the same `0xBB5150` formatter — so "no dialog raiser" was true only of those two specific
+functions, not of the screen in general.
+
+**Live-tested, 2026-07-31 — the first real-client confirmation of any of this.** A hand-authored
+`checkver.html` reply (status `0x01`, two version records, two chosen Blowfish keys) was served to
+a real client. It parsed correctly and proceeded exactly as predicted: fetched `relnote.txt`
+without incident, then requested `.inf` at a URL byte-for-byte matching the predicted
+`<record-text>+"inf"` construction (`BLUS30109.1.0.0to1.36.0.inf`, from a record text of
+`BLUS30109.1.0.0to1.36.0.`). No `.inf` existed yet, so the client received the harness's generic
+fallback body, failed to parse it as ciphertext, and raised a clean, generic error dialog
+("A network server error has occurred.", code `-160`/`21917`, `ERRORS.md`) rather than hanging or
+crashing. This is the first field evidence that the reply's top-level layout and the record→URL
+construction are both correct.
 
 **`.inf` decryption is three stages, and the third key is not server-supplied.** Stage 1
 (`0xBB7E7C`, slot 8) drains 1 KB at a time and discards it — reads as a validate/probe pass, purpose
@@ -1539,15 +1564,16 @@ file is visible immediately — is populated at runtime (`0x214E0`'s device-root
 be resolved statically; whether a fresh install takes effect mid-session or needs a restart is open
 for the same reason.
 
-**No UI beyond a version-number label.** Neither dialog raiser used elsewhere in the client
-(`0x8858F0` two-callback confirm, `0x885A08` one-callback error) is called from this module or its
-calling screen. The module's entire string block (`0xE20040`-`0xE201F8`) is wire-format templates,
-paths and thread/method names — zero display strings. No progress percentage is threaded through
-any of the download loops. The one UI touchpoint is a `%d.%02d.%d` version formatter next to a
-`"popup"` object on the title/network-start screen, which is a version display, not update UI.
-Nothing found blocks on a user confirmation; the flow appears fully automatic once triggered,
-though the calling screen's own per-frame polling of the updater's state was not traced, so a
-screen-side popup keyed off that state can't be ruled out.
+**There is real update UI — this section previously understated it.** `uupdate.cc` itself carries
+no display strings (`0xE20040`-`0xE201F8` is wire-format templates, paths and thread/method names
+only) and never calls `0x8858F0`/`0x885A08`, which is true and was the origin of the original "no
+UI" claim — but the *owning screen* (ctor `0xBB6EC0` → `0x95E670`/`0x95F160`) is a real update
+screen: it polls the updater's status every frame (`0x9610BC`), reads a genuine download-progress
+percentage (`0xBB4BF8`), renders `relnote.txt`'s body in a scrollable pane (see above), and raises
+dialogs through a third raiser, `0x8BE974`, that the earlier pass didn't check for. So "fully
+automatic, no confirmation" no longer stands as written — it wasn't re-checked for this session,
+and the presence of a dialog raiser this screen actually calls, plus a real progress readout, mean
+this needs a fresh look before it's asserted either way.
 
 ### Rankings — an HTTP feature, not a command [ELF, 2026-07-27]
 

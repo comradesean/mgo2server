@@ -159,7 +159,35 @@ Also corrected: a failed version-gate or a failed literal-`to` check while parsi
 **fatal** (error state 10), not merely "the record is rejected" as earlier phrasing implied; only a
 `strtoul` failure is non-fatal.
 
-Not yet written: the actual stub `checkver.html`, `relnote.txt`, `.inf`, and payload files.
+## 5a. Phase 1, live-tested [tier 2, real client — 2026-07-31]
+
+`checkver.html` (status `0x01`, two records, two chosen keys) and `relnote.txt` were written by
+`dev/tools/build_checkver_stub.py` and served for real. Two harness bugs surfaced and were fixed
+before the client actually saw the intended bytes:
+
+- `http_probe.py`'s `do_POST` never checked the docroot for a static file — only `do_GET` did — so
+  a POSTed `.html` path (which is how the client actually fetches `checkver.html`) always fell
+  through to the old hardcoded `0x00` stub regardless of what was on disk. Fixed by having
+  `do_POST` try `from_docroot()` first, same as `do_GET`.
+- The placeholder `policy.txt` wrapped at up to 70 chars/line; the real terms screen's display
+  width is narrower (~58-60 chars), so lines were visibly chopped. Rewrapped to 58.
+
+With both fixed, the client: parsed the `0x01` reply correctly, fetched `relnote.txt` without
+incident, then requested `.inf` at a URL that matched the ELF-predicted
+`<record-text>+"inf"` construction byte-for-byte (`BLUS30109.1.0.0to1.36.0.inf`). No `.inf` existed
+yet, so it got the harness's generic fallback text, failed to parse it as ciphertext, and raised a
+clean error dialog (`-160`/`21917`, "A network server error has occurred.") rather than hanging —
+the expected outcome for this stage, and the first real-client confirmation that the reply's
+top-level layout and the record→URL construction are both correct. Findings folded into
+`OBSERVED.md`.
+
+The same live test also prompted a re-check of the "`relnote.txt` is never rendered" claim (user
+correction — see below), which turned out to be right: the claim was scoped only to `uupdate.cc`,
+and the body really is rendered by the owning screen, in a scrollable 5-line pane, along with a
+real download-progress percentage and a third dialog raiser (`0x8BE974`) the original pass missed.
+All three corrections are in `ADDRESSES.md`/`OBSERVED.md` now.
+
+Not yet written: `.inf` and payload files.
 
 ## 6. Real historical server evidence, from the user's own screenshot [tier 2]
 
