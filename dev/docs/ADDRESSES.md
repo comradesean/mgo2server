@@ -406,7 +406,7 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xBB7418`-`0xBB76B0` | the version-range record loop. **On the wire a record is a variable-length NUL-terminated ASCII string**; the 44-byte stride (`obj+1588 + 44*n`) is the *destination* array, not the wire format — `strncpy(dest, src, 31)` gives a `char name[32]` at record offset 0..31, and record bytes 32..43 are runtime scratch (plaintext pointer, first-entry pointer, entry count), never populated from the reply. Stream advance is `strlen()`-based, so the next record starts right after this one's NUL. **≤8 records is a buffer limit, not a checked bound**: `1588 + 44*8 = 1940` is the record-count slot itself, so a 9th record silently overwrites the count |
 | `0xBB756C`-`0xBB7584` | version packing, done from the parsed text (`strtoul` ×3, base 10, `<from>.<from>.<from>to<to>.<to>.<to><anything>`): `major<<24 \| minor<<16 \| revision`. `major`/`minor` ≤255 checked; **`revision` is not range-checked** (occupies the low 16 bits regardless). The literal `to` is checked byte-by-byte. A `strtoul` failure skips the record (still advances the count, keeps the truncated name); a failed `to`-literal check or a failed version gate is **fatal, error state 10** — correcting the earlier "the record is rejected" framing |
 | `0xBB75A8`/`0xBB76CC` | the gate: client's current version (read at runtime, see below) must be ≥ the record's "from" version. **`from`/`to` live in single fixed fields `obj+988`/`obj+992`, overwritten by each record** — not per-record storage — so the post-loop gate at `0xBB76B8` only ever tests the *last* parsed record |
-| `0xBB7950`/`0xBB7B9C` | install Blowfish keys from the reply's two trailing 64-byte blobs into keystore slots **7** (payload files, at reply offset `T+7` where `T` is the record-list terminator) and **8** (`.inf`, at `T+71`), via singleton `0xD64498`. Reply also carries an opaque u32 at offset 1 (copied to obj+1060, never read back — safe to zero) and, after the terminator, an opaque u16 at `T+1` and u32 at `T+3` (obj+1000/obj+996, read but never branched on in this module). Minimum reply length is `T+135` |
+| `0xBB7950`/`0xBB7B9C` | install the reply's two trailing 64-byte blobs into keystore slots **7** and **8** via singleton `0xD64498`. **Slot mapping re-confirmed 2026-07-31, instruction by instruction: `0xBB7950` is `set(slot=7, obj+852, 64)` sourced from `T+7`; `0xBB7B9C` is `set(slot=8, obj+916, 64)` sourced from `T+71`** (`addi r6,r28,7` at `0xBB7700` / `addi r9,r28,71` at `0xBB798C`; `li r4,7` at `0xBB7960` / `li r4,8` at `0xBB7BB4`). Slot 7 is stage 2's Blowfish-CBC material, slot 8 is stage 1's HMAC key — the docs were right, not transposed. **The blobs are stored as ciphertext — see "The keystore" below; what you put on the wire is not what the crypto sees.** Reply also carries an opaque u32 at offset 1 (copied to obj+1060, never read back — safe to zero) and, after the terminator, an opaque u16 at `T+1` and u32 at `T+3` (obj+1000/obj+996, read but never branched on in this module). Minimum reply length is `T+135` |
 | `0xBB7BF4` | builds `%s/%u.%u.%u/relnote.txt` (string A base) and fetches it into the update object at **offset +2506, 64 KiB cap** (`bzero` at `0xBB7BD8` sizes the object: `2506+65536=68042` of the `0x109D0`-byte allocation). **The body is rendered — corrects the earlier "fetched and not displayed" claim, scoped too narrowly to this TU.** It leaves the module as a `char*` at offset +36 of the 44-byte status struct filled by virtual `getStatus` (`0xBB4C20`, vtable `0xFBB168` slot +4); the owning screen (ctor `0xBB6EC0`, screen ctors `0x95E670`/`0x95F160`, update object at screen+16) polls that getter every frame (`0x9610BC`) and, in flow state 1, sub-state machine `0x95CBCC` sub-states 6/7 word-wrap the body into up to 62 lines and render 5 at a time through UI widgets `0x521FD0`-`0x521FD4` with scroll arrows. Static analysis only — state 1 has never been reached against a real client |
 | `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot**, the record text must supply its own trailing `.` for the on-disk name to read `...to1.34.0inf` |
 | `0xBB7E7C`-`0xBB7F4C` | `.inf` goes through **HMAC-MD5 verify → Blowfish-CBC decrypt → HMAC-MD5 verify**, not three cipher stages — see "The `.inf` pipeline" below for the full byte layout, the ELF-resident HMAC key, and the entry grammar |
@@ -425,6 +425,49 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xBB4BF8` | update vtable slot **+0**, a real **download progress percentage**: `obj[1048]*100/obj[1040]` (bytes-done / bytes-total, both 64-bit), 0 if total is 0. **Corrects "no progress/percentage argument … in this module"** |
 | `0x8BE974` | the dialog raiser the update screen actually uses (74 call sites binary-wide) — called at `0x95CD34`/`0x95CE48` with a version string from `0xBB5150`, return handle stored at screen+104 and polled for a result. **Neither `0x8858F0` nor `0x885A08` appears in this screen's code (`0x95C000`-`0x968000`) at all — "no dialog raiser" was true of those two specific functions but wrong as a general claim; a third raiser exists and is used** |
 
+### The keystore — `get()` is a decrypt, not a copy
+
+**Resolved 2026-07-31**, closing the "keystore vtable could not be resolved statically" gap. The
+vtable *is* statically initialised; it lives in a **writable** data section (`0xFB00B8`-`0xFBBEE0`),
+which is why earlier scans of `.rodata` missed it.
+
+`0xD64498` is the singleton getter: `r30 = *(0x102ED30)` = mini-TOC anchor `0x10066DC`, and it
+returns `*(0xFFE6DC)` = **`0x1698DA8`**, a link-time-allocated object in `.bss` (section 71,
+`0x1085680`+`0x62A448`). Constructed by `0xD648D0` (and by the static-init path `0xD649A0`, guarded
+on `argc==1 && argv==0xFFFF`), which writes vptr `0xFBBD00` and `bzero`s 88 bytes.
+
+**Layout — 92 bytes.** `+0` vptr; then **11 slot records of 8 bytes**, slot *i* at
+`this + 8*i + 4` (pointer) and `this + 8*i + 8` (length). Slot **0** is the built-in master key,
+filled by the constructor with `{0xE26DA8, 64}`; slots **1..10** are the settable ones.
+
+**vtable `0xFBBD00`** (entries are OPD pointers, as always on this ABI):
+
+| slot | fn | what it does |
+| --- | --- | --- |
+| `+0` | `0xD64860` | `set(slot, ptr, len)`. Range check `slot-1 <=u 9`, i.e. **1..10**; out of range prints `ptsys:invalid key type %d` and **hangs on `b .`**. Stores the **pointer and length only** — no copy, no transform, no length check. The keystore therefore aliases the caller's buffer (here, the update object at `+852` / `+916`) |
+| `+4` | `0xD64798` | `get(slot, dest)` → returns the stored length. Same 1..10 range check. If `len > 0 && dest != 0` it calls vtable `+8` as `cbcDecrypt(dest, storedPtr, len, *(this+4))` — **the stored bytes are Blowfish-CBC-decrypted under slot 0's master key on the way out** |
+| `+8` | `0xD645C8` | `cbcBlowfishDecrypt(dst, src, len, keyblob64)`. `len % 8 != 0` → `ptsys:cbcblowfish length err` + hang. **Same 8+56 split as stage 2**: `keyblob[0:8]` is the initial CBC register (stack `r1+112`), `keyblob[8:64]` is a 56-byte Blowfish key through the schedule at `0xD5EBB8`. Per block `P = D(C) XOR prev; prev = C` (block decrypt `0xD5EACC`). No PKCS#7 check on this raw path |
+| `+0xC` | `0xD644B0` | `decryptWithSlot(dst, src, len, slot)` — `get(slot, 0)` must return exactly **64** or `ptsys:invalid keylength` + hang; then `get(slot, stack64)`, then vtable `+8`. Not used by the `.inf` path |
+| `+0x10`/`+0x14` | `0xD64AC0` / `0xD64AD8` | destructor pair |
+
+**`0xE26DA8` — the master key**, 64 bytes, read-only section 14, so a genuine ELF constant:
+
+```
+74f66dc28598f5d1 72ac2dcace5544d665f11d05bea20568e76c529deb35890ec332ff24
+fe5d9c3fb34189cf47055b26f9e4cc639a46b5465404df41e65b8e4e
+```
+
+i.e. **IV = `74f66dc28598f5d1`**, Blowfish key = the remaining 56 bytes. (Distinct from `0xE26D78`,
+the 16-byte DLT2 digest key, and from `0xE20000`, the `.inf` stage-3 HMAC key.)
+
+**The consequence for `checkver.html`.** The two 64-byte blobs the server appends are **ciphertext**.
+The key stage 1 and stage 2 actually use is `BlowfishCBC_Decrypt(blob, IV=E26DA8[0:8],
+key=E26DA8[8:64])`. To make the effective slot-8 HMAC key be `K`, the reply must carry
+`BlowfishCBC_Encrypt(K)` at `T+71` — `C[i] = E(P[i] XOR C[i-1])`, `C[-1] = IV` — and likewise for
+slot 7 at `T+7`. Sending `K` raw makes the client key its HMAC with `D(K)`, which is deterministic
+garbage and fails the tag. Only `0xBB7950`/`0xBB7B9C` ever `set()` slots 7/8; the other `set()`
+call sites (`0x2FA8C`, `0x2FAC8`) touch slots 6 and 3 at boot and cannot interfere.
+
 ### The `.inf` pipeline
 
 **Corrected 2026-07-31 — the "three Blowfish stages" framing above was wrong.** `0xD652E0` is not
@@ -434,13 +477,16 @@ a cipher; it is the constructor of an **HMAC-MD5 verifying stream filter** (ipad
 The actual Blowfish-CBC stream is `0xD66CF0`, and it is stage 2, not stages 1 and 3. Real shape:
 
 1. `0xBB7E7C` — **HMAC-MD5 verify** (`0xD652E0`) over the whole downloaded file, keyed by keystore
-   slot 8's full 64 bytes (used as an HMAC key block, not a cipher key — no split). Output
+   slot 8's full 64 bytes (used as an HMAC key block, not a cipher key — no split). **Those 64
+   bytes are `get()`'s output, i.e. the Blowfish-CBC *decryption* of what the server sent — see
+   "The keystore" above.** Output
    discarded; this is integrity verification of the ciphertext, not a probe pass.
 2. `0xBB8618` — **Blowfish-CBC decrypt** (`0xD66CF0`, confirmed via the block engine at `0xD65660`:
    `P[i] = D(C[i]) XOR C[i-1]`, textbook CBC) over the file **minus its last 16 bytes**
    (`addi r5,r26,-16` at `0xBB8650`). Those 16 bytes are stage 1's HMAC-MD5 tag, not padding or an
    IV — the two readings are consistent once stage 1 is understood as HMAC. Key material is
-   keystore slot 7's 64-byte blob, **split 8+56**: bytes `[0:8]` seed the CBC register directly
+   keystore slot 7's 64-byte blob **as returned by `get()`** (again the decryption of the wire
+   blob, not the wire blob itself), **split 8+56**: bytes `[0:8]` seed the CBC register directly
    (`memcpy` at `0xD6855C`, into the context's IV slot at `ctx+4212`), bytes `[8:64]` go through the
    standard Blowfish key schedule (`0xD5EBB8`, pi table at `0xE25AEC`, confirmed by dump) as an
    ordinary 56-byte key. **A stock Blowfish-CBC library given the raw key and IV reproduces this
