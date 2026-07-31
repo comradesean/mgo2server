@@ -1,0 +1,20 @@
+This is a placeholder. It is what gets served at .../policy/policy.txt
+until you replace it with the real thing.
+
+The real document is Konami's actual MGO Online User Agreement text --
+the console fetches it verbatim from this exact path (see
+dev/docs/OBSERVED.md). We have a real extracted copy, but it is not
+ours to redistribute, so it lives locally as policy.txt.original
+(gitignored) instead of here.
+
+Unlike the game's own help/tips documents, the real policy.txt has no
+<title> or <page-break> markup -- it is plain text, read by a
+different part of the client than the TIPS panel.
+
+Serving this placeholder instead of the real text shows up on real
+hardware as being stuck on the terms/network screen (see
+dev/docs/SETUP.md, "Verifying the pieces").
+
+To fix it: copy policy.txt.original over this file. Nothing else needs
+to change; the path is already wired up, and policy.txt.original is
+gitignored so the swap stays local.

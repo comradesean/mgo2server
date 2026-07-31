@@ -60,10 +60,11 @@ dev/tools/__pycache__/
 dev/tools/gcx/
 dev/tools/solideye/
 
-# Konami's actual EULA text, served verbatim to a real client by the dev HTTP-probe harness (not
-# part of the built image -- see compose.yaml's probe-http/probe-https mounts). Keep it here
-# locally; it is not ours to redistribute. See policy.txt.example (tracked) for what to put here
-# and dev/docs/SETUP.md, "Verifying the pieces", for the symptom of not having it.
-dev/runtime/www/us/mgo2/policy/policy.txt
+# Konami's actual EULA text -- what the dev HTTP-probe harness serves verbatim to a real client at
+# .../policy/policy.txt (not part of the built image; see compose.yaml's probe-http/probe-https
+# mounts) once you copy it into place over the tracked placeholder there. Keep the real copy here
+# locally as policy.txt.original; it is not ours to redistribute. See policy.txt (tracked) for the
+# placeholder and instructions, and dev/docs/SETUP.md, "Verifying the pieces".
+dev/runtime/www/us/mgo2/policy/policy.txt.original
 *.bak
 *.bak2

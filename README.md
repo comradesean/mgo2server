@@ -42,8 +42,8 @@ entered with a character already selected, so it sends that character's id inste
 ### Commands implemented
 
 Deliberately not listed here. **`dev/docs/COMMANDS.md`** and **`dev/docs/PROTOCOL.md`** document
-every command, and a summary in two places drifts — this table went stale within a day of the last
-six commands being added, which is exactly the failure this project keeps paying for.
+every command; a summary kept here too would just be a second copy to keep in sync, and second
+copies drift.
 
 The short version: the gate serves the lobby list and news; the account lobby handles check-session,
 the character list, and creating, checking, selecting and deleting characters; the game lobby
