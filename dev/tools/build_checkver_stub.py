@@ -13,7 +13,13 @@ confirmed never read back (the two opaque fields, safe to zero).
                      literal "to", trailing "." required (client's %sinf has no dot of its own)
     T           1   terminator: 0x00
     T+1         2   opaque u16 (read, never branched on)
-    T+3         4   opaque u32 (read, never branched on)
+    T+3         4   packed TO version: major<<24 | minor<<16 | revision -- NOT opaque, found
+                     2026-07-31. Feeds the confirmation dialog's "Ver. %d.%02d" text (obj+996,
+                     0xBB7720; formatter 0xBB5150) AND gates the post-dialog state machine
+                     (0x95CD7C compares it against the record's own parsed TO version at
+                     obj+992 -- a mismatch, e.g. leaving this zero, advances the screen state by
+                     1 instead of 2). Same packing the client's own record parser builds at
+                     0xBB766C, so it must equal that, not just be present.
     T+7         64  Blowfish-CBC(SLOT7_KEY) -> keystore slot 7 (payload files / .inf stage 2)
     T+71        64  Blowfish-CBC(SLOT8_KEY) -> keystore slot 8 (.inf stage 1 HMAC)
 
@@ -111,18 +117,26 @@ def build_reply():
         body += r
     body += b"\x00"                       # terminator T
     body += (0).to_bytes(2, "big")        # opaque u16, unread
-    body += (0).to_bytes(4, "big")        # opaque u32, unread
+    to_major, to_minor, to_revision = TO_VERSION
+    packed_to_version = (to_major << 24) | (to_minor << 16) | to_revision
+    body += packed_to_version.to_bytes(4, "big")  # T+3: packed TO version, see docstring
     body += encrypt_for_keystore(SLOT7_KEY)
     body += encrypt_for_keystore(SLOT8_KEY)
     return bytes(body)
 
 
 def build_relnote():
-    # Never rendered by the client (fetched, not displayed) -- content is unconstrained.
+    # IS rendered (ADDRESSES.md Sec 12: the update screen's sub-state 6/7 word-wraps the body
+    # into up to 62 lines and shows 5 at a time with scroll arrows). Live-tested 2026-07-31: the
+    # single long sentence this used to be ran off the bottom of the display before the user
+    # could see the end. Kept to a handful of short, independently-safe lines so it fits on one
+    # page regardless of the client's exact wrap width -- no line here needs the client's
+    # word-wrap to render cleanly.
     return (
-        f"mgo2server self-hosted test patch\n"
+        f"mgo2server test patch\n"
         f"{version_text(FROM_VERSION)} -> {version_text(TO_VERSION)}\n"
-        f"Stub content for exercising the auto-patch protocol; not real Konami patch data.\n"
+        f"Stub data only.\n"
+        f"Not real Konami content.\n"
     ).encode("ascii")
 
 

@@ -76,9 +76,10 @@ decompressed = zlib.decompress(plaintext[:-pad])   # raises if the zlib stage is
 print("entries+slack:", decompressed[28:])
 ```
 
-**Known cosmetic quirks, not yet fixed** (see finding 11 in §7 for detail): the confirmation
-dialog reads "Ver. 0.00" instead of a real version number, and the release-note text (built in
-`build_checkver_stub.py`'s `build_relnote()`) runs off the bottom of the display screen.
+**Two display quirks were found and fixed 2026-07-31** (see finding 11 in §7 for the full trace):
+the confirmation dialog showing "Ver. 0.00" instead of a real version number (a checkver field
+that wasn't actually opaque), and the release-note text running off the bottom of the display
+screen (too long for the update screen's word-wrap/pagination). Live re-test pending.
 
 ## 1. The protocol, from the ELF [tier 1]
 
@@ -426,16 +427,22 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
     of Peer-to-Peer (recommended) or HTTP Download, and HTTP Download completed immediately against
     our 32-byte stub payload — no BitTorrent tracker needed, confirming the plain-HTTP-fallback
     path (`%s/%u.%u.%u/%s` from checkver's second base-URL string) is what the client actually
-    uses when P2P isn't chosen. Two small cosmetic follow-ups, neither blocking:
-    - The confirmation dialog reads **"An update (Ver. 0.00) has been uploaded"** instead of a
-      real version number. `build_inf_stub.py`'s header fields (`hdr[0]`/`hdr[8]`) are zeroed on
-      the "provably unused" finding from the entries-scan trace — that finding was about what the
-      *entry-scan/HMAC* code reads, not what a *display* label reads, so it's plausible one of
-      those fields (or a different one entirely) feeds this text and needs a real value. Not yet
-      investigated.
-    - `relnote.txt`'s content, rendered via the "display update details" triangle prompt, is
-      confirmed visible but ran off the bottom of the screen — a content-length/formatting
-      question for `build_checkver_stub.py`'s `build_relnote()`, not a protocol bug.
+    uses when P2P isn't chosen. Two small cosmetic follow-ups, both **fixed 2026-07-31**:
+    - The confirmation dialog read **"An update (Ver. 0.00) has been uploaded"** instead of a real
+      version number. Traced to `checkver.html`'s `T+3` field, previously assumed opaque — it's a
+      packed TO version (`major<<24 | minor<<16 | revision`, same packing the client's own record
+      parser builds at `0xBB766C`), read by the dialog's `"Ver. %d.%02d"` formatter (`0xBB5150`)
+      *and* by a post-dialog state-machine check (`0x95CD7C`) that diverts the screen-state
+      advance from `+2` to `+1` on a mismatch against the record's own parsed TO version — not
+      purely cosmetic, though the flow completed anyway with it zeroed. `build_checkver_stub.py`
+      now sends the real packed `TO_VERSION`; see `ADDRESSES.md` §12 for the full trace.
+    - `relnote.txt`'s content, rendered via the "display update details" triangle prompt, ran off
+      the bottom of the screen. The update screen word-wraps and paginates the body (`ADDRESSES.md`
+      §12: up to 62 lines, 5 shown at a time with scroll arrows) — the original single
+      82-character sentence apparently didn't render cleanly within that. `build_relnote()` now
+      returns a handful of short, independently-safe lines instead of relying on the client's
+      exact wrap width.
+    Live re-test of both fixes pending.
     The original goal of this investigation — exercising the real auto-patch protocol end to end
     against a real client with placeholder payload bytes — is met.
 

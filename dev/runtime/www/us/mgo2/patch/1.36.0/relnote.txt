@@ -1,3 +1,4 @@
-mgo2server self-hosted test patch
+mgo2server test patch
 1.0.0 -> 1.36.0
-Stub content for exercising the auto-patch protocol; not real Konami patch data.
+Stub data only.
+Not real Konami content.
