@@ -41,8 +41,6 @@ one disc-qualified ("BLUS30109.<from>to<to>."), one generic ("<from>to<to>.").
 """
 import pathlib
 
-from Crypto.Cipher import Blowfish
-
 HOST = "http://192.168.1.200"
 PATCH_BASE = f"{HOST}/us/mgo2/patch"
 FROM_VERSION = (1, 0, 0)
@@ -65,6 +63,9 @@ def encrypt_for_keystore(plaintext_key):
     """CBC-encrypts a 64-byte key blob the way it must arrive for keystore get() to decrypt it
     back to `plaintext_key`. C[i] = E(P[i] XOR C[i-1]), C[-1] = IV -- the exact inverse of the
     client's get()-side CBC decrypt (0xD645C8)."""
+    from Crypto.Cipher import Blowfish  # imported lazily: only build_reply() needs it, and
+    # importing this module just for its HOST/DOCROOT/version constants (build_inf_stub.py,
+    # build_torrent_stub.py, bt_seed.py) shouldn't require pycryptodome to be installed.
     assert len(plaintext_key) == 64
     cipher = Blowfish.new(_MASTER_KEY, Blowfish.MODE_CBC, _MASTER_IV)
     return cipher.encrypt(plaintext_key)

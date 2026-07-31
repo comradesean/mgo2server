@@ -41,19 +41,31 @@ running by hand.
    ```
    Writes one `.inf` + one placeholder payload file per record (currently two: disc-qualified and
    generic) into the same version directory.
-4. **Redeploy** — both files are bind-mounted, so a container restart picks them up without a
+4. **Build the `.torrent` file** (needs steps 2 and 3 done first — it reads the same stub payload
+   bytes back off disk to hash them):
+   ```
+   python3 build_torrent_stub.py
+   ```
+   Writes the `.torrent` into the same version directory. Prints the `info_hash` — you don't need
+   it for anything, `bt_seed.py` (next step) recomputes it the same way and will complain loudly
+   if the two ever disagree.
+5. **Redeploy** — all files are bind-mounted, so a container restart picks them up without a
    rebuild:
    ```
    docker restart mgo2server-probe-http-1 mgo2server-probe-https-1
+   docker compose up -d probe-bt   # first time; `docker restart mgo2server-probe-bt-1` after
    ```
-5. **Point a real client at it** (see `HOSTS.md` for the `d/testhk` override — the supported route
+   `probe-bt` runs the BitTorrent tracker (port 6969) and seeding peer (port 6881) — see
+   `dev/runtime/bt_seed.py`. It uses host networking like the game-lobby services, for the same
+   reason (WSL2 mirrored networking's docker-proxy is unreliable for persistent raw TCP).
+6. **Point a real client at it** (see `HOSTS.md` for the `d/testhk` override — the supported route
    for repointing the five Konami hostnames) and trigger the version check. Expected flow, all
-   live-confirmed:
+   live-confirmed for the HTTP path (P2P pending a live re-test — see finding 11 in §7):
    - `POST /us/mgo2/patch/checkver.html` → `0x01` reply → client fetches `relnote.txt`
    - Client fetches the disc-qualified record's `.inf`, decrypts and parses it
-   - "An update has been uploaded" dialog → **choose HTTP Download**, not Peer-to-Peer (no
-     BitTorrent tracker is implemented) → download completes instantly against the tiny stub
-     payload
+   - "An update has been uploaded" dialog → choose **HTTP Download** or **Peer-to-Peer** — both
+     are implemented now; HTTP completes instantly against the tiny stub payload, P2P fetches
+     `.torrent` then talks to `probe-bt`'s tracker and seed
    - Triangle/display-details shows the release note text
    - **Hitting X to apply produces the generic error dialog — this is expected.** The payload is
      32 bytes of placeholder text, not a structurally valid patch package, so the install step
@@ -445,13 +457,22 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
     **Both fixes live-confirmed 2026-07-31**: dialog now shows the real version, release note
     fits without scrolling off screen.
 
-    **Peer-to-Peer, tested out of curiosity, 2026-07-31: crashes the client immediately**, unlike
-    HTTP Download's clean rejection at the apply step. Expected — no BitTorrent tracker is
-    implemented (`.torrent` delivery was never in scope, see the phase list intro above), so
-    there's nothing for the client to connect to. The crash (vs. a graceful error dialog) is the
-    one new data point here — the P2P/torrent code path is evidently less defensive against "no
-    tracker reachable" than the HTTP path is against "invalid payload content." Not investigated
-    further; relevant only if `.torrent` delivery is ever picked up as real work.
+    **Peer-to-Peer, tested out of curiosity, 2026-07-31: crashed the client immediately** with no
+    tracker implemented — unlike HTTP Download's clean rejection at the apply step, the client's
+    torrent code path isn't defensive against "no tracker reachable." That gap motivated actually
+    building the tracker + seeding peer (below) rather than leaving it as a known limitation.
+
+    **A real BitTorrent tracker and seeding peer now exist, 2026-07-31**, in `dev/tools/
+    build_torrent_stub.py` (bencode encoder, `.torrent` builder, shared info-dict/info_hash/
+    piece-data computation) and `dev/runtime/bt_seed.py` (a BEP3 HTTP tracker on port 6969 and a
+    genuine peer-wire protocol seed on port 6881 — handshake, bitfield, choke/unchoke, piece
+    serving — both compose services, `probe-bt`). Not a stub reply: since the client links real
+    Transmission, this had to speak the actual protocol. Verified against a hand-written
+    simulated client before any live test: tracker announce returns a correct compact peer
+    record, and a full handshake→bitfield→interested→unchoke→request→piece exchange returns the
+    exact concatenated bytes of both stub payload files. `.torrent` is served over HTTP
+    byte-identical to what `build_torrent_stub.py` wrote. Live re-test with a real client
+    pending — see the quickstart in §0 for how to run it.
 
     The original goal of this investigation — exercising the real auto-patch protocol end to end
     against a real client with placeholder payload bytes — is met.

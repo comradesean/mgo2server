@@ -369,6 +369,27 @@ services:
     network_mode: host
     restart: unless-stopped
 
+  # BitTorrent tracker + seeding peer for the auto-patch P2P download path
+  # (dev/docs/PATCH_INVESTIGATION.md Sec 0). The client statically links real Transmission for
+  # this, so it speaks genuine BEP3 tracker + peer-wire protocol -- not a canned stub reply. See
+  # dev/runtime/bt_seed.py and dev/tools/build_torrent_stub.py.
+  probe-bt:
+    image: python:3.12-alpine
+    # bt_seed.py locates build_torrent_stub.py (../tools, relative to its own path) and that
+    # module locates the docroot (../runtime/www) the same way build_checkver_stub.py does on
+    # the host -- so the mounts below must preserve the repo's real dev/tools + dev/runtime/www
+    # relative layout, not flatten it.
+    command: python /app/dev/runtime/bt_seed.py
+    volumes:
+      - ./dev/tools:/app/dev/tools:ro
+      - ./dev/runtime/bt_seed.py:/app/dev/runtime/bt_seed.py:ro
+      - ./dev/runtime/www:/app/dev/runtime/www:ro
+    # Host networking, not published ports — see probe-stun and the game-lobby services above:
+    # WSL2 mirrored networking's docker-proxy is unreliable for anything beyond short-lived HTTP,
+    # and BitTorrent peer-wire is a persistent raw TCP connection like the game's own protocol.
+    network_mode: host
+    restart: unless-stopped
+
 volumes:
   postgres-data:
     # Pinned to the name the volume already has. Without this pin, a compose project rename
