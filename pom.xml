@@ -17,7 +17,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Runtime -->
-        <netty.version>4.2.0.Final</netty.version>
+        <netty.version>4.2.16.Final</netty.version>
         <jooby.version>4.5.3</jooby.version>
         <jdbi.version>3.54.0</jdbi.version>
         <flyway.version>13.0.0</flyway.version>
