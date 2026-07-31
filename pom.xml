@@ -18,7 +18,7 @@
 
         <!-- Runtime -->
         <netty.version>4.2.0.Final</netty.version>
-        <jooby.version>3.7.0</jooby.version>
+        <jooby.version>4.5.3</jooby.version>
         <jdbi.version>3.54.0</jdbi.version>
         <flyway.version>11.7.2</flyway.version>
         <hikari.version>6.3.0</hikari.version>
