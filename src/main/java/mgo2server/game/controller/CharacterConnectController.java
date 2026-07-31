@@ -6,7 +6,11 @@ import mgo2server.common.model.Account;
 import mgo2server.common.model.Chara;
 import mgo2server.common.model.CharaAppearance;
 import mgo2server.common.model.ChatMacro;
+import mgo2server.common.model.ConnectionInfo;
 import mgo2server.common.service.CharacterService;
+import mgo2server.common.service.AwardService;
+import mgo2server.common.service.ClanService;
+import mgo2server.common.service.GameService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.GameplaySettingsWriter;
@@ -41,16 +45,53 @@ public class CharacterConnectController implements IGameController {
 
 	public static final int UPDATE_CONNECTION_INFO_RESULT = 0x4701;
 
-	/** Private port, private address, public port, then two bytes the client pads with. */
+	/**
+	 * Private port, private address, public port, then a <b>u16 the client populates</b> — not
+	 * padding (corrected 2026-07-26). The sender writes it from its fourth argument
+	 * ({@code 0xD5C918} at {@code 0xD38708}), so the request is exactly 22 bytes, not "at least
+	 * 20". Its meaning is [UNKNOWN] and we do not read it; the constant below is only a minimum
+	 * length check. See {@code dev/proto/inbound/mgo2_cmd_4700_c2s.ksy}.
+	 */
 	private static final int PRIVATE_IP_LENGTH = 16;
 
 	private static final int CONNECTION_INFO_SIZE = 2 + PRIVATE_IP_LENGTH + 2;
 
 	public static final int CHARACTER_INFO = 0x4101;
 
+	/**
+	 * A 32-byte write-back from the connect family, contents unidentified — and the client
+	 * <b>blocks on it</b> (wait slot {@code 0x18}, {@code li r4,24} at {@code 0xD3BEDC}).
+	 * <p>
+	 * Observed live 2026-07-27 after a player search, payload
+	 * {@code 0000 1000 0000 0000 1110 0000 0000 0000 0000}, and unanswered it stalls the screen.
+	 * The reply {@code 0x4113} is a bare {@code u32} result ({@code 0xD3B148}), so acknowledging it
+	 * costs nothing; the body is stored nowhere because nothing is known about it. Whatever setting
+	 * this carries will not persist until someone identifies the 32 bytes.
+	 */
+	public static final int UNKNOWN_WRITE_BACK = 0x4112;
+
+	private static final int UNKNOWN_WRITE_BACK_RESULT = 0x4113;
+
 	public static final int GAMEPLAY_SETTINGS = 0x4120;
 
 	public static final int CHAT_MACROS = 0x4121;
+
+	/**
+	 * The write-back half of {@link #CHAT_MACROS}: the client saving its macros. First observed
+	 * live 2026-07-22 — the joiner flushed its options as {@code 0x4110} + two of these in one
+	 * burst, 769 bytes each, the exact {@code 0x4121} layout (u8 type, then 12 × 64-byte texts).
+	 * The {@code 0x4115} reply shape is inferred from the sibling result packets, not read from
+	 * the binary; observed accepted by a live client since.
+	 */
+	public static final int UPDATE_CHAT_MACROS = 0x4114;
+
+	public static final int UPDATE_CHAT_MACROS_RESULT = 0x4115;
+
+	/** Fixed width of one macro text on the wire, same as the 0x4121 read side. */
+	private static final int MACRO_TEXT_LENGTH = 64;
+
+	/** Each 0x4101 list region holds at most this many 4-byte ids. */
+	private static final int MAX_LIST_IDS = 32;
 
 	public static final int PERSONAL_INFO = 0x4122;
 
@@ -79,26 +120,72 @@ public class CharacterConnectController implements IGameController {
 	/** 32 blocked ids follow, up to here; the remaining 25 bytes are the tail, zeroed. */
 	private static final int BLOCKED_END = 0x129;
 
+
 	/**
-	 * Four u16 values the client stores from the header (0x16AE, 0x0338, 0x013E, 0x0150).
-	 * Their meaning is undocumented; they are reproduced from the original server byte for
-	 * byte.
+	 * Four u16 at wire {@code 0x16}/{@code 0x18}/{@code 0x1a}/{@code 0x1c} — {@code 0x16AE},
+	 * {@code 0x0338}, {@code 0x013E}, {@code 0x0150}.
+	 * <p>
+	 * <b>Dead in this build.</b> [ELF 2026-07-29] The parser writes them as four independent u16
+	 * ({@code 0xD3C1BC}, {@code 0xD3C1D8}, {@code 0xD3C1F4}, {@code 0xD3C210}) — so not one 8-byte
+	 * blob — and each has exactly one reader: the bare getters {@code 0x907EC0}, {@code 0x907E98},
+	 * {@code 0x907E70} and {@code 0x907E48}, every one a plain {@code return u16;} with no
+	 * comparison, arithmetic or formatting.
+	 * <p>
+	 * <b>None of those four getters is ever called.</b> Zero {@code bl} sites, and a scan of the
+	 * whole image for any word equal to their OPD descriptors ({@code 0x101C308}..{@code 0x101C320})
+	 * found nothing, which rules out a vtable slot or a TOC pointer. PPC64 emits a descriptor for
+	 * every global function, so their existence is not evidence of use.
+	 * <p>
+	 * We could send zeros. They are kept as captured because changing them buys nothing and the
+	 * values cost nothing — but nothing depends on them, and a later cleanup may drop them.
+	 * <p>
+	 * The {@code 0x0150} == 336 == {@code 0x4120} length coincidence has no code behind it and is
+	 * not a lead.
 	 */
-	private static final byte[] INFO_PREFIX = {
+	/**
+	 * Writes the four dead constants, honouring the zeroing experiment.
+	 *
+	 * <p><b>One writer, because two diverged.</b> {@code 0x4101} applied the policy gate and
+	 * {@code 0x4103} wrote the array raw, so with the experiment on a client received zeros from one
+	 * packet and the constants from the other — which makes the experiment prove nothing about these
+	 * bytes. An audit found it; nothing else could have, since both behaviours look correct in
+	 * isolation.
+	 */
+	static void writeInfoPrefix(io.netty.buffer.ByteBuf buffer) {
+		if (mgo2server.common.Policy.current().zeroUnreadFields()) {
+			buffer.writeZero(INFO_PREFIX.length);
+			return;
+		}
+		buffer.writeBytes(INFO_PREFIX);
+	}
+
+	static final byte[] INFO_PREFIX = {
 		(byte) 0x16, (byte) 0xAE, (byte) 0x03, (byte) 0x38,
 		(byte) 0x01, (byte) 0x3E, (byte) 0x01, (byte) 0x50,
 	};
 
 	private final CharacterService characterService;
 
-	public CharacterConnectController(CharacterService characterService) {
+	private final ClanService clanService;
+
+	private final AwardService awardService;
+
+	private final GameService gameService;
+
+	public CharacterConnectController(CharacterService characterService, ClanService clanService,
+			GameService gameService, AwardService awardService) {
+		this.clanService = clanService;
 		this.characterService = characterService;
+		this.gameService = gameService;
+		this.awardService = awardService;
 	}
 
 	@Override
 	public void register(Map<Integer, Consumer<GameControllerContext>> handlers) {
 		handlers.put(CONNECT, this::connect);
 		handlers.put(UPDATE_CONNECTION_INFO, this::updateConnectionInfo);
+		handlers.put(UPDATE_CHAT_MACROS, this::updateChatMacros);
+		handlers.put(UNKNOWN_WRITE_BACK, ctx -> ctx.write(UNKNOWN_WRITE_BACK_RESULT, GameError.NONE));
 	}
 
 	/**
@@ -109,11 +196,47 @@ public class CharacterConnectController implements IGameController {
 	 * <em>Unable to connect to lobby (092E:FFFFFF60)</em>, the same timeout shape as an unanswered
 	 * name check.
 	 * <p>
-	 * The values are read and logged but not yet persisted — nothing serves them to another player
-	 * until hosting and joining are wired up, and columns nothing reads would only be a guess at
-	 * what that path needs. The public address is taken from the socket rather than trusted from
-	 * the payload, which is what the reference servers do.
+	 * The values are persisted against the character so a joining player can be handed them by
+	 * command 0x4321. The public address is taken from the socket rather than trusted from the
+	 * payload, which is what the reference servers do — a client cannot lie about where its
+	 * packets come from.
 	 */
+	/**
+	 * Saves a macro-type's grid pushed by the client ({@link #UPDATE_CHAT_MACROS}). The payload
+	 * mirrors what {@code 0x4121} sends down: one type byte, then twelve 64-byte texts. A type
+	 * outside 0/1 is logged and dropped (the table's check constraint would reject it anyway),
+	 * but still acknowledged — an unanswered command is this client's signature failure.
+	 */
+	private void updateChatMacros(GameControllerContext ctx) {
+		var account = ctx.connection().account();
+		if (account == null) {
+			ctx.write(UPDATE_CHAT_MACROS_RESULT, GameError.INVALID_SESSION);
+			return;
+		}
+
+		var payload = ctx.packet().getPayload();
+		var charaId = account.getCurrentCharaId();
+		if (charaId != null && payload.readableBytes() >= 1) {
+			var type = payload.readByte() & 0xff;
+			if (type < ChatMacro.TYPES) {
+				var texts = new java.util.ArrayList<String>(ChatMacro.PER_TYPE);
+				while (payload.readableBytes() >= MACRO_TEXT_LENGTH
+						&& texts.size() < ChatMacro.PER_TYPE) {
+					texts.add(readNulTerminated(payload, MACRO_TEXT_LENGTH));
+				}
+				characterService.saveChatMacros(charaId, type, texts);
+				logger.info("Character {} saved {} chat macros of type {}.",
+					charaId, texts.size(), type);
+			} else {
+				logger.warn("Chat-macro save with unknown type {}; dropped.", type);
+			}
+		}
+
+		var buffer = ctx.buffer(Integer.BYTES);
+		buffer.writeInt(GameError.NONE.result());
+		ctx.write(new GamePacket(UPDATE_CHAT_MACROS_RESULT, buffer));
+	}
+
 	private void updateConnectionInfo(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {
@@ -132,8 +255,27 @@ public class CharacterConnectController implements IGameController {
 		var privateIp = readNulTerminated(payload, PRIVATE_IP_LENGTH);
 		var publicPort = payload.readUnsignedShort();
 
-		logger.info("Account {} reachable on public port {} (private {}:{}).",
-			account.getId(), publicPort, privateIp, privatePort);
+		var charaId = account.getCurrentCharaId();
+		var publicIp = ctx.remoteIp();
+		if (charaId == null || publicIp == null) {
+			// Nothing to key the endpoint to, or no socket address — register nothing but still
+			// acknowledge, since the client blocks on the reply.
+			logger.warn("Connection info from account {} could not be stored (chara {}, ip {}).",
+				account.getId(), charaId, publicIp);
+			ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.NONE);
+			return;
+		}
+
+		var info = new ConnectionInfo();
+		info.setCharaId(charaId);
+		info.setPublicIp(publicIp);
+		info.setPublicPort(publicPort);
+		info.setPrivateIp(privateIp);
+		info.setPrivatePort(privatePort);
+		gameService.saveConnectionInfo(info);
+
+		logger.info("Character {} reachable at {}:{} (private {}:{}).",
+			charaId, publicIp, publicPort, privateIp, privatePort);
 
 		ctx.write(UPDATE_CONNECTION_INFO_RESULT, GameError.NONE);
 	}
@@ -151,26 +293,64 @@ public class CharacterConnectController implements IGameController {
 		return new String(bytes, 0, end, StandardCharsets.ISO_8859_1);
 	}
 
+	/**
+	 * Refuses {@code 0x4100} by answering nothing, because nothing is the only honest answer.
+	 *
+	 * <p><b>There is no way to say "no character" in this reply.</b> [ELF 2026-07-29] {@code 0x4101}
+	 * is a fixed 322-byte record with <b>no result or status word</b> — its first field is the
+	 * character id, and the parser at {@code 0xD3C120} branches only on its read primitive's return,
+	 * never on a field value. Nor is there a result channel behind it: {@code 0x4100} marks wait slot
+	 * {@code 0x15}, the status setter rejects any value above 2 so there is no failure state, and the
+	 * screen polls a boolean that never consults the result.
+	 *
+	 * <p><b>What we used to send was worse than silence.</b> A 4-byte reply carrying a masked error
+	 * set the character id to {@code 0xC0FFEE02} and zeroed the rest of the record: no read primitive
+	 * consults the payload length, and the receive buffer is memset before each packet. The client
+	 * then entered the lobby with a garbage id and put it in every subsequent packet. A full-length
+	 * reply with a zero id is no better — an empty name and id 0, carried onward the same way.
+	 *
+	 * <p>So the client sits on the connect screen and fails with {@code 1037:FFFFFF60} after its own
+	 * timeout. That is a real cost, and it is the smaller one.
+	 *
+	 * <p><b>The refusal belongs one step earlier, and already works there.</b> {@code 0x3003} /
+	 * {@code 0x3004} is the discriminating channel — {@code -240}, {@code -402}, {@code -403/-404} —
+	 * and {@code AccountGameController} already checks the account, the character's existence, its
+	 * ownership and that it is active. All three branches here are conditions {@code 0x3003} has
+	 * already cleared, so reaching one means a race or lost connection state, which is worth the log
+	 * line it now gets.
+	 */
+	private void refuseConnect(GameControllerContext ctx, String why) {
+		logger.warn("0x4100 cannot be served ({}). Answering nothing: 0x4101 has no result field, and"
+			+ " a short reply would hand the client a garbage character id. The client will time out"
+			+ " with 1037:FFFFFF60. This should be unreachable — 0x3003 refuses these first.", why);
+	}
+
 	private void connect(GameControllerContext ctx) {
 		var account = ctx.connection().account();
 		if (account == null) {
-			ctx.write(CHARACTER_INFO, GameError.INVALID_SESSION);
+			refuseConnect(ctx, "no account on the connection");
 			return;
 		}
 
 		var charaId = account.getCurrentCharaId();
 		if (charaId == null) {
-			logger.warn("Account {} entered a game lobby with no character selected.", account.getId());
-			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			refuseConnect(ctx, "account " + account.getId() + " has no character selected");
 			return;
 		}
 
 		var chara = characterService.get(charaId).orElse(null);
 		if (chara == null) {
-			logger.warn("Account {} has a selected character {} that no longer exists.",
-				account.getId(), charaId);
-			ctx.write(CHARACTER_INFO, GameError.CHARACTER_DOES_NOT_EXIST);
+			refuseConnect(ctx, "account " + account.getId() + " selected character " + charaId
+				+ ", which no longer exists");
 			return;
+		}
+
+		// Stamping the visit also re-tests the titles, and does so BEFORE the stamp lands so an
+		// absence-based requirement can still see the gap it is measuring. Doing it here as well as
+		// at round end means a character who qualifies purely by staying away can still be told.
+		var titles = awardService.seen(charaId);
+		if (!titles.isEmpty()) {
+			logger.info("Character {} unlocked title bits {} on entering the lobby.", charaId, titles);
 		}
 
 		// Order matches the original's burst.
@@ -178,21 +358,25 @@ public class CharacterConnectController implements IGameController {
 		writeGameplaySettings(ctx, charaId);
 		writeChatMacros(ctx, charaId);
 		writePersonalInfo(ctx, chara);
-		writeGear(ctx);
-		writeSkills(ctx);
+		writeGear(ctx, charaId);
+		writeSkills(ctx, charaId);
 		writeSkillSets(ctx, charaId);
 		writeGearSets(ctx, charaId);
 	}
 
-	private void writeGear(GameControllerContext ctx) {
-		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize());
-		LoadoutWriter.writeGear(buffer);
+	private void writeGear(GameControllerContext ctx, long charaId) {
+		var gear = characterService.ownedGear(charaId);
+		var buffer = ctx.buffer(LoadoutWriter.gearPayloadSize(gear.size()));
+		LoadoutWriter.writeGear(buffer, gear,
+			characterService.gearColourHighlights(charaId));
 		ctx.write(new GamePacket(GEAR, buffer));
 	}
 
-	private void writeSkills(GameControllerContext ctx) {
-		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize());
-		LoadoutWriter.writeSkills(buffer);
+	private void writeSkills(GameControllerContext ctx, long charaId) {
+		var skills = characterService.getSkills(charaId);
+
+		var buffer = ctx.buffer(LoadoutWriter.skillsPayloadSize(skills.size()));
+		LoadoutWriter.writeSkills(buffer, skills);
 		ctx.write(new GamePacket(SKILLS, buffer));
 	}
 
@@ -225,8 +409,24 @@ public class CharacterConnectController implements IGameController {
 		var appearance = characterService.getAppearance(chara.getId()).orElseGet(CharaAppearance::new);
 		var skills = characterService.getOrCreateEquippedSkills(chara.getId());
 
+		// A saved instructor is announced to peers; without it the client re-offers the recognition
+		// prompt every session and no "your instructor" tag can appear.
+		var savedInstructor = characterService.instructorOf(chara.getId())
+			.map(instructor -> (int) instructor.instructorCharaId())
+			.orElse(PersonalInfoWriter.NO_SAVED_INSTRUCTOR);
+
+		var membership = clanService.membershipOf(chara.getId());
+
+		// Only a clan we can actually serve an emblem for: the flag makes the client send 0x4b48
+		// during connect and wait on the reply, so claiming an emblem we do not have would hand it
+		// an empty one. emblemFlagOf returns the raw stored upload mode; 3 is the only mode the
+		// client itself records as "on display".
+		var clanHasEmblem = membership.id() != 0
+			&& clanService.emblemFlagOf(membership.id()) == PersonalInfoWriter.EMBLEM_ON_DISPLAY;
+
 		var buffer = ctx.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, appearance, skills);
+		PersonalInfoWriter.write(buffer, chara, appearance, skills, savedInstructor, membership,
+			clanHasEmblem, awardService.wornTitle(chara.getId()), characterService.skillExperience(chara.getId()));
 
 		ctx.write(new GamePacket(PERSONAL_INFO, buffer));
 	}
@@ -237,7 +437,7 @@ public class CharacterConnectController implements IGameController {
 		var buffer = ctx.buffer(INFO_PAYLOAD_SIZE);
 		buffer.writeInt((int) chara.getId());
 		BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
-		buffer.writeBytes(INFO_PREFIX);
+		writeInfoPrefix(buffer);
 
 		buffer.writeInt(experienceFor(account, chara))
 			// The client shows the previous login alongside the current one.
@@ -245,20 +445,28 @@ public class CharacterConnectController implements IGameController {
 			.writeInt(now)
 			.writeZero(1);
 
-		// Friend and blocked lists are fixed-width regions of 4-byte ids. Neither is modelled
-		// yet, so both are left empty and the regions are zero-filled, as is the tail — which
-		// is what the client actually received from the original server.
+		// Friend and blocked lists: fixed-width regions of 4-byte ids, filled from the stored
+		// ADDLIST relations (0x4500) and zero-padded. These arrays are how the client learns its
+		// authoritative list state at login — leaving them zero is why relationships could never
+		// be changed twice in a session or survive one (observed live 2026-07-22).
+		for (var id : characterService.relationIds(chara.getId(),
+				CharacterService.RELATION_FRIEND, MAX_LIST_IDS)) {
+			buffer.writeInt(id.intValue());
+		}
 		padTo(buffer, FRIENDS_END);
+		for (var id : characterService.relationIds(chara.getId(),
+				CharacterService.RELATION_BLOCKED, MAX_LIST_IDS)) {
+			buffer.writeInt(id.intValue());
+		}
 		padTo(buffer, BLOCKED_END);
 		padTo(buffer, INFO_PAYLOAD_SIZE);
 
 		ctx.write(new GamePacket(CHARACTER_INFO, buffer));
 	}
 
-	/** Experience is per account, split between the main character and the alts. */
+	/** Experience is the character's own since V59; it used to be an account main/alt pool. */
 	private static int experienceFor(Account account, Chara chara) {
-		var main = account.getMainCharaId();
-		return main != null && main == chara.getId() ? account.getMainExp() : account.getAltExp();
+		return chara.getExperience();
 	}
 
 	private void writeChatMacros(GameControllerContext ctx, long charaId) {

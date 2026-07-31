@@ -6,7 +6,9 @@ The server side is `docker compose up`. Everything else is emulator and host con
 comes down to **four required changes** plus one host address for the port check.
 
 Assumed throughout: stock **RPCS3 v0.0.41**, retail disc **BLUS30109**, and a server reachable at
-`<SERVER_IP>` — written below as `192.168.1.100`, the value the defaults use.
+`<SERVER_IP>` — written below as `192.168.1.200`, the value the defaults use. The server owns its
+own address, distinct from the machine's primary (`.100`), so a native RPCS3 client can run on
+the same machine without sharing an IP with the server — see the host section below.
 
 ## Server
 
@@ -42,8 +44,12 @@ insert into account (username, password, slots)
 values ('<game id>', md5('<password>'), 3);
 ```
 
-The `username` is whatever is typed into the game's ID field. Passwords are MD5 because the client
-hashes them before sending; see `dev/docs/CRYPTO.md`.
+The `username` is whatever is typed into the game's ID field. **The client rejects an ID shorter
+than 8 or longer than 32 characters before contacting the server** ("gameid is not long enough"),
+so pick a username in that range — observed against a real client, not yet located in the
+binary. Unresolved: the 6-character seed account `tester` has logged in successfully, so the
+check may not run on every entry path. Passwords are MD5 because the client hashes them before sending; see
+`dev/docs/CRYPTO.md`.
 
 ## RPCS3 — four changes
 
@@ -52,11 +58,18 @@ cause.
 
 ### 1. IP swap list
 
+> **This is the emulator route, and it is no longer the only one.** It rewrites the resolver
+> *inside* RPCS3, so it changes nothing about the client and cannot help a real PS3. The client's
+> own addresses live in disc string resources and can be overridden with a single file,
+> `d/testhk` — confirmed live 2026-07-29. See [HOSTS.md](HOSTS.md) for that route and for where the
+> addresses actually come from. Either works for an RPCS3 setup; the swap list is the one with
+> fewer moving parts, so it stays the documented default here.
+
 Redirects Konami's hostnames to the server. **Settings → Network → IP swap list**, or in
 `config/config.yml`:
 
 ```
-IP swap list: "mgo2web.konami.com=192.168.1.100&&info.service.konamionline.com=192.168.1.100&&mgo2gateus.konamionline.com=192.168.1.100&&mgo2stunna.konamionline.com=192.168.1.100&&mgo2auth.konami.com=192.168.1.100"
+IP swap list: "mgo2web.konami.com=192.168.1.200&&info.service.konamionline.com=192.168.1.200&&mgo2gateus.konamionline.com=192.168.1.200&&mgo2stunna.konamionline.com=192.168.1.200&&mgo2auth.konami.com=192.168.1.200"
 ```
 
 ### 2. The CA certificate
@@ -67,14 +80,14 @@ contacted. A self-signed certificate is not enough.
 
 The leaf certificate must cover **every hostname in the swap list**, not just one. The login is on
 `mgo2auth.konami.com` and the version check on `mgo2web.konami.com`; a certificate naming only one
-fails the other, and both failures look identical (`090B`). The chain in `dev/runtime/www` already carries
-`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/runtime/www/ext.cnf`
+fails the other, and both failures look identical (`090B`). The chain in `dev/runtime/tls` already carries
+`DNS:mgo2web.konami.com`, `DNS:*.konami.com` and `DNS:*.konamionline.com` — see `dev/runtime/tls/ext.cnf`
 if regenerating.
 
 Copy this repository's CA over one of the emulator's certificate slots:
 
 ```
-cp dev/runtime/www/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
+cp dev/runtime/tls/ca-cert.pem  <rpcs3>/dev_flash/data/cert/CA30.cer
 ```
 
 Back up the original first. The client was observed reading `CA29`–`CA31`; `CA30` works. The
@@ -92,23 +105,68 @@ sign-in check.
 
 **Settings → Network → Internet → Connected.** Self-evident, but it is off by default.
 
-## Host — a second IP for the port check
+## Host — the server's own addresses
 
-NAT discovery needs the server to answer from a **different address**, so the responder binds two.
-Add the secondary to the interface holding the primary:
+The host machine carries **three** addresses on the primary Ethernet adapter (layout since
+2026-07-23; before that the server shared the machine's `.100`):
+
+- `.100` — the machine's DHCP primary. **Not used by the server.** Free for a native RPCS3
+  client, whose game UDP port would otherwise conflict with nothing but whose separation keeps
+  client and server observably distinct on the wire.
+- `.200` — the **server's** address: every game/web/probe bind, the lobby rows, the client swap
+  list, and the STUN primary.
+- `.201` — the STUN **secondary**. NAT discovery needs the responder to answer from a
+  *different* address than the one asked: the client infers its NAT type from whether that
+  reply arrives. The responder is **coturn** (see `dev/runtime/turnserver.conf`); edit both
+  `listening-ip` lines there for a different deployment. Without a bindable secondary, the
+  client classifies symmetric and cannot host.
+
+**The winning configuration (verified end-to-end against two clients 2026-07-21; `.200` added
+by the same recipe 2026-07-23).** Add each server address as a **secondary IP on the primary
+Ethernet adapter, with `SkipAsSource`** — in an **admin** PowerShell on the host:
+
+```powershell
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.200 -PrefixLength 24 -SkipAsSource $true
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 192.168.1.201 -PrefixLength 24 -SkipAsSource $true
+```
+
+Two things about this command are load-bearing:
+
+- **Use `New-NetIPAddress`, not `netsh ... add address`.** On a DHCP adapter the positional `netsh`
+  form *replaces* the primary instead of adding (confirmed, and it is documented that a DHCP
+  adapter refuses a second static via the GUI/`netsh`). `New-NetIPAddress` adds a Manual secondary
+  that coexists with the DHCP primary — `ipconfig` then shows all of `.100`, `.200` and `.201`.
+- **`SkipAsSource $true` is what makes peer-to-peer work, not just the port check.** Without it,
+  when the host also runs a game client, native RPCS3 can send its P2P reply out a *secondary*
+  address, and the joiner — expecting the host at `.100` — never sees a usable reply, so the
+  connection never forms. `SkipAsSource` pins every outbound to `.100` while `.200`/`.201` still
+  receive traffic addressed to them. (Server sockets bound to a specific address reply from that
+  address regardless — `SkipAsSource` only steers unbound outbound connections, i.e. the client.)
+
+Under WSL mirrored networking the Windows-owned secondaries are mirrored into WSL on `eth0`
+automatically — **no `ip addr add`, no policy route, no second interface.** Those were earlier
+dead ends:
+
+- `sudo ip addr add … dev eth0` inside WSL works only for a client on the *same* host — a
+  WSL-only address is not ARP-reachable on the LAN, so a real client's Test II times out.
+- The Wi-Fi adapter with a static no-gateway `.201` worked but is fragile: Windows treats a
+  gateway-less adapter as "no connectivity" and keeps dropping the Wi-Fi, taking `.201` with it.
+- Single-address STUN lets a client *online* but not *host* — it can't prove full-cone, so Create
+  Game fails `0693:00000001`. Two addresses are mandatory for hosting.
+
+### Client machines: firewall must allow the whole P2P range
+
+Each client's firewall must allow inbound UDP **5730–5740** from the LAN — not just 5730. echo's
+coturn config uses `min-port 5730 / max-port 5740`, i.e. MGO2's P2P uses that whole range, and a
+default-deny firewall silently drops the ports above 5730. On a Linux (ufw) client:
 
 ```
-sudo ip addr add 192.168.1.201/24 dev <iface>
+sudo ufw allow in proto udp from 192.168.1.0/24 to any port 5730:5740
 ```
 
-Override the defaults with `MGO2SERVER_PUBLIC_IP` and `MGO2SERVER_STUN_SECONDARY_IP` if using other
-addresses. Without it `probe-stun` crash-loops on bind with `Errno 99`.
-
-**This does not survive a reboot**, and on WSL the interface is renamed across restarts (`eth1`,
-`eth8` and `eth0` have all been seen) — check `ip -brief addr` rather than reusing the old command.
-
-A single address does get the client past the check, but misclassifies restricted-cone players as
-full-cone, which breaks peer-to-peer for them. `dev/docs/STUN.md` has the detail.
+On a Windows client, an inbound allow rule for UDP 5730-5740. The port check's Test II reply also
+arrives from a different ip:port than contacted, so a stateful default-deny firewall that only
+opens a single port reads the machine as a symmetric UDP firewall (`0692`, `0693:00000001`).
 
 ## What is *not* needed
 
@@ -166,4 +224,6 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 | `0519:8002AA0C` | PSN status is not RPCN |
 | Login screen rejects, `090B` | certificate not installed, or wrong slot |
 | Stuck on "Adjusting port settings" | `probe-stun` running? `python3 dev/tools/stun_selftest.py` should pass every check it runs (13 under WSL, where the change-request leg skips; 17 from a separate host) |
+| `0692:00000003` after the check | client classified symmetric — a Test II reply never arrived. Repeated `change_ip=True` lines in the `probe-stun` log are the tell. See "a second IP for the port check": WSL-only secondary, missing policy route, or the client machine's own firewall |
+| `0693:00000001` on Create Game | same cause as `0692` — the stored NAT verdict forbids hosting |
 | `0910:C0FFEE02` | no account row, or its password hash does not match |

@@ -1,0 +1,242 @@
+{
+  "_comment": [
+    "Award requirements. EDIT THIS FILE to retune; rebuild and redeploy to apply.",
+    "",
+    "TITLES are operator policy. Nothing in the game states a threshold -- the client's own",
+    "descriptions name the statistic ('High kill count') and never the number. The values here come",
+    "from a community requirements list for a LATE version of MGO2, adapted to the 22 titles this",
+    "disc ships, with gaps filled by best guess. They are expected to be wrong in places and are",
+    "meant to be edited. See dev/docs/AWARDS.md for the sources and their disagreements.",
+    "",
+    "MEDALS are different: the 'value' is the number the client PRINTS in that medal's own caption,",
+    "so awarding at exactly that number is what makes the screen truthful. Change these only if you",
+    "want the screen to state a requirement you did not apply.",
+    "",
+    "A clause is {metric, op, value} plus an optional 'modes' filter. Metrics are a fixed set",
+    "implemented in AwardMetric.java -- this file chooses among them, it cannot define new ones.",
+    "All clauses of a title must pass. 'rank' orders titles for the displayed one: LOWEST rank wins.",
+    "'bit' is the position in the 22-bit mask at 0x4103 wire 563 and MUST be 0..21 -- bit 22 or above",
+    "corrupts the client's scrollbar.",
+    "",
+    "Modes: DM TDM RES CAP SNE BASE. TSNE exists on the disc but is never played (release-day scope),",
+    "so CHAMELEON can never be earned; it is kept so it works the day rule 7 is enabled."
+  ],
+
+  "titles": [
+    {
+      "name": "FOXHOUND", "bit": 0, "rank": 1, "description": "A living legend",
+      "requires": [
+        { "metric": "kd_ratio", "modes": ["DM", "TDM", "SNE"], "op": ">=", "value": 1.45 },
+        { "metric": "win_rate", "modes": ["RES", "CAP", "BASE"], "op": ">=", "value": 0.525 },
+        { "metric": "bases_per_round", "op": ">", "value": 1.60 },
+        { "metric": "withdrawal_rate", "op": "<=", "value": 0.02 },
+        { "metric": "rounds", "op": ">=", "value": 100 }
+      ]
+    },
+    {
+      "name": "FOX", "bit": 1, "rank": 2, "description": "The best of the best",
+      "requires": [
+        { "metric": "kd_ratio", "modes": ["DM", "TDM", "SNE"], "op": ">=", "value": 1.40 },
+        { "metric": "win_rate", "modes": ["RES", "CAP", "BASE"], "op": ">=", "value": 0.475 },
+        { "metric": "bases_per_round", "op": ">", "value": 1.40 },
+        { "metric": "withdrawal_rate", "op": "<=", "value": 0.02 },
+        { "metric": "rounds", "op": ">=", "value": 50 }
+      ]
+    },
+    {
+      "name": "DOBERMAN", "bit": 2, "rank": 3, "description": "A top-class soldier",
+      "requires": [
+        { "metric": "kd_ratio", "modes": ["DM", "TDM", "SNE"], "op": ">=", "value": 1.35 },
+        { "metric": "win_rate", "modes": ["RES", "CAP", "BASE"], "op": ">=", "value": 0.45 },
+        { "metric": "bases_per_round", "op": ">", "value": 1.20 },
+        { "metric": "withdrawal_rate", "op": "<=", "value": 0.04 },
+        { "metric": "rounds", "op": ">=", "value": 25 }
+      ]
+    },
+    {
+      "name": "HOUND", "bit": 3, "rank": 4, "description": "A superior soldier",
+      "requires": [
+        { "metric": "kd_ratio", "modes": ["DM", "TDM", "SNE"], "op": ">=", "value": 1.30 },
+        { "metric": "win_rate", "modes": ["RES", "CAP", "BASE"], "op": ">=", "value": 0.425 },
+        { "metric": "bases_per_round", "op": ">", "value": 1.00 },
+        { "metric": "withdrawal_rate", "op": "<=", "value": 0.04 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+
+    {
+      "name": "EAGLE", "bit": 5, "rank": 10, "description": "Headshot master",
+      "requires": [
+        { "metric": "kd_ratio", "op": ">=", "value": 1.30 },
+        { "metric": "headshot_ratio", "op": ">=", "value": 0.50 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "CROCODILE", "bit": 4, "rank": 11, "description": "High kill count",
+      "requires": [
+        { "metric": "kd_ratio", "op": ">=", "value": 1.50 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "JAWS", "bit": 6, "rank": 12, "description": "Knife master",
+      "requires": [
+        { "metric": "kd_ratio", "op": ">=", "value": 1.25 },
+        { "metric": "knife_ratio", "op": ">=", "value": 0.075 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "FLYING SQUIRREL", "bit": 9, "rank": 13, "description": "High number of rolls",
+      "requires": [
+        { "metric": "rolls_per_round", "op": ">=", "value": 15 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+
+    {
+      "name": "SNAKE", "bit": 13, "rank": 20, "description": "Prefers Sneaking rules",
+      "requires": [
+        { "metric": "mode_round_share", "modes": ["SNE"], "op": ">=", "value": 0.60 },
+        { "metric": "weekly_mode_rounds", "modes": ["SNE"], "op": ">=", "value": 30 }
+      ]
+    },
+    {
+      "name": "KEROTAN", "bit": 14, "rank": 21, "description": "Prefers Capture rules",
+      "requires": [
+        { "metric": "mode_round_share", "modes": ["CAP"], "op": ">=", "value": 0.60 },
+        { "metric": "weekly_mode_rounds", "modes": ["CAP"], "op": ">=", "value": 30 }
+      ]
+    },
+    {
+      "name": "GA-KO", "bit": 15, "rank": 22, "description": "Prefers Rescue rules",
+      "requires": [
+        { "metric": "mode_round_share", "modes": ["RES"], "op": ">=", "value": 0.60 },
+        { "metric": "weekly_mode_rounds", "modes": ["RES"], "op": ">=", "value": 30 }
+      ]
+    },
+    {
+      "name": "CHAMELEON", "bit": 16, "rank": 23, "description": "Prefers Team Sneaking rules",
+      "requires": [
+        { "metric": "mode_round_share", "modes": ["TSNE"], "op": ">=", "value": 0.60 },
+        { "metric": "weekly_mode_rounds", "modes": ["TSNE"], "op": ">=", "value": 30 }
+      ]
+    },
+
+    {
+      "name": "WATER BEAR", "bit": 7, "rank": 30, "description": "High survival rate",
+      "requires": [
+        { "metric": "deaths_per_round", "modes": ["RES", "TSNE"], "op": "<=", "value": 0.50 },
+        { "metric": "rounds", "modes": ["RES", "TSNE"], "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "BEAR", "bit": 18, "rank": 31, "description": "Bare hand/CQC master",
+      "requires": [
+        { "metric": "cqc_per_round", "op": ">=", "value": 5 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "BEE", "bit": 20, "rank": 32, "description": "Scanning master",
+      "requires": [
+        { "metric": "scans_per_round", "op": ">=", "value": 0.30 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "TORTOISE", "bit": 19, "rank": 33, "description": "Often uses cardboard box",
+      "requires": [
+        { "metric": "box_per_round", "op": ">=", "value": 15 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "NIGHT OWL", "bit": 11, "rank": 34, "description": "Often wears ENVG",
+      "requires": [
+        { "metric": "envg_time_ratio", "op": ">=", "value": 0.05 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "RAT", "bit": 21, "rank": 35, "description": "Often gets stuck in traps",
+      "requires": [
+        { "metric": "traps_per_round", "op": ">=", "value": 0.30 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "PIGEON", "bit": 10, "rank": 36, "description": "Prefers not to kill",
+      "requires": [
+        { "metric": "stuns_per_kill", "op": ">=", "value": 1.20 },
+        { "metric": "stun_ratio", "op": ">=", "value": 1.20 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "SLOTH", "bit": 8, "rank": 37, "description": "Highly susceptible to headshots",
+      "requires": [
+        { "metric": "simple_kd", "op": "<=", "value": 0.85 },
+        { "metric": "headshot_death_ratio", "op": ">=", "value": 0.60 },
+        { "metric": "stun_ratio", "op": "<=", "value": 0.85 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "CHICKEN", "bit": 17, "rank": 38, "description": "Rarely participates in battle",
+      "requires": [
+        { "metric": "kills_per_round", "op": "<=", "value": 0.30 },
+        { "metric": "stuns_per_round", "op": "<=", "value": 0.30 },
+        { "metric": "stuns_received_per_round", "op": "<=", "value": 0.50 },
+        { "metric": "deaths_per_round", "op": "<=", "value": 0.50 },
+        { "metric": "rounds", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "name": "TSUCHINOKO", "bit": 12, "rank": 39, "description": "Rarely plays",
+      "requires": [
+        { "metric": "days_since_login", "op": ">=", "value": 30 }
+      ]
+    }
+  ],
+
+  "medals": [
+    { "id": 1,   "byte": 0, "bit": 0, "metric": "slot", "slot": 1,  "value": 5,     "caption": "5 consecutive kills" },
+    { "id": 2,   "byte": 0, "bit": 1, "metric": "slot", "slot": 1,  "value": 10,    "caption": "10 consecutive kills" },
+    { "id": 3,   "byte": 0, "bit": 2, "metric": "slot", "slot": 1,  "value": 25,    "caption": "25 consecutive kills" },
+    { "id": 10,  "byte": 0, "bit": 4, "metric": "slot", "slot": 3,  "value": 3,     "caption": "3 consecutive headshots" },
+    { "id": 11,  "byte": 0, "bit": 5, "metric": "slot", "slot": 3,  "value": 10,    "caption": "10 consecutive headshots" },
+    { "id": 12,  "byte": 0, "bit": 6, "metric": "slot", "slot": 3,  "value": 30,    "caption": "30 consecutive headshots" },
+    { "id": 20,  "byte": 1, "bit": 0, "metric": "slot", "slot": 2,  "value": 5,     "caption": "5 consecutive deaths" },
+    { "id": 21,  "byte": 1, "bit": 1, "metric": "slot", "slot": 2,  "value": 10,    "caption": "10 consecutive deaths" },
+    { "id": 22,  "byte": 1, "bit": 2, "metric": "slot", "slot": 2,  "value": 25,    "caption": "25 consecutive deaths" },
+    { "id": 30,  "byte": 1, "bit": 4, "metric": "total_kills",      "value": 500,   "caption": "500 total kills" },
+    { "id": 31,  "byte": 1, "bit": 5, "metric": "total_kills",      "value": 2000,  "caption": "2000 total kills" },
+    { "id": 32,  "byte": 1, "bit": 6, "metric": "total_kills",      "value": 10000, "caption": "10000 total kills" },
+    { "id": 40,  "byte": 2, "bit": 0, "metric": "total_deaths",     "value": 500,   "caption": "500 total deaths" },
+    { "id": 41,  "byte": 2, "bit": 1, "metric": "total_deaths",     "value": 2000,  "caption": "2000 total deaths" },
+    { "id": 42,  "byte": 2, "bit": 2, "metric": "total_deaths",     "value": 10000, "caption": "10000 total deaths" },
+    { "id": 50,  "byte": 3, "bit": 0, "metric": "slot", "slot": 25, "value": 2,     "caption": "2 consecutive survivals in TDM" },
+    { "id": 51,  "byte": 3, "bit": 1, "metric": "slot", "slot": 25, "value": 4,     "caption": "4 consecutive survivals in TDM" },
+    { "id": 52,  "byte": 3, "bit": 2, "metric": "slot", "slot": 25, "value": 6,     "caption": "6 consecutive survivals in TDM" },
+    { "id": 60,  "byte": 4, "bit": 0, "metric": "slot", "slot": 56, "value": 50,    "caption": "50 times spotted Snake first" },
+    { "id": 61,  "byte": 4, "bit": 1, "metric": "slot", "slot": 56, "value": 100,   "caption": "100 times spotted Snake first" },
+    { "id": 62,  "byte": 4, "bit": 2, "metric": "slot", "slot": 56, "value": 500,   "caption": "500 times spotted Snake first" },
+    { "id": 63,  "byte": 4, "bit": 4, "metric": "slot", "slot": 53, "value": 50,    "caption": "50 Mk.II destructions" },
+    { "id": 64,  "byte": 4, "bit": 5, "metric": "slot", "slot": 53, "value": 100,   "caption": "100 Mk.II destructions" },
+    { "id": 65,  "byte": 4, "bit": 6, "metric": "slot", "slot": 53, "value": 500,   "caption": "500 Mk.II destructions" },
+    { "id": 66,  "byte": 9, "bit": 0, "metric": "slot", "slot": 51, "value": 50,    "caption": "50 hold ups performed as Snake" },
+    { "id": 67,  "byte": 9, "bit": 1, "metric": "slot", "slot": 51, "value": 100,   "caption": "100 hold ups performed as Snake" },
+    { "id": 68,  "byte": 9, "bit": 2, "metric": "slot", "slot": 51, "value": 500,   "caption": "500 hold ups performed as Snake" },
+    { "id": 70,  "byte": 5, "bit": 0, "metric": "slot", "slot": 27, "value": 50,    "caption": "50 SOP destabilizer uses" },
+    { "id": 71,  "byte": 5, "bit": 1, "metric": "slot", "slot": 27, "value": 100,   "caption": "100 SOP destabilizer uses" },
+    { "id": 72,  "byte": 5, "bit": 2, "metric": "slot", "slot": 27, "value": 200,   "caption": "200 SOP destabilizer uses" },
+    { "id": 90,  "byte": 7, "bit": 0, "metric": "slot", "slot": 31, "value": 50,    "caption": "50 matches without a scratch" },
+    { "id": 91,  "byte": 7, "bit": 1, "metric": "slot", "slot": 31, "value": 100,   "caption": "100 matches without a scratch" },
+    { "id": 92,  "byte": 7, "bit": 2, "metric": "slot", "slot": 31, "value": 500,   "caption": "500 matches without a scratch" },
+    { "id": 100, "byte": 8, "bit": 0, "metric": "slot", "slot": 36, "value": 10,    "caption": "10 people finished training" },
+    { "id": 101, "byte": 8, "bit": 1, "metric": "slot", "slot": 36, "value": 100,   "caption": "100 people finished training" },
+    { "id": 102, "byte": 8, "bit": 2, "metric": "slot", "slot": 36, "value": 300,   "caption": "300 people finished training" }
+  ]
+}

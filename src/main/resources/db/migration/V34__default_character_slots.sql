@@ -1,0 +1,15 @@
+-- One character slot by default, not three.
+--
+-- Retail sold extra slots: the character screen offers "Use your Metal Gear Points to buy an
+-- additional character registration slot" (lobby string group 0x00F914BF, message 180), so a fresh
+-- account starts with one and the rest are granted. Three was our own inherited default and made
+-- every account look like it had already bought two.
+--
+-- The count is per account and travels in 0x3049's header, so raising it for one account takes
+-- effect on that account's next character-list fetch and affects nobody else:
+--
+--     update account set slots = 3 where username = 'someone';
+--
+-- Existing accounts are left as they are — taking slots away from an account that may already have
+-- characters in them would orphan those characters on the selection screen.
+alter table account alter column slots set default 1;

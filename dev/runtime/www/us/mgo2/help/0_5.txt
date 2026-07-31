@@ -1,0 +1,15 @@
+<title>PERSONAL DATA</title>
+This is your Personal Data.
+
+Here you can view and
+adjust settings related to your character.
+<page-break>
+You can set skills, player options,
+and gear settings,
+and also view your record and friends.
+<page-break>
+You can set skills and play options at
+the start of a game as well,
+but there is a time limit.
+This is a good place to become familiar
+with what kinds of options are available.

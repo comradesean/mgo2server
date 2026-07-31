@@ -20,8 +20,73 @@ check (which uses none of this).
 | Blowfish (`session.key`) + custom chaining | the check-session field | `SessionField` |
 | MD5 | account passwords, hashed by the client | `AccountService.findByCredentials` |
 | TLS | the HTTPS login and version-check endpoints | `probe-https` container |
+| Rolling 8-byte XOR | the body of every ranking HTTP reply | `RankingScramble` |
+| Path-keyed asset cipher | disc stage data, HDD saves, `d/testhk` | `dev/tools/solideye/Solideye.exe` |
 
 The port check (STUN) uses none of these. Its packets are plaintext.
+
+## The path-keyed asset cipher
+
+**This one is not ours and never touches the wire** — it is how the game encrypts its own files on
+disc and on the HDD. It matters here because the server-address override, `d/testhk`, goes through
+it; see [HOSTS.md](HOSTS.md) and [ASSETS.md](ASSETS.md).
+
+**The key is the directory component of the path the game opens** — `stage/lobby`, `online`,
+`clanemblem`, `d`. Established 2026-07-29 from the opener at `0x2EE48`, which calls
+`strrchr(path, '/')` and truncates there.
+
+Key derivation, as read from the ELF and corroborated independently by Solideye's own source
+(MIT, `Jayveer/Solideye`) — two sources agreeing on the same shape:
+
+1. A 64-byte key blob is fetched from the crypto object (selector 3). Solideye builds the same
+   blob by Blowfish-decrypting a stored table under a base key and XOR-chaining the result.
+2. `digest = MD5(directory string)`, 16 bytes.
+3. `key[i] ^= digest[i & 15]` for `i` in 0..63 — the loop is at `0x2EF70`–`0x2EF90`.
+4. Two 64-byte salts come off that key by XOR with `0x36` and `0x5C`, the HMAC inner/outer pads.
+
+The stream itself is an 8-byte-block XOR chain with ciphertext feedback:
+
+```
+plain[i] = cipher[i] ^ K[i] ^ (cipher[i-8] if i >= 8 else 0)
+```
+
+Encrypt and decrypt run the identical XOR; the only difference is which value feeds the chain
+(ciphertext when encoding, plaintext when decoding). That feedback is why a 4-byte plaintext edit
+moves ~18 kB of ciphertext, and why the transform is nonetheless perfectly reversible.
+
+Container: the payload is PKCS#7-padded to 8 bytes and a 16-byte digest of the form
+`MD5(key64 || MD5(ciphertext))` is appended — **24 bytes of overhead**, which is exactly the
+1374092 → 1374068 seen decrypting `scenerio.gcx` and the 426 → 450 seen encrypting a `testhk`.
+
+**Verified round-trip:** `Solideye -dec` then `-enc` on `o/stage/lobby/scenerio.gcx` with key
+`stage/lobby` reproduces the original **bit for bit**, header included (md5
+`532af9a1596a5f9a6a0517a62bbf3803`).
+
+Three things worth knowing before using it:
+
+- **Encryption is opt-in per call site.** `helpdisp.sav` sits with four encrypted saves and is
+  written in the clear. The caller sets bit 31 of the open mode; `0x280F0` diverts to `0x2EE48`
+  and tags the handle `0x08000000` so `0x26ED8` / `0x258E0` use the decrypting reader and closer.
+- **Solideye silently drops the last 24 bytes of every file it writes out**, so the tail has to be
+  recovered with the chain above if you need it.
+- **Solideye's cipher has not been compared byte for byte with the game's.** What is established is
+  that the shapes match and that `stage/lobby` works in the field. If a new key ever fails, that
+  gap is the first place to look.
+
+## The ranking scramble
+
+The Rankings screens fetch over HTTP, not over the lobby protocol, and their replies carry their
+own obfuscation — unrelated to the packet XOR above, and applied to a plain HTTP body.
+
+Key `8b 75 2c 90 3a 5e 4d f1`, read from the immediates the client stores inline at `0xBC2D80`.
+Byte `i` is XORed with `key[((i / 4) % 5) + (i % 4)]`: the offset walks a four-byte block, the
+block index advances every four bytes and wraps at five, so the keystream repeats every twenty
+bytes and touches all eight key bytes. The client applies it at `0xBC2D78` before reading a single
+field, so a **cleartext reply is not rejected — it is silently misparsed**, and every column shows
+garbage with no error.
+
+XOR is its own inverse, so the server scrambles with the same routine. [ELF] throughout; no
+capture of a genuine Konami ranking response exists to corroborate it.
 
 ## Whole-packet XOR
 
@@ -74,10 +139,10 @@ the check-session field as an invertible transform — a model that turned out t
 class has been deleted. Nothing in production ever loaded it, nothing verified it was the game's
 key, and it was inherited rather than derived here.
 
-It is recoverable if ever needed: byte-identical copies are vendored at
-`upstream/mgo2-server-upstream/src/core/constants/crypto-keys-constants.ts` (`BLOWFISH_KEY_AUTH`)
-and `upstream/nomad-upstream/src/main/java/savemgo/nomad/crypto/Constants.java`. Both were checked
-against our copy before deletion and matched exactly, all 4168 bytes.
+It is recoverable if ever needed: byte-identical copies live in mgo2-server at
+`src/core/constants/crypto-keys-constants.ts` (`BLOWFISH_KEY_AUTH`) and in Nomad at
+`src/main/java/savemgo/nomad/crypto/Constants.java` — both on GitHub, not vendored here. Both were
+checked against our copy before deletion and matched exactly, all 4168 bytes.
 
 ### Which payloads are encrypted
 

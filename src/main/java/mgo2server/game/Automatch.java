@@ -1,0 +1,797 @@
+package mgo2server.game;
+
+import io.netty.channel.Channel;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
+import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.Level;
+import mgo2server.game.packet.GamePacket;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * The automatch queue and the periodic work that drives it.
+ *
+ * <h2>Why this lives in {@code game/} and not {@code common/service/}</h2>
+ * It holds channels, a queue and the id of one lobby — all per-server state. {@code Services} is
+ * lobby-agnostic, constructed once per process from a {@code Jdbi} and shared, so putting a queue
+ * behind it would re-create exactly the hazard {@link ChannelRegistry} documents avoiding: the
+ * integration tests stand several servers up in one JVM, and shared mutable state silently joins
+ * them together.
+ *
+ * <h2>Why the channel is captured rather than looked up</h2>
+ * {@link ChannelRegistry} could resolve a character to a channel, and this deliberately does not use
+ * it. The {@code 0x43e0} handler is <em>the same event</em> as the client registering its own push
+ * channel 60 — answering result 0 is what registers it ({@code 0x93CF04}). Capturing the channel
+ * there makes the server's record and the client's record the same event by construction, which is a
+ * stronger guarantee than looking one up and hoping the map is populated. It also gives precise
+ * removal for free, via {@code closeFuture}.
+ *
+ * <h2>Threading</h2>
+ * {@link #enqueue} and {@link #cancel} run on channel event loops, many threads; {@link #tick} runs
+ * on the server's single scheduler thread. The map is concurrent and the handlers only ever touch
+ * one key, so they need no coordination. Multi-entry transitions — electing a host, releasing a
+ * group — belong to the tick alone, and the scheduler being single-threaded means two ticks can
+ * never overlap.
+ */
+public class Automatch {
+	private static final Logger logger = LogManager.getLogger();
+
+	/**
+	 * How long a searcher may sit in the queue before we drop them.
+	 * <p>
+	 * The client gives up on its own at roughly twenty minutes and sends {@code 0x43e2}, so this is
+	 * a backstop for the searcher whose socket died without a close: it exists so the queue cannot
+	 * grow without bound, not to enforce a deadline the client already enforces. Deliberately longer
+	 * than the client's own timeout so the client is always the one that gives up first.
+	 */
+	public static final Duration MAX_WAIT = Duration.ofMinutes(25);
+
+	/**
+	 * "Do not specify rules" — the sentinel the client's own menu row 0 carries ({@code 0x93B610}),
+	 * deliberately outside the 0–10 range its rule-label mapper accepts.
+	 * <p>
+	 * Repeated from the controller rather than shared, so this class stays free of packet concerns.
+	 * It is a value the client fixes, not one either side chooses, so the duplication cannot drift.
+	 */
+	public static final int ANY_RULE = 11;
+
+	/** What happened to a cancel, which decides the result code {@code 0x43e3} carries. */
+	public enum CancelOutcome {
+		/** Removed from the queue, or was never in it. Result 0. */
+		CANCELLED,
+
+		/**
+		 * Already matched, and the pushes are on their way. Result {@code -953}, the one code that
+		 * parks the client silently rather than raising a dialog — erroring here would be a lie and
+		 * succeeding would strand the match.
+		 */
+		TOO_LATE
+	}
+
+	/** Where a searcher is in the process. */
+	public enum State {
+		SEARCHING,
+
+		/** Named in a match; the elected host is creating the game. */
+		AWAITING_HOST_CREATE,
+
+		/** Released into a game. */
+		MATCHED
+	}
+
+	/**
+	 * One queued searcher.
+	 *
+	 * <p>Mutable in exactly one field, {@code state}, which only the tick writes. Everything else is
+	 * fixed at enqueue.
+	 */
+	public static final class Searcher {
+		private final long charaId;
+
+		private final int ruleFilter;
+
+		private final int experience;
+
+		private final Instant joinedAt;
+
+		private final Channel channel;
+
+		private volatile State state = State.SEARCHING;
+
+		/** The match this searcher was folded into, once the tick has elected one. */
+		private volatile PendingMatch match;
+
+		private volatile GenericFutureListener<Future<? super Void>> onClose;
+
+		Searcher(long charaId, int ruleFilter, int experience, Instant joinedAt, Channel channel) {
+			this.charaId = charaId;
+			this.ruleFilter = ruleFilter;
+			this.experience = experience;
+			this.joinedAt = joinedAt;
+			this.channel = channel;
+		}
+
+		public long charaId() {
+			return charaId;
+		}
+
+		public int ruleFilter() {
+			return ruleFilter;
+		}
+
+		public int experience() {
+			return experience;
+		}
+
+		public Instant joinedAt() {
+			return joinedAt;
+		}
+
+		public Channel channel() {
+			return channel;
+		}
+
+		public State state() {
+			return state;
+		}
+
+		/** The level the client will draw this searcher's window around. */
+		public int level() {
+			return Level.of(experience);
+		}
+
+		/** How long this searcher has been waiting. */
+		Duration waited() {
+			return Duration.between(joinedAt, Instant.now());
+		}
+
+		/** Stops this entry's close listener from firing once the entry is no longer in the queue. */
+		void detach() {
+			var listener = onClose;
+			if (listener != null) {
+				channel.closeFuture().removeListener(listener);
+				onClose = null;
+			}
+		}
+	}
+
+	/**
+	 * A group that has been told to form a game, and the host elected to create it.
+	 *
+	 * <p>The flat searcher map cannot express this: the release pass has to answer "which searchers
+	 * belong to the match this host is creating", and the failure path has to answer "who gets
+	 * {@code 0x43f3} when this host never creates".
+	 */
+	public static final class PendingMatch {
+		private final long hostCharaId;
+
+		private final List<Long> members;
+
+		private final Instant electedAt;
+
+		/**
+		 * The game the elected host already hosted when we chose them, or 0.
+		 * <p>
+		 * Guards a real race: {@code getHostedGame} returns <em>any</em> game that character hosts, so
+		 * a ghost row from a cohort whose teardown did not run would be released as the new game id
+		 * and send every joiner to the wrong match. Only a <em>different</em> id counts as the create.
+		 */
+		private final long gameIdBefore;
+
+		private volatile long gameId;
+
+		private volatile boolean hostLost;
+
+		PendingMatch(long hostCharaId, List<Long> members, long gameIdBefore) {
+			this.hostCharaId = hostCharaId;
+			this.members = List.copyOf(members);
+			this.electedAt = Instant.now();
+			this.gameIdBefore = gameIdBefore;
+		}
+
+		public long hostCharaId() {
+			return hostCharaId;
+		}
+
+		public List<Long> members() {
+			return members;
+		}
+	}
+
+	/**
+	 * How long an elected host has to create the game before the group is told it failed.
+	 * <p>
+	 * The client's own create handshake is two round trips inside the standard ~40 s command
+	 * deadline, so a host that has not produced a game row in this long is not slow, it is stuck —
+	 * most likely on the silent refusal that happens when a character has never named a hosted game.
+	 */
+	public static final Duration HOST_CREATE_TIMEOUT = Duration.ofSeconds(45);
+
+	/**
+	 * The maps automatching may pick, and the whole pool.
+	 * <p>
+	 * From the disc's own {@code map_bit 4252} = bits 2, 3, 4, 7, 12, which is exactly the five stage
+	 * directories that ship (`n002a`, `n003a`, `n004a`, `n007a`, `n012a`); map 12 is capture-confirmed
+	 * as Midtown Maelstrom. Every rule carries the same mask, so the pool does not vary — matching the
+	 * observed "random map from a pool that never changes".
+	 */
+	public static final int[] MAP_POOL = {2, 3, 4, 7, 12};
+
+	/**
+	 * The rules a wildcard search may be given, and the rules a rotation may contain.
+	 *
+	 * <p>"Do not specify rules" means <em>any</em> of these, so a search that expresses no preference
+	 * gets one picked at random rather than always landing on the same mode. That is what a wildcard
+	 * ought to mean, and it stops every no-preference match being identical.
+	 *
+	 * <p>Matches the client's own selectable set from the rule menu ({@code 0x93B60C}) and the disc's
+	 * {@code rule_bit 191}, minus rule 7: Team Sneaking is behind a feature bit this server clears,
+	 * so it must never be chosen for someone who did not ask for it. Rule 6 (BOMB) has no menu row at
+	 * all.
+	 *
+	 * <p><b>Rule 0 (Deathmatch) is included, and that is currently unproven.</b> A rotation whose
+	 * entry 0 was rule 0 was seen to hang both clients on a black loading screen with a blank
+	 * "Rules:" line — but block 67 was also going out as zero in those runs, which independently
+	 * fails the client's game-object validator at {@code 0x883FB4}. The two were fixed at nearly the
+	 * same time and the logs from the failing builds are gone, so the attribution is not settled.
+	 * Deathmatch has to be playable, so it stays in the set; if a Deathmatch match hangs while other
+	 * rules do not, this is the first place to look.
+	 */
+	public static final int[] WILDCARD_RULES = {0, 1, 2, 3, 4, 5};
+
+	private final AutomatchPolicy policy;
+
+	private final long lobbyId;
+
+	private final int lobbySubtype;
+
+	private final GameLookup games;
+
+	private final Map<Long, Searcher> searchers = new ConcurrentHashMap<>();
+
+	private final List<PendingMatch> pending = new CopyOnWriteArrayList<>();
+
+	private final java.util.Random random = new java.util.Random();
+
+	/**
+	 * The two questions the matchmaker asks the database, as an interface so this class stays
+	 * testable without one.
+	 */
+	public interface GameLookup {
+		/** The id of a game this character hosts in this lobby, or 0. */
+		long hostedGameId(long lobbyId, long hostCharaId);
+
+		/**
+		 * Renames a formed game and clears any password on it.
+		 * <p>
+		 * Automatch games are named by us rather than by whoever happened to be elected host, so a
+		 * player can tell at a glance in the game list what they have been dropped into. Clearing the
+		 * password matters more than the name: the automatch path never writes that field on the
+		 * client, so it carries whatever its screen allocation held, and a set flag would make every
+		 * join fail the password check silently.
+		 * <p>
+		 * Defaulted to a no-op so this stays a functional interface: naming is cosmetic, and a test
+		 * that only cares about election should not have to supply it.
+		 */
+		default void renameAndUnlock(long gameId, String name) {
+		}
+	}
+
+	/**
+	 * Names automatch games {@code AUTOMATCH1}, {@code AUTOMATCH2}, … within this process.
+	 * <p>
+	 * Per-process and never persisted, because the counter is only there to keep two concurrent
+	 * automatch games apart in a list. It resets on restart, which is fine: games do not survive a
+	 * restart either ({@code Main} deletes this lobby's games at startup).
+	 * <p>
+	 * <b>This does not remove the requirement that the elected host already have a saved game name.</b>
+	 * That name is read from the client's own store and checked before {@code 0x4310} is sent, so the
+	 * refusal happens inside the client and this rename runs long after it would have.
+	 */
+	private final java.util.concurrent.atomic.AtomicInteger gameNumber =
+		new java.util.concurrent.atomic.AtomicInteger();
+
+	/** The 16-character limit is protocol — {@code game.name} and the wire field are both 16. */
+	private static final int NAME_LENGTH = 16;
+
+	public Automatch(AutomatchPolicy policy, long lobbyId, int lobbySubtype, GameLookup games) {
+		this.policy = policy;
+		this.lobbyId = lobbyId;
+		this.lobbySubtype = lobbySubtype;
+		this.games = games;
+	}
+
+	/**
+	 * Adds a searcher, replacing any earlier entry for the same character.
+	 *
+	 * <p>Registering a {@code closeFuture} listener here rather than relying on a disconnect hook is
+	 * what makes removal exact: the listener fires on that specific channel closing, so a reconnect
+	 * that races its own teardown cannot evict the new entry.
+	 */
+	public void enqueue(long charaId, int ruleFilter, int experience, Channel channel) {
+		var searcher = new Searcher(charaId, ruleFilter, experience, Instant.now(), channel);
+		// The listener is held on the entry and detached when the entry goes, because a channel
+		// outlives any one search: a player who searches, cancels and searches again on the same
+		// connection would otherwise leave a listener behind every time. Each one is harmless on its
+		// own — the removal is keyed on the exact Searcher — but they accumulate for the life of the
+		// connection, which is a leak rather than a bug only until someone does it a thousand times.
+		GenericFutureListener<Future<? super Void>> onClose = future -> {
+			if (searchers.remove(charaId, searcher)) {
+				logger.info("Chara {} left automatching by disconnecting; {} searching.", charaId,
+					searchers.size());
+				// If they were the elected host, the group is provably never getting a game. Say so
+				// on the next tick rather than making everyone wait out HOST_CREATE_TIMEOUT for a
+				// host we already know is gone.
+				var match = searcher.match;
+				if (match != null && match.hostCharaId == charaId && match.gameId == 0) {
+					match.hostLost = true;
+				}
+			}
+		};
+		searcher.onClose = onClose;
+		// Replacing an entry has to detach the old listener too, or the same accumulation happens
+		// through re-entry rather than through cancel.
+		var previous = searchers.put(charaId, searcher);
+		if (previous != null) {
+			previous.detach();
+		}
+		channel.closeFuture().addListener(onClose);
+		logger.info("Chara {} is searching for rule {}; {} searching.", charaId,
+			ruleFilter == ANY_RULE ? "any" : ruleFilter, searchers.size());
+	}
+
+	/**
+	 * Removes a searcher.
+	 *
+	 * <p>The outcome is decided by the state at the moment this runs, which is what makes the race
+	 * with the tick decidable rather than a coin flip: if the tick has already marked this searcher
+	 * matched, the cancel is too late no matter how the wall clock happened to fall.
+	 */
+	public CancelOutcome cancel(long charaId) {
+		var searcher = searchers.get(charaId);
+		if (searcher == null) {
+			// Never queued, or already reaped. Cancelling nothing succeeds.
+			return CancelOutcome.CANCELLED;
+		}
+		if (searcher.state() != State.SEARCHING) {
+			return CancelOutcome.TOO_LATE;
+		}
+		if (searchers.remove(charaId, searcher)) {
+			searcher.detach();
+		}
+		logger.info("Chara {} cancelled automatching; {} searching.", charaId, searchers.size());
+		return CancelOutcome.CANCELLED;
+	}
+
+	/** How many are searching right now. */
+	public int size() {
+		return searchers.size();
+	}
+
+	/** A snapshot, for the tick and for tests. */
+	public Collection<Searcher> searchers() {
+		return List.copyOf(searchers.values());
+	}
+
+	/**
+	 * How many more players <b>this searcher</b> needs before a match can form — counted among the
+	 * searchers they can actually reach, not the queue as a whole.
+	 *
+	 * <p>Per-recipient for the same reason the band is: a match needs {@code minPlayers} people whose
+	 * level windows overlap, so a global count can say "nobody else needed" while the matchmaker
+	 * refuses to match anyone. That is not a hypothetical — it was observed live with two searchers
+	 * whose windows had not yet met: the queue held two, the figure went to zero, and the client
+	 * rendered <b>"????"</b>, which is disc string 48, the placeholder it shows for a zero. Nonzero
+	 * prints through string 917 as a number.
+	 *
+	 * <p>So zero now means what the client takes it to mean — the answer is not meaningful — and any
+	 * real shortfall is a real number.
+	 */
+	public int playersNeeded(Searcher searcher) {
+		var reachable = searchers.values().stream()
+			.filter(other -> other.state() == State.SEARCHING)
+			.filter(other -> other.channel().isActive())
+			.filter(other -> windowsOverlap(searcher, other))
+			.filter(other -> modesCompatible(searcher, other))
+			.count();
+		// The requirement decays with this searcher's own wait, so the figure counts down on its own
+		// even while nobody else arrives — which is the honest thing to show, because the bar really
+		// is falling.
+		//
+		// THE RECIPIENT COUNTS THEMSELVES. `reachable` includes this searcher, so subtracting it
+		// whole would show 11 to the first player of a 12-player requirement. Reference footage of
+		// the original shows a lone searcher on 12, so the figure is "players this game still needs,
+		// me included" — hence `reachable - 1`, the number of OTHERS already found. [Tier 2:
+		// observed in video of the original service, not read from the binary.]
+		var others = reachable - 1;
+		return (int) Math.max(0, policy.requiredPlayersAfter(searcher.waited()) - others);
+	}
+
+	/**
+	 * The figure for a searcher who has only just arrived, before they are in the queue.
+	 * <p>
+	 * The bare requirement: they have found nobody yet, and they count themselves. This is the 12
+	 * a lone searcher sees on the original.
+	 */
+	public int playersNeededOnArrival() {
+		return Math.max(0, policy.requiredPlayersAfter(Duration.ZERO));
+	}
+
+	/**
+	 * One pass of the matchmaker.
+	 *
+	 * <p>Runs on the server's scheduler thread. Currently it only reaps and repaints; matching
+	 * arrives in the next step. It is deliberately whole-hearted about the order — reap first, so a
+	 * dead searcher is never counted into the figures the survivors are shown.
+	 */
+	public void tick() {
+		reap();
+		// No slot-in pass: joining an existing game is parked as a future project, and
+		// AutomatchPolicy refuses to start in SLOT_IN_ONLY so this cannot silently do nothing.
+		if (policy.forms()) {
+			releaseCreatedMatches();
+			formMatches();
+		}
+		pushSearchPanels();
+	}
+
+	/**
+	 * Elects a host for every group large enough to play, and tells the group.
+	 *
+	 * <p>Groups are formed across rule filters rather than within them: a searcher asking for TDM and
+	 * one asking for SNE play together, on a rotation carrying both. That is observed behaviour — a
+	 * real session whose searchers wanted TDM, SNE and BASE ran all three — and it is also the only
+	 * way a small server ever reaches the minimum.
+	 */
+	private void formMatches() {
+		var queued = searchers.values().stream()
+			.filter(searcher -> searcher.state() == State.SEARCHING)
+			.filter(searcher -> searcher.channel().isActive())
+			.sorted(java.util.Comparator.comparing(Searcher::joinedAt))
+			.toList();
+		if (queued.size() < policy.minPlayers()) {
+			return;
+		}
+
+		// The longest-waiting searcher anchors the group, and everyone whose window OVERLAPS theirs
+		// joins it — sharing a level, not merely sitting adjacent. Each searcher carries their own
+		// window that widens with their own wait, so a player who has waited ten minutes reaches out
+		// to a newcomer rather than both having to fit inside one shared band. That is also exactly
+		// what each client draws for itself.
+		var anchor = queued.get(0);
+		// The anchor's own wait sets the bar: it decays from minPlayersStart down to minPlayers, so an
+		// early search holds out for a full game and a patient one settles for fewer. Read after the
+		// size guard above, never before — it indexes the list, and an empty queue is the ordinary
+		// case on most ticks.
+		var anchorRequirement = policy.requiredPlayersAfter(anchor.waited());
+		var waiting = queued.stream()
+			.filter(searcher -> windowsOverlap(anchor, searcher))
+			.filter(searcher -> modesCompatible(anchor, searcher))
+			.toList();
+		if (waiting.size() < anchorRequirement) {
+			logger.debug("{} searching, {} compatible with chara {} (level {}, band {}, rule {}), "
+				+ "but it still wants {}; waiting.", queued.size(), waiting.size(), anchor.charaId(),
+				anchor.level(), band(anchor),
+				anchor.ruleFilter() == ANY_RULE ? "any" : anchor.ruleFilter(), anchorRequirement);
+			return;
+		}
+
+		// Longest-waiting first, and skip anyone who already hosts here: electing them would make
+		// their existing game look like the one they just created.
+		var host = waiting.stream()
+			.filter(searcher -> games.hostedGameId(lobbyId, searcher.charaId()) == 0)
+			.findFirst()
+			.orElse(null);
+		if (host == null) {
+			logger.warn("{} searchers waiting but every one of them already hosts a game here; "
+				+ "cannot elect.", waiting.size());
+			return;
+		}
+
+		var members = waiting.stream().map(Searcher::charaId).toList();
+		// Every distinct mode the group actually asked for, in join order — the rotation carries all
+		// of them, so nobody is talked out of what they wanted. Wildcards contribute nothing here;
+		// they are happy with whatever the others chose.
+		var rules = new LinkedHashSet<Integer>();
+		for (var searcher : waiting) {
+			if (searcher.ruleFilter() != ANY_RULE) {
+				rules.add(searcher.ruleFilter());
+			}
+		}
+		if (rules.isEmpty()) {
+			// Everyone said "Do not specify rules", so the wildcard picks one at random rather than
+			// always serving the same mode. Nothing establishes what the original did here; this is
+			// operator policy, and randomness is the reading of "any" that does not quietly turn a
+			// wildcard into a fixed default.
+			rules.add(WILDCARD_RULES[random.nextInt(WILDCARD_RULES.length)]);
+		}
+
+		var map = MAP_POOL[random.nextInt(MAP_POOL.length)];
+		var settings = AutomatchSettingsBlock.build(rules, map);
+		var match = new PendingMatch(host.charaId(), members, 0);
+
+		for (var searcher : waiting) {
+			searcher.state = State.AWAITING_HOST_CREATE;
+			searcher.match = match;
+		}
+		pending.add(match);
+
+		logger.info("Automatch formed: host {} of {} players, rules {}, map {}.", host.charaId(),
+			members.size(), rules, map);
+
+		for (var searcher : waiting) {
+			push(searcher.channel(), AutomatchPackets.MATCH_FOUND,
+				AutomatchPackets.MATCH_FOUND_SIZE,
+				buffer -> AutomatchPackets.writeMatchFound(buffer, match.hostCharaId, lobbyId,
+					lobbySubtype, settings));
+		}
+	}
+
+	/**
+	 * Releases groups whose host has produced a game, and gives up on those whose host has not.
+	 *
+	 * <p>{@code 0x43f2} must not go out before the host's {@code 0x4310} and {@code 0x4316} have
+	 * landed, or the host quits with error 4945. Waiting for the row is what guarantees that: it
+	 * exists only once {@code createGame} has committed.
+	 */
+	private void releaseCreatedMatches() {
+		for (var match : pending) {
+			if (match.gameId == 0 && !match.hostLost) {
+				var hosted = games.hostedGameId(lobbyId, match.hostCharaId);
+				if (hosted != 0 && hosted != match.gameIdBefore) {
+					match.gameId = hosted;
+				}
+			}
+
+			if (match.gameId != 0) {
+				var name = "AUTOMATCH" + gameNumber.incrementAndGet();
+				try {
+					games.renameAndUnlock(match.gameId, name.substring(0,
+						Math.min(name.length(), NAME_LENGTH)));
+				} catch (RuntimeException e) {
+					// Cosmetic; never worth stranding a formed match over.
+					logger.warn("Could not rename automatch game {}.", match.gameId, e);
+				}
+				logger.info("Automatch releasing {} players into game {} ({}).",
+					match.members.size(), match.gameId, name);
+				// THE HOST IS INCLUDED, and that is load-bearing rather than incidental.
+				//
+				// 0x43f2 is what moves a client off the match-found screen: event 45 takes it to
+				// state 11, through the join stagger, and into the game. The host needs that as much
+				// as a joiner does — it has just finished creating the game and is parked at state
+				// 18 with nothing else to advance it.
+				//
+				// Excluded briefly on 2026-07-28 and immediately reverted, because the evidence was
+				// misread. The host had been seen reporting 0x4322 after receiving this push, which
+				// looked like the push putting it in the wrong branch; excluding it produced a host
+				// that never left the match-found screen at all. The 0x4322 was its join genuinely
+				// failing, for the same peer-to-peer reason the joiner's did — not a state-machine
+				// error.
+				for (var charaId : match.members) {
+					var searcher = searchers.get(charaId);
+					if (searcher != null) {
+						searcher.state = State.MATCHED;
+						push(searcher.channel(), AutomatchPackets.MATCH_GAME, 4,
+							buffer -> AutomatchPackets.writeMatchGame(buffer, match.gameId));
+						forget(charaId);
+					}
+				}
+				pending.remove(match);
+				continue;
+			}
+
+			var expired = match.electedAt.isBefore(Instant.now().minus(HOST_CREATE_TIMEOUT));
+			if (match.hostLost || expired) {
+				var told = 0;
+				// 0x43f3 only reaches a client that has NOT yet had 0x43f2 — that packet unregisters
+				// the push channel. Everyone here is by definition still waiting, so this is the last
+				// moment they are reachable at all.
+				for (var charaId : match.members) {
+					var searcher = searchers.get(charaId);
+					if (searcher != null) {
+						push(searcher.channel(), AutomatchPackets.MATCH_FAILED, 4,
+							buffer -> AutomatchPackets.writeMatchFailed(buffer, 0));
+						forget(charaId);
+						told++;
+					}
+				}
+				// Counted as pushed, not as elected: the host is usually the one who left, so the
+				// group size would overstate who was actually told.
+				logger.warn("Automatch host {} {}; told {} of {} players it failed.",
+					match.hostCharaId, match.hostLost ? "disconnected" : "never created a game",
+					told, match.members.size());
+				pending.remove(match);
+			}
+		}
+	}
+
+	/**
+	 * Told by {@code HostGameController} that a game now exists, so the tick need not wait to notice.
+	 *
+	 * <p>Notification rather than polling alone, because {@code createGame} commits the row and
+	 * {@code applyHostSettings} runs <em>after</em> it: a tick landing between the two would hand
+	 * joiners a game whose rule and map are still zero. This fires after both.
+	 */
+	public void gameCreated(long hostCharaId, long gameId) {
+		for (var match : pending) {
+			if (match.hostCharaId == hostCharaId && match.gameId == 0) {
+				match.gameId = gameId;
+				logger.info("Automatch host {} created game {}.", hostCharaId, gameId);
+			}
+		}
+	}
+
+	private void forget(long charaId) {
+		var removed = searchers.remove(charaId);
+		if (removed != null) {
+			removed.detach();
+		}
+	}
+
+	private void push(io.netty.channel.Channel channel, int command, int size,
+			java.util.function.Consumer<io.netty.buffer.ByteBuf> body) {
+		if (!channel.isActive()) {
+			return;
+		}
+		var buffer = channel.alloc().buffer(size);
+		body.accept(buffer);
+		channel.writeAndFlush(new GamePacket(command, buffer));
+	}
+
+	/**
+	 * Whether two searchers will accept each other's mode.
+	 *
+	 * <p>Grouped by mode first and relaxed with time, the same shape as the level band. A searcher
+	 * who asked for Rescue starts out only matching other Rescue players and wildcards; once they
+	 * have waited past the relaxation point they will take anything rather than keep waiting.
+	 *
+	 * <p>Wildcards — "Do not specify rules" — are compatible with everyone from the outset, which is
+	 * what makes them wildcards.
+	 *
+	 * <p>Mixing is possible at all because <b>a rotation carries several modes</b>: a group that
+	 * wanted Team Deathmatch and Sneaking plays both, which is observed behaviour rather than a
+	 * compromise we invented. So relaxing costs a searcher nothing they asked for — their own mode is
+	 * still in the rotation, alongside someone else's.
+	 */
+	private boolean modesCompatible(Searcher a, Searcher b) {
+		if (a.ruleFilter() == ANY_RULE || b.ruleFilter() == ANY_RULE) {
+			return true;
+		}
+		if (a.ruleFilter() == b.ruleFilter()) {
+			return true;
+		}
+		return policy.acceptsAnyModeAfter(a.waited()) || policy.acceptsAnyModeAfter(b.waited());
+	}
+
+	/** This searcher's half-width right now, which is also what we send them. */
+	public int band(Searcher searcher) {
+		return policy.bandAfter(searcher.waited());
+	}
+
+	/**
+	 * Whether two searchers can see each other: their level windows <b>share at least one level</b>.
+	 *
+	 * <p>A window is {@code [level - band, level + band]}, so they overlap exactly when the gap
+	 * between the levels is no wider than the sum of the two half-widths. The {@code <=} is the
+	 * boundary case and it is deliberate: at equality the windows overlap in precisely one level —
+	 * the higher player accepts down to it and the lower accepts up to it — which is a match. One
+	 * further apart and there is no shared level, so it is not, however close it looks on a gauge.
+	 *
+	 * <p>Note the bands widen on the same schedule, so the <em>sum</em> grows by two at each step.
+	 * A pair four levels apart goes from unreachable to sharing a level in a single tick, with
+	 * nothing in between — which on one client's gauge can look like an early match and is not.
+	 */
+	private boolean windowsOverlap(Searcher a, Searcher b) {
+		return Math.abs(a.level() - b.level()) <= band(a) + band(b);
+	}
+
+	private void reap() {
+		var cutoff = Instant.now().minus(MAX_WAIT);
+		var dropped = new ArrayList<Long>();
+		for (var searcher : searchers.values()) {
+			if (!searcher.channel().isActive()) {
+				dropped.add(searcher.charaId());
+			} else if (searcher.state() == State.SEARCHING && searcher.joinedAt().isBefore(cutoff)) {
+				dropped.add(searcher.charaId());
+			}
+		}
+		for (var charaId : dropped) {
+			var removed = searchers.remove(charaId);
+			if (removed != null) {
+				removed.detach();
+				// The closeFuture listener normally does this, but it and this loop race: a tick can
+				// see isActive() == false in the window before the listener runs, and then nothing
+				// would mark the match. The group would sit out the full HOST_CREATE_TIMEOUT waiting
+				// for a host we already know is gone. Microseconds wide, but it is a real
+				// interleaving, so both paths set the flag.
+				var match = removed.match;
+				if (match != null && match.hostCharaId == charaId && match.gameId == 0) {
+					match.hostLost = true;
+				}
+			}
+		}
+		if (!dropped.isEmpty()) {
+			logger.info("Dropped {} stale automatch searcher(s): {}; {} searching.", dropped.size(),
+				dropped, searchers.size());
+		}
+	}
+
+	/**
+	 * Repaints every searcher's panel.
+	 *
+	 * <p>Nothing asks for this — the client sends no heartbeat while searching — so if we do not push
+	 * it, the panel never changes. The payload differs per recipient because "players needed" is
+	 * relative to the recipient, which is why each gets its own buffer rather than one being
+	 * broadcast. That is also required for a separate reason: the encoders are per-channel and carry
+	 * sequence counters, so a buffer cannot be shared.
+	 */
+	private void pushSearchPanels() {
+		if (searchers.isEmpty()) {
+			return;
+		}
+		// The second array stays zero. Its meaning is unestablished, and the first one carries the
+		// count described below; sending a number we cannot justify into the other would just be the
+		// earlier mistake again in a different column.
+		var inGame = new int[AutomatchPackets.COLUMNS];
+		for (var searcher : searchers.values()) {
+			// Only clients still searching. Once a match has been announced the client has left state
+			// 6 for state 12 or 18, and while event 42 is documented as repainting in place, nothing
+			// establishes that it is harmless off that screen — so we stop rather than assume.
+			if (searcher.state() != State.SEARCHING) {
+				continue;
+			}
+			var channel = searcher.channel();
+			if (!channel.isActive()) {
+				continue;
+			}
+			// Counted per recipient, because it EXCLUDES them: the graph shows who else is out there.
+			//
+			// "The bar represents the amount of players within that specific level" — community
+			// report. Excluding yourself is what reconciles that with reference footage showing NO
+			// bar above the player's own column: in that session they were the only searcher at
+			// their level, so the honest count was zero. Counting yourself drew a one-unit line
+			// where the original drew nothing, which is how the error was caught.
+			//
+			// Open: whether "players" means the automatch queue or everyone online at that level.
+			// The queue is what this screen is for — those are the people you could be matched with
+			// — and it is the only population countable without inventing a scope.
+			var matching = new int[AutomatchPackets.COLUMNS];
+			for (var other : searchers.values()) {
+				if (other == searcher || other.state() != State.SEARCHING
+					|| !other.channel().isActive()) {
+					continue;
+				}
+				// Only searchers this player could actually be matched with right now. Someone
+				// holding out for Rescue is not a candidate for someone holding out for Base, and
+				// showing them would promise a match the matchmaker will not make.
+				//
+				// This is the same predicate the grouping uses, so the graph fills out on its own as
+				// the mode relaxation opens up — the column count and the matching rule cannot drift
+				// apart, because they are one rule.
+				if (!modesCompatible(searcher, other)) {
+					continue;
+				}
+				var level = Math.min(Math.max(other.level(), 0), AutomatchPackets.COLUMNS - 1);
+				matching[level]++;
+			}
+
+			var buffer = channel.alloc().buffer(AutomatchPackets.SEARCH_PANEL_SIZE);
+			// The band is per recipient: it is that searcher's own window, so the lit range on their
+			// gauge widens visibly the longer they wait.
+			AutomatchPackets.writeSearchPanel(buffer, matching, inGame, band(searcher),
+				playersNeeded(searcher));
+			channel.writeAndFlush(new GamePacket(AutomatchPackets.SEARCH_PANEL, buffer));
+		}
+	}
+}

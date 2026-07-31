@@ -8,10 +8,14 @@
     <Loggers>
         <!--
           Packet-level tracing is off by default because it prints a hex dump per packet. Set
-          NOMAD_LOG_LEVEL=DEBUG to turn it on when diagnosing a real client; the decoder and
-          encoder then log every command, its length and its payload.
+          MGO2SERVER_LOG_LEVEL=DEBUG (compose passes it through) to turn it on when diagnosing a
+          real client; the decoder and encoder then log every command, its length and its payload.
+
+          The logger name must cover the real class loggers: everything logs under mgo2server.*
+          via LogManager.getLogger(). This was "nomad" with NOMAD_LOG_LEVEL until 2026-07-21 —
+          a leftover from before the rename that made debug tracing silently unreachable.
         -->
-        <Logger name="nomad" level="${env:NOMAD_LOG_LEVEL:-INFO}" additivity="false">
+        <Logger name="mgo2server" level="${env:MGO2SERVER_LOG_LEVEL:-INFO}" additivity="false">
             <AppenderRef ref="stdout" />
         </Logger>
         <Root level="INFO" additivity="true">

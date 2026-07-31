@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -28,11 +29,44 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 
 	private final Map<Integer, Consumer<GameControllerContext>> handlers = new HashMap<>();
 
+	private final List<IGameController> controllers;
+
+	/**
+	 * Which controller claimed each command, so a second claim can name both parties.
+	 * <p>
+	 * Registration used to be a plain {@code put} into a {@code HashMap} followed by
+	 * {@code putAll}, which meant a command claimed twice was resolved by declaration order and
+	 * nothing said so. {@code ClanGameController} claimed {@code 0x4b90} twice — as a "member
+	 * action" and as clan search — and the second silently won for months. The wrong one winning
+	 * would have been a stall; the right one winning was worse, because it left dead code that read
+	 * the same bytes a different way and looked maintained.
+	 * <p>
+	 * A command has exactly one handler. Two is a bug in our wiring, not a runtime condition, so it
+	 * fails at construction rather than being resolved by chance.
+	 */
+	private final Map<Integer, String> owners = new HashMap<>();
+
 	public GameServerHandler(List<IGameController> controllers) {
+		this.controllers = controllers;
 		for (var controller : controllers) {
+			var name = controller.getClass().getSimpleName();
 			var map = new HashMap<Integer, Consumer<GameControllerContext>>();
 			controller.register(map);
-			handlers.putAll(map);
+
+			for (var entry : map.entrySet()) {
+				claim(entry.getKey(), name);
+				handlers.put(entry.getKey(), entry.getValue());
+			}
+		}
+	}
+
+	private void claim(int command, String controller) {
+		var previous = owners.put(command, controller);
+		if (previous != null) {
+			throw new IllegalStateException(String.format(
+				"Command 0x%04x is registered twice, by %s and %s. One of them is dead code: a "
+					+ "command has exactly one handler, and which one wins is declaration order.",
+				command, previous, controller));
 		}
 	}
 
@@ -40,11 +74,26 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	public void channelRead(ChannelHandlerContext ctx, Object msg) {
 		if (msg instanceof GamePacket packet) {
 			var command = (int) packet.getCommand();
+
+			// Before dispatch and regardless of whether anything handles this command: a controller
+			// that pushes to other clients needs to see every connection, not just the ones that
+			// talk to it. Failures here must not stop the packet being served.
+			var connection = GameConnection.of(ctx.channel());
+			for (var controller : controllers) {
+				try {
+					controller.onPacket(connection, ctx.channel());
+				} catch (Exception e) {
+					logger.error("onPacket failed in {}", controller.getClass().getSimpleName(), e);
+				}
+			}
+
 			var handler = handlers.get(command);
 			if (handler == null) {
 				// Silently dropping these makes a stalled client impossible to diagnose: the
-				// connection looks healthy and simply stops.
-				logger.warn("No handler for command {}; ignoring.", String.format("%04x", command));
+				// connection looks healthy and simply stops. The payload hex is the only record
+				// of what the client asked for, so dump it here.
+				logger.warn("No handler for command {}; ignoring. Payload: {}",
+					String.format("%04x", command), ByteBufUtil.hexDump(packet.getPayload()));
 			}
 			if (handler != null) {
 				var allocations = new ArrayList<ByteBuf>();
@@ -52,7 +101,18 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 					var gameControllerContext = new GameControllerContext(ctx, packet, allocations);
 					handler.accept(gameControllerContext);
 				} catch (Exception e) {
-					logger.error(e);
+					// NAME THE COMMAND. A handler that throws answers nothing, and an unanswered
+					// command is this client's most expensive failure: it stalls and then fails
+					// with FFFFFF60, prefixed by whatever screen was open. `logger.error(e)` alone
+					// left no record of WHICH command died, so the one log line that could have
+					// identified it said only that something threw.
+					//
+					// The no-handler branch above already learned this lesson and dumps the command
+					// id and the payload. This branch is the same failure for the player and had
+					// none of the evidence — so it now logs the same two things.
+					logger.error("Handler for command {} threw; the client will stall and fail with "
+						+ "FFFFFF60. Payload: {}", String.format("%04x", command),
+						ByteBufUtil.hexDump(packet.getPayload()), e);
 					for (var allocation : allocations) {
 						allocation.release();
 					}
@@ -75,6 +135,17 @@ public class GameServerHandler extends ChannelInboundHandlerAdapter {
 	@Override
 	public void channelInactive(ChannelHandlerContext ctx) {
 		logger.info("Disconnected: {}", ctx.channel().remoteAddress());
+		// A dropped socket sends no Quit Game, so tear down anything this connection was holding —
+		// otherwise a crash or network drop leaves a ghost game or player behind. Failures here must
+		// not stop the disconnect from propagating.
+		var connection = GameConnection.of(ctx.channel());
+		for (var controller : controllers) {
+			try {
+				controller.onDisconnect(connection);
+			} catch (Exception e) {
+				logger.error("Disconnect teardown failed in {}", controller.getClass().getSimpleName(), e);
+			}
+		}
 		ctx.fireChannelInactive();
 	}
 

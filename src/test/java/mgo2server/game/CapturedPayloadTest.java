@@ -36,6 +36,13 @@ import static org.assertj.core.api.Assertions.*;
  * constants whose meaning is unknown. Everything else legitimately differs.
  */
 public class CapturedPayloadTest {
+
+	/**
+	 * No worn title. The byte at wire {@code 0xef} is the animal-rank index the in-game scorecard
+	 * draws, 1-based, with 0 meaning none — these tests pin the layout, not the value.
+	 */
+	private static final int NO_TITLE = 0;
+
 	private static byte[] capture(String name) {
 		try (var stream = CapturedPayloadTest.class.getClassLoader()
 				.getResourceAsStream("captures/" + name)) {
@@ -55,7 +62,8 @@ public class CapturedPayloadTest {
 		chara.setComment("");
 
 		var buffer = Unpooled.buffer(PersonalInfoWriter.PAYLOAD_SIZE);
-		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills());
+		PersonalInfoWriter.write(buffer, chara, new CharaAppearance(), new EquippedSkills(), PersonalInfoWriter.NO_SAVED_INSTRUCTOR,
+			mgo2server.common.service.ClanService.Membership.NONE, false, NO_TITLE, skill -> 0);
 
 		var bytes = new byte[buffer.readableBytes()];
 		buffer.getBytes(0, bytes);
@@ -67,34 +75,89 @@ public class CapturedPayloadTest {
 		assertThat(personalInfo()).hasSameSizeAs(capture("4122-personal-info.bin"));
 	}
 
-	/** The undocumented 25-byte block after the clan name. */
+	/**
+	 * The 25-byte block after the clan name is a <b>clan record</b>, not a fixed constant, so this
+	 * no longer asserts byte-equality — it asserts that both payloads are well-formed clan blocks
+	 * and that ours says "no clan".
+	 * <p>
+	 * Identified 2026-07-27: wire {@code 0x14} is the membership state at {@code profile+6837}, whose
+	 * values the client writes itself — 0 pending, 1 member, 2 leader, 99 none ({@code 0xD56B44},
+	 * {@code 0xD56C7C}, {@code 0xD56D68}) — followed by a privilege mask and eleven u16s no reader
+	 * touches. The fixture holds {@code 01}, i.e. "in a clan", with a clan id of zero: one captured
+	 * character's record, and self-contradictory for any character we serve. Copying it was the same
+	 * class of mistake as the tail below, which cost a day of debugging.
+	 */
 	@Test
-	public void personalInfoPrefixMatchesCapture() {
+	public void personalInfoPrefixIsAWellFormedClanBlock() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
-		assertThat(java.util.Arrays.copyOfRange(mine, 20, 45))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 20, 45));
+		assertThat(captured[20]).describedAs("captured clan state").isIn(
+			(byte) 0, (byte) 1, (byte) 2, (byte) 0x63);
+		assertThat(mine[20]).describedAs("our clan state — no clan")
+			.isEqualTo((byte) PersonalInfoWriter.CLAN_STATE_NONE);
+		assertThat(java.util.Arrays.copyOfRange(mine, 21, 45))
+			.describedAs("no clan, so no privileges and nothing else set")
+			.containsOnly((byte) 0);
 	}
 
-	/** The four skill-experience values, which the original sends as a constant. */
+	/**
+	 * Skill experience. <b>We deliberately no longer match the fixture, and this test records why.</b>
+	 * <p>
+	 * The fixture carries {@code 0x600000} in each of the four slots. [ELF] the client's scale for
+	 * this field is {@code level = clamp(experience >> 13, 0, 3)} ({@code 0x6FC580}) with a hard
+	 * legal maximum of {@code 24576} enforced at {@code 0x93E418} — and {@code 0x600000} is
+	 * {@code 0x6000 << 8}, exactly that maximum shifted eight bits. Tier 1 beats tier 4: this
+	 * fixture's provenance is unknown (see the class comment), so it cannot outrank the binary.
+	 * <p>
+	 * Why it never broke anything: the range check runs on the {@code 0x4129} roster, which we do
+	 * not send, and in the equipped mirror {@code 0x600000 >> 13} clamps to 3 like any large value.
+	 * It was inert, not correct.
+	 * <p>
+	 * Kept as an assertion that the fixture disagrees, so that if someone "fixes" the writer back to
+	 * the captured bytes this fails and points at the reason.
+	 */
 	@Test
-	public void personalInfoSkillExperienceMatchesCapture() {
+	public void personalInfoSkillExperienceIsOnTheClientsScaleNotTheFixtures() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
-		assertThat(java.util.Arrays.copyOfRange(mine, 86, 107))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 86, 107));
+		var capturedFirst = java.nio.ByteBuffer.wrap(captured, 86, 4).getInt();
+		assertThat(capturedFirst)
+			.describedAs("the fixture still holds the inherited constant")
+			.isEqualTo(0x600000);
+		assertThat(capturedFirst)
+			.describedAs("which is 256x the client's own legal maximum")
+			.isEqualTo(PersonalInfoWriter.MAX_SKILL_EXPERIENCE << 8);
+
+		for (var slot = 0; slot < 4; slot++) {
+			assertThat(java.nio.ByteBuffer.wrap(mine, 86 + slot * 4, 4).getInt())
+				.describedAs("slot %d within the client's legal range", slot)
+				.isBetween(0, PersonalInfoWriter.MAX_SKILL_EXPERIENCE);
+		}
 	}
 
-	/** The undocumented four-byte tail. */
+	/**
+	 * The four-byte tail is the character's <b>saved instructor</b>, so byte-equality with the
+	 * fixture is exactly the assertion that must not be made.
+	 * <p>
+	 * The fixture holds {@code 00 A7 00 0D}. Sending that to every character made all of them
+	 * announce "I already have an instructor" over P2P message 36, which suppressed the
+	 * post-graduation recognition prompt ({@code n002a} string 3099) for everyone — proven live
+	 * 2026-07-27 by zeroing it and watching the prompt appear. A character with no instructor sends
+	 * zero; one who saved an instructor sends that instructor's id.
+	 */
 	@Test
-	public void personalInfoSuffixMatchesCapture() {
+	public void personalInfoSuffixIsTheSavedInstructorAndNotTheCapturedConstant() {
 		var captured = capture("4122-personal-info.bin");
 		var mine = personalInfo();
 
+		assertThat(java.util.Arrays.copyOfRange(captured, 241, 245))
+			.describedAs("the fixture carries one captured character's saved instructor")
+			.isNotEqualTo(new byte[] { 0, 0, 0, 0 });
 		assertThat(java.util.Arrays.copyOfRange(mine, 241, 245))
-			.isEqualTo(java.util.Arrays.copyOfRange(captured, 241, 245));
+			.describedAs("a character with no saved instructor sends zero")
+			.containsOnly((byte) 0);
 	}
 
 	/**
