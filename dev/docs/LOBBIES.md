@@ -308,11 +308,39 @@ TYPE_FREEBATTLE  TYPE_COOP  TYPE_TOURNAMENT  TYPE_SURVIVAL
 TYPE_TOURNAMENT_OFFICIAL  TYPE_SURVIVAL_OFFICIAL
 ```
 
-Tournament and survival by name, matching the patch history and the 3/4/5 family screen. **The
-index-to-subtype mapping is unproven** and is deliberately not asserted here: the array is reached
-through a base register loaded from the TOC, so nothing in the image points at it directly, and the
-naive `index = subtype - 1` reading puts `TYPE_COOP` on subtype 2 — which we have been calling
-Automatching on a reference server's authority, never on ours.
+Tournament and survival by name, matching the patch history and the 3/4/5 family screen.
+
+**Resolved 2026-07-31 — the naive `index = subtype - 1` reading is wrong, and `TYPE_COOP` is 9.**
+The array *is* reached: the match-history row painters (`0x91E3AC`, `0x91EA8C`, `0x91F370`,
+`0x9200DC`) read the trailing byte of a `0x4682` record (`lbz r9,25(r9)`, e.g. `0x91E598`), reject
+anything outside 1..9, and dispatch a 9-arm jump table at `0x91E5C4`. Six arms load one of these
+six pointers (module TOC `r30 = 0xFF05E0`, offsets `-32752`..`-32732`, i.e. exactly `0xFE85F0`),
+hash the name and resolve it as `GetString(0x23326A, hash)`; three arms use a literal group and
+name hash instead:
+
+| value | label |
+| --- | --- |
+| 1 | `TYPE_FREEBATTLE` |
+| 2 | `GetString(0x00F914BF, 0x00A6FC6D)` — out of the Lobby Select message resource named above |
+| 3 | `TYPE_TOURNAMENT` |
+| 4 | `TYPE_SURVIVAL` |
+| 5 | `TYPE_TOURNAMENT_OFFICIAL` |
+| 6 | `TYPE_SURVIVAL_OFFICIAL` |
+| 7 | `GetString(0x00654515, 0x0083889F)` |
+| 8 | `GetString(0x00654515, 0x0077B743)` |
+| 9 | `TYPE_COOP` |
+| 0 or >9 | a single space — the column is blank |
+
+So the array's order is not its key order: pointer index 1 (`TYPE_COOP`) is value **9**, and
+`TYPE_SURVIVAL_OFFICIAL` occupies 6, which the subtype table above has routed to a fallback.
+
+**This is a match-history game-type enum, and equating it with the lobby subtype axis is still not
+proven.** 1, 3, 4 and 5 line up; 7 and 8 share a string group exactly as Basic and Combat Training
+share a menu scan; 2 resolves out of the same `0x00F914BF` resource that carries the Lobby Select
+labels, which is where an Automatching label would live. Against that, 6 and 9 carry labels here
+and have no subtype there. Take the mapping as evidence about **this screen**, not as a
+re-definition of the subtype column, until something ties the two axes together. Full derivation
+is in `dev/proto/outbound/mgo2_cmd_4682_s2c.ksy`.
 
 **Whether these screens work end to end is also unproven.** Code, titles and artwork exist with no
 expansion check on any path; that is not the same as the flow behind them being complete, nor as

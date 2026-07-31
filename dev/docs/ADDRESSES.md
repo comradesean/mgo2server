@@ -374,6 +374,44 @@ Disc name group hashes are in `GEAR.md`; they are resource hashes, not ELF addre
 | `0x8E4970` | the To-menu row painter, and the per-row dim conditions — Friend List dims on `byte 20190 == 0`, **recomputed as the friend count on every screen build** |
 | `0xD53D1C` | the `0x4801` parser. **Bit 0 of its flags byte must be set** or the client re-sends the whole letter as `0x4860` |
 
+### The mail record, and why the whole family is one struct (2026-07-31)
+
+The compose buffer and a `0x4822` mailbox entry are the **same 280-byte struct**, joined by a
+literal copy. That single fact named `0x4800`'s last unknown, `0x4822`'s last unknown and
+`0x4841`'s 708-byte "opaque" block. Layout, with `M = *(session+6404)` and `B = M + 0x20000`:
+
+```
+B - 8584   u8   category selector, -1 = none
+B - 8576   ---- the 280-byte MAIL RECORD  (== a 0x4822 entry, fields 2..9)
+             +1   name/recipient count      +2   eight 16-byte name slots
+             +131 SUBJECT (128)             +264 u64 time
+             +272 type: 0 ordinary, 1/2 clan, 3 Game Master
+             +273 the "important" byte      +274 read flag
+B - 8296   ---- 709 bytes: the letter body + NUL  (0x4841's block, 0x4800's `body`)
+```
+
+| address | what |
+| --- | --- |
+| **`0xD34728`** | `MailRecordCopy(dst, src)` — copies `+0`, `+1`, `+2`(128), `+131`(128), `+264`(8), `+272`, `+273`, `+274` and nothing else. **The canonical field list of the whole mail family** |
+| `0xD34220` | `MailRecordClear(rec)` — `rec[0] = -1` (empty-slot sentinel), then `bzero(+2,129)` / `bzero(+131,129)`, which is what exposes the two NUL slots at `+130` and `+259` |
+| `0xD342A4` | `ClearComposeLetter(base-8584)` — the above plus `bzero(base-8296, 709)`, which sizes the body field |
+| **`0xD5415C`** at `0xd541fc` | the join: `records[cat] + idx*280` -> `MailRecordCopy` -> `B-8576`. Opening a letter loads the server's bytes into the send buffer, so `0x4800` echoes `+272` and `+273` straight back |
+| **`0x8E2F30`** | the **mailbox list painter**. Element names hashed out of module TOC `r30 = 0xFEFA80`: `NULL_jyusin_*` (受信 received) and `NULL_tochu-sousinzumi_*` (送信済み sent), eight rows × name/date/time per tab. Record list at `screen+0x180000+13716/13720`, stride 280, row record in `r25` |
+| `0x8E3934` | inside it: `lbz +273`, `lbz +274`, `lbz +272` -> one of three UI state hashes via `0x995D80`. **The reader that refutes "`important` has no reader"** |
+| **`0x8E8AFC`** | the **OPENmail painter**. `lbz +1` at `0x8e8b94` picks plain-name vs `"%s ....."`; `+131` -> `NULL_OPENmail_SUBJECT` at `0x8e8e78`; `ld +264` -> date formatter `0x8843CC`; `base+288` -> twelve `NULL_OPENmail_01`..`_12` line elements |
+| **`0x8EA154`** | the letter-open handler: `lbz r0,272(rec); cmpwi 3` -> `oris r0,r11,4`, i.e. **sets compose-flags bit 18** — the GM bit. This is what evidences `message_type == 3` = Game Master |
+| `0x8E81DC` / `0x8E837C` | the `(type - 1) <= 1` tests — values 1 and 2 select the element `CLAN_SUBJECT` and are the only ones the open path admits with SE 91 |
+| `0x995D80` / `0xD25D0` | `SetElementState(element, nameHash)` and the 24-bit rotate-5-add hash it takes. Verified anchors: `ST1_ON` = `0x5A06D9`, `STRING_ST1_ON_SD` = `0xF6EE7C`, and by arithmetic `0x5C86D9` = **`ST6_ON`**. The three mail row-state hashes (`0x0CD73E`, `0x989DFB`, `0xF55717`) are **not** in the ELF's strings and were left unnamed — a 24-bit hash over six free characters has thousands of preimages |
+
+### Match history — `0x4682`
+
+| address | what |
+| --- | --- |
+| `0xD3B5FC` | the parser. 28-byte stack scratch at `r1+112`, fully zeroed first, then `stswi ...,28`. Reads land at `+0`, `+4`, `+8`(16) and **`+25`** — struct byte `+24` is a hole. List head `M + 0x26D14` = `{u32 result; u32 count; record[64] at +8}`, cap 64 at `0xd3b710` |
+| `0xD3F5A0` / `0xD3F5F8` | `GetHistoryRow(session, i)` (bounds-checked, `mulli 28`) and `GetHistoryCount(session)` |
+| **`0x91E3AC`, `0x91EA8C`, `0x91F370`, `0x9200DC`** | the four met-players row painters. Each holds the record in `r27`, tests `timestamp == -1` as a "no date" sentinel (`0x91E4C0`), and reads `lbz r9,25(r9)` |
+| **`0x91E5C4`** | the 9-arm **lobby/game type** jump table those `+25` reads dispatch. Six arms load the `TYPE_*` pointer array at **`0xFE85F0`** — the array `LOBBIES.md` had recorded as unreachable — pinning it to values 1, **9**, 3, 4, 5, 6 rather than `subtype - 1` |
+
 ### `0x4131`, the personal-info echo
 
 | address | what |

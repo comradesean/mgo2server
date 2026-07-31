@@ -40,6 +40,30 @@ doc: |
   thing that separated them was one deliberately different send, not more staring at the same
   bytes.
 
+  ## THE SOURCE STRUCT IS A MAIL RECORD (2026-07-31, batch 3c)
+
+  Every field below is at a **mail-record** offset, the same struct `0x4822` entries are parsed
+  into. `0xD34728` `MailRecordCopy(dst, src)` copies exactly `+0`, `+1`, `+2`(128), `+131`(128),
+  `+264`(8), `+272`, `+273`, `+274`; `0xD5415C` calls it with `dst = base-8576` when a letter is
+  opened. `0xD342A4` clears the whole thing:
+
+  ```
+  base - 8584                                      (0xd342a4 ClearComposeLetter)
+    +0    u8    category selector, -1 = none
+    +8    ----  a 280-byte MAIL RECORD == base-8576, the offsets used below
+    +288  ----  709 bytes at base-8296: `body`, and the 708 bytes 0x4841 delivers
+  ```
+
+  Field-by-field: `+1` `recipient_count` = `0x4822`'s `name_count`; `+2` `recipients` =
+  `0x4822`'s `name` (both are eight 16-byte slots); `+131` `subject` = `0x4822`'s `comment`
+  (which is really the subject); `+264` the 64-bit time, never sent by this packet; `+272`
+  `destination` = `0x4822`'s `message_type`; `+273` `echoed_flag_273` = `0x4822`'s `important`;
+  `+288` `body` = `0x4841`'s block, at the identical address.
+
+  That is a proved bijection — a literal `memcpy` between the two objects plus a shared reader
+  (`0x8E8AFC`, the OPENmail screen, which renders `+1`, `+2`, `+131`, `+264` and `+288` from
+  `base-8576`) — not an inference from a neighbouring field's name.
+
   Nothing here says how the *server* should answer; see `../outbound/mgo2_cmd_4801_s2c.ksy`.
   We have no handler for this command, which is why the capture exists: the client hangs
   (`FFFFFF60`) after send.
@@ -104,8 +128,12 @@ seq:
       [ELF] Raw 708-byte (`0x2C4`) block, `0xD5D0AC` r5=708 at `0xD53FF4`, from `base-8296`;
       copied from screen `+14130` at `0x8EEB00`, and whitespace-validated over all 708 bytes at
       `0x8EEC3C` by the same rule as `subject`.
-      708 is the same width as the block `0x4841` reads on success — consistent with a stored
-      mail body round-tripping, though that pairing is [INFERRED], not tested.
+      [ELF 2026-07-31] **The `0x4841` pairing is no longer [INFERRED] — it is the same address.**
+      `0x4841`'s parser computes its 708-byte destination as `*(session+6404) + 0x20000 - 8296`
+      (`0xd535f8`, `0xd53620`, `0xd5362c`); this field's source is `*(session+6404) + 0x20000 -
+      8296` (`0xd53f80`, `0xd53f8c`, `0xd53fe4`). Same session field, same displacement, same
+      width. The OPENmail screen word-wraps that buffer from byte 0 into twelve line elements
+      (`0x8e8d68`, `0x8e90b4`), so there is no header in front of the text.
   - id: destination
     type: s1
     doc: |
@@ -140,9 +168,27 @@ seq:
       Server note: this needs its own path. A GM letter has no recipient character, so it falls
       through a recipient loop as "0 of 0 delivered" — we answered SUCCESS and stored nothing until
       this was identified. See V61 and `gm_mail`.
-  - id: unknown_3c6
+  - id: echoed_flag_273
     type: s1
     doc: |
-      [ELF] `0xD5C86C` (signed) at `0xD5401C`, from `base-8303`. Meaning [UNKNOWN]; **observed
-      `0`**. **No writer was found anywhere in the compose screen** — [UNDETERMINED] whether
-      anything ever sets it.
+      [ELF 2026-07-31, batch 3c] `0xD5C86C` (signed) at `0xD5401C`, from `base-8303` = compose
+      `+273`. Was `unknown_3c6`. **It is the same byte as `0x4822` field 8** — the one whose
+      tier-4 name is "important" — round-tripped, and this file's "no writer was found anywhere in
+      the compose screen" was true and misleading: the writer is not in the compose screen at all.
+
+      The compose buffer is a **mail record**, byte for byte. `0xD5415C`'s open path computes
+      `records[cat] + idx*280` and calls `MailRecordCopy` (`0xD34728`) with the destination
+      `base-8576`, and that function copies `+0`, `+1`, `+2`(128), `+131`(128), `+264`(8), `+272`,
+      `+273`, `+274` (`0xd347a4`-`0xd347c0`). So opening a letter loads `+273` from the server's
+      `0x4822` entry, and a subsequent send hands it straight back here. `0xD342A4`
+      (`ClearComposeLetter`, the only caller of `0xD34220`) zeroes it when the buffer is reset,
+      which is why the observed value was `0`.
+
+      **Only the identity is claimed, not the meaning.** "important" is a tier-4 label and is not
+      adopted here. What is proven about the byte on the *client* side is that its sole reader is
+      the mailbox row painter at `0x8e3934`, where it combines with `read` (`+274`) and
+      `message_type` (`+272`) to pick one of three UI state hashes — see `0x4822`'s `important`
+      for the table. Nothing in the binary writes it except that clear and that copy.
+
+      Server note: a value we put in a `0x4822` entry will come back to us on the next `0x4800`
+      the player sends after opening that letter. Treat it as untrusted echo, not as new input.

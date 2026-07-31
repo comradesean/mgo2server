@@ -65,6 +65,50 @@ doc: |
 
   Note the first u8 is NOT part of the stored record: it is read into a separate slot and passed
   as an argument, so it selects where the record goes rather than describing it.
+
+  ## THE RECORD AND THE COMPOSE BUFFER ARE THE SAME STRUCT (2026-07-31, batch 3c)
+
+  This is the lever that resolved four things at once, and it is a *proved* offset bijection, not
+  an inference from neighbouring names — there is a literal `memcpy` between the two objects.
+
+  * `0xD34728` is `MailRecordCopy(dst, src)`: `+0`, `+1`, 128 bytes at `+2`, 128 bytes at `+131`,
+    then `ld/std +264`, `lbz/stb +272`, `+273`, `+274` (`0xd347a4`-`0xd347c0`). That is the whole
+    record, and it is the canonical field list.
+  * `0xD34220` is `MailRecordClear(rec)`: `rec[0] = -1` (0xFF is the empty-slot sentinel),
+    `rec[1] = 0`, `bzero(rec+2, 129)`, `bzero(rec+131, 129)`, `rec[274] = 0`, `*(u64*)(rec+264) =
+    0`, `rec[272] = 0`, `rec[273] = 0`. Note the 129s: `+130` and `+259` are NUL-terminator slots,
+    which is why the two 128-byte blocks are not adjacent in the struct even though they are on
+    the wire.
+  * `0xD5415C`'s open path (`0xd541fc`-`0xd54208`) computes `records[cat] + idx*280` and calls
+    `MailRecordCopy` with the destination `*(session+6404) + 0x20000 - 8576` — **the compose
+    buffer**, the `r24` of `../inbound/mgo2_cmd_4800_c2s.ksy`.
+
+  So the current-letter object is:
+
+  ```
+  base = *(session+6404) + 0x20000 - 8584          (cleared by 0xd342a4)
+    +0    u8    category selector, -1 = none
+    +8    ----  a 280-byte MAIL RECORD == this packet's fields 2..9, in order
+    +288  ----  709 bytes: the 0x4841 body block plus its NUL
+  ```
+
+  `base+8` is the `0x4800` builder's base, so the send-side offsets transfer directly:
+  `+1` `recipient_count`, `+2` the eight 16-byte `recipients` slots, `+131` `subject`,
+  `+272` `destination`, `+273` the byte `0x4800` sends at wire `0x3c6`, `+288` `body`.
+
+  ## THE ROW PAINTER, WHICH THREE FIELD DOCS HERE WERE WRITTEN WITHOUT
+
+  `0x8E2F30` is the mailbox list painter. It hashes 48 UI element names out of the module TOC
+  (`r30 = 0xFEFA80`) — `NULL_jyusin_NAME_01`..`_08` / `_DATE_` / `_TIME_` and the same three
+  families under `NULL_tochu-sousinzumi_` — i.e. **eight rows × {name, date, time} × two tabs**.
+  (`jyusin` = 受信, received; `sousinzumi` = 送信済み, sent. These are the developers' own names and
+  they independently confirm the live finding that category 1 is the Sent tab.) At `0x8e3390` it
+  loads `count`/`base` from `screen+0x180000+13716/13720` and walks records at **stride 280**,
+  keeping the row's record in `r25`. `0x8E8AFC` is the OPENmail (read-a-letter) painter and reads
+  the copied record out of the compose buffer.
+
+  Between them they read `+1`, `+2`, `+131`, `+264`, `+272`, `+273` and `+274`. Three fields below
+  were documented as unread or unverified against a search that never reached these two functions.
 doc-ref: dev/docs/PROTOCOL.md "0x4820 — get messages"
 seq:
   - id: mailbox_type
@@ -87,40 +131,120 @@ seq:
       which letter it means — observed as `01 00` and `01 01`. Every entry in a category needs a
       distinct value or every row addresses the same letter.
       [ELF 0xD53734] recordBase+0x00. Tier-4 name "index", now earned.
-  - id: unknown_0x02
+  - id: name_count
     type: u1
-    doc: "[ELF 0xD5374C] recordBase+0x01. Nomad sends the constant 1; meaning [UNKNOWN]."
+    doc: |
+      [ELF 2026-07-31, batch 3c] **How many of the eight 16-byte name slots in `name` are
+      populated.** Was `unknown_0x02`, [UNKNOWN]; Nomad's constant 1 happens to be a sane value
+      for a single-correspondent letter, but the name it had was not.
+
+      recordBase+0x01 (`0xD5374C`), which the struct bijection above puts on the same byte the
+      `0x4800` builder sends as `recipient_count` (`0xd53fa0`, from `base-8575`), written by the
+      compose screen at `0x8eedd8` (`stb r0,1(r24)`) from its recipient-table loop bound.
+
+      Its one reader is the OPENmail painter at **`0x8e8b94`**: `lbz r0,1(r24); cmplwi cr7,r0,1;
+      ble` — at most 1, the To/From element is the plain 16-byte string at `+2`; above 1, the
+      screen `sprintf`s `"%s ....."` (module TOC `-32372`, string `0xE12120`) with that same first
+      slot, i.e. **"<first name> ....."** standing in for the rest of the list. Nothing renders
+      slots 1..7 individually.
+
+      Sending 0 with a populated slot 0 is therefore safe and is what makes the single-name path
+      run; sending >1 appends the ellipsis whether or not further slots hold anything.
   - id: name
     size: 128
     type: str
     encoding: ISO-8859-1
     pad-right: 0
-    doc: "[ELF 0xD53768, 0xD5D018 r5=128] recordBase+0x02, NUL-terminated at +0x82 in the struct. Tier-4 name \"name\"."
+    doc: |
+      [ELF 0xD53768, 0xD5D018 r5=128] recordBase+0x02, NUL-terminated at +0x82 in the struct.
+      [ELF 2026-07-31] **Not one 128-byte name — the same eight fixed 16-byte slots the `0x4800`
+      send fills**, on the identical struct offset (see the header's bijection, and
+      `../inbound/mgo2_cmd_4800_c2s.ksy` `recipients`, whose compose-screen loop memcpy's 16 bytes
+      per occupied entry into consecutive slots at `base-8574`). `name_count` says how many are
+      live. Both painters render slot 0 only — `0x8e3708` (list, via `0xaf72c0`) and `0x8e8c04`
+      (OPENmail). Whose name it is is a server-side question the client never asks: it prints slot
+      0 under the tab it was filed in.
   - id: comment
     size: 128
     type: str
     encoding: ISO-8859-1
     pad-right: 0
-    doc: "[ELF 0xD53784, r5=128] recordBase+0x83. Tier-4 name \"comment\"."
+    doc: |
+      [ELF 0xD53784, r5=128] recordBase+0x83.
+      [ELF 2026-07-31] **This is the letter's SUBJECT line, not a "comment".** Tier-4 name
+      corrected. Same struct offset as the `0x4800` send's `subject` (`0xd53fcc`, from
+      `base-8445` = `+131`), which the compose screen fills at `0x8eeac4` from its subject editor;
+      and the OPENmail painter renders `+131` into the element **`NULL_OPENmail_SUBJECT`** at
+      `0x8e8e78`/`0x8e8ec4` — the developers' own name for the slot.
   - id: time
     type: u4
     doc: |
-      [ELF 0xD5379C] Widened to 64 bits when stored (std at 0xD537B8) — the same time_t-shaped
-      widening 0x4902's open/close times get, which is the only support for the tier-4 name
-      "time". [INFERRED] Unix timestamp.
+      [ELF 0xD5379C] Widened to 64 bits when stored (std at 0xD537B8, to record+264) — the same
+      time_t-shaped widening 0x4902's open/close times get.
+      [ELF 2026-07-31] **The tier-4 name is now earned.** The OPENmail painter loads it as
+      `ld r28,264(r24)` at `0x8e8cc4` and passes it straight to the shared date formatter
+      `0x8843CC` (r5=128), whose two outputs fill `NULL_OPENmail_DATE` and `NULL_OPENmail_TIME`;
+      the list painter does the same at `0x8e3754`/`0x8e3788` for the row's `_DATE_`/`_TIME_`
+      elements. Unix seconds, rendered as the letter's timestamp.
   - id: message_type
     type: u1
     doc: |
       [ELF 0xD537BC] -> record+272 (not +392; the destination offsets in the trace above are from
-      the parser's own base). **A type discriminator, not padding**: the mailbox screen
-      special-cases the value 3 at 0x8EA158. What 3 selects is [UNKNOWN] — a system or GM letter
-      is the obvious guess and is NOT evidenced. Nomad sends 0 and so do we.
+      the parser's own base). **A type discriminator, not padding.**
+
+      **3 = GAME MASTER, evidenced 2026-07-31 (batch 3c).** The doc used to read "what 3 selects is
+      [UNKNOWN] — a system or GM letter is the obvious guess and is NOT evidenced". It is now
+      evidenced twice over:
+
+      * `0x8EA154`, the letter-open handler, reads `lbz r0,272(rec)` off `records[cat] + idx*280`
+        and, on `== 3`, does `oris r0,r11,4` -> `stw r0,372(r31)` — it **sets bit 18 of the compose
+        screen's flags word**. That is the exact bit
+        `../inbound/mgo2_cmd_4800_c2s.ksy` proves is the GM selection: set by the GM menu item at
+        `0x8EF098`, tested at `0x8E4B30` to grey out the recipient-list row, and the single gate on
+        `li r0,3; stb r0,272(r24)` at `0x8EEAA8`.
+      * record+272 **is** the byte the send reads as `destination`, by the struct bijection above.
+        Opening a GM letter and replying re-sends 3 without the operator touching the To menu.
+
+      **1 and 2 are a further pair, and they are clan mail.** Two sites test
+      `(value - 1) <= 1` unsigned: `0x8e81dc` selects the element name **`CLAN_SUBJECT`**
+      (module TOC `-32380`) for the preview line, and `0x8e837c` lets the open proceed with SE 91
+      where every other value sets flag bit 16 and plays SE 93. That is the first tier-1 support
+      for PROTOCOL.md's tier-4 note that this family carries clan applications.
+
+      So the values with known meaning are **0 ordinary, 1/2 clan, 3 Game Master**. Nomad sends 0
+      and so do we; 0 is correct for an ordinary letter.
   - id: important
     type: u1
     doc: |
-      [ELF 0xD537D4] -> record+273. Tier-4 name "important", still **unverified** — no client-side
-      predicate reads it anywhere in the mailbox module. It IS echoed back to the server in the
-      0x4800 send (struct+0x110), so the client round-trips it. We send 0.
+      [ELF 0xD537D4] -> record+273. **Tier-4 name "important" is still unproven as a *meaning*,
+      but the two claims this doc used to make about it were both wrong** (corrected 2026-07-31,
+      batch 3c):
+
+      1. "No client-side predicate reads it anywhere in the mailbox module" — **it does.** The row
+         painter reads it at `0x8e3934` (`lbz r0,273(r25)`, with `r25` the stride-280 record),
+         together with `read` at `+274` and `message_type` at `+272`, and picks the row's display
+         state from the three:
+
+         | +273 | +274 read | +272 | state hash passed to `0x995D80` |
+         | --- | --- | --- | --- |
+         | nonzero | nonzero | — | `0x0CD73E` |
+         | nonzero | 0 | nonzero | `0x989DFB` |
+         | nonzero | 0 | 0 | `0xF55717` |
+         | 0 | 0 | — | `0xF55717` |
+         | 0 | nonzero | — | branch `0x8e3d64`, a second element array at `container+320` |
+
+         Those are 24-bit rotate-5-add resource-name hashes (`0xD25D0`), the same encoding as the
+         verified `0x5C86D9` = **`ST6_ON`** this painter applies to every name/date/time element.
+         The three above resolve against a disc resource, not the ELF, so the state *names* are
+         not recovered — but a placeholder-free three-way split is proof the byte is displayed.
+      2. "It IS echoed back to the server in the 0x4800 send (struct+0x110)" — right in substance,
+         **wrong by one byte**: `0x110` is 272, which is `message_type`/`destination`. This field
+         is `0x111` = 273, and it is echoed at `0x4800` wire offset `0x3c6` (see that file's
+         `echoed_flag_273`). The path is `MailRecordCopy` `0xd347b0`/`0xd347c0`.
+
+      No code anywhere in the binary writes record+273 except the clear (`0xd34288`, to 0) and the
+      copy, so it is entirely server-authoritative and its only effect is the row's display state.
+      We send 0.
   - id: read
     type: u1
     doc: |

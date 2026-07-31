@@ -8,8 +8,8 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**40 packets, 136 unknown fields**, as of 2026-07-30 (batch 3a). Was 44 / 178 at batch 1;
-`0x4302`, `0x4129`, `0x4b12` and `0x4b70` have reached zero (their rows stay in the table, marked
+**36 packets, 132 unknown fields**, as of 2026-07-31 (batch 3c; 3b still open). Was 44 / 178 at batch 1;
+`0x4302`, `0x4129`, `0x4b12`, `0x4b70`, `0x4682`, `0x4841`, `0x4822` and `0x4800` have reached zero (their rows stay in the table, marked
 **0**, so the count stays reproducible). Regenerate with the script in this file's
 history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
 
@@ -68,7 +68,7 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x43c8` | c2s | 2 | **1** | other | open |
 | `0x4440` | c2s | 1 | **1** | other | open |
 | `0x4700` | c2s | 4 | **1** | other | open |
-| `0x4800` | c2s | 6 | **1** | other | open |
+| `0x4800` | c2s | 6 | **0** | other | batch 3c done — `echoed_flag_273` named by struct bijection; the whole compose buffer proved to be a `0x4822` mail record |
 | `0x4b10` | c2s | 3 | **1** | other | batch 2a-redo — meaning still unknown, but the two concrete senders hardcode **1** |
 | `0x4b46` | c2s | 1 | **1** | other | batch 2a-redo — traced to the dispatcher's 4th arg; the OPD-table dead end recorded |
 | `0x4b70` | c2s | 1 | **0** | other | batch 2a-redo done — `clan_id`, from the binary rather than a capture |
@@ -76,9 +76,9 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x2004` | s2c | 1 | **1** | other | open |
 | `0x3049` | s2c | 14 | **1** | other | open |
 | `0x4131` | s2c | 9 | **1** | other | batch 2c done — negative re-run and recorded with near-misses named |
-| `0x4682` | s2c | 5 | **1** | other | open |
-| `0x4822` | s2c | 9 | **1** | other | open |
-| `0x4841` | s2c | 2 | **1** | other | open |
+| `0x4682` | s2c | 5 | **0** | other | batch 3c done — `lobby_type`, a 9-arm jump table; also settles `LOBBIES.md`'s open `0xFE85F0` index question |
+| `0x4822` | s2c | 9 | **0** | other | batch 3c done — `name_count` named; **four documented claims corrected** (`comment` is the subject, `message_type` 3 = GM and 1/2 = clan, `important` is read after all, the echo offset was off by one) |
+| `0x4841` | s2c | 2 | **0** | other | batch 3c done — `body_text`; the destination address is provably identical to `0x4800`'s `body` source, so the [INFERRED] round-trip is now tier 1 |
 
 ## What batch 1 established, and what it changed about the method
 
@@ -234,3 +234,72 @@ just where its parser's callers live. Here the giveaway was available all along 
    `0x4b73`), so this is best read as an unfinished screen. It is also why `unknown_00` was **not**
    renamed: the only reader's behaviour and the parser's layout contradict each other, and a name
    would hide that.
+
+## What batch 3c established (the mail and match-history singles)
+
+**4 of 4 fields named, and four packets to zero** — `0x4800`, `0x4822`, `0x4841`, `0x4682`. That
+is the campaign's best ratio so far and none of it came from grinding a parser. The headline count
+at the top of this file has *not* been decremented here, because batch 3a/3b/3c landed
+concurrently; recompute it once they have all merged.
+
+### The lever, again: a second path to the same struct
+
+Batch 2 said the wins come from finding a non-network writer of the same memory. Here the whole
+mail family collapsed onto one observation: **the compose buffer and a mailbox record are the same
+280-byte struct**, and there is a literal `memcpy` between them.
+
+| address | what it bought |
+| --- | --- |
+| **`0xD34728`** `MailRecordCopy(dst, src)` | the canonical field list — `+0`, `+1`, `+2`(128), `+131`(128), `+264`(8), `+272`, `+273`, `+274`. Every `0x4822` field and every `0x4800` field is one of these |
+| **`0xD34220`** / **`0xD342A4`** | the clear functions, which give the struct's *shape* for free: `bzero(+2,129)` and `bzero(+131,129)` expose the two NUL slots, `bzero(+288,709)` sizes the body |
+| **`0xD5415C`** at `0xd541fc` | the call that joins them: `records[cat] + idx*280` -> `base-8576`. Opening a letter loads the server's bytes into the send buffer |
+| **`0x8E2F30`** / **`0x8E8AFC`** | the two mail row painters — the list and OPENmail screens. Between them they read `+1`, `+2`, `+131`, `+264`, `+272`, `+273`, `+274` |
+| **`0x91E3AC`** family | the four met-players row painters, each keeping the `0x4682` record in `r27`, which is what exposed the type jump table |
+
+### Developer element names are a naming resource on the level of the disc
+
+`0x8E2F30` and `0x8E8AFC` hash their UI element names out of the module mini-TOC
+(`r30 = 0xFEFA80`), and the names are romaji: `NULL_jyusin_NAME_01`..`_08` / `_DATE_` / `_TIME_`,
+`NULL_tochu-sousinzumi_*` (受信 received / 送信済み sent — independent confirmation that category 1
+is the Sent tab), `NULL_sakusei_TO` / `_SUBJECT` / `_HONBUN_01`..`_05` (作成 compose, 本文 body),
+`NULL_OPENmail_SUBJECT` / `_DATE` / `_TIME` / `_01`..`_12`, `CLAN_SUBJECT`. **`NULL_OPENmail_SUBJECT`
+is what renamed `0x4822`'s "comment".** This is the same class of material `ADDRESSES.md` already
+flags at `0xE0D548` and is worth trying for every screen in the campaign — it is free, it is in the
+ELF, and it is the developers' own vocabulary.
+
+### The resource-hash constants are recoverable when the guess is directed
+
+`0x995D80(element, hash)` takes a 24-bit rotate-5-add name hash (`0xD25D0`), not a colour. The
+family around it is `ST1_ON` = `0x5A06D9`, `STRING_ST1_ON_SD` = `0xF6EE7C`, both matched against
+plain ELF strings. From there `0x5C86D9` = **`ST6_ON`** falls out by arithmetic: changing `1` to
+`6` three characters from the end adds `3 << 5*3` = `0x28000`.
+
+**But do not try to invert an unknown hash.** A meet-in-the-middle over six free characters
+returns thousands of 24-bit collisions per target and none of them is evidence. The three mail row
+states (`0x0CD73E`, `0x989DFB`, `0xF55717`) were left unnamed for exactly that reason: their source
+strings live in a disc resource, not the ELF, and a guess that merely hashes right proves nothing.
+
+### Six documented claims corrected
+
+1. **`0x4822`'s `comment` is the SUBJECT line.** `+131` is the `0x4800` `subject` offset and the
+   OPENmail screen renders it into `NULL_OPENmail_SUBJECT`.
+2. **`0x4822`'s `message_type` 3 is the GAME MASTER**, previously "[UNKNOWN] … the obvious guess
+   and is NOT evidenced". `0x8EA154` sets compose-flags **bit 18** on `== 3` — the same bit the GM
+   menu item sets. Values **1 and 2 are clan mail**, selecting the element `CLAN_SUBJECT`.
+3. **`0x4822`'s `important` is read.** "No client-side predicate reads it anywhere in the mailbox
+   module" was wrong: `0x8e3934` reads it with `read` and `message_type` and picks one of three row
+   display states. It is server-authoritative — no client code writes it.
+4. **The echo offset was off by one.** `0x4822`'s doc said `important` is echoed at `0x4800`
+   struct `+0x110`; `+0x110` is 272, `destination`. It is `+0x111`.
+5. **`0x4841`'s body has no header**, and its address is provably `0x4800`'s `body` source. What we
+   already send was right; the caveat it carried is retired.
+6. **`LOBBIES.md`'s `0xFE85F0` array is not indexed `subtype - 1`.** `0x4682`'s jump table reaches
+   that array and pins each pointer to a value: 1, **9**, 3, 4, 5, 6 — `TYPE_COOP` is 9.
+
+### One negative worth keeping
+
+`0x4682`'s trailing byte had been fingerprinted live with `40 + row` and produced nothing on
+screen. That was a true observation and a useless one: the jump table rejects anything outside
+1..9, so every value tested took the blank default. Per CLAUDE.md's elimination rule, the
+experiment could not have produced the confirming observation — **a fingerprint value must be
+inside the field's plausible domain before "nothing rendered" means anything.**
