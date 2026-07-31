@@ -442,7 +442,17 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
       82-character sentence apparently didn't render cleanly within that. `build_relnote()` now
       returns a handful of short, independently-safe lines instead of relying on the client's
       exact wrap width.
-    Live re-test of both fixes pending.
+    **Both fixes live-confirmed 2026-07-31**: dialog now shows the real version, release note
+    fits without scrolling off screen.
+
+    **Peer-to-Peer, tested out of curiosity, 2026-07-31: crashes the client immediately**, unlike
+    HTTP Download's clean rejection at the apply step. Expected — no BitTorrent tracker is
+    implemented (`.torrent` delivery was never in scope, see the phase list intro above), so
+    there's nothing for the client to connect to. The crash (vs. a graceful error dialog) is the
+    one new data point here — the P2P/torrent code path is evidently less defensive against "no
+    tracker reachable" than the HTTP path is against "invalid payload content." Not investigated
+    further; relevant only if `.torrent` delivery is ever picked up as real work.
+
     The original goal of this investigation — exercising the real auto-patch protocol end to end
     against a real client with placeholder payload bytes — is met.
 
