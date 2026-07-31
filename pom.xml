@@ -20,7 +20,7 @@
         <netty.version>4.2.0.Final</netty.version>
         <jooby.version>3.7.0</jooby.version>
         <jdbi.version>3.54.0</jdbi.version>
-        <flyway.version>11.7.2</flyway.version>
+        <flyway.version>13.0.0</flyway.version>
         <hikari.version>6.3.0</hikari.version>
         <postgresql.version>42.7.5</postgresql.version>
         <log4j.version>2.26.1</log4j.version>
