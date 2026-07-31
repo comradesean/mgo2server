@@ -116,7 +116,7 @@ public class SocialGameController implements IGameController {
 
 	/**
 	 * Player search: a u8 match-criteria toggle (0 partial, 1 full — the builder at
-	 * {@code 0xD46128} rejects anything else), a u8 <b>ignore-case</b> toggle, and a 16-byte name.
+	 * {@code 0xD46128} rejects anything else), a u8 case toggle, and a 16-byte name.
 	 */
 	private void playerSearch(GameControllerContext ctx) {
 		// A nonzero result here would raise the 0xC13 error dialog; a missing session or bad
@@ -134,12 +134,12 @@ public class SocialGameController implements IGameController {
 			return;
 		}
 		var fullMatch = payload.readByte() != 0;
-		// The second byte is 1 for "ignore case", not for "match case". Live 2026-07-27: searching
-		// "bob" with Partial matches and Case Insensitive selected arrived as {0, 1} and returned
-		// nothing, because we ran a case-SENSITIVE query and the character is "Bob". The same {0, 1}
-		// arrives from the clan search screen, so the polarity is the client's, not a per-screen
-		// quirk. A case-sensitive search is still reachable — the byte is 0 then.
-		var ignoreCase = payload.readByte() != 0;
+		// Reverted 2026-07-31: live testing found the opposite of the 2026-07-27 note below — with
+		// this byte read directly as caseSensitive, toggling to "case sensitive" is what found
+		// "Sean" from a "sean" query, and case-insensitive missed it. Kept as a plain read rather
+		// than re-deriving a polarity that's flipped twice now; if it flips again, it needs a real
+		// packet capture (DEBUG logging) rather than another live-play report.
+		var caseSensitive = payload.readByte() != 0;
 		var name = readNulTerminated(payload, NAME_LENGTH);
 
 		if (name.isEmpty()) {
@@ -147,7 +147,7 @@ public class SocialGameController implements IGameController {
 			return;
 		}
 
-		var matches = characterService.search(name, fullMatch, !ignoreCase, SEARCH_LIMIT);
+		var matches = characterService.search(name, fullMatch, caseSensitive, SEARCH_LIMIT);
 
 		ctx.write(resultPacket(ctx, PLAYER_SEARCH_START));
 

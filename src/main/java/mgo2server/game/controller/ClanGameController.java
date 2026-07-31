@@ -1028,9 +1028,9 @@ public class ClanGameController implements IGameController {
 		var name = "";
 		if (payload.readableBytes() >= 2 + CLAN_NAME_LENGTH) {
 			exactOnly = payload.readUnsignedByte() != 0;
-			// 1 means IGNORE case. See SocialGameController.playerSearch — the same two bytes reach
-			// both search screens and "bob" failing to find "Bob" is what settled the polarity.
-			caseSensitive = payload.readUnsignedByte() == 0;
+			// Reverted 2026-07-31 — see SocialGameController.playerSearch. Read directly, not
+			// inverted; live testing found the previous polarity backwards.
+			caseSensitive = payload.readUnsignedByte() != 0;
 			name = readNulTerminated(payload, CLAN_NAME_LENGTH);
 		}
 

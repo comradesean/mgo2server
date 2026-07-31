@@ -173,23 +173,25 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 	}
 
 	/**
-	 * The second byte means <b>ignore case</b>, so 1 matches "snake" against "Snake" and 0 does not.
+	 * The second byte means <b>match case</b>, so 0 matches "snake" against "Snake" and 1 does not.
 	 * <p>
-	 * This test asserted the opposite until 2026-07-27, on nothing firmer than the field's name.
-	 * Live, a search for "bob" with Case Insensitive selected arrived as {@code {0, 1}} and returned
-	 * nothing, because the server ran a case-sensitive query against a character called "Bob".
+	 * Reverted 2026-07-31: this read the byte inverted from 2026-07-27 to today, on the strength of
+	 * a live "bob"/"Bob" test at the time. A later live-play report — toggling to "case sensitive"
+	 * is what found "Sean" from a "sean" query — says that polarity was backwards. This is a
+	 * live-play report from notes, not a fresh packet capture; if it flips again, capture the real
+	 * bytes (DEBUG logging) rather than trusting either direction from play-testing alone.
 	 */
 	@Test
 	public void caseToggleControlsSensitivity() {
 		givenSelectedCharacter("Snake");
 
-		var ignoringCase = loginThen(searchPacket(0, 1, "snake"),
+		var ignoringCase = loginThen(searchPacket(0, 0, "snake"),
 			SocialGameController.PLAYER_SEARCH_END);
 		assertThat(ignoringCase).hasSize(3);
 		assertThat(ignoringCase.get(0).getPayload().getInt(0)).isEqualTo(0);
 		assertThat(nameAt(ignoringCase.get(1).getPayload(), 4)).isEqualTo("Snake");
 
-		var matchingCase = loginThen(searchPacket(0, 0, "snake"),
+		var matchingCase = loginThen(searchPacket(0, 1, "snake"),
 			SocialGameController.PLAYER_SEARCH_END);
 		assertThat(matchingCase).hasSize(2);
 		assertThat(matchingCase.get(0).getPayload().getInt(0)).isEqualTo(0);
