@@ -371,6 +371,6 @@ services:
 
 volumes:
   postgres-data:
-    # Pinned to the name the volume already has. The compose project was renamed, and without
-    # this that rename would silently create an empty volume and orphan the existing database.
-    name: nomad-ng_postgres-data
+    # Pinned to the name the volume already has. Without this pin, a compose project rename
+    # would silently create an empty volume and orphan the existing database.
+    name: mgo2server_postgres-data
