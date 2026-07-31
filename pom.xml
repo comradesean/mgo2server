@@ -23,7 +23,7 @@
         <flyway.version>11.7.2</flyway.version>
         <hikari.version>6.3.0</hikari.version>
         <postgresql.version>42.7.5</postgresql.version>
-        <log4j.version>2.24.3</log4j.version>
+        <log4j.version>2.26.1</log4j.version>
         <okhttp.version>4.12.0</okhttp.version>
 
         <!-- Test -->
