@@ -39,13 +39,27 @@ this reply and isn't handled here.
 Two records are sent, mirroring the real Konami 1.36 patch tree the user has screenshots of:
 one disc-qualified ("BLUS30109.<from>to<to>."), one generic ("<from>to<to>.").
 """
+import os
 import pathlib
 
-HOST = "http://192.168.1.200"
+
+def _version_tuple(env_var, default):
+    raw = os.environ.get(env_var, default)
+    parts = tuple(int(p) for p in raw.split("."))
+    assert len(parts) == 3, f"{env_var}={raw!r} must be major.minor.revision"
+    return parts
+
+
+# Overridable so the same stub can exercise any version jump without editing this file --
+# MGO2SERVER_PATCH_FROM=1.10.0 MGO2SERVER_PATCH_TO=1.34.0 python3 build_checkver_stub.py, then
+# the same env vars for build_inf_stub.py and build_torrent_stub.py (they import this module, so
+# they always see the same jump; there is no separate place version numbers can drift out of
+# sync). Real jumps seen in the wild (OBSERVED.md): 1.10.0->1.34.0, 1.0.0->1.36.0.
+HOST = os.environ.get("MGO2SERVER_PATCH_HOST", "http://192.168.1.200")
 PATCH_BASE = f"{HOST}/us/mgo2/patch"
-FROM_VERSION = (1, 0, 0)
-TO_VERSION = (1, 36, 0)
-DISC_ID = "BLUS30109"
+FROM_VERSION = _version_tuple("MGO2SERVER_PATCH_FROM", "1.0.0")
+TO_VERSION = _version_tuple("MGO2SERVER_PATCH_TO", "1.36.0")
+DISC_ID = os.environ.get("MGO2SERVER_PATCH_DISC_ID", "BLUS30109")
 
 # The keystore's master key, 0xE26DA8 in MGO2.elf -- IV (first 8 bytes) + 56-byte Blowfish key.
 # get() CBC-decrypts every slot's stored bytes under this, unconditionally, so this is what

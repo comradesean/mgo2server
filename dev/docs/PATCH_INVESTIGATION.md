@@ -18,15 +18,18 @@ involved in this flow (`http_probe.py` only proxies `/us/mgo2/kid/` and `/us/mgo
 serves the docroot for everything else). The two builder scripts are the only things that need
 running by hand.
 
-1. **Set the target host and versions** in `dev/tools/build_checkver_stub.py`:
-   ```python
-   HOST = "http://192.168.1.200"      # your server's LAN IP
-   FROM_VERSION = (1, 0, 0)
-   TO_VERSION = (1, 36, 0)
-   DISC_ID = "BLUS30109"
+1. **Set the target host and version jump** — env vars, not file edits, so switching the version
+   under test never means editing code (defaults shown; override only what differs):
    ```
-   `build_inf_stub.py` imports this module, so it always stays in sync — never edit versions in
-   both places.
+   export MGO2SERVER_PATCH_HOST=http://192.168.1.200      # your server's LAN IP
+   export MGO2SERVER_PATCH_FROM=1.0.0
+   export MGO2SERVER_PATCH_TO=1.36.0
+   export MGO2SERVER_PATCH_DISC_ID=BLUS30109
+   ```
+   `build_inf_stub.py` and `build_torrent_stub.py` both import `build_checkver_stub.py` for these
+   values, so setting them once (`export`, or prefix each command below) keeps every artifact in
+   the same version jump — there's no second place a version number can drift out of sync. Real
+   jumps seen in the wild (`OBSERVED.md`): `1.10.0`→`1.34.0`, `1.0.0`→`1.36.0`.
 2. **Build the checkver reply and release note**:
    ```
    cd dev/tools && python3 build_checkver_stub.py
@@ -59,13 +62,16 @@ running by hand.
    `dev/runtime/bt_seed.py`. It uses host networking like the game-lobby services, for the same
    reason (WSL2 mirrored networking's docker-proxy is unreliable for persistent raw TCP).
 6. **Point a real client at it** (see `HOSTS.md` for the `d/testhk` override — the supported route
-   for repointing the five Konami hostnames) and trigger the version check. Expected flow, all
-   live-confirmed for the HTTP path (P2P pending a live re-test — see finding 11 in §7):
+   for repointing the five Konami hostnames) and trigger the version check. Expected flow:
    - `POST /us/mgo2/patch/checkver.html` → `0x01` reply → client fetches `relnote.txt`
    - Client fetches the disc-qualified record's `.inf`, decrypts and parses it
-   - "An update has been uploaded" dialog → choose **HTTP Download** or **Peer-to-Peer** — both
-     are implemented now; HTTP completes instantly against the tiny stub payload, P2P fetches
-     `.torrent` then talks to `probe-bt`'s tracker and seed
+   - "An update has been uploaded" dialog → choose **HTTP Download** — live-confirmed working end
+     to end. **Peer-to-Peer parses the `.torrent` and connects correctly but never completes on
+     RPCS3** (finding 11, §7 — a real TCP handshake succeeds, but the client never sends its HTTP
+     request afterward; RPCS3's own log shows the network ioctl it polls for non-blocking-connect
+     completion is unimplemented). `probe-bt`'s tracker/seed are verified correct against both a
+     simulated and a real client up to that point, so this may work on real PS3 hardware even
+     though it doesn't on this emulator — untested.
    - Triangle/display-details shows the release note text
    - **Hitting X to apply produces the generic error dialog — this is expected.** The payload is
      32 bytes of placeholder text, not a structurally valid patch package, so the install step
