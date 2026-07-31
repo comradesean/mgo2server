@@ -1580,21 +1580,33 @@ and the install loop at `0xBB8E6C`-`0xBB903C` does a straight `read`/`write` cop
 a **different** device (device 7) at the same relative path, then `unlink`s the device-1 copy. That
 copy-then-delete is a real install, distinct from the download cache.
 
-**Corrected 2026-07-31, and the real root cause of a live install failure: device 7 has no archive
-involvement at all, and the client never creates a directory, anywhere.** Devices 1/2/3/6/7 all
-resolve through the same handler straight to `cellFsOpen`; only device 2 has a populated root
-(`/dev_bdvd/PS3_GAME/USRDIR/o/`), and nothing in `MGO2.elf` ever writes to the device-root table —
-it's load-time/external data, not client-managed, so "what device 7 is" was the wrong question:
-it's just `USRDIR` (an empty-string root). The install loop is
+**Device 7 has no archive involvement at all, and the client never creates a directory,
+anywhere.** Devices 1/2/3/6/7 all resolve through the same handler straight to `cellFsOpen`; only
+device 2 has a populated root (`/dev_bdvd/PS3_GAME/USRDIR/o/`), and nothing in `MGO2.elf` ever
+writes to the device-root table — it's load-time/external data, not client-managed, so "what device
+7 is" was the wrong question: it's just `USRDIR` (an empty-string root). The install loop is
 `sprintf path → open(dev 1, RD) → open(dev 7, O_CREAT|O_WRONLY) → read/write → close ×2 → unlink`,
-and `O_CREAT` creates the file, not missing parent directories. **With no `dl` folder on disk, the
-device-7 open fails `ENOENT` and the loop bails silently** — no crash, no further network request.
-Live-tested: a hand-authored `checkver.html` + `.inf` (both independently confirmed byte-correct,
-via an opcode-faithful reference implementation for the `.inf`) were rejected by a real client with
-a generic error and no request past the `.inf` fetch; `RPCS3.log` showed `dl/.l` failing `ENOENT` at
-boot (see below) and no `dl` folder existed on the test install at all. Creating the empty tree
-`USRDIR/dl/p/ar/t/0/` resolved the missing piece — no archive needed for the install *write* to
-succeed. Whether a fresh install takes effect mid-session or needs a restart remains open.
+and `O_CREAT` creates the file, not missing parent directories — the client never calls `mkdir`
+anywhere in the binary.
+
+**This is true but turned out not to be the live blocker — corrected 2026-07-31, one round later.**
+The install loop above is inside the **state-3 downloader**, a function only reached after a
+player answers a confirmation dialog. A hand-authored `checkver.html` + `.inf` (the `.inf`
+independently confirmed byte-correct offline, via an opcode-faithful reference implementation) was
+rejected live with no request past the `.inf` fetch; that silence was first read as evidence the
+missing `dl` folder blocked the install write, so `USRDIR/dl/p/ar/t/0/` was created and the test
+re-run — **same generic error, still no further network activity.** Tracing the actual post-`.inf`
+control flow explained why: the record-loop tail (`0xBB7FA4`) that runs once entries are scanned
+doesn't touch the install loop or make any `.torrent`/HTTP decision at all — after a harmless,
+ruled-out free-space check (`cellHddGameCheck`, needs 1 KB against RPCS3's ~40 GB stub), it sets
+`state = 1` and returns. State 1 is "waiting for the player to confirm the download" — the client's
+own per-frame screen pump notices the state change and raises a confirmation dialog itself
+(`0x8BE974`), with **no further request to the server needed to trigger it**. The download worker
+thread polls that decision every 200ms and only reaches state 3 (and the install loop) once
+answered. **So "no network request after the `.inf`" is what a *successfully-accepted* `.inf`
+looks like, not evidence of a blocked install** — a real rejection produces the generic error
+dialog *before* this tail, at the checkver status byte, one of the two HMAC checks, or the record
+parser. The `dl/p/ar/` directory fix was accurate but never actually exercised.
 
 **The `dl` "mount" is not a VFS mount, and `dl/p/.l` is a red herring.** `0x2FD50` constructs a
 patch-archive *service object* with `"dl"` as a plain path prefix, not a mount name — there's no

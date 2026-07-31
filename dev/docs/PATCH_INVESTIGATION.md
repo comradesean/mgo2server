@@ -236,23 +236,36 @@ docroot). The risky part is entirely in the *bytes*, not the deployment.
 Phases, in ascending order of risk:
 1. `checkver.html` reply + `relnote.txt` — byte-exact known from the ELF, live-tested 2026-07-31,
    works.
-2. `.inf` — **byte-correct, confirmed two independent ways.** Three build rounds: round 1
-   implemented a wrong pipeline model ("three Blowfish stages") and was rejected. Round 2 corrected
-   the pipeline (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean, but was
-   *also* rejected live — crypto right, plaintext layout wrong (two entry scans at different
-   strides, entries start after the inner tag, not at offset 12). Round 3 fixed the layout and was
-   rejected *again*, but this time an opcode-faithful reference implementation — transcribing the
-   actual disassembled instructions rather than describing them in English, run against the real
-   rejected bytes — validated every stage and found the intended entry cleanly. So the `.inf` was
-   never actually the problem after round 3; the rejection was coming from somewhere else (below).
-3. **The real blocker, found 2026-07-31: the client never creates a directory, anywhere.** The
-   install loop opens `dl/p/ar/<name>` on device 7 with `O_CREAT|O_WRONLY`, which creates the file
-   but not missing parent directories. The test install had no `dl` folder at all, so that open
-   failed `ENOENT` and the install bailed silently — no crash, no further network request, matching
-   exactly what was observed. Also resolved in the same pass: the `dl` "mount" registered at boot
-   isn't a VFS mount (no mount table exists), `dl/p/.l`'s `ENOENT` at boot is a dead read with no
-   consequence, and the real archive path is `dl/.p` — none of which the install write path needs.
-   **Fix: `mkdir -p USRDIR/dl/p/ar/t/0/` on the test install, no archive required.** Not yet
-   re-tested live after creating the directory.
-4. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
+2. `.inf` — **offline-verified, live acceptance still unconfirmed.** Three build rounds so far.
+   Round 1 implemented a wrong pipeline model ("three Blowfish stages") and was rejected. Round 2
+   corrected the pipeline (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean,
+   but was *also* rejected live — crypto right, plaintext layout wrong (two entry scans at
+   different strides, entries start after the inner tag, not at offset 12). Round 3 fixed the
+   layout; an opcode-faithful reference implementation (transcribing the actual disassembled
+   instructions, not describing them in English) validated every stage against the real rejected
+   bytes offline. **But that's a model of the client, not an observation of it** — a live retest
+   with the same file still produced the same generic error (see phase 3), so the `.inf` itself is
+   the leading remaining suspect again, specifically one of its two HMAC checks (§5), now that the
+   alternative explanation below has been ruled out.
+3. **A dead end, kept for the record: the client never creates a directory, anywhere — true, but
+   not the live blocker.** The install loop opens `dl/p/ar/<name>` on device 7 with
+   `O_CREAT|O_WRONLY`, which creates the file but not missing parent directories, and the test
+   install had no `dl` folder at all. `mkdir -p USRDIR/dl/p/ar/t/0/` was applied and retested —
+   **same error, still zero network activity after the `.inf`.** Tracing the actual post-`.inf`
+   control flow explained why: that install loop lives inside the **state-3 downloader**, reached
+   only after a player answers a confirmation dialog the client raises *itself* (no server signal
+   needed) once the `.inf` is accepted. So "no request after the `.inf`" is what a **successful**
+   `.inf` looks like — silence isn't evidence of a blocked write, it's evidence the `.inf` was
+   never accepted in the first place. A real rejection happens upstream of that tail, at the
+   checkver status byte, one of the two HMAC checks, or the record parser (least likely — a
+   correctly-built `.inf` URL was observed live, which requires the parser to have succeeded).
+   Also resolved in the same pass and worth keeping: the `dl` "mount" isn't a VFS mount (no mount
+   table exists anywhere), `dl/p/.l`'s `ENOENT` at boot is a dead read with no consequence, and the
+   real archive path is `dl/.p`.
+4. **In flight**: re-checking whether the checkver reply's two key blobs land in the keystore slots
+   assumed (`T+7`→slot 7, `T+71`→slot 8) and whether `keystore->get()` returns those 64 bytes
+   unmodified — a wrong slot mapping or a keystore-side transform would explain a `.inf` that's
+   correct by our own model but still rejected live, and was flagged as unresolved by an earlier
+   pass rather than eliminated.
+5. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
    standing up a working BitTorrent tracker for the `.torrent` path. Not started.
