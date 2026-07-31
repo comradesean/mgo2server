@@ -1,13 +1,27 @@
 """Builds the .inf files a hand-authored checkver.html reply promises.
 
-Pipeline is HMAC-MD5 verify -> Blowfish-CBC decrypt -> HMAC-MD5 verify, pinned from MGO2.elf
-2026-07-31 (ADDRESSES.md Sec 12, "The .inf pipeline"; OBSERVED.md's matching correction). Not a
-guess -- every step below mirrors a disassembled function:
+Pipeline is HMAC-MD5 verify -> Blowfish-CBC decrypt -> zlib inflate -> HMAC-MD5 verify, pinned
+from MGO2.elf 2026-07-31 (ADDRESSES.md Sec 12, "The .inf pipeline"; OBSERVED.md's matching
+correction). Not a guess -- every step below mirrors a disassembled function:
 
     outer tag   = HMAC-MD5(slot 8 key, ciphertext)                  0xD652E0 @ 0xBB7E7C
     ciphertext  = Blowfish-CBC-encrypt(slot7[8:64], IV=slot7[0:8],   0xD66CF0 @ 0xBB8618
-                      PKCS7-pad(inner))
+                      PKCS7-pad(zlib.compress(inner)))
     inner       = header(12) + HMAC-MD5(ELF key, header) + entries + 16 slack  0xD652E0 @ 0xBB8848
+
+    THE MISSING STAGE (found 2026-07-31, cost a third rejected .inf): what decrypts off the
+    Blowfish-CBC layer is fed straight into a zlib inflate stream (ctor 0x28887C ->
+    inflateInit2_ with windowBits=15, i.e. a standard RFC1950 zlib wrapper -- inflate() itself
+    is zlib 1.2.3 at 0xD2DB04, identifiable by its own copyright string in the ELF). Every
+    layout rule below (header, the two entry scans, the trailing slack) describes the
+    DECOMPRESSED buffer, not the CBC plaintext directly -- confirmed at 0xBB87B0 (header is read
+    from the post-inflate buffer) and 0xBB8AEC (scan B's bound is the decompressed length minus
+    16). A plaintext that skips this stage still passes both HMACs and has valid PKCS7 padding,
+    which is why this was mistaken for a padding bug for a full investigation round: the pad
+    check (0xD6844C) never even runs on a bad inflate, since the failure the client reports
+    comes out of inflate() itself ("incorrect header check" / "unknown compression method"),
+    reusing the same generic error-state-10 path as a real pad failure. Decompressed output is
+    capped at 256 KB (0xBB86C4).
 
     header: u32 unknown(0) | u32 L | u32 unknown(0)
       -- hdr[0] and hdr[8] are copied to r1+116/r1+124 at 0xBB87DC and never read again anywhere
@@ -51,6 +65,7 @@ resident in the ELF at 0xE20000 and is not ours to choose.
 import hashlib
 import hmac
 import pathlib
+import zlib
 
 from Crypto.Cipher import Blowfish
 
@@ -88,7 +103,8 @@ def build_inf(entries):
     header = (0).to_bytes(4, "big") + HEADER_LEN.to_bytes(4, "big") + (0).to_bytes(4, "big")
     # Stage 3 verifies plaintext[0 .. hdr[4]-16) against the tag at [hdr[4]-16, hdr[4]).
     inner_tag = hmac.new(ELF_HMAC_KEY, header, hashlib.md5).digest()
-    plaintext = pkcs7_pad(header + inner_tag + body + TRAILING_SLACK)
+    inner = header + inner_tag + body + TRAILING_SLACK
+    plaintext = pkcs7_pad(zlib.compress(inner))
 
     cipher = Blowfish.new(checkver.SLOT7_KEY[8:64], Blowfish.MODE_CBC, checkver.SLOT7_KEY[0:8])
     ciphertext = cipher.encrypt(plaintext)

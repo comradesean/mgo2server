@@ -290,22 +290,37 @@ Phases, in ascending order of risk:
    register captures (`r0=200`, `CR7 EQ=1`) at the exact comparison instruction (`0xBB2D14`),
    confirmed multiple times across different requests (`policy.txt`, `checkver.html`, the `.inf`
    itself).
-7. **Live breakpoint trace, 2026-07-31, reached the real failure point for the first time:
+7. **SOLVED, 2026-07-31: the `.inf` pipeline is missing a zlib-inflate stage, and this was the
+   entire bug.** A live breakpoint trace reached the real failure point for the first time:
    `0xBB7D88` (build record-0 request) → `0xBB2D14` (status 200, passes) → `0xBB7E2C` (sendRequest
-   succeeded, not taken) → `0xBB7F4C` (passes) → `0xBB8730`, where `r3`/`r18 = -1` and `CR7 LT=1` —
-   then the generic error dialog appears.** `r17`/`r21` at this point held the literal ASCII string
-   `"mgo2server_slot7"`, independently confirming finding 4 above. The immediate (now-corrected)
-   assumption that `r3=-1` meant the CBC-decrypt/PKCS7-pad check failed does **not** hold up: a
-   direct, from-scratch re-decrypt of the real on-disk `.inf` (outer HMAC-MD5 under `SLOT8_KEY`,
-   Blowfish-CBC under `SLOT7_KEY[8:64]`/IV=`SLOT7_KEY[0:8]`) reproduces a clean plaintext ending in
-   eight `0x08` bytes — valid PKCS7 padding, no ambiguity. So the `.inf`'s own crypto is not what's
-   failing at `0xBB8730`; `r3=-1` is more likely the return of something else entirely (a
-   filesystem `stat()` on a resume-tracking path that legitimately doesn't exist on a fresh install
-   is one live candidate — `build_inf_stub.py`'s docstring already documents a per-entry flag that
-   gates exactly this kind of stat). **Open at end of session**: a targeted opcode trace of
-   `0xBB8600`-`0xBB8960` was dispatched to identify the actual call target at `LR=0xBB871C` and
-   what `0xBB8730` really tests, before assuming it's even the instruction that leads to the error
-   dialog.
+   succeeded) → `0xBB7F4C` (passes) → `0xBB8730`, where `r3 = -1` and `CR7 LT=1` take the branch
+   into the generic error dialog. Two wrong turns on the way to the real cause, both corrected by
+   live evidence rather than more disassembly-reading:
+   - First assumed `0xBB8730` was the CBC-decrypt/PKCS7-pad check failing. A hand-dump of the
+     actual 64-byte key from RPCS3's Memory Viewer (`r1+384` at the breakpoint) proved the key in
+     memory is byte-identical to `SLOT7_KEY` — ruling that out — and a from-scratch offline
+     re-decrypt of the real `.inf` produced valid `08`×8 PKCS7 padding, matching.
+   - Then a static trace claimed the pad-check instruction was `0xD6845C` and that it should be
+     firing. **Live-tested directly: a breakpoint at `0xD6845C` never hit, at all.** That's what
+     broke the case open — the function at `0x2884F8` (previously assumed to be a "buffered
+     reader") is actually a **zlib inflate stream filter** (ctor `0x28887C` calls
+     `inflateInit2_` with `windowBits=15`, a standard RFC1950 wrapper; `inflate()` itself is
+     recognizable zlib 1.2.3 at `0xD2DB04`, with its own copyright string in the ELF at
+     `0xE23959`). The `-1` at `0xBB8730` is `inflate()` reporting "incorrect header check" /
+     "unknown compression method" on our uncompressed plaintext — reusing the exact same
+     generic error-state-10 path a real pad failure would, which is why it read identically to a
+     crypto bug for a full investigation round.
+   - Confirmed offline: `zlib.decompress()` on the real Blowfish-CBC-decrypted `.inf` plaintext
+     raises `Error -3: unknown compression method` — the identical failure, reproduced without
+     RPCS3 at all.
+   **Fix, applied and verified end-to-end**: `build_inf_stub.py` now `zlib.compress()`s the
+   `header + inner_tag + entries + slack` block before PKCS7-padding and Blowfish-CBC-encrypting
+   it. Every existing layout rule (header, the two entry scans, the 16-byte trailing slack)
+   describes the *decompressed* buffer, confirmed at `0xBB87B0` (header read post-inflate) and
+   `0xBB8AEC` (scan B's bound is decompressed-length-minus-16); decompressed output is capped at
+   256 KB (`0xBB86C4`). Regenerated `.inf` files round-trip cleanly through outer HMAC → CBC
+   decrypt → PKCS7 unpad → zlib inflate → inner HMAC → entry parse, checked directly in Python.
+   Deployed; live re-test pending.
 8. **A separate, unimplemented endpoint found in passing: `GET /VT006-U1/info/`.** Documented in
    `HOSTS.md` as disc-string slot 11 (`http://info.service.konamionline.com/VT006-U1/info/`, the
    "info service" host, region-specific suffix `-U1`/`-E1`/`-J1`) but its expected reply shape was

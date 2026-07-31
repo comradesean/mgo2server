@@ -497,7 +497,18 @@ The actual Blowfish-CBC stream is `0xD66CF0`, and it is stage 2, not stages 1 an
    (`memcpy` at `0xD6855C`, into the context's IV slot at `ctx+4212`), bytes `[8:64]` go through the
    standard Blowfish key schedule (`0xD5EBB8`, pi table at `0xE25AEC`, confirmed by dump) as an
    ordinary 56-byte key. **A stock Blowfish-CBC library given the raw key and IV reproduces this
-   exactly — no pre-expanded schedule needed.** Output is 256 KB plaintext at `obj+1064`.
+   exactly — no pre-expanded schedule needed.**
+2b. **`0xBB8618`-`0xBB8730` — zlib inflate, found 2026-07-31, cost a third rejected `.inf`.**
+   Stage 2's CBC-decrypted, PKCS7-unpadded output is not the final plaintext — it is fed into a
+   zlib inflate stream filter (`0x2884F8`; ctor `0x28887C` -> `inflateInit2_` `0xD2CF60` with
+   `windowBits=15`, a standard RFC1950 wrapper; `inflate()` is zlib 1.2.3 at `0xD2DB04`,
+   identifiable by its own literal copyright string at `0xE23959`). Any inflate error (bad
+   header, unknown method) returns `-1` at `0xBB8730` (`blt cr7,0xBB8904`) into the *same*
+   generic error-state-10 path stage 1/3's HMAC failures use — indistinguishable from a crypto
+   failure without single-stepping into `inflate()` itself, which is why a plaintext with valid
+   HMACs and valid PKCS7 padding still failed for a full investigation round. **Output is 256 KB
+   decompressed plaintext at `obj+1064`** (cap enforced at `0xBB86C4`) — this, not stage 2's raw
+   CBC output, is what stage 3 and the header/entry-scan layout below actually describe.
 3. `0xBB8848` — **HMAC-MD5 verify again**, over stage 2's plaintext region `[0 .. hdr[4]-16)`,
    keyed by the **64-byte blob resident in the ELF at `0xE20000`**
    (`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero pad — used whole as the HMAC key block,
@@ -516,16 +527,19 @@ A failed tag on either HMAC is **fatal**, not silent: a bad check makes the filt
 `-1`, and both `0xBB7F4C` and `0xBB88B8` route that into update error state 10 — the same fatal
 path as a bad checkver record.
 
-**Live-verified 2026-07-31: neither HMAC is where the current stub fails.** A real RPCS3 debugger
-trace through a real `.inf` fetch reached `0xBB7F4C` and passed through it without taking the
-error store, then continued to `0xBB8730` (a different, not-yet-fully-identified check — see
-`PATCH_INVESTIGATION.md` finding 7) before the client's error dialog appeared. Registers at that
-point held the literal ASCII plaintext `"mgo2server_slot7"`, confirming the keystore-decrypt fix
-(below) really does deliver the correct key to the client. A from-scratch offline re-decrypt of the
-exact on-disk `.inf` file (independent of any prior "verified" claim) also confirms both HMAC tags
-match and the CBC plaintext ends in valid `08`×8 PKCS7 padding. So as of this session, the `.inf`'s
-own two-HMAC pipeline is the best-confirmed-correct part of this whole chain — do not re-suspect it
-without a new observation that specifically implicates it again.
+**Live-verified 2026-07-31: neither HMAC was where the stub failed — the missing stage was the
+zlib inflate between them (2b, above).** A real RPCS3 debugger trace through a real `.inf` fetch
+reached `0xBB7F4C` and passed it cleanly, continued to `0xBB8730` (initially mis-suspected as the
+CBC/PKCS7-pad check), and errored there. Registers at that point held the literal ASCII plaintext
+`"mgo2server_slot7"`, confirming the keystore-decrypt fix (below) really does deliver the correct
+key to the client. A from-scratch offline re-decrypt of the exact on-disk `.inf` file confirmed
+both HMAC tags match and the CBC plaintext ends in valid `08`×8 PKCS7 padding — so a static trace
+that placed the pad-check instruction at `0xD6845C` was directly tested live (breakpoint set,
+never hit) and shown wrong; the actual call at `0xBB8730` is `inflate()`, not the pad check. Once
+`build_inf_stub.py` zlib-compresses its plaintext before this stage, the whole chain — outer HMAC,
+CBC decrypt, PKCS7 unpad, zlib inflate, inner HMAC, entry scan — round-trips clean. Both HMACs and
+the CBC layer are the best-confirmed-correct part of this whole chain; the zlib stage is new and
+should be the first thing re-checked if a similar rejection reappears.
 
 Stream header, 12 bytes at the start of stage 2's plaintext (`0xBB87C8`-`0xBB882C`, big-endian):
 
