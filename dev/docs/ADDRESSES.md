@@ -402,16 +402,15 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | --- | --- |
 | `0xBB7100`-`0xBB72E8` | builds and sends the checkver POST body `%d,%s,%u` = packed client version, `"BLUS30109"`, `rand()*2` nonce |
 | `0xBB7340` | reads reply byte 0: `0x00` up to date (`bb734c` → `0xbb709c`), `0x01` parse the rest (`bb7354` → `0xbb7364`), else error state 10 (`bb735c`) |
-| `0xBB73C0`/`0xBB73E8` | 255-cap `strncpy` (`0xDCCC28`) of the two base URL strings ("string A" patch base, "string B" HTTP-fallback base) out of the reply |
-| `0xBB7418`-`0xBB76B0` | the version-range record loop, 44-byte stride from obj+1588, **≤8 records** (obj+1980 is reused as unrelated scratch) — a parse failure on one record still advances the count and keeps the 31-char name, so a malformed record still gets fetched |
-| `0xBB756C`-`0xBB7584` | version packing: `major<<24 \| minor<<16 \| revision`, each component ≤255 |
-| `0xBB75A8`/`0xBB76CC` | the gate: client's current version (read at runtime, see below) must be ≥ the record's "from" version, or the record is rejected |
-| `0xBB7950`/`0xBB7B9C` | install Blowfish keys from the reply's two trailing 64-byte blobs into keystore slots **7** (payload files) and **8** (`.inf`), via singleton `0xD64498` |
+| `0xBB73C0`/`0xBB73E8` | 255-cap `strncpy` (`0xDCCC28`) of the two base URL strings ("string A" patch base, "string B" HTTP-fallback base) out of the reply — **256-byte destination buffers** at obj+276 and obj+532, explicit NUL stored at the 256th byte |
+| `0xBB7418`-`0xBB76B0` | the version-range record loop. **On the wire a record is a variable-length NUL-terminated ASCII string**; the 44-byte stride (`obj+1588 + 44*n`) is the *destination* array, not the wire format — `strncpy(dest, src, 31)` gives a `char name[32]` at record offset 0..31, and record bytes 32..43 are runtime scratch (plaintext pointer, first-entry pointer, entry count), never populated from the reply. Stream advance is `strlen()`-based, so the next record starts right after this one's NUL. **≤8 records is a buffer limit, not a checked bound**: `1588 + 44*8 = 1940` is the record-count slot itself, so a 9th record silently overwrites the count |
+| `0xBB756C`-`0xBB7584` | version packing, done from the parsed text (`strtoul` ×3, base 10, `<from>.<from>.<from>to<to>.<to>.<to><anything>`): `major<<24 \| minor<<16 \| revision`. `major`/`minor` ≤255 checked; **`revision` is not range-checked** (occupies the low 16 bits regardless). The literal `to` is checked byte-by-byte. A `strtoul` failure skips the record (still advances the count, keeps the truncated name); a failed `to`-literal check or a failed version gate is **fatal, error state 10** — correcting the earlier "the record is rejected" framing |
+| `0xBB75A8`/`0xBB76CC` | the gate: client's current version (read at runtime, see below) must be ≥ the record's "from" version. **`from`/`to` live in single fixed fields `obj+988`/`obj+992`, overwritten by each record** — not per-record storage — so the post-loop gate at `0xBB76B8` only ever tests the *last* parsed record |
+| `0xBB7950`/`0xBB7B9C` | install Blowfish keys from the reply's two trailing 64-byte blobs into keystore slots **7** (payload files, at reply offset `T+7` where `T` is the record-list terminator) and **8** (`.inf`, at `T+71`), via singleton `0xD64498`. Reply also carries an opaque u32 at offset 1 (copied to obj+1060, never read back — safe to zero) and, after the terminator, an opaque u16 at `T+1` and u32 at `T+3` (obj+1000/obj+996, read but never branched on in this module). Minimum reply length is `T+135` |
 | `0xBB7BF4` | builds `%s/%u.%u.%u/relnote.txt` (string A base) and fetches it — nothing in this TU renders the body; it is fetched and not displayed |
 | `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot**, the record text must supply its own trailing `.` for the on-disk name to read `...to1.34.0inf` |
-| `0xBB7E7C`-`0xBB7F4C` | `.inf` Blowfish-CBC decrypt: keystore slot 8 → stream wrapper `0xBBD880` → decryptor `0xD652E0`, drained 1KB at a time into a reader object (ctor `0xD66CF0`) that carries no attributable strings — **the decrypted plaintext grammar is not recoverable from disassembly**, only that it yields a count at obj+1584 and an array read as 16-byte entries (name ptr +0, flag bits tested `,29,29` at `0xBB9098` and `,30,30` at `0xBB9140`) |
-| `0xBB8618`-`0xBB864C` | key-slot-7 decrypt into RAM, structurally identical to the `.inf` path — **not** the code that writes files to disk (see next row) |
-| `0xBB8E6C`-`0xBB903C` | **the actual disk install**: `open("dl/p/ar/"+name, device 1, O_RDONLY)`, `open(same path, device 7, O_CREAT\|O_WRONLY, flags@0xFF23F8)`, plain `read`/`write` loop (no cipher in this loop), close both, then `unlink` the device-1 copy. A real cross-device copy-then-delete, not a passive overlay |
+| `0xBB7E7C`-`0xBB7F4C` | `.inf` is decrypted in **three stages**, not one — see "The `.inf` pipeline" below for the full byte layout, the hard-coded third key, and the entry grammar |
+| `0xBB8E6C`-`0xBB903C` | **the actual disk install**: `open("dl/p/ar/"+name, device 1, O_RDONLY)`, `open(same path, device 7, O_CREAT\|O_WRONLY, flags@0xFF23F8)`, plain `read`/`write` loop (no cipher in this loop), close both, then `unlink` the device-1 copy. A real cross-device copy-then-delete, not a passive overlay. **Confirmed closed**: the copied name is `lwz r4,0(r27)` — entry offset +0, the name pointer read straight out of the `.inf` plaintext, gated on `(entry+12 & 0x13) == 0x12` |
 | `0xBB9150`-`0xBB9170` | the HTTP-fallback writer: same `dl/p/ar/%s` path, device chosen per-entry by flag bit `,27,27` (7 if set, else 1) |
 | `0xBB9BC0`-`0xBBA0D4` | `.torrent`: URL `%s/%u.%u.%u/%s.%u.%u.%uto%u.%u.%u.torrent` (string A base, `"BLUS30109"`, from/to versions) fetched raw (no cipher), then handed unmodified to statically-linked Transmission (`tr_torrentInitData` at `0xD92180`, `tr_init("dl")` at `0xD8B710`) — genuine BitTorrent, bencode parser and tracker announce/scrape strings present at `0xE1D470`-`0xE1F5C8` |
 | `0xBB90B0`/`0xBBC7B0` | the plain-HTTP fallback fetch, `%s/%u.%u.%u/%s` from **string B**, `Range: bytes=%d-` resume support, gated by flag bits at obj+1036 |
@@ -419,6 +418,75 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xFADEA0` | `sys_proc_prx_param`, libstub range `0xDED5A0`-`0xDEDA70` — the complete 28-module/349-function import table. **No `cellGame`, `cellGameExec` or `cellGameUpdate` anywhere in it** — the install above is entirely client-side, no PS3 system update package involved |
 | `0xD5EDE0` region | the mount registry; `dl` is registered as a named VFS early in startup (`0x2FD6C`-`0x2FE40`), backed by `dl/p/.p` (package) and `dl/p/.l` (index) — separate from the `dl/p/ar/` download-cache tree |
 | `0xBB5150` | version→string formatter (`%d.%02d.%d`, `%d.%02d`) called from the title/network-start screen (`0x95CCF0` etc.) next to a `"popup"` object — the one UI touchpoint found, and it is a version display, not update UI. **No dialog raiser (`0x8858F0`/`0x885A08`), no progress/percentage argument, and no display string for `relnote.txt`'s body exist anywhere in this module** |
+
+### The `.inf` pipeline
+
+Three stages per record, not one Blowfish layer:
+
+1. `0xBB7E7C` — keystore **slot 8** key → stream wrapper `0xBBD880` → decryptor `0xD652E0`,
+   drained 1 KB at a time and **discarded** (nothing accumulates). Reads as a validate/probe pass;
+   functional purpose not confirmed.
+2. `0xBB8618` — keystore **slot 7** key → same decryptor, but over the downloaded blob **minus its
+   last 16 bytes** (`addi r5,r26,-16` at `0xBB8650`) → reader object (ctor `0xD66CF0`) → read loop
+   `0xBB86E8` filling a 256 KB buffer (`obj+1064`; separate from the 128 KB download buffer at
+   `obj+1068`).
+3. `0xBB8848` — `0xD652E0` again, over the stage-2 output, keyed by a **64-byte blob resident in
+   the ELF itself at `0xE20000`** (16 significant bytes + zero padding, same shape as the keystore
+   slots): `93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce`. **This key is not server-supplied** —
+   OBSERVED.md's "the server supplies both keys, nothing needs cracking" holds for slots 7 and 8
+   but not for this stage. Whether stage 3 transforms the buffer in place or is a verification pass
+   whose output is discarded is **not resolved** — the drain writes into `r21` and whether `r21`
+   aliases the record's plaintext could not be established; parsing reads `r23+12` directly,
+   consistent with either.
+
+Stream header, 12 bytes read from the start of the record's produced plaintext (`0xBB87C8`-
+`0xBB882C`, big-endian):
+
+| offset | size | meaning |
+| --- | --- | --- |
+| 0 | 4 | unknown, read but use not traced |
+| 4 | 4 | length of the region handed to stage 3; also the entry-scan bound (`plaintext + hdr[4] - 16`) |
+| 8 | 4 | unknown, read but use not traced |
+| 12 | — | entry list starts here |
+
+No magic or version field is checked anywhere in the header.
+
+**Entry grammar in the plaintext** (from the array-filling loop `0xBB8B00`-`0xBB8BC8`):
+
+```
+<name bytes> 00 <u32 size, big-endian>      repeated, no padding, next entry at NUL+5
+```
+
+- The name is **inline in the decrypted blob, NUL-terminated** — not a pointer into a separate
+  string table. The name pointer stored in the in-memory entry points directly into the 256 KB
+  buffer, so that buffer must stay alive (it's a member allocation, not stack).
+- The 4 bytes after the NUL are a big-endian byte count, accumulated into obj+1004 (total bytes)
+  and obj+1016 (total KB, `(n+1023)>>10`).
+- **≤31 entries per record is a checked bound** (`0xBB8AE4`/`0xBB8BB0`), unlike the ≤8-record limit
+  above — array is `obj+1072`, stride 16, `memset` to 0 (512 bytes) before filling, count at
+  `obj+1584` (`1072 + 16*32`).
+- A hand-authored `.inf` therefore only needs to supply **name and size** per entry — there is no
+  flags field in the file. Flags live only at runtime (in-memory entry offset +12): `0x10` set on
+  every entry in a batch (selects device 7 vs 1), `0x4` tested backwards from the last entry (set ⇒
+  skip), `0x2` tested for resume-vs-fresh (`Range:` request vs plain fetch, HTTP 206 accepted).
+
+**Not resolved**: a *preceding* loop at `0xBB89B0`-`0xBB8AC0` walks the same name/NUL/size grammar
+but advances by NUL+6 instead of NUL+5, and tests bit `0x20` of the byte at NUL+5. Runs before the
+recording loop above; purpose not established. This is the one thing that could make a
+hand-authored `.inf` fail in a way the entry grammar above doesn't explain.
+
+In-memory entry (16 bytes, array `obj+1072`, count `obj+1584`):
+
+| off | size | meaning | source |
+| --- | --- | --- | --- |
+| +0 | 4 | `char*` name, into the decrypted plaintext | `.inf` |
+| +4 | 4 | total size in bytes | `.inf` |
+| +8 | 4 | bytes received so far | runtime |
+| +12 | 4 | flags (`0x10`, `0x4`, `0x2` — see above) | runtime |
+
+Relevant TOC strings (`r30 = 0xFFA350`): `/patch/checkver.html`, `%d,%s,%u`,
+`%s/%u.%u.%u/relnote.txt`, `%s/%u.%u.%u/%sinf`, `%s/%u.%u.%u/%s`, `dl/p/ar/%s`, `Range`,
+`bytes=%d-`, `dl/p/`, `dl/p/ar/`, `dl/p/ar/.l`, `dl/p/ar/t/0/`, module name `uupdate.cc`.
 
 Open question, stated precisely because it is the one thing static reading cannot settle: whether a
 newly-installed file under `dl/p/ar/` is visible to the archive driver immediately (device 7 is

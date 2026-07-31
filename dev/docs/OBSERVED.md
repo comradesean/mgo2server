@@ -1456,14 +1456,22 @@ literally that one byte, served statically), so nothing below has been observed 
 `ADDRESSES.md` §12.
 
 **Byte 0 of the reply is a status, not a fixed sentinel.** `0x00` = up to date (what we send).
-`0x01` = update available, and the rest of the reply is a structured payload: an opaque u32, two
-NUL-terminated base-URL strings ("string A" for the patch tree, "string B" for the HTTP-fallback
-tree), a list of version-range records (≤8, 44-byte stride, text form `<from>to<to>.` — note the
-**trailing dot**, packed `major<<24 | minor<<16 | revision`), a `0x00` terminator, two more opaque
-fields, then **two 64-byte blobs that become Blowfish keys** — keystore slot 7 for payload files,
-slot 8 for `.inf`. Any byte-0 value other than `0x00`/`0x01` is an immediate error. **The server
-supplies both keys itself** on this path — there is no baked-in secret to recover, which is what
-makes hand-authoring a self-hosted patch tractable at all.
+`0x01` = update available, and the rest of the reply is a structured payload: an opaque u32
+(never read back — safe to zero), two NUL-terminated base-URL strings ("string A" for the patch
+tree, "string B" for the HTTP-fallback tree, 255 usable characters each), a list of version-range
+records, a `0x00` terminator, two more opaque fields (read but never branched on in this module),
+then **two 64-byte blobs that become Blowfish keys** — keystore slot 7 for payload files, slot 8
+for `.inf`. Any byte-0 value other than `0x00`/`0x01` is an immediate error. **The server supplies
+both of these keys itself** — there is no baked-in secret to recover for them — but see below,
+because a *third* key used later in the `.inf` pipeline is not one of these two.
+
+**A version-range record is a variable-length wire string; the 44-byte/≤8 figures describe the
+client's in-memory array, not the reply.** Text form `<from>to<to>.` (**trailing dot required**,
+packed `major<<24 | minor<<16 | revision`, revision unbounded). Stream advance between records is
+`strlen()`-based. The ≤8-record cap is an unchecked buffer limit, not a validated bound — a 9th
+record overwrites the record count itself. A `strtoul` parse failure skips a record (silently, the
+count and truncated name still advance); a failed literal-`to` check or a failed version gate is
+**fatal (error state 10)** — corrected from an earlier, looser "rejected" framing.
 
 A record is accepted only if the client's own current version is ≥ the record's "from" version.
 That current version is **not** an ELF constant: it is read at runtime from the client's mounted
@@ -1484,14 +1492,34 @@ renderer touches it in this module) → one `.inf` per accepted record → `.tor
 at obj+1036 select it, a plain per-file HTTP fetch from string B with `Range:` resume instead of
 BitTorrent.
 
-**`.inf` is Blowfish-CBC encrypted** with keystore slot 8 (`0xBB7E7C`-`0xBB7F4C`). Decryption is
-directly observed; the **decrypted plaintext's grammar is not** — the reader object (`ctor
-0xD66CF0`) carries no attributable strings. All that's provable downstream is a count at obj+1584
-and an array read as 16-byte entries (name pointer, two flag bits). Since we would choose the key
-on a self-hosted patch, recovering Konami's original grammar isn't required — what's missing is
-*a* grammar the reader accepts, which is the kind of thing this project has previously had to
-establish empirically against a real client rather than purely from disassembly (see "What
-actually worked, methodologically" in `ADDRESSES.md`).
+**`.inf` decryption is three stages, and the third key is not server-supplied.** Stage 1
+(`0xBB7E7C`, slot 8) drains 1 KB at a time and discards it — reads as a validate/probe pass, purpose
+unconfirmed. Stage 2 (`0xBB8618`, slot 7, over the file minus its last 16 bytes) produces a 256 KB
+plaintext buffer. Stage 3 (`0xBB8848`) runs the same cipher again over stage 2's output, keyed by a
+**64-byte blob resident in the ELF at `0xE20000`**
+(`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero padding, same 16-significant-bytes shape
+as the keystore slots). Whether stage 3 transforms in place or is itself a discarded verification
+pass could not be established from disassembly. **This means the earlier claim — "the server
+supplies both keys, nothing needs cracking" — needs qualifying**: it's true for the reply's own two
+keys, but a self-hosted `.inf` also has to satisfy this third, fixed, ELF-resident key correctly,
+which is a real constraint on hand-authoring one, not a free choice.
+
+The **plaintext grammar downstream of stage 3 is now known**, not just partially provable. A 12-byte
+big-endian header (`offset 4` = region length handed to stage 3, `offset 0`/`8` unread elsewhere,
+no magic/version checked) precedes an entry list starting at header offset 12:
+`<name> 00 <u32 size, BE>`, repeated, next entry at `NUL+5`, name inline in the plaintext (not a
+string-table pointer). **≤31 entries per record is a checked bound**, unlike the record cap above.
+A hand-authored `.inf` needs only **name and size** per entry — there is no flags field on the wire;
+the three flag bits tested elsewhere (device selection, skip, resume) are runtime-only, set by the
+client itself, never read from the file. One loose end: a second grammar-shaped pass at
+`0xBB89B0`-`0xBB8AC0`, walking the same bytes but advancing by `NUL+6` and testing a bit on the
+byte at `NUL+5`, runs *before* the entry-recording loop and its purpose was not established — it is
+the one thing that could make a correctly-shaped `.inf` still misbehave.
+
+The **install loop is now confirmed closed**: `0xBB8E6C` reads the destination filename straight
+from entry offset +0 (the name pointer out of the `.inf` plaintext), gated on the runtime flags
+word equalling `0x12`. So the full chain from "`.inf` entry" to "file written to `dl/p/ar/<name>`"
+has no remaining unknowns except the two stage-3/pre-pass questions above.
 
 **`.torrent` is genuine BitTorrent**, not a naming convention — the client statically links
 Transmission (bencode parser, tracker announce/scrape query string, peer-ID fingerprint table, the
