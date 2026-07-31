@@ -390,6 +390,41 @@ Disc name group hashes are in `GEAR.md`; they are resource hashes, not ELF addre
 | `0x9BADA4` | `clrlwi r0,r0,31` — the same bit again, choosing between two list-builders. **Both mask to bit 0, so bit 1 is discarded by the instruction encoding** |
 | `0x6FC838`-`0x6FCAEC` | the skill accrual and level-up path, for context on how the preset-message gate sits beside it |
 
+## 12. Auto-patch — `checkver.html` and the update flow (`uupdate.cc`)
+
+Full write-up, including the response grammar and the open questions, is in `OBSERVED.md` under
+"Auto-patch — checkver.html and the update flow". This is static analysis only: our server has
+always answered `checkver.html` with a single `0x00` byte, so none of the `0x01` branch below has
+ever been exercised against a real client. Module TOC base (mini-TOC anchor, `-mminimal-toc`
+build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 0x010353A8`.
+
+| VA | what it is |
+| --- | --- |
+| `0xBB7100`-`0xBB72E8` | builds and sends the checkver POST body `%d,%s,%u` = packed client version, `"BLUS30109"`, `rand()*2` nonce |
+| `0xBB7340` | reads reply byte 0: `0x00` up to date (`bb734c` → `0xbb709c`), `0x01` parse the rest (`bb7354` → `0xbb7364`), else error state 10 (`bb735c`) |
+| `0xBB73C0`/`0xBB73E8` | 255-cap `strncpy` (`0xDCCC28`) of the two base URL strings ("string A" patch base, "string B" HTTP-fallback base) out of the reply |
+| `0xBB7418`-`0xBB76B0` | the version-range record loop, 44-byte stride from obj+1588, **≤8 records** (obj+1980 is reused as unrelated scratch) — a parse failure on one record still advances the count and keeps the 31-char name, so a malformed record still gets fetched |
+| `0xBB756C`-`0xBB7584` | version packing: `major<<24 \| minor<<16 \| revision`, each component ≤255 |
+| `0xBB75A8`/`0xBB76CC` | the gate: client's current version (read at runtime, see below) must be ≥ the record's "from" version, or the record is rejected |
+| `0xBB7950`/`0xBB7B9C` | install Blowfish keys from the reply's two trailing 64-byte blobs into keystore slots **7** (payload files) and **8** (`.inf`), via singleton `0xD64498` |
+| `0xBB7BF4` | builds `%s/%u.%u.%u/relnote.txt` (string A base) and fetches it — nothing in this TU renders the body; it is fetched and not displayed |
+| `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot**, the record text must supply its own trailing `.` for the on-disk name to read `...to1.34.0inf` |
+| `0xBB7E7C`-`0xBB7F4C` | `.inf` Blowfish-CBC decrypt: keystore slot 8 → stream wrapper `0xBBD880` → decryptor `0xD652E0`, drained 1KB at a time into a reader object (ctor `0xD66CF0`) that carries no attributable strings — **the decrypted plaintext grammar is not recoverable from disassembly**, only that it yields a count at obj+1584 and an array read as 16-byte entries (name ptr +0, flag bits tested `,29,29` at `0xBB9098` and `,30,30` at `0xBB9140`) |
+| `0xBB8618`-`0xBB864C` | key-slot-7 decrypt into RAM, structurally identical to the `.inf` path — **not** the code that writes files to disk (see next row) |
+| `0xBB8E6C`-`0xBB903C` | **the actual disk install**: `open("dl/p/ar/"+name, device 1, O_RDONLY)`, `open(same path, device 7, O_CREAT\|O_WRONLY, flags@0xFF23F8)`, plain `read`/`write` loop (no cipher in this loop), close both, then `unlink` the device-1 copy. A real cross-device copy-then-delete, not a passive overlay |
+| `0xBB9150`-`0xBB9170` | the HTTP-fallback writer: same `dl/p/ar/%s` path, device chosen per-entry by flag bit `,27,27` (7 if set, else 1) |
+| `0xBB9BC0`-`0xBBA0D4` | `.torrent`: URL `%s/%u.%u.%u/%s.%u.%u.%uto%u.%u.%u.torrent` (string A base, `"BLUS30109"`, from/to versions) fetched raw (no cipher), then handed unmodified to statically-linked Transmission (`tr_torrentInitData` at `0xD92180`, `tr_init("dl")` at `0xD8B710`) — genuine BitTorrent, bencode parser and tracker announce/scrape strings present at `0xE1D470`-`0xE1F5C8` |
+| `0xBB90B0`/`0xBBC7B0` | the plain-HTTP fallback fetch, `%s/%u.%u.%u/%s` from **string B**, `Range: bytes=%d-` resume support, gated by flag bits at obj+1036 |
+| `0xBB68A0`/`0xBB6EC0` | the client's "current version" query — `bl 0xD5EDE0` (mount registry) → vtable+24 with `r4=".p"` → result stored at obj+980/obj+992. **A runtime query of the mounted archive, not an ELF constant** |
+| `0xFADEA0` | `sys_proc_prx_param`, libstub range `0xDED5A0`-`0xDEDA70` — the complete 28-module/349-function import table. **No `cellGame`, `cellGameExec` or `cellGameUpdate` anywhere in it** — the install above is entirely client-side, no PS3 system update package involved |
+| `0xD5EDE0` region | the mount registry; `dl` is registered as a named VFS early in startup (`0x2FD6C`-`0x2FE40`), backed by `dl/p/.p` (package) and `dl/p/.l` (index) — separate from the `dl/p/ar/` download-cache tree |
+| `0xBB5150` | version→string formatter (`%d.%02d.%d`, `%d.%02d`) called from the title/network-start screen (`0x95CCF0` etc.) next to a `"popup"` object — the one UI touchpoint found, and it is a version display, not update UI. **No dialog raiser (`0x8858F0`/`0x885A08`), no progress/percentage argument, and no display string for `relnote.txt`'s body exist anywhere in this module** |
+
+Open question, stated precisely because it is the one thing static reading cannot settle: whether a
+newly-installed file under `dl/p/ar/` is visible to the archive driver immediately (device 7 is
+inferred, not confirmed, to be the live `dl/p` mount) or only after a restart — `0x214E0`'s device
+root table is populated at runtime and cannot be resolved statically.
+
 ## What actually worked, methodologically
 
 Worth keeping, because three readings were wrong before they were right:

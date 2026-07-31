@@ -1448,6 +1448,79 @@ POST https://mgo2auth.konami.com/us/mgo2/kid/gidauth5.html
 
 The double slash in `/us/mgo2//patch/` is the client's, not a typo.
 
+### Auto-patch — `checkver.html` and the update flow [ELF, 2026-07-30]
+
+**Static analysis only — never exercised against a real client.** Our server has always answered
+`checkver.html` with a single `0x00` byte (`dev/runtime/www/us/mgo2/patch/checkver.html` is
+literally that one byte, served statically), so nothing below has been observed live. Addresses in
+`ADDRESSES.md` §12.
+
+**Byte 0 of the reply is a status, not a fixed sentinel.** `0x00` = up to date (what we send).
+`0x01` = update available, and the rest of the reply is a structured payload: an opaque u32, two
+NUL-terminated base-URL strings ("string A" for the patch tree, "string B" for the HTTP-fallback
+tree), a list of version-range records (≤8, 44-byte stride, text form `<from>to<to>.` — note the
+**trailing dot**, packed `major<<24 | minor<<16 | revision`), a `0x00` terminator, two more opaque
+fields, then **two 64-byte blobs that become Blowfish keys** — keystore slot 7 for payload files,
+slot 8 for `.inf`. Any byte-0 value other than `0x00`/`0x01` is an immediate error. **The server
+supplies both keys itself** on this path — there is no baked-in secret to recover, which is what
+makes hand-authoring a self-hosted patch tractable at all.
+
+A record is accepted only if the client's own current version is ≥ the record's "from" version.
+That current version is **not** an ELF constant: it is read at runtime from the client's mounted
+`.p` archive (`0xBB68A0`/`0xBB6EC0`, `mount-registry → vtable+24 → ".p"`). A stock disc with no
+archive reports `1.0.0` (`0x01000000`), matching the `p=16777216,...` seen in the checkver request
+body.
+
+**This is what "`0inf`" is.** It isn't a distinct extension — it's the client's URL format string,
+literally `%sinf` with no dot (`0xBB7D48`), so the record text has to end in its own `.` for the
+concatenation to read `...1.34.0inf`. The historical URL set the user has —
+`BLUS30109.1.10.0to1.34.0inf`, `1.10.0to1.34.0inf`, and a `.torrent` matching the traced format
+`%s.%u.%u.%uto%u.%u.%u.torrent` (string A base + `"BLUS30109"` + from/to versions) byte for byte —
+is consistent with a checkver reply carrying two version-range records for the same upgrade, one
+disc-qualified and one generic.
+
+**Fetch order:** checkver → `relnote.txt` (fetched, never rendered — no display string or text
+renderer touches it in this module) → one `.inf` per accepted record → `.torrent`, or, if flag bits
+at obj+1036 select it, a plain per-file HTTP fetch from string B with `Range:` resume instead of
+BitTorrent.
+
+**`.inf` is Blowfish-CBC encrypted** with keystore slot 8 (`0xBB7E7C`-`0xBB7F4C`). Decryption is
+directly observed; the **decrypted plaintext's grammar is not** — the reader object (`ctor
+0xD66CF0`) carries no attributable strings. All that's provable downstream is a count at obj+1584
+and an array read as 16-byte entries (name pointer, two flag bits). Since we would choose the key
+on a self-hosted patch, recovering Konami's original grammar isn't required — what's missing is
+*a* grammar the reader accepts, which is the kind of thing this project has previously had to
+establish empirically against a real client rather than purely from disassembly (see "What
+actually worked, methodologically" in `ADDRESSES.md`).
+
+**`.torrent` is genuine BitTorrent**, not a naming convention — the client statically links
+Transmission (bencode parser, tracker announce/scrape query string, peer-ID fingerprint table, the
+works, `~0xD83000`-`0xDDF000`). The downloaded `.torrent` is handed to `tr_torrentInitData` raw,
+unencrypted; only the payload files inside a torrent go through the slot-7 cipher. The HTTP
+fallback avoids all of this and is the far easier route to self-host.
+
+**The payload really is installed client-side, with a real install step — not a passive overlay.**
+The full PRX import table (28 modules, 349 functions, read from `sys_proc_prx_param` at
+`0xFADEA0`) has no `cellGame`, `cellGameExec` or `cellGameUpdate` entry anywhere — there is no PS3
+system-update package involved. Downloaded files land under `dl/p/ar/` on one device (device 1),
+and the install loop at `0xBB8E6C`-`0xBB903C` does a straight `read`/`write` copy of each file onto
+a **different** device (device 7) at the same relative path, then `unlink`s the device-1 copy. That
+copy-then-delete is a real install, distinct from the download cache. What device 7 actually is —
+specifically, whether it's the same live mount the archive driver reads `.p`/`.l` from, so a copied
+file is visible immediately — is populated at runtime (`0x214E0`'s device-root table) and could not
+be resolved statically; whether a fresh install takes effect mid-session or needs a restart is open
+for the same reason.
+
+**No UI beyond a version-number label.** Neither dialog raiser used elsewhere in the client
+(`0x8858F0` two-callback confirm, `0x885A08` one-callback error) is called from this module or its
+calling screen. The module's entire string block (`0xE20040`-`0xE201F8`) is wire-format templates,
+paths and thread/method names — zero display strings. No progress percentage is threaded through
+any of the download loops. The one UI touchpoint is a `%d.%02d.%d` version formatter next to a
+`"popup"` object on the title/network-start screen, which is a version display, not update UI.
+Nothing found blocks on a user confirmation; the flow appears fully automatic once triggered,
+though the calling screen's own per-frame polling of the updater's state was not traced, so a
+screen-side popup keyed off that state can't be ruled out.
+
 ### Rankings — an HTTP feature, not a command [ELF, 2026-07-27]
 
 **The Rankings menu never touches the TCP protocol.** It POSTs to two endpoints, relative to the
