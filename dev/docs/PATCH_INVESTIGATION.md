@@ -233,20 +233,20 @@ web-controller code involved (confirmed via `compose.yaml` and `dev/runtime/http
 proxies only `/us/mgo2/kid/` and `/us/mgo2/rank/`, and serves everything else straight from the
 docroot). The risky part is entirely in the *bytes*, not the deployment.
 
-Phases, in ascending order of risk:
+Phases, in ascending order of risk — **all now live-confirmed working, 2026-07-31** (see finding
+11 below for the full end-to-end result):
 1. `checkver.html` reply + `relnote.txt` — byte-exact known from the ELF, live-tested 2026-07-31,
    works.
-2. `.inf` — **offline-verified, live acceptance still unconfirmed.** Three build rounds so far.
-   Round 1 implemented a wrong pipeline model ("three Blowfish stages") and was rejected. Round 2
-   corrected the pipeline (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean,
-   but was *also* rejected live — crypto right, plaintext layout wrong (two entry scans at
-   different strides, entries start after the inner tag, not at offset 12). Round 3 fixed the
-   layout; an opcode-faithful reference implementation (transcribing the actual disassembled
-   instructions, not describing them in English) validated every stage against the real rejected
-   bytes offline. **But that's a model of the client, not an observation of it** — a live retest
-   with the same file still produced the same generic error (see phase 3), so the `.inf` itself is
-   the leading remaining suspect again, specifically one of its two HMAC checks (§5), now that the
-   alternative explanation below has been ruled out.
+2. `.inf` — **live acceptance confirmed 2026-07-31.** Four build rounds. Round 1 implemented a
+   wrong pipeline model ("three Blowfish stages") and was rejected. Round 2 corrected the pipeline
+   (HMAC-verify → Blowfish-CBC → HMAC-verify, §5) and round-tripped clean, but was *also* rejected
+   live — crypto right, plaintext layout wrong (two entry scans at different strides, entries start
+   after the inner tag, not at offset 12). Round 3 fixed the layout and validated offline via an
+   opcode-faithful reference implementation, but a live retest *still* failed with the same generic
+   error — the actual missing piece turned out to be a whole undiscovered pipeline stage (zlib
+   inflate between the CBC decrypt and the inner HMAC, finding 7), not a bug in anything already
+   built. Round 4 added it; a real client now accepts the `.inf`, shows the confirmation dialog,
+   and completes the download.
 3. **A dead end, kept for the record: the client never creates a directory, anywhere — true, but
    not the live blocker.** The install loop opens `dl/p/ar/<name>` on device 7 with
    `O_CREAT|O_WRONLY`, which creates the file but not missing parent directories, and the test
@@ -347,5 +347,30 @@ Phases, in ascending order of risk:
     single register snapshot without following it up against an independent, from-scratch
     re-verification (as in finding 7) — this session had a false-positive "crypto is broken" read
     from live registers that a direct offline recheck immediately disproved.
-11. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
-    standing up a working BitTorrent tracker for the `.torrent` path. Not started.
+11. **The full flow works end to end, live-confirmed 2026-07-31: checkver → relnote → `.inf` →
+    confirmation dialog → HTTP Download → completion → release note display.** After the zlib fix
+    (finding 7), a real client showed the confirmation dialog for the first time, offered a choice
+    of Peer-to-Peer (recommended) or HTTP Download, and HTTP Download completed immediately against
+    our 32-byte stub payload — no BitTorrent tracker needed, confirming the plain-HTTP-fallback
+    path (`%s/%u.%u.%u/%s` from checkver's second base-URL string) is what the client actually
+    uses when P2P isn't chosen. Two small cosmetic follow-ups, neither blocking:
+    - The confirmation dialog reads **"An update (Ver. 0.00) has been uploaded"** instead of a
+      real version number. `build_inf_stub.py`'s header fields (`hdr[0]`/`hdr[8]`) are zeroed on
+      the "provably unused" finding from the entries-scan trace — that finding was about what the
+      *entry-scan/HMAC* code reads, not what a *display* label reads, so it's plausible one of
+      those fields (or a different one entirely) feeds this text and needs a real value. Not yet
+      investigated.
+    - `relnote.txt`'s content, rendered via the "display update details" triangle prompt, is
+      confirmed visible but ran off the bottom of the screen — a content-length/formatting
+      question for `build_checkver_stub.py`'s `build_relnote()`, not a protocol bug.
+    The original goal of this investigation — exercising the real auto-patch protocol end to end
+    against a real client with placeholder payload bytes — is met.
+
+    **The natural stopping point**: hitting X to apply/continue after the download and release-note
+    screen produces the generic error dialog again — expected, and not a protocol bug. The stub
+    payload is 32 bytes of placeholder text, not a structurally valid patch package, so the
+    install/apply step rejecting its *content* is the correct outcome. Building a real installable
+    payload would require reverse-engineering the patch-package format itself, which is a separate
+    problem from the network protocol this investigation set out to validate, and was explicitly
+    out of scope from the start (§3/§4 — no real Konami patch content is recoverable, and this was
+    never going to be a stub with genuinely installable content).
