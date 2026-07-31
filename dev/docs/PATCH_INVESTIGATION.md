@@ -262,10 +262,15 @@ Phases, in ascending order of risk:
    Also resolved in the same pass and worth keeping: the `dl` "mount" isn't a VFS mount (no mount
    table exists anywhere), `dl/p/.l`'s `ENOENT` at boot is a dead read with no consequence, and the
    real archive path is `dl/.p`.
-4. **In flight**: re-checking whether the checkver reply's two key blobs land in the keystore slots
-   assumed (`T+7`→slot 7, `T+71`→slot 8) and whether `keystore->get()` returns those 64 bytes
-   unmodified — a wrong slot mapping or a keystore-side transform would explain a `.inf` that's
-   correct by our own model but still rejected live, and was flagged as unresolved by an earlier
-   pass rather than eliminated.
+4. **Found the actual bug, 2026-07-31: the keystore decrypts on `get()`, and every reply built so
+   far sent the two key blobs raw.** Slot mapping (`T+7`→slot 7, `T+71`→slot 8) was confirmed
+   correct — not transposed — but `get()` unconditionally Blowfish-CBC-decrypts whatever `set()`
+   stored, under a master key resident in the ELF at `0xE26DA8`. Sending the desired key raw on the
+   wire means the client's effective key is *Decrypt(our key)* — deterministic garbage, which fails
+   the HMAC tag every time regardless of how correct the `.inf` itself is. This is the real
+   explanation for every rejection since round 2: the `.inf` really has been byte-correct since
+   round 3, and the checkver reply carrying its keys was the actual bug. `build_checkver_stub.py`
+   now Blowfish-CBC-encrypts `SLOT7_KEY`/`SLOT8_KEY` under the master key before writing them into
+   the reply; round-tripped through both directions before redeploying. Not yet re-tested live.
 5. Payload delivery — plain HTTP fallback (with `Range:` resume) is the far simpler route than
    standing up a working BitTorrent tracker for the `.torrent` path. Not started.

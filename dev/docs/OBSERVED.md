@@ -1529,6 +1529,13 @@ decryption:
   stage 1's tag, not padding or an IV. Keystore slot 7's 64 bytes split **8 (IV) + 56 (key)**,
   through the standard Blowfish schedule (pi table confirmed at `0xE25AEC`) — a stock CBC library
   given the raw key/IV reproduces this with no pre-expanded schedule needed.
+- **The keystore itself is not a passthrough — found 2026-07-31, and the reason three built `.inf`
+  files were all rejected despite two of them being provably byte-correct.** `get()` (`ADDRESSES.md`
+  §12, "The keystore") Blowfish-CBC-*decrypts* whatever `set()` stored, under a master key resident
+  in the ELF at `0xE26DA8`, unconditionally. So "keystore slot 8's full 64 bytes" above is `get()`'s
+  output, not the bytes `checkver.html` puts on the wire — a reply that sends the desired key raw
+  makes the client's effective key be the *decryption* of it, deterministic garbage. Every reply
+  built before this correction sent the keys raw. `build_checkver_stub.py` now encrypts them.
 - Stage 3 (`0xBB8848`) HMAC-MD5-verifies stage 2's plaintext against a **64-byte blob resident in
   the ELF at `0xE20000`** (`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero padding). **This
   key is still not server-supplied** — real constraint on hand-authoring an `.inf`. **Settled: this
