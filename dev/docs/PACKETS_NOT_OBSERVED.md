@@ -30,20 +30,20 @@ Of the 29, ten are explainable, leaving **19 genuine unknowns**.
 | --- | --- | --- | --- |
 | `0x2007` | s2c | gate reply, single u32 | no |
 | `0x43F0` | s2c | server -> client: in-match subsystem push (UNSOLICITED, no result field) | no |
-| `0x4904` | c2s | game lobby info request variant (one id) | no |
-| `0x4908` | c2s | game lobby info request variant (one byte) | no |
-| `0x4912` | c2s | game lobby request with id and optional 16-byte name | no |
-| `0x491B` | c2s | game lobby request (u4, u2, u1, u4) | no |
-| `0x4920` | c2s | game lobby request (u4, u1) | no |
-| `0x4923` | c2s | game lobby request (one byte) | no |
-| `0x4940` | c2s | game lobby request (one byte) | no |
-| `0x4984` | c2s | game lobby request (one u4) | no |
-| `0x4986` | c2s | game lobby request (one u4) | no |
-| `0x4992` | c2s | game entry info request (one u4) | no |
-| `0x49A0` | c2s | game lobby request (one byte from a struct) | no |
-| `0x49B0` | c2s | game lobby request (two u4) | no |
-| `0x49C2` | c2s | game-lobby / roster request, u32 + small enum | no |
-| `0x49C3` | s2c | unmapped 0x49xx reply | no |
+| `0x4904` | c2s | **event/official-match detail request by id** (`detail_id` u4, echoed at `0x4905+0x04` or the reply is discarded). Sender `0xD47B6C`, in the lobby/entry block — touches no team state | no |
+| `0x4908` | c2s | one-byte sibling of `0x4904`, same 912-byte destination. **Dead sender** — `0xD47D9C` has no caller | no |
+| `0x4912` | c2s | **join a team**: `team_id` u4 + `password` str[16]. Password sent only when the browsed team's `record+0x94` bit `0x80` ("Password Lock", disc string 665) is set; all-zero otherwise, payload always 20. Gate: already in a team -> **-1004** | no |
+| `0x491B` | c2s | **enter play with the current team**: own `team_id` (else **-1018**), team record serial, `entry_mode` (0 = tournament confirm, 1 = reconnect), plus `team_field_0x268` | no |
+| `0x4920` | c2s | leader-only team command, u32 + u8, bare-ack reply `0x4921`. **Dead sender** — no caller, so its fields stay unnamed. Candidate but unproven: disc strings 692 "Disband Team" / 693 "Accept Entry" have no matched id | no |
+| `0x4923` | c2s | **set/clear the team's clan affiliation**, leader only. `clan_affiliation` u1 hard-gated to 0/1 (else **-24**); setting 1 also needs a non-zero word in the local player object (**-1035**) | no |
+| `0x4940` | c2s | **kick a team member by roster slot**, leader only. `member_slot` u1, 0..7; caller resolves the slot by scanning the 8x28-byte roster and never puts 0xFF on the wire. Slot state at `member+0x15` must be 1 or 2 (else **-1012**) | no |
+| `0x4984` | c2s | **fetch a team record by id** -> `0x4985` (slot 63). The sent word is stashed at `ctx+0x26CFC` and the reply is rejected unless its leading id echoes it | no |
+| `0x4986` | c2s | u4 taken from `record[0]+40` of the `0x4991` table -> `0x4987` (slot 72). **Not** echo-checked, unlike `0x4984`. Also pre-clears slot 86; serve `0x4987` with `+664 == 0` or it arms 86 instead of completing 72 | no |
+| `0x4992` | c2s | **withdraw entry by key** -> `0x4993` (slot 71), which zeroes the matching 72-byte record in the 4-record table at `ctx+0x1DAA8`. Sender `0xD479A8` is in the lobby/entry block, not the team block | no |
+| `0x49A0` | c2s | one byte = team record `+608` = wire 360 of the shared 420-byte record — the same field `0x4910` sends. Meaning of the field itself still open | no |
+| `0x49B0` | c2s | `team_id` (same `ctx+0x26CFC` echo check) + a second u32 that is **unresolved**: swept `0xD4A458`-`0xD4A574`, spilled once and serialised, never compared or stored, and the sender has no caller | no |
+| `0x49C2` | c2s | **join team / answer a pending `0x49C1` invitation**: `entry_id` (non-zero enforced) + `answer` range-checked 1..4, over the 3-entry 44-byte table at `session+0x117F8`. Gated on **not** already being in a team (**-1004**) | no |
+| `0x49C3` | s2c | reply to `0x49C2` (slot 76). **Leading integer is a RESULT CODE, not a count**, and the match key is the **second** field — the two were previously documented swapped. All three fields are read before the result is tested, so an error reply must still carry all three | no |
 | `0x4A03` | s2c | unmapped 0x4Axx reply, word plus four halves | no |
 | `0x4A30` | c2s | unidentified subsystem, single u32 | no |
 | `0x4A47` | s2c | unmapped 0x4Axx reply, parsed inline in the dispatcher | no |

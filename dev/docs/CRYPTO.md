@@ -54,9 +54,15 @@ Encrypt and decrypt run the identical XOR; the only difference is which value fe
 (ciphertext when encoding, plaintext when decoding). That feedback is why a 4-byte plaintext edit
 moves ~18 kB of ciphertext, and why the transform is nonetheless perfectly reversible.
 
-Container: the payload is PKCS#7-padded to 8 bytes and a 16-byte digest of the form
-`MD5(key64 || MD5(ciphertext))` is appended — **24 bytes of overhead**, which is exactly the
+Container: the payload carries a **fixed 8-byte prefix/suffix** plus an appended 16-byte digest of
+the form `MD5(key64 || MD5(ciphertext))` — **24 bytes of overhead**, which is exactly the
 1374092 → 1374068 seen decrypting `scenerio.gcx` and the 426 → 450 seen encrypting a `testhk`.
+
+> **CORRECTED 2026-08-01: this said "PKCS#7-padded to 8 bytes", and it is not PKCS#7.** The
+> overhead is a constant 24 bytes across **all 424 encrypted files** in the download manifest,
+> regardless of `size mod 8` — residues 0, 1, 4 and 5 are all present in that set. PKCS#7 would
+> vary the total between 17 and 24. The 24 was right; the mechanism attributed to it was not.
+> Measured while decoding `.p`; see `dev/analysis/dl_manifest_format.md`.
 
 **Verified round-trip:** `Solideye -dec` then `-enc` on `o/stage/lobby/scenerio.gcx` with key
 `stage/lobby` reproduces the original **bit for bit**, header included (md5

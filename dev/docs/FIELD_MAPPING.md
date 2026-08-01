@@ -473,25 +473,66 @@ because a field in a command nothing can send cannot stall anything:
 the honest denominator for "100% mapped" is far smaller than 1,731. That question is open; see
 below.
 
-### Open contradiction: is `session+0xD928` a team record or a clan cache?
+### Settled 2026-08-01: `session+0xD928` is the TEAM record
 
-Two batches on 2026-08-01 traced the **same address** and gave it **different nouns**, and both
-readings are committed in `dev/proto/*/mgo2_cmd_49*.ksy`.
+Two batches traced this address the same day and gave it different nouns — one calling it the team
+record, the other the my-clan cache. Both readings were committed. An adjudication pass settled it:
+**it is the team record.** The first batch had the right noun; the second was right about every
+mechanical detail and wrong about the label.
 
-* `0x4904`/`0x4908`/`0x4912`/`0x491B`/`0x4920`/`0x4923`/`0x4940` call it the **team record** —
-  8-slot roster at `+0x17C`, slot 0 the leader, three senders gating on "am I slot 0". Evidence is
-  disc strings at the UI call sites: 692 "Disband Team", 726 "Team formation complete.", 676 "TEAM
-  CREATION", with 38 "OFFICIAL TOURNAMENT" and 72 "SURVIVAL" nearby.
-* `0x4984`/`0x4986`/`0x4992`/`0x49A0`/`0x49B0`/`0x49C2` call it the **my-clan cache**, field `+0`
-  the clan id, filled by `0x4987`.
+**What actually caused the disagreement: one struct type, two instances.** The filler is a shared,
+id-dispatched parser at `0xD4AF34(session, cmdId, *out)` which `memset`s 680 bytes and runs the
+same field-by-field parse for either destination:
 
-They agree on every mechanical detail — same address, same gate `0xD4908C`, same polarity. Only
-the noun differs. **It decides scope**: team/tournament is Ver. 1.10/1.20 content and out of scope
-for v1, while clan is launch-day and would make `0x49C2`/`0x49C3` implementable now.
+* `0x4911`, `0x4913`, `0x49A1`, `0x4987` → `session + 0xD928` — **my** team. Its getter `0xD491F8`
+  has 83 callers across the team screens.
+* `0x4985`, `0x49B1` → `[session+0x11904] + 0x1A598` — the team being **viewed or joined**. Its
+  getter `0xD491C8` is called only from the browse screens at `0x8C6C`–`0x8C9F`.
 
-The commit subject "it is TEAM, not clan" (`f43d685`) asserts one side and **should be read as
-provisional until this is settled**. The leading hypothesis is that the block is *split* —
-`0x49[0-4]x` one subsystem, `0x49[8-C]x` another — with one batch mis-attributing this one address
-while being right about its own commands. Disc string 701, *"This will affiliate the team with the
-team leader's clan"*, is the constraint any answer must satisfy: teams and clans are **distinct
-coexisting objects** in this build, so an answer that collapses them is probably wrong.
+So `0x4985` never writes `0xD928`; it writes a second instance of the identical struct. Reading one
+instance as a different *kind* of object is the trap, and it is worth remembering as a general
+hazard: **two instances of one type look exactly like two types until you find the shared parser.**
+
+Three independent tier-1 lines agree on the noun:
+
+1. **The parser dispatch** above — the same layout, the same memset, four commands filling *my*
+   instance.
+2. **The client's own sentence.** The gate `0xD4908C` failing yields **−1007**, which `0x8C25C8`
+   maps to dialog 5170: *"You have already left the team. / Unable to leave team."*
+3. **Disjoint error bands.** Everything this object produces is **−10xx** (−1004, −1006, −1007,
+   −1012, −1014, −1018, −1035); `ERRORS.md` shows clan operations use **−12xx** (−1202 "You are not
+   a clan member", −1203 "You are not clan leader", −1207, −1230). Clean discriminator, lands on
+   team.
+
+The layout is a roster and not a member list: `+0x17C` is 8 × 28 bytes, the loop bound is
+`cmpwi cr6,r26,7` — hardcoded 8 — and `0xD4DC18` compares slot 0's id against my own character
+record, failing **−1014**. That is inside `0x4940`'s sender, so the leader gate is confirmed.
+
+Teams and clans coexist, and the link is a single bit: `team+0x94` bit `0x40` is the clan
+affiliation, read at `0x8C20A8` and passed to the `0x491C` sender, whose replies map the *clan*-band
+codes −1230 and −1202. Disc strings 14150 "Set Clan Affiliation" and 14214 "This will affiliate the
+team with the team leader’s clan" sit contiguously with 14226 tournament-entry and 14232
+Survival-entry confirmations.
+
+**The block is split, but not where the hypothesis put it.** It is not `0x49[0-4]x` versus
+`0x49[8-C]x` — both drive the same object, and there is no clan subsystem anywhere in `0x49xx`. The
+real boundary is at the **low** end: the senders for `0x4904` (`0xD47B6C`), `0x4908` (`0xD47D9C`)
+and `0x4992` (`0xD479A8`) live in the `0xD477xx`–`0xD48Dxx` lobby/entry block, take a single u32,
+and touch neither `0xD928` nor any leader gate. The first instruction anywhere forming
+`session+0xD928` is at `0xD49208`.
+
+Sweep behind that: every occurrence of `-9944` in the cached disassembly, 26 hits, each checked for
+a preceding `addis …,1`; the only two outside `0xD49208`–`0xD4DC0C` are the gate itself
+(`0xD490A0`) and an unrelated `sth` at `0xE46AC4`. **Control that succeeded:** the same sweep finds
+`0xD49380`, the 680-byte `memset` clear — which any correct sweep must contain.
+
+**Scope consequence, which is the reason this mattered.** The `0x49xx` family is
+team/tournament/survival throughout — **Ver. 1.10 / 1.20 content, out of scope for v1** under the
+target-version rule. In particular `0x49C2`/`0x49C3` are **join team**, not a clan operation, and
+are therefore *not* implementable now, which reverses the earlier note that they were the one
+ready-to-ship pair in the batch.
+
+Still open, at medium confidence: that the second instance is specifically the *browse/join target*
+rests on caller locality rather than a resolved string. Resolving the disc strings at `0x8C6CD0` and
+`0x8C9568` would settle it.
+

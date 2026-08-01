@@ -3,6 +3,27 @@ meta:
   title: "MGO2 0x49C3 — reply to 0x49C2: result + entry id + new state (server -> client)"
   endian: be
 doc: |
+  **CORRECTED 2026-08-01 — this file says "clan" where the evidence says "team".** An
+  adjudication pass settled that `session + 0xD928` is the **team record**, not a my-clan cache,
+  and that the 680-byte object here is a team. Read every "clan" below as "team", except where it
+  names the *clan affiliation* bit (`team+0x94` bit `0x40`), which genuinely is a reference to a
+  separate clan object.
+
+  The mechanics recorded below are correct and were not changed; only the noun was wrong. The
+  cause was that one struct type has **two instances** — `session+0xD928` is my team, and
+  `[session+0x11904]+0x1A598` is the team being viewed or joined — both filled by the same
+  id-dispatched parser `0xD4AF34`. Two instances of one type look exactly like two types.
+
+  The noun is settled by three tier-1 lines: that shared parser; the gate `0xD4908C` failing with
+  **-1007**, which the UI maps to dialog 5170 *"You have already left the team."*; and the error
+  bands, which are **-10xx** for this object and a disjoint **-12xx** for real clan operations.
+
+  **Scope: this makes the family Ver. 1.10 / 1.20 team-tournament-survival content, out of scope
+  for v1.** In particular `0x49C2`/`0x49C3` are **join team**, and are NOT implementable now --
+  reversing the earlier note that they were the batch's one ready-to-ship pair.
+
+  Full write-up: `dev/docs/FIELD_MAPPING.md`, "Settled 2026-08-01".
+
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39840,
   parser 0xD4DE50. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes 0x49C3 and
   it has never been observed live; everything below is read out of the client parser.

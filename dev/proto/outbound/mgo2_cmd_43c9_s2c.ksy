@@ -30,13 +30,21 @@ doc: |
   identifier. The *conclusion* about round reports still holds — no packet builder references
   the slot — but the reader was misidentified, and the field is not inert.
 
-  `profile+0x32F8` has exactly three accesses in the whole binary:
+  `profile+0x32F8` has **four** accesses in the whole binary:
 
   | site | what it does |
   | --- | --- |
   | `0x414898` | zero-fill; one word of a bulk clear covering ~200 consecutive profile fields |
   | `0xD3FF6C` | this parser's write, guarded by `!= 0` |
   | `0x8842AC` | `lwz r0,13048(r11)` / `stw r0,12(r31)` — the **join-announcement packer** |
+  | `0xD3F450` | **`0x4103`'s parser**, which writes the same slot **unguarded** |
+
+  > **CORRECTED 2026-08-01: this said "exactly three accesses", and the fourth one matters.**
+  > `0x4103`'s parser (`0xD3E9AC`-`0xD3F47C`) stores to this slot with **no `!= 0` guard**, unlike
+  > `0xD3FF6C` above. So a `0x4103` carrying zero here will **silently clear a saved instructor
+  > that `0x43c9` has just set**. Whether that is reachable depends on send ordering, which the
+  > server controls; it is recorded as a hazard rather than an observed bug because no capture has
+  > been taken with both in flight. Found while closing `0x4103`'s unknown fields.
 
   From `struct+12` it is published by `0x2762A0` as replicated player variable **352**, broadcast
   as P2P opcode `0x24` to every peer, and lands in `G->0x1C0` on each receiving client, where
