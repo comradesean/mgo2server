@@ -2,6 +2,7 @@ package mgo2server.game;
 
 import mgo2server.common.AutomatchPolicy;
 import mgo2server.common.Services;
+import mgo2server.common.service.PresenceService;
 import mgo2server.game.ChannelRegistry;
 import mgo2server.game.controller.AccountGameController;
 import mgo2server.game.controller.AutomatchGameController;
@@ -22,6 +23,7 @@ import mgo2server.game.controller.PersonalStatsController;
 import mgo2server.game.controller.SocialGameController;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class GameServerFactory {
 	/**
@@ -63,7 +65,7 @@ public class GameServerFactory {
 		// Handles no commands: it is here so its onPacket/onDisconnect hooks fire, which is what keeps
 		// the character-id to channel map current. Anything that has to reach a client other than the
 		// one currently asking takes this.
-		var channels = new ChannelRegistry();
+		var channels = new ChannelRegistry(services.getPresenceService(), lobbyId);
 		controllers.add(channels);
 
 		// Disconnect and ping, which every lobby answers.
@@ -115,10 +117,31 @@ public class GameServerFactory {
 
 		// Only game lobbies run the matchmaker; a gate or account server has no searchers and no
 		// reason to hold a thread open.
-		var task = lobbyType == LobbyType.GAME
+		var automatchTask = lobbyType == LobbyType.GAME
 			? new GameServer.PeriodicTask("automatch", automatchPolicy.tick(), automatch::tick)
 			: null;
 
-		return new GameServer(controllers, port, task);
+		// Presence runs on EVERY lobby type, unlike the matchmaker. A gate or account server holds
+		// connections too, and a row left behind by one is just as stale as one left by a game
+		// lobby -- and its reaper is the only thing that cleans up after a process that died and
+		// never came back, so the more servers running it, the sooner that happens.
+		var presenceTask = new GameServer.PeriodicTask("presence",
+			PresenceService.HEARTBEAT_INTERVAL, channels::refreshPresence);
+
+		// Clear this lobby's rows BEFORE the port is open, not after: a client that connects between
+		// bind and clear would have its brand-new presence wiped by our own startup sweep.
+		channels.clearStalePresence();
+
+		// Built explicitly rather than with List.of(automatchTask, presenceTask): automatchTask is
+		// null on every lobby type except GAME, and List.of throws NullPointerException on a null
+		// element before GameServer ever gets the chance to filter it. That failed 51 integration
+		// tests at server construction, which is a long way from where the mistake reads.
+		var tasks = new ArrayList<GameServer.PeriodicTask>();
+		if (automatchTask != null) {
+			tasks.add(automatchTask);
+		}
+		tasks.add(presenceTask);
+
+		return new GameServer(controllers, port, tasks);
 	}
 }

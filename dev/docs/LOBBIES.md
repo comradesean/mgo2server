@@ -156,9 +156,9 @@ happens to match execution order.
 
 | subtype | our name (source) | scan | row emitted | string ids | help id | status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2 | Automatching (tier 4) | `0x890410` | `0x89097C` | 251 / 260 | 9 | **in use** |
-| 1 | Free Battle (tier 4) | `0x89044C` | `0x890908` | 245 / 261 | 10 | **in use** |
-| 7 | Basic Training (observed) | `0x890488` | `0x890894` | 249 / 262 | 11 | **in use** |
+| 2 | Automatching (**disc string 251**) | `0x890410` | `0x89097C` | 251 / 260 | 9 | **in use** |
+| 1 | Free Battle (**disc string 245**) | `0x89044C` | `0x890908` | 245 / 261 | 10 | **in use** |
+| 7 | Training (**disc string 249**) | `0x890488` | `0x890894` | 249 / 262 | 11 | **in use** |
 | 8 | Combat Training (observed) | `0x890488` | `0x890894` | 249 / 262 | 11 | **in use** |
 | 5 | *unnamed — tournament/survival family* | `0x8904CC` | inline `0x890504` | 264 + entry text | 12 | present, unused |
 | 3 | *unnamed — tournament/survival family* | `0x890578` | `0x890820` | 246 / 263 | 13 | present, unused |
@@ -180,6 +180,24 @@ this file cannot yet say what any row invokes.
 
 Neither the strings nor the help id is a value we send. Where the "our name" column says *tier 4*,
 the name comes from another server implementation and has never been verified against this client.
+
+**2026-07-31 — subtypes 1, 2 and 7 are no longer tier 4.** The string-id column was already read
+from the ELF; the *text* behind those ids had never been fetched. Pulling them out of
+`lobby/scenerio.gcx` (group `0xf914bf`, base 11034 — `AUTOMATCH.md` §10) gives the client's own
+labels: **245 = "Free Battle"**, **251 = "Automatching"**, **249 = "Training"**, with descriptions
+261 / 260 / 262 = *"Select and join a pre-existing game or set up rules and host your own game."* /
+*"Automatically create a game with characters close to your level."* / *"Practice gameplay and
+controls. Here, the controls are easily explained for novices."* Two names that had been carried
+from mgo2-server for two years turn out to be exactly right, and the third is a small correction:
+subtype 7 was called **"Basic Training"** here, and that string exists nowhere on the disc. The
+lobby is *"Training"*; "Basic" is only the informal contrast with Combat Training. Inside it the
+disc names two activities, *"Solo Training"* and *"Novice Training"*.
+
+Independently corroborated by a second table: `0x4682`'s match-history `lobby_type` enum
+(`0x91E5C4`) resolves value 2 out of the same resource group as **"Automatching"** (id 906), value 7
+as **"Training"** and value 8 as **"Combat Training"**, out of the rule-name group `0x654515`. See
+`dev/proto/outbound/mgo2_cmd_4682_s2c.ksy`. The two axes are still separate enums — that table has
+labels at 6 and 9 where this one has nothing — but they agree on every value both define.
 
 ### The range the client accepts
 
@@ -225,11 +243,13 @@ first, so it is the topmost row when present. Title string 904, which matches th
 machine's 904/905 pair for this subtype (`0x897114`) — the two agree, which is a useful
 cross-check. Alone among the seven it has **no dedicated background asset**. Observed live
 2026-07-25: the row appears, is selectable, and the lobby is entered without error; nothing about
-what the screen behind it *does* has been tested. The name is tier 4, inherited from mgo2-server
-and never verified — note that the binary's own taxonomy has `TYPE_COOP` where that mapping would
-put Automatching (see below).
+what the screen behind it *does* has been tested. **The name is confirmed off the disc
+(2026-07-31):** menu string 251 is literally `"Automatching"`, and the `0x4682` history enum's
+value 2 resolves the same word from id 906. The old caveat — that the binary's own `0xFE85F0`
+taxonomy has `TYPE_COOP` where "index = subtype − 1" would put Automatching — was a real warning,
+but that array is simply not indexed by subtype; see the `0x4682` schema.
 
-**Subtypes 7 and 8 — Basic and Combat Training.** *Both in use.* They share everything above the
+**Subtypes 7 and 8 — Training and Combat Training.** *Both in use.* They share everything above the
 lobby door: one category row (`0x890894`, strings 249/262, action 11), one title (842), one
 jump-table arm, and the lobby-entry machine tests them together (`0x897138`/`0x89714C` → strings
 842/843). The sub-list at `0x89147C` groups them and splits by **lobby id**, which is why two
@@ -297,7 +317,8 @@ It does embed plenty of displayed text — `TEAM DEATHMATCH`, `BASE MISSION`, `C
 It does **not** contain the Lobby Select labels. Searched, 8-bit and 16-bit, for every spelling of
 *Free Battle*, *Automatching*, *Training*, *Survival*, *Tournament* and *Registration*: no hits,
 and `Lobby Select` itself is absent too. That screen's text goes through `0x8E0C24` into the
-message resource keyed `0x00F914BF`, which lives outside the binary. Title ids **634, 635, 636**
+message resource keyed `0x00F914BF`, which lives outside the binary — **and has since been read**
+(`lobby/scenerio.gcx`, base 11034; see the note under the subtype table). Title ids **634, 635, 636**
 are the lookup keys for subtypes 3, 4 and 5 if that resource becomes available.
 
 What the binary does carry is the game's own **taxonomy of game types**, a contiguous six-pointer

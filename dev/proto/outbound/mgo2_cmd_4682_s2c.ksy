@@ -83,15 +83,44 @@ types:
           | value | arm | label |
           | --- | --- | --- |
           | 1 | `0x91e60c` | `TYPE_FREEBATTLE` |
-          | 2 | `0x91e650` | `GetString(0x00F914BF, 0x00A6FC6D)` — the Lobby Select message resource |
+          | 2 | `0x91e650` | `GetString(0x00F914BF, 0x00A6FC6D)` = **"Automatching"** |
           | 3 | `0x91e61c` | `TYPE_TOURNAMENT` |
           | 4 | `0x91e624` | `TYPE_SURVIVAL` |
           | 5 | `0x91e62c` | `TYPE_TOURNAMENT_OFFICIAL` |
           | 6 | `0x91e634` | `TYPE_SURVIVAL_OFFICIAL` |
-          | 7 | `0x91e664` | `GetString(0x00654515, 0x0083889F)` |
-          | 8 | `0x91e678` | `GetString(0x00654515, 0x0077B743)` |
+          | 7 | `0x91e664` | `GetString(0x00654515, 0x0083889F)` = **"Training"** |
+          | 8 | `0x91e678` | `GetString(0x00654515, 0x0077B743)` = **"Combat Training"** |
           | 9 | `0x91e614` | `TYPE_COOP` |
           | 0, or >9 | `0x91e5e8` | the single-space string at `-32760(r30)` — column blank |
+
+          **The three literal-hash arms, decoded off the disc [2026-07-31].** Method is
+          `AUTOMATCH.md` §10 (`lobby/scenerio.gcx`, `gcx.exe -res`); the group hash in each
+          `GetString` call is the header's `groupHash` field verbatim, so the record is found by
+          scanning headers rather than guessing.
+
+          - **Value 2** — group `0x00F914BF` = `hash("lobby")`, set `[2f0293]` headers
+            `$strres:9789`-`11033`, string base **11034**. Name hash `0xA6FC6D` is header
+            **10695**, i.e. **string id 906**, EN ordinal `0x477` → file `12176` = `"Automatching"`
+            (JP `オートマッチング`). Base validated three ways before trusting it: id 996 → EN
+            `"Move to Game"`, id 3 → a single space, id 18 → `"----"`, all byte-identical to what
+            batch 3b recorded. And **id 906 is independently already in `AUTOMATCH.md` §9** as
+            "Automatching", written down before this arm was known — the two agree without either
+            being derived from the other.
+          - **Values 7 and 8** — group `0x00654515` is a *different* group: set `[40eff4]`, headers
+            `$strres:0`-`341`, string base **342**. Name hash `0x83889F` is header **18**
+            (string id 18) → EN file `408` = `"Training"`; `0x77B743` is header **20** (string id
+            20) → EN file `415` = `"Combat Training"`.
+          - **Base 342 is locked by the language column, not by eyeballing.** Each header carries
+            six ordinals in order JP, EN, FR, DE, IT, ES. Reading the *second* ordinal at bases
+            341 / 342 / 343 yields Japanese / English / French respectively — only 342 puts the EN
+            slot on English. Contents then self-validate: headers 0-17 are nine *identical adjacent
+            pairs* naming the ten rules in order (Deathmatch, Team Deathmatch, Rescue, Capture,
+            Sneaking, Base, BOMB, Team Sneaking, Coop) with Training/Combat Training at 18-21, and
+            headers 22-43 repeat that same order as `DM TDM RES CAP SNE BASE BOMB TSNE COOP TRA CT`
+            then `DM TD RE CA SN BA BM TS CO TR CT`. An off-by-N breaks the pairing and the two
+            abbreviation runs stop lining up with the name run. (The trap this guards against is
+            real: in set `[e60831]` the strings start at 17943 while twelve later headers belong to
+            other sub-groups.)
 
           The six `TYPE_*` pointers are the contiguous array at **`0xFE85F0`** (module TOC
           `r30 = 0xFF05E0`, offsets `-32752`..`-32732`), the one `LOBBIES.md` describes as
@@ -101,12 +130,37 @@ types:
           FREEBATTLE, COOP, TOURNAMENT, SURVIVAL, TOURNAMENT_OFFICIAL, SURVIVAL_OFFICIAL but the
           values are 1, **9**, 3, 4, 5, 6 — `TYPE_COOP` sits on 9, not 2.
 
-          Correspondence with `LOBBIES.md`'s lobby **subtypes** is close but not identity, and is
-          deliberately not asserted as one: 1 / 3 / 4 / 5 line up, 7 and 8 share a string group
-          exactly as Basic and Combat Training share a menu scan, and 2 resolves out of the same
-          `0x00F914BF` resource that holds the Lobby Select labels. But that file has 6 routed to a
-          fallback and 9 out of range entirely, while both have labels here. Treat this as the
-          history screen's own game-type enum until something ties the two axes together.
+          **Correspondence with `LOBBIES.md`'s lobby subtypes: CORROBORATED at every value both
+          axes define [2026-07-31].** The three decoded labels were the weak points, and all three
+          land on the subtype of the same number:
+
+          | value | this table's label | subtype | that subtype's own menu string |
+          | --- | --- | --- | --- |
+          | 1 | `TYPE_FREEBATTLE` | 1 | id 245 = `"Free Battle"` |
+          | 2 | **"Automatching"** (id 906) | 2 | id 251 = `"Automatching"`, title id 904 `"AUTO MATCHING LOBBY"` |
+          | 3 | `TYPE_TOURNAMENT` | 3 | tournament/survival family |
+          | 4 | `TYPE_SURVIVAL` | 4 | tournament/survival family |
+          | 5 | `TYPE_TOURNAMENT_OFFICIAL` | 5 | title reads "OFFICIAL CUP LOBBY" |
+          | 7 | **"Training"** | 7 | id 249 = `"Training"`, title id 842 `"TRAINING LOBBY"` |
+          | 8 | **"Combat Training"** | 8 | shares 7's row; separated only inside the lobby |
+
+          Note the ids in the right-hand column come from the *other* resource group
+          (`0x00F914BF`, the Lobby Select labels) and were recorded before this table was decoded,
+          so the agreement is between two independently-derived readings, not one restated.
+
+          This is still **not** proof of a single enum — nothing in the binary says the two axes
+          share a numbering, and they are not co-extensive: this table has 6 (`SURVIVAL_OFFICIAL`)
+          and 9 (`TYPE_COOP`) where `LOBBIES.md` has 6 routed to a fallback title and 9 out of
+          range entirely. Both of those are post-launch content we never serve, so the disagreement
+          is outside the domain we emit. `SocialGameController.gameTypeLabel`'s policy of serving
+          `lobby.subtype` here is corroborated over {1, 2, 7, 8} — every value we can actually
+          produce — and would be refuted by a label mismatch at one of those four. There is none.
+
+          The one wording correction: subtype 7's name in `LOBBIES.md` was **"Basic Training"**,
+          which is nobody's string. The game's own word for the lobby is **"Training"**; the string
+          `"Basic Training"` does not occur anywhere in the `lobby` stage's 28693 string resources.
+          "Basic" survives only as the informal contrast with Combat Training — the two activities
+          the disc actually names inside the lobby are `"Solo Training"` and `"Novice Training"`.
 
           **Why the earlier fingerprint saw nothing.** The 2026-07-23 test sent `40 + row`, i.e.
           41..45 — every one of them above 9, so every row took the default arm and printed a

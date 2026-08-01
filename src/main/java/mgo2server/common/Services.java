@@ -7,6 +7,7 @@ import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
 import mgo2server.common.service.LobbyService;
 import mgo2server.common.service.NewsService;
+import mgo2server.common.service.PresenceService;
 import mgo2server.common.service.RankingService;
 import mgo2server.common.service.StatsService;
 
@@ -20,11 +21,12 @@ public class Services {
 	private final RankingService rankingService;
 	private final StatsService statsService;
 	private final AwardService awardService;
+	private final PresenceService presenceService;
 
 	public Services(AccountService accountService, CharacterService characterService,
 			ClanService clanService, GameService gameService, LobbyService lobbyService,
 			NewsService newsService, RankingService rankingService, StatsService statsService,
-			AwardService awardService) {
+			AwardService awardService, PresenceService presenceService) {
 		this.accountService = accountService;
 		this.characterService = characterService;
 		this.clanService = clanService;
@@ -34,6 +36,7 @@ public class Services {
 		this.rankingService = rankingService;
 		this.statsService = statsService;
 		this.awardService = awardService;
+		this.presenceService = presenceService;
 	}
 
 	public AccountService getAccountService() {
@@ -70,5 +73,9 @@ public class Services {
 
 	public AwardService getAwardService() {
 		return awardService;
+	}
+
+	public PresenceService getPresenceService() {
+		return presenceService;
 	}
 }

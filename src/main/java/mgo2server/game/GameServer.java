@@ -44,7 +44,7 @@ public class GameServer {
 
 	private Channel serverChannel;
 
-	private final PeriodicTask periodicTask;
+	private final List<PeriodicTask> periodicTasks;
 
 	private ScheduledExecutorService scheduler;
 
@@ -55,7 +55,12 @@ public class GameServer {
 	 * <b>sends nothing at all</b> while it waits, so nothing the server does on the request path can
 	 * ever advance a search. Something has to run on its own.
 	 *
-	 * @param name used for the thread name, so a stack trace says which job is stuck
+	 * <p>A server may have several. They all share one thread (see {@link #startScheduler}), which
+	 * means no two runs ever overlap — not just two runs of the same task, but any two tasks. That
+	 * is worth relying on: presence and automatching both touch the database, and neither has to
+	 * consider the other running concurrently.
+	 *
+	 * @param name used in log messages, so a stuck or throwing job says which one it is
 	 * @param interval the gap <em>between</em> runs, not the period — see {@link #startScheduler}
 	 * @param body run repeatedly until the server stops. Exceptions are caught and logged
 	 */
@@ -66,16 +71,24 @@ public class GameServer {
 	 * @param port port to listen on, or 0 to bind an ephemeral port (see {@link #boundPort()})
 	 */
 	public GameServer(List<IGameController> controllers, int port) {
-		this(controllers, port, null);
+		this(controllers, port, List.of());
+	}
+
+	/** One task, or none if it is null. The common case, and what the scheduler tests use. */
+	public GameServer(List<IGameController> controllers, int port, PeriodicTask periodicTask) {
+		this(controllers, port, periodicTask == null ? List.<PeriodicTask>of()
+			: List.of(periodicTask));
 	}
 
 	/**
-	 * @param periodicTask work to run on a timer once the port is bound, or {@code null} for none
+	 * @param periodicTasks work to run on a timer once the port is bound; empty for none. Nulls in
+	 *        the list are dropped, so a caller can build it conditionally without filtering
 	 */
-	public GameServer(List<IGameController> controllers, int port, PeriodicTask periodicTask) {
+	public GameServer(List<IGameController> controllers, int port, List<PeriodicTask> periodicTasks) {
 		this.controllers = controllers;
 		this.port = port;
-		this.periodicTask = periodicTask;
+		this.periodicTasks = periodicTasks == null ? List.of()
+			: periodicTasks.stream().filter(java.util.Objects::nonNull).toList();
 	}
 
 	public CompletableFuture<Void> start() {
@@ -145,25 +158,27 @@ public class GameServer {
 	 * which removes a whole class of race from whatever the body does.
 	 */
 	private void startScheduler() {
-		if (periodicTask == null) {
+		if (periodicTasks.isEmpty()) {
 			return;
 		}
 		scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
-			var thread = new Thread(runnable, "mgo2-" + periodicTask.name());
+			var thread = new Thread(runnable, "mgo2-sched");
 			// Daemon so a wedged job cannot keep a shut-down JVM alive; stop() joins it properly.
 			thread.setDaemon(true);
 			return thread;
 		});
-		var millis = periodicTask.interval().toMillis();
-		scheduler.scheduleWithFixedDelay(() -> {
-			try {
-				periodicTask.body().run();
-			} catch (Throwable t) {
-				logger.error("Periodic task {} threw; it will run again in {} ms.",
-					periodicTask.name(), millis, t);
-			}
-		}, millis, millis, TimeUnit.MILLISECONDS);
-		logger.info("Periodic task {} scheduled every {} ms.", periodicTask.name(), millis);
+		for (var task : periodicTasks) {
+			var millis = task.interval().toMillis();
+			scheduler.scheduleWithFixedDelay(() -> {
+				try {
+					task.body().run();
+				} catch (Throwable t) {
+					logger.error("Periodic task {} threw; it will run again in {} ms.", task.name(),
+						millis, t);
+				}
+			}, millis, millis, TimeUnit.MILLISECONDS);
+			logger.info("Periodic task {} scheduled every {} ms.", task.name(), millis);
+		}
 	}
 
 	/**
@@ -180,8 +195,9 @@ public class GameServer {
 		scheduler.shutdownNow();
 		try {
 			if (!scheduler.awaitTermination(SCHEDULER_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-				logger.warn("Periodic task {} did not stop within {} s; it ignored an interrupt.",
-					periodicTask.name(), SCHEDULER_STOP_TIMEOUT_SECONDS);
+				logger.warn("Periodic tasks {} did not stop within {} s; one ignored an interrupt.",
+					periodicTasks.stream().map(PeriodicTask::name).toList(),
+					SCHEDULER_STOP_TIMEOUT_SECONDS);
 			}
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();

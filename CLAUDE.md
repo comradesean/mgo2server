@@ -174,6 +174,26 @@ random published port and never touches the deployed database, even though the d
 publishes host `5432`. The `--network host` above applies only to the maven container, so it can
 reach those random ports on localhost.
 
+## Writing SQL: no bare `<`, and no `!=`-free rewrites
+
+Jdbi renders every statement through **StringTemplate**, which reads `<` as the start of an
+expression and consumes everything up to the next `>`. SQL that looks correct then fails *at render
+time* with a message that names neither the file nor the real cause — `'-' came as a complete
+surprise to me` is a real example, produced by:
+
+```sql
+where last_seen < now() - make_interval(secs => :seconds)   -- the `<` swallows up to the `=>`
+where now() > last_seen + make_interval(secs => :seconds)   -- same query, renders fine
+```
+
+**Reverse the comparison rather than using `<`.** The same trap is why joins here are written with
+`!=` rather than the SQL-standard `<>`, and why SQL comments cannot contain angle brackets either.
+
+This has cost time on three separate occasions (`GameService.metPlayers`, `TestDatabase.reset`,
+`PresenceService.reapStale`), each time presenting as a mysterious template error rather than a SQL
+one. `<ids>` and other deliberate StringTemplate bindings are of course fine — the rule is about
+angle brackets you did not mean as template syntax.
+
 ## Debugging
 
 An unanswered command makes this client **stall and then fail with `FFFFFF60`**, prefixed by
