@@ -526,3 +526,62 @@ It is not an ownership check of any kind, and neither is its companion `0x9C2C90
 phrase ids 67..92 outside training for a player not on team 0/1 who is carrying item type 17.
 **Neither reads the trailer, a purchase flag, or any account record.** The 27 entries they gate are
 the Combat Training instructor commands, and no server-side field controls them.
+
+## Fields the client WRITES but never READS — a real idea, and the trap that guards it
+
+**Raised by the operator 2026-08-01**, and the principle is sound: a field marked *"no reader
+anywhere in the image"* is not finished. **A value that travels the wire was used for something**,
+and if nothing in *this* binary consumes it, the consumer is another build. That would make such
+fields the best-evidenced candidates for a version toggle — better than anything read out of a
+string table, because the client itself produced the value.
+
+The first attempt to act on it produced a **false positive**, and the reason is important enough
+that it is written up before any list.
+
+### THE CIRCULARITY TRAP — read this before mining captures
+
+Our archived captures are a real `BLUS30109` client talking to **our own server**. So for any field
+**the server sends**, a non-zero value in a capture proves nothing at all: the client received it
+from us and echoed it back. The capture confirms our own cargo.
+
+This was hit immediately. `0x4310` struct `+824` carries `0x02000000` in **182 of 214** captures,
+co-varying exactly with `+931` — both zero in every Basic/Combat Training capture, both set in every
+other. It looks like textbook evidence of a lobby-dependent feature this build no longer reads.
+
+**It is not.** `HostSettingsReply.java` had already caught it: the `0x02` is inherited cargo, Create
+Game entry memcpys the whole saved object into the screen, and the `0x4310` builder re-emits it — so
+*"the 0x02 coming back was our own byte completing a round trip."* The correlation with training
+lobbies is a fact about which saved object was in play, not about the game.
+
+This is precisely the failure `CLAUDE.md` opens with: **faithful copying of a source that does not
+apply looks exactly like diligence**, and here it also looked like fresh evidence.
+
+### So the check has three gates, not one
+
+A field is version-toggle evidence only if **all** hold:
+
+1. **The client originates it.** If the server sends the field at all, captures against our server
+   are circular and cannot be used. Check the writer before the capture.
+2. **It is non-zero in captures**, read at its **schema-declared width**. Reading four bytes at
+   `0x0f4` — declared `u2` — swallowed `host_stance` and `level_limit_tolerance` and made a
+   constant-zero field look like a varying one. `0x0ee`, `0x0f0` and `0x0f4` are zero in all 214
+   captures and are genuinely dead.
+3. **No reader in this build**, established by a scan whose range is stated and whose edges are
+   justified.
+
+### And "no reader" is not even meaningful for c2s
+
+For client→server traffic *we* are the reader; there is no reader in the client image **by
+construction**. Marking a c2s field inert on that basis is a category error, and it has probably
+mislabelled part of the campaign's inert set. Those fields need the builder-side question instead:
+what does the client's sender put there, and where does the value come from?
+
+### Current status: no confirmed instance
+
+After the above, **no field currently qualifies.** The captures we hold cover only `0x4310` (214)
+and `0x4390` (566), and `0x4310` is dominated by fields we author.
+
+What would make the idea productive is **captures of client-originated commands** — the `0x43xx`
+in-match reports especially, where the client is reporting its own state and nothing we send can
+contaminate the value. That is a live-capture task, not a disassembly one.
+
