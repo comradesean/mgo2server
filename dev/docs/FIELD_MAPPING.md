@@ -435,3 +435,63 @@ interchangeable: `0x4344` sends the raw slot (`lbz r5,1(entry)`, so `0`, `1`, `2
 reachable) while `0x4440` sends `(v == 1) ? 2 : 1`, which is 1-based and collapses everything else
 onto `1`. Both widths are correct as written. The trap is that the same admin action — host
 Restart — fires both.
+
+## The scoreboard, as of 2026-08-01
+
+Regenerate with `python3 dev/tools/field_scoreboard.py` from the repo root, so the number is
+reproducible rather than re-counted by hand. It classifies every `- id:` in `dev/proto/`: named
+vs `unknown_*`, and for unnamed fields whether the `doc:` carries a **stated negative** (a swept
+range, "no reader", "no caller", "dead code", "moot").
+
+**1,731 fields across 317 schemas.** 1,236 named (71.4%); 95 unnamed but explained; 400 bare.
+
+The count that matters is not that one — it is the **204 command ids the server actually serves**,
+because a field in a command nothing can send cannot stall anything:
+
+| | commands |
+| --- | ---: |
+| Fully named | 164 |
+| Every field named or explained | 9 |
+| Empty payload — nothing to map | 13 |
+| **Still carrying bare unknowns** | **18** |
+
+**186 of 204 are clean.** The 18 hold 67 bare fields between them, and they are heavily skewed:
+
+| bare | id | note |
+| ---: | --- | --- |
+| 17 | `0x4103` | login/session reply — a quarter of the whole remaining gap, in one packet |
+| 10 | `0x43f1` | automatch host election, incl. the 204-byte settings block |
+| 9 | `0x4b21` | |
+| 7 | `0x4860` | |
+| 6 | `0x4686` | |
+| 3 | `0x4b75` | |
+| 2 | `0x4310`, `0x4305`, `0x4221` | |
+| 1 | `0x4b81`, `0x43f4`, `0x43c8`, `0x43a6`, `0x4313`, `0x4131`, `0x4122`, `0x4107`, `0x3101` | |
+
+**333 of the 400 bare fields are in commands we do not serve** — overwhelmingly the `0x49xx` and
+`0x4Axx` blocks and the `0x4905`/`0x4909` detail records. If those resolve as post-launch content,
+the honest denominator for "100% mapped" is far smaller than 1,731. That question is open; see
+below.
+
+### Open contradiction: is `session+0xD928` a team record or a clan cache?
+
+Two batches on 2026-08-01 traced the **same address** and gave it **different nouns**, and both
+readings are committed in `dev/proto/*/mgo2_cmd_49*.ksy`.
+
+* `0x4904`/`0x4908`/`0x4912`/`0x491B`/`0x4920`/`0x4923`/`0x4940` call it the **team record** —
+  8-slot roster at `+0x17C`, slot 0 the leader, three senders gating on "am I slot 0". Evidence is
+  disc strings at the UI call sites: 692 "Disband Team", 726 "Team formation complete.", 676 "TEAM
+  CREATION", with 38 "OFFICIAL TOURNAMENT" and 72 "SURVIVAL" nearby.
+* `0x4984`/`0x4986`/`0x4992`/`0x49A0`/`0x49B0`/`0x49C2` call it the **my-clan cache**, field `+0`
+  the clan id, filled by `0x4987`.
+
+They agree on every mechanical detail — same address, same gate `0xD4908C`, same polarity. Only
+the noun differs. **It decides scope**: team/tournament is Ver. 1.10/1.20 content and out of scope
+for v1, while clan is launch-day and would make `0x49C2`/`0x49C3` implementable now.
+
+The commit subject "it is TEAM, not clan" (`f43d685`) asserts one side and **should be read as
+provisional until this is settled**. The leading hypothesis is that the block is *split* —
+`0x49[0-4]x` one subsystem, `0x49[8-C]x` another — with one batch mis-attributing this one address
+while being right about its own commands. Disc string 701, *"This will affiliate the team with the
+team leader's clan"*, is the constraint any answer must satisfy: teams and clans are **distinct
+coexisting objects** in this build, so an answer that collapses them is probably wrong.
