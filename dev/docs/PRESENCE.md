@@ -135,7 +135,16 @@ Automatch slot-in eligibility becomes possible after step 1 and is tracked separ
 - **Step 2: DONE** (2026-08-01). `0x4582` wire `0x14` now carries the friend's actual lobby, from
   one bulk lookup per roster rather than one query per row. Offline friends send 0, which the
   client renders as `"----"` and still displays.
-- Step 3: not started — `0x4602`'s five-field tail
+- **Step 3: DONE** (2026-08-01). `0x4602`'s five-field tail is served from one bulk join per
+  batch. Not-connected players send zeros and empty names, render `"----"`, and still appear —
+  search results are not gated on the block.
+
+### A trap step 3 had to avoid
+
+`lobby_type` in a **search** row decodes through `0x8E1110`, which has **no arm 9** and disagrees
+with the match-history table at 5 and 6. Reusing `gameTypeLabel` — the helper written for `0x4682`
+one step earlier — would have been exactly the illegal cross-packet transfer both schemas warn
+about. `searchLobbyLabel` is separate for that reason and says so.
 
 ### Two things step 1 got wrong first, kept because they will recur
 

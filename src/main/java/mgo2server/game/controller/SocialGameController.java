@@ -5,6 +5,7 @@ import mgo2server.common.model.Chara;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.ClanService;
 import mgo2server.common.service.GameService;
+import mgo2server.common.service.PresenceService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.IGameController;
 import mgo2server.game.packet.GamePacket;
@@ -81,7 +82,12 @@ public class SocialGameController implements IGameController {
 	 */
 	private static final int SEARCH_LIMIT = 100;
 
-	/** 59-byte search record: u32 id, 16B name, u16, 16B, u32, 16B, u8 — tail fields unknown. */
+	/**
+	 * 59-byte search record: {@code u32 id}, {@code 16B name}, then the five-field LOCATION BLOCK —
+	 * {@code u16 lobby_id}, {@code 16B lobby_name}, {@code u32 game_id}, {@code 16B game_name},
+	 * {@code u8 lobby_type}. The tail was "unknown" until 2026-07-31; it is the same block
+	 * {@code 0x4582} and {@code 0x4b54} carry.
+	 */
 	private static final int SEARCH_ENTRY_SIZE = 59;
 
 	/** Payloads cap at 1023 bytes, so 17 records (1003 bytes) per item packet. */
@@ -99,11 +105,15 @@ public class SocialGameController implements IGameController {
 
 	private final GameService gameService;
 
+	/** Where each character is, for the search results' location block. See PRESENCE.md. */
+	private final PresenceService presenceService;
+
 	public SocialGameController(CharacterService characterService, ClanService clanService,
-			GameService gameService) {
+			GameService gameService, PresenceService presenceService) {
 		this.characterService = characterService;
 		this.clanService = clanService;
 		this.gameService = gameService;
+		this.presenceService = presenceService;
 	}
 
 	@Override
@@ -155,27 +165,37 @@ public class SocialGameController implements IGameController {
 			var end = Math.min(start + SEARCH_ENTRIES_PER_PACKET, matches.size());
 			var batch = matches.subList(start, end);
 
+			// One query for the batch, not one per row: a search returns up to 100 entries.
+			var locations = presenceService.locationsOf(
+				batch.stream().map(Chara::getId).toList());
+
 			var buffer = ctx.buffer(batch.size() * SEARCH_ENTRY_SIZE);
 			for (var chara : batch) {
 				buffer.writeInt((int) chara.getId());
 				BufferUtil.writeString(buffer, chara.getName(), StandardCharsets.ISO_8859_1,
 					NAME_LENGTH);
-				// THE THREE UNKNOWN FIELDS ARE ZERO ON PURPOSE, and the "likely clan name" note that
-				// used to sit on the first 16-byte field was wrong enough to be dangerous.
-				// mgo2_cmd_4602_s2c.ksy reads the same bytes as CURRENT LOBBY NAME, with the second
-				// 16-byte field as current game name and the trailing u8 as a lobby id. Both
-				// readings are tier-4 candidates and neither is proven — but filling this with a
-				// clan name on the strength of our guess would put the wrong text on a screen that
-				// has room for exactly one string here.
+				// THE FIVE-FIELD TAIL IS A LOCATION BLOCK, settled 2026-07-31 and served since
+				// 2026-08-01. These were five deliberate zeros while the reading was tier 4; the
+				// note here used to say "to settle it, send three distinguishable strings and read
+				// the screen", and the binary answered it instead.
 				//
-				// To settle it, send three distinguishable strings in the three fields and read the
-				// search results on a live client; whichever slot renders names the field. Until
-				// then zeros, which render as nothing rather than as something false.
-				buffer.writeZero(2)     // u16 -> struct+0x16. Candidate: level/rank
-					.writeZero(NAME_LENGTH) // 16 -> struct+0x18. Candidate: current LOBBY name
-					.writeZero(4)       // u32 -> struct+0x2C. Candidate: in-game flag
-					.writeZero(NAME_LENGTH) // 16 -> struct+0x30. Candidate: current GAME name
-					.writeZero(1);      // u8  -> struct+0x41. Candidate: lobby id
+				// [ELF] The decisive evidence was not a renderer but an argument list: 0x8F6D78 and
+				// 0x90D6F8 both load six row fields and hand them to the same
+				// 0x9351AC(kind, charaId, name, gameId, gameName, lobbyId, lobbyType). The row
+				// painter 0x90E9F4 then draws name / lobby_name / game_name as three columns, and
+				// a gated column falls back to GetString(hash("lobby"), 18) = "----".
+				//
+				// Two candidate labels this replaced were wrong: the u16 is a lobby ID, not the
+				// level/rank a reference server puts there, and the trailing u8 is a category enum,
+				// not a lobby id.
+				var where = locations.get(chara.getId());
+				buffer.writeShort(where == null ? 0 : (int) where.lobbyId());
+				BufferUtil.writeString(buffer, where == null ? "" : where.lobbyName(),
+					StandardCharsets.ISO_8859_1, NAME_LENGTH);
+				buffer.writeInt(where == null ? 0 : (int) where.gameId());
+				BufferUtil.writeString(buffer, where == null ? "" : where.gameName(),
+					StandardCharsets.ISO_8859_1, NAME_LENGTH);
+				buffer.writeByte(where == null ? 0 : searchLobbyLabel(where.lobbySubtype()));
 			}
 			ctx.write(new GamePacket(PLAYER_SEARCH_ENTRIES, buffer));
 		}
@@ -216,6 +236,27 @@ public class SocialGameController implements IGameController {
 			ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
 		}
 		ctx.write(resultPacket(ctx, MATCH_HISTORY_END));
+	}
+
+	/**
+	 * The game-type label for a <b>player-search</b> row, from the lobby subtype.
+	 *
+	 * <p><b>A DIFFERENT TABLE FROM {@link #gameTypeLabel}, and they must not be swapped.</b> Search
+	 * rows decode through {@code 0x8E1110}, an 8-arm table over {@code GetString(hash("lobby"), N)}:
+	 * 1 Free Battle, 2 Automatching, 3 Tournament, 4 Survival, 5 and 6 Official Tournament, 7 and 8
+	 * Training. <b>There is no arm 9</b>, where the match-history table has {@code TYPE_COOP} — and
+	 * the two also disagree at 5 and 6. Anything outside 1..8 renders {@code "----"}.
+	 *
+	 * <p>All three labels were read from the disc 2026-08-01, with the group's string base pinned by
+	 * its language column rather than by a plausible-looking list — the off-by-N trap that has cost
+	 * this project time twice. See {@code LOBBIES.md}.
+	 *
+	 * <p>Sending the lobby subtype here is the same operator-policy choice {@link #gameTypeLabel}
+	 * documents, and it is corroborated the same way: subtype 1 is Free Battle, 2 is Automatching,
+	 * 7 and 8 are the two trainings, and the disc labels agree at every one.
+	 */
+	private static int searchLobbyLabel(int lobbySubtype) {
+		return lobbySubtype >= 1 && lobbySubtype <= 8 ? lobbySubtype : 0;
 	}
 
 	/**

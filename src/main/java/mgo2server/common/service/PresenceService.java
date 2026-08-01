@@ -184,6 +184,54 @@ public class PresenceService {
 			.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
 	}
 
+	/**
+	 * Where a character is, in the shape {@code 0x4602}'s five-field tail wants it.
+	 *
+	 * @param lobbyId the lobby they are connected to; never 0, since a row exists
+	 * @param lobbyName that lobby's name, for the search screen's lobby column
+	 * @param lobbySubtype what kind of lobby it is, which the client renders as a game-type label
+	 * @param gameId the game they are in, or 0 if they are in the lobby but not a game
+	 * @param gameName that game's name, or empty
+	 */
+	public record Location(long lobbyId, String lobbyName, int lobbySubtype, long gameId,
+			String gameName) {
+	}
+
+	/**
+	 * Where each of the given characters is, omitting those who are not connected.
+	 * <p>
+	 * <b>Game membership is joined, not stored.</b> {@code game_player} is the single source for
+	 * which game a character is in; duplicating it into {@code chara_presence} would create a second
+	 * answer that drifts. The left joins mean a character sitting in a lobby without a game still
+	 * gets a row, with {@code gameId} 0.
+	 */
+	public Map<Long, Location> locationsOf(Collection<Long> charaIds) {
+		if (charaIds.isEmpty()) {
+			return Map.of();
+		}
+		return jdbi.withHandle(handle -> handle.createQuery("""
+				select p.chara_id, p.lobby_id, l.name as lobby_name, l.subtype as lobby_subtype,
+					coalesce(g.id, 0) as game_id, coalesce(g.name, '') as game_name
+				from chara_presence p
+				join lobby l on l.id = p.lobby_id
+				left join game_player gp on gp.chara_id = p.chara_id
+				left join game g on g.id = gp.game_id and g.lobby_id = p.lobby_id
+				where p.chara_id in (<ids>)
+				""")
+			.bindList("ids", charaIds.stream().toList())
+			.map((rs, ctx) -> Map.entry(rs.getLong("chara_id"),
+				new Location(rs.getLong("lobby_id"), rs.getString("lobby_name"),
+					rs.getInt("lobby_subtype"), rs.getLong("game_id"), rs.getString("game_name"))))
+			.stream()
+			.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+				// A character with rows in two games cannot happen by design, but game_player is
+				// cleaned up on leave rather than constrained to one row, so a stale row would make
+				// it happen in practice. Keeping the first is arbitrary but deterministic, and
+				// beats the IllegalStateException the two-argument collector would throw --
+				// failing a whole search screen over one stale row would be the worse outcome.
+				(first, second) -> first)));
+	}
+
 	/** How many characters are recorded in a lobby. Diagnostics and tests. */
 	public int countIn(long lobbyId) {
 		return jdbi.withHandle(handle -> handle.createQuery("""

@@ -104,7 +104,8 @@ public class GameServerFactory {
 					services.getCharacterService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));
 				controllers.add(new SocialGameController(services.getCharacterService(),
-					services.getClanService(), services.getGameService()));
+					services.getClanService(), services.getGameService(),
+					services.getPresenceService()));
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
 					services.getClanService(), services.getAccountService(),
 					services.getStatsService(), services.getAwardService()));

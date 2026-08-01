@@ -159,6 +159,51 @@ public class SocialGameControllerIT extends BaseGameClientServerIT {
 		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(0);
 	}
 
+	/**
+	 * The five-field location block at the end of a search record — settled 2026-07-31, served
+	 * since 2026-08-01. It was five deliberate zeros while the reading was tier 4.
+	 * <p>
+	 * A player who is not connected gets zeros and an empty name, which the client renders as
+	 * {@code "----"}; the row still appears, because search results are not gated on this.
+	 */
+	@Test
+	public void searchResultsCarryLocationForAConnectedPlayer() {
+		givenSelectedCharacter("Snake");
+		var found = insertCharacter("SnakeEater");
+		services.getPresenceService().enter(found, lobbyId);
+
+		var replies = loginThen(searchPacket(1, 1, "SnakeEater"),
+			SocialGameController.PLAYER_SEARCH_END);
+		var entry = replies.get(1).getPayload();
+
+		assertThat(entry.getInt(0)).isEqualTo((int) found);
+		// u16 lobby_id, then the lobby's own name -- the column the layout calls STRING_F_LIST_LOBBY.
+		assertThat(entry.getUnsignedShort(0x14)).isEqualTo((int) lobbyId);
+		assertThat(nameAt(entry, 0x16)).isEqualTo("Test");
+		// Not in a game, so the game half stays empty rather than inventing one.
+		assertThat(entry.getInt(0x26)).isZero();
+		assertThat(nameAt(entry, 0x2A)).isEmpty();
+		// The trailing u8 is the SEARCH table's category enum (0x8E1110), which has no arm 9 --
+		// unlike the match-history table. This fixture's lobby is subtype 1, Free Battle.
+		assertThat(entry.getUnsignedByte(0x3A)).isEqualTo((short) lobbySubtype());
+	}
+
+	/** A player nobody has seen connect has no location, and must still appear in the results. */
+	@Test
+	public void searchResultsForAnOfflinePlayerCarryZeros() {
+		givenSelectedCharacter("Snake");
+		var found = insertCharacter("SnakeEater");
+
+		var replies = loginThen(searchPacket(1, 1, "SnakeEater"),
+			SocialGameController.PLAYER_SEARCH_END);
+		var entry = replies.get(1).getPayload();
+
+		assertThat(entry.getInt(0)).isEqualTo((int) found);
+		assertThat(entry.getUnsignedShort(0x14)).isZero();
+		assertThat(nameAt(entry, 0x16)).isEmpty();
+		assertThat(entry.getUnsignedByte(0x3A)).isZero();
+	}
+
 	@Test
 	public void fullSearchMatchesExactNameOnly() {
 		givenSelectedCharacter("Snake");
