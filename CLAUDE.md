@@ -167,6 +167,19 @@ conflating the two has already caused documents in this repo to describe post-la
 So write **"not served in v1"**, never "out of scope", for anything that is merely post-launch. A
 mapped packet costs nothing to leave unserved, and the map is what makes the toggle designable.
 
+**There is a third case, and it is not deferrable.** If mapping shows we are serving a *current*
+feature **incorrectly**, that is a bug, and it gets fixed now — the build-later rule covers new
+features only. Deferring a wrong value we are already putting on the wire is how the perks field,
+the version-check byte and the two discarded appearance bytes each survived as long as they did.
+
+When a mapping batch names a field the server already sends, **check what we send against what it
+now means**, and say which of the three it is:
+
+- the value is right → say so explicitly, so the check is not repeated;
+- the value is wrong and the feature is live → **fix it in the same batch**;
+- the value is wrong but the field is inert (no reader, or a slot nothing reaches) → record the
+  hazard with the evidence for *why* it is inert, because that is the part that can change.
+
 One real consequence follows, and it is about evidence rather than scope: **no available client
 build exercises the post-launch commands**, so those mappings cannot be confirmed against a live
 client. They are tier-1 (read from the binary) and cannot reach tier-2. Say so in the `.ksy` rather
