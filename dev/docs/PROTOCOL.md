@@ -1105,8 +1105,10 @@ cumulative/weekly toggle switches page, paired with `0x4107` record 1 (cumulativ
 (weekly), which share one slot layout (capture-proven). Send both pages and both records.
 
 Title *history* and award *history* on the same screen are **not** fed by this burst, by any
-command, or by the record tables earlier suspected (`T+0x26d14` and `T+0x3330` turned out to be
-match-history list storage for `0x4682`/`0x4212` records).
+command, or by the record tables earlier suspected. `T+0x26d14` is `0x4682`'s match-history list;
+`T+0x3330` is `0x4212`'s, and is a **separate** store 145,892 bytes away with a different record
+shape — the two were briefly written up as one, corrected 2026-08-01. `T+0x3330` has no reader at
+all (see `dev/proto/outbound/mgo2_cmd_4212_s2c.ksy`).
 
 > **CORRECTED 2026-07-28: the medals and titles THEMSELVES are server-driven, and this section
 > previously said the opposite.** It claimed they were "computed client-side from the stat values …
@@ -2323,10 +2325,13 @@ arriving late when this packet simply never had it.
   (10 / 2 / 1 / 4) through the client's own experience table. Whichever level the card renders names
   the field. This is the probe design, **not an answer**; nothing here has been confirmed yet.
 
-Sibling, **not yet observed**: `0x4210` (sender `0xD3A7D4`, no payload, subsystem `0x20`)
-expects a reply triple `0x4211`/`0x4212`/`0x4213` (parsers `0xD3B01C`/`0xD3B2D0`/`0xD3AF24`,
-records not yet decoded) — the "own player card / overview" family, distinct from `0x4220`'s
-by-id detail. Unhandled; the no-handler log now dumps payload hex if it ever fires.
+Sibling, **and it can never be observed — it is dead code**: `0x4210` (sender entry `0xD3A76C`;
+`0xD3A7D4` is the `li r4` *inside* it, and this document called that the sender until 2026-08-01)
+has **zero callers image-wide**, and the list its reply triple fills (`T+0x3330`) has zero readers.
+The triple `0x4211`/`0x4212`/`0x4213` (parsers `0xD3B01C`/`0xD3B2D0`/`0xD3AF24`) is fully mapped
+anyway — see the `.ksy` files — but nothing can ask for it and nothing would render it. Mapped and
+moot, like `0x4394`. The scan behind that zero is validated in
+`dev/proto/inbound/mgo2_cmd_4210_c2s.ksy`.
 
 ## `0x4128` — get post-game info
 

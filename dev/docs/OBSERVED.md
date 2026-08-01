@@ -2333,7 +2333,10 @@ good. What does not is the sentence about who computes them.
 Static extraction 2026-07-23 (medal tier table VA 0xe139c0, title resource keys VA 0xe14eb0,
 sprites VA 0xe152d0). "Awards" are "MEDALS" in the client's own tab naming (TAB_TITLE /
 TAB_MEDAL). The two record tables earlier suspected as their source (T+0x26d14, T+0x3330) are
-actually match-history list storage (0x4682 / 0x4212 records) — that note is corrected.
+actually match-history list storage — that note is corrected. **Second correction 2026-08-01:**
+they are two *different* lists, not one shared store. T+0x26d14 is 0x4682's, with six accessors
+that have callers; T+0x3330 is 0x4212's, 145,892 bytes away, a different record shape, and every
+one of its three accessors has zero callers.
 
 > **CORRECTED 2026-07-30.** This section used to read *"Both are derived client-side from the raw
 > stats; no command carries them."* **Three commands' worth of wire carries them**, all in
@@ -2419,8 +2422,13 @@ Still worth keeping (fetched to scratchpad, findings only recorded here):
   payload** ("A0A1A2A3…X9") — the same technique this project used this week, nine years
   earlier. The size difference suggests they targeted a different client build; not usable
   as labels for ours.
-- `player-overview.bin` (207 B): likely the `0x4212`-family player card (name + "Master the
-  grid." comment + small ints); parked until that family is traced.
+- `player-overview.bin` (207 B): **the guess above was wrong, tested and refuted 2026-08-01.**
+  It is not `0x4212`; it is a **`0x4221`**. Three independent string boundaries land exactly on
+  `0x4221`'s traced offsets — `name[16]` @ `0x08` = "GHzGangster", `comment[128]` @ `0x27` =
+  "Master the grid.", `clan_name[16]` @ `0xab` = "Narc" — with `worn_title` @ `0x26` = 31 and
+  `clan_id` @ `0xa7` = 1 agreeing. Our `0x4221` is 201 bytes, so the capture carries 6 extra
+  trailing bytes (`00 00 0f 00 01 02`): the same later-build signature as `personal-stats-1.bin`
+  above, and the same reason it is not usable as labels for ours.
 
 The `%Y/%m/%d %H:%M:%S` date-format resource found in the ELF menu blob during the
 title/medal extraction (previously unrecorded) is now noted in PROTOCOL.md's `0x4680`

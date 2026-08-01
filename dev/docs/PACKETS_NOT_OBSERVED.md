@@ -83,21 +83,29 @@ all-`unknown_body` form, which reads as the opposite. `PACKETS.md` already gives
 `unread` legend entry, and `dev/proto/README.md` now defines the form. Re-tagging them would take
 the mechanical count from 29 to 24.
 
-## What actually needs attention, and it is not this list
+## What actually needs attention — as of batch 6, nothing on this axis
 
-Separately from the unobserved set: **29 ids the client sends that we do not handle**, of which
-**two are reachable in ordinary play** and are therefore live `FFFFFF60` candidates —
+Separately from the unobserved set there are **29 ids the client sends that we do not handle**.
+Four of them were listed here as reachable in ordinary play and therefore live `FFFFFF60`
+candidates. **All four have now been re-derived from the binary and none of them is reachable.**
+Batch 5 removed `0x4394` and `0x43B0`; batch 6 removes the last two.
 
-| id | dir | status |
+| id | dir | corrected status |
 | --- | --- | --- |
-| `0x4210` | c2s | own player card / overview request |
-| `0x4348` | c2s | unidentified in-match command |
+| `0x4210` | c2s | **dead code — cannot be sent by this build [2026-08-01, batch 6].** Sender entry `0xD3A76C` (not `0xD3A7D4`, which is the `li r4,0x4210` inside it) has zero `bl`, zero `b` and zero `bc` entries over every executable byte in the image, OPD `0x10291E0` is referenced by no word and no `addi`/`ori` materialises it, `0xD3A768` is a `blr` so there is no fall-through, and that `li` is the only `li r4,16912` anywhere. **And the reply triple's storage has no reader**: the `T+0x3330` list's three accessors `0xD3A0CC`/`0xD3F514`/`0xD3F568` have zero callers each, against six for the identical `0x4682` bank at `T+0x26d14`. A handler is optional insurance, not a stall fix |
+| `0x4348` | c2s | **dead code — cannot be sent by this build [2026-08-01, batch 6].** Sender `0xD4A834`: zero `bl`/`b`/`bc` image-wide, OPD `0x1029B38` unreferenced, `0xD4A830` is a `blr`, and `li r4,0x4348` at `0xD4A89C` is the only one. **`0x4349`'s 680-byte destination struct at `ctx+0x10000-19228` also has no reader** — its sole accessor `0xD490B8` has zero callers and all 150 sites in `.text` with a displacement inside that window belong to unrelated bases or are switch-index normalisations. mgo2-server's "host pass" name stays tier 4 and unadopted; the parser reads a name plus a 128-byte comment, which is not a host-transfer ack |
 
-**Both already have real ELF-derived layouts** in `dev/proto/`, so they are implementable now
-rather than blocked on research. They are the opposite of this file's contents: known shape,
-unknown handling. See `COMMANDS.md`.
+The batch-6 scan is validated the way batch 5's was, but broader: it was run over the **whole
+command-id sender bank** at `0xD38000`-`0xD60000` — 116 `li r4,<id>` sites walked back to their
+function entries — and it resolves callers for **105** of them, including the immediate
+neighbours of both dead functions (`0x4132`'s `0xD3A844`, `0x4220`'s `0xD3B950`, `0x4914`'s
+`0xD4A75C`, `0x4986`'s `0xD4A90C`). A sweep that finds 105 and misses these is evidence. The `bc`
+decoder was separately validated against two known in-function branch targets.
 
-### Two rows removed from that table — 2026-08-01, field-mapping batch 5
+**All four still have real ELF-derived layouts** in `dev/proto/`, so handlers remain cheap to
+write if a later version toggle ever reaches a sender. None of them is a release-day stall.
+
+### The first two rows removed — 2026-08-01, field-mapping batch 5
 
 `0x4394` and `0x43B0` were listed here as reachable. Both were re-derived from the binary and
 neither is:
