@@ -59,6 +59,29 @@ Two findings followed from fixing it: `0x4b46`'s field resolved, and `0x4b10`'s 
 turns out to be reachable from no thunk at all — so the constant 1 it sends is the only value the
 client can emit there.
 
+### "OPD descriptor unreferenced" is worth nothing on its own
+
+Several dead-accessor proofs in this project cite three things together: zero `bl` sites, an
+**unreferenced OPD descriptor**, and `ET_EXEC` with no relocations. The middle clause carries no
+weight in this image. Sampling the OPD bank around `0x10295B0` on 2026-08-01: of six consecutive
+descriptors, **five have zero data references** and one has a single reference. An unreferenced
+descriptor is the *normal* state, not a signal.
+
+So the dead-code test is exactly two things, and both are about the **function entry address**, not
+the descriptor:
+
+- no `bl <entry>`, and
+- no `b <entry>` (the tail-call form above),
+
+each scanned over the full executable range with the range stated. Where an earlier note cites the
+OPD clause, treat it as decoration — the negative stands or falls on the other two, which were
+re-audited on 2026-08-01 and hold.
+
+**And validate the scan against a control.** Batch 5's claim that `0x4394`'s builder is dead code is
+credible precisely because the identical scan **did** find callers for `0x4390`'s and `0x43b0`'s
+builders. A scan that finds nothing anywhere is a broken scan; a scan that finds the known cases and
+misses one is evidence.
+
 ### Validate a negative against a known-good field in the same struct
 
 A sweep that enumerates "every write to this struct" is only trustworthy if it **finds the writes you
