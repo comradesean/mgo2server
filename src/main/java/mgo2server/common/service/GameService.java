@@ -577,18 +577,17 @@ public class GameService {
 						extract(epoch from max(o.reported_at))::bigint as last_met,
 						-- The subtype of the lobby of the MOST RECENT shared game, not of any of
 						-- them: a pair who met in several lobbies gets the latest, which is what
-						-- the row's date column already says. max(...) over the ordering column
-						-- would need a window function; picking the subtype that goes with the
-						-- max timestamp is what this does, and coalesce keeps a game whose lobby
-						-- row was deleted from dropping the whole history row.
-						coalesce((array_agg(l.subtype order by o.reported_at desc))[1], 0)
+						-- the row's date column already says. Read straight off round_report's own
+						-- lobby_subtype column, captured at report time -- the same reason `rule`
+						-- is copied onto this row rather than joined: `game` is deleted at teardown,
+						-- so a game/lobby join here would silently blank the label for every match
+						-- that has actually finished, which is all of them but the live one.
+						(array_agg(o.lobby_subtype order by o.reported_at desc))[1]
 							as lobby_subtype
 					from round_report mine
 					join round_report o
 						on o.game_id = mine.game_id and o.chara_id != mine.chara_id
 					join chara c on c.id = o.chara_id
-					left join game g on g.id = o.game_id
-					left join lobby l on l.id = g.lobby_id
 					where mine.chara_id = :chara
 					group by o.chara_id, c.name
 					order by last_met desc

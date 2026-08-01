@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import mgo2server.common.BufferUtil;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.ClanService;
+import mgo2server.common.service.PresenceService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
 import mgo2server.game.IGameController;
@@ -565,9 +566,14 @@ public class ClanGameController implements IGameController {
 
 	private final CharacterService characterService;
 
-	public ClanGameController(ClanService clanService, CharacterService characterService) {
+	/** Where each member is, for the roster's location fields. See {@code dev/docs/PRESENCE.md}. */
+	private final PresenceService presenceService;
+
+	public ClanGameController(ClanService clanService, CharacterService characterService,
+			PresenceService presenceService) {
 		this.clanService = clanService;
 		this.characterService = characterService;
+		this.presenceService = presenceService;
 	}
 
 	@Override
@@ -868,13 +874,20 @@ public class ClanGameController implements IGameController {
 
 	/**
 	 * One batch of 68-byte roster rows: {@code u32 id, name[16], u8 state, u32, u32}, then the
-	 * game-location fields (lobby id, lobby name, game id, host name, subtype) which stay zero until
-	 * we look up where a member is playing.
+	 * same five-field LOCATION BLOCK {@code 0x4582} and {@code 0x4602} carry — {@code u16 lobby_id},
+	 * {@code 16B lobby_name}, {@code u32 game_id}, {@code 16B game_name}, {@code u8 lobby_type} —
+	 * settled by {@code FIELD_MAPPING.md} batch 3b, which named this packet as a third carrier of
+	 * the same block. 29 header bytes + 39 location bytes = 68.
 	 */
 	private void writeRoster(GameControllerContext ctx, java.util.List<ClanService.Member> rows) {
 		if (rows.isEmpty()) {
 			return;
 		}
+		// One query for the whole roster rather than one per row, same as the friend list and
+		// player search.
+		var locations = presenceService == null ? java.util.Map.<Long, PresenceService.Location>of()
+			: presenceService.locationsOf(rows.stream().map(ClanService.Member::charaId).toList());
+
 		var buffer = ctx.buffer(rows.size() * MEMBER_RECORD_SIZE);
 		for (var row : rows) {
 			var recordStart = buffer.writerIndex();
@@ -892,9 +905,31 @@ public class ClanGameController implements IGameController {
 			buffer.writeByte(row.state());
 			buffer.writeInt(0);
 			buffer.writeInt((int) row.charaId());
+
+			var where = locations.get(row.charaId());
+			buffer.writeShort(where == null ? 0 : (int) where.lobbyId());
+			BufferUtil.writeString(buffer, where == null ? "" : where.lobbyName(),
+				StandardCharsets.ISO_8859_1, CLAN_NAME_LENGTH);
+			buffer.writeInt(where == null ? 0 : (int) where.gameId());
+			BufferUtil.writeString(buffer, where == null ? "" : where.gameName(),
+				StandardCharsets.ISO_8859_1, CLAN_NAME_LENGTH);
+			buffer.writeByte(where == null ? 0 : rosterLobbyLabel(where.lobbySubtype()));
+
 			buffer.writeZero(MEMBER_RECORD_SIZE - (buffer.writerIndex() - recordStart));
 		}
 		ctx.write(new GamePacket(CLAN_MEMBERS_ENTRIES, buffer));
+	}
+
+	/**
+	 * The game-type label for a clan roster row's location block, from the lobby subtype.
+	 *
+	 * <p>Same table as {@code HostGameController.rosterLobbyLabel} and
+	 * {@code SocialGameController.searchLobbyLabel} — the {@code 0x8E1110} 8-arm table, not the
+	 * unrelated 9-arm match-history table. See the warning on {@code gameTypeLabel} for why the two
+	 * must not be swapped.
+	 */
+	private static int rosterLobbyLabel(int lobbySubtype) {
+		return lobbySubtype >= 1 && lobbySubtype <= 8 ? lobbySubtype : 0;
 	}
 
 

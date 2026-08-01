@@ -109,7 +109,8 @@ public class GameServerFactory {
 				controllers.add(new PersonalStatsController(services.getCharacterService(),
 					services.getClanService(), services.getAccountService(),
 					services.getStatsService(), services.getAwardService()));
-				controllers.add(new ClanGameController(services.getClanService(), services.getCharacterService()));
+				controllers.add(new ClanGameController(services.getClanService(),
+					services.getCharacterService(), services.getPresenceService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), services.getClanService(),
 					services.getAwardService(), services.getPresenceService(), lobbyId, lobbySubtype,

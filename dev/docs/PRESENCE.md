@@ -132,12 +132,34 @@ Automatch slot-in eligibility becomes possible after step 1 and is tracked separ
 - **Step 1: DONE** (2026-08-01). `V72__chara_presence.sql`, `PresenceService`, hooks in
   `ChannelRegistry`, boot-clear and the periodic heartbeat/reap. `mvn verify` 233 unit / 236
   integration, ten of them `PresenceServiceIT`. No wire change: nothing the client sees moved.
-- **Step 2: DONE** (2026-08-01). `0x4582` wire `0x14` now carries the friend's actual lobby, from
-  one bulk lookup per roster rather than one query per row. Offline friends send 0, which the
-  client renders as `"----"` and still displays.
+- **Step 2: DONE, then corrected same day.** The first pass only wired `0x4582` wire `0x14` — the
+  bare numeric `lobby_id` — leaving `lobby_name`/`game_id`/`game_name`/`lobby_type` zero. Live
+  testing found the Friend and Block List lobby column still blank: the client draws `lobby_name`
+  as a **string column** (`STRING_F_LIST_LOBBY` / `STRING_B_LIST_HOST`), and the numeric id is a
+  *separate* consumer only used for the "move to lobby" jump target. `HostGameController.listRoster`
+  now calls `presenceService.locationsOf()` and writes the full five-field block, same as step 3.
 - **Step 3: DONE** (2026-08-01). `0x4602`'s five-field tail is served from one bulk join per
   batch. Not-connected players send zeros and empty names, render `"----"`, and still appear —
   search results are not gated on the block.
+- **Step 4: DONE** (2026-08-01). The clan member roster (`0x4b54`) is a *third* carrier of the same
+  five-field location block — missed in the original staging, found by live testing. `writeRoster`
+  in `ClanGameController` now takes `PresenceService` and fills it the same way.
+- **Match history's game-type byte fixed the same day, but it is not a presence bug.** `0x4680`'s
+  trailing byte comes from `GameService.metPlayers`, which joined `round_report` through `game` and
+  `lobby` to find the subtype — and `game` rows are deleted at teardown, so that join returned
+  nothing for any match that had actually finished. Fixed to read `round_report.lobby_subtype`
+  directly; it was already captured at report time (same reasoning as the `rule` column on that
+  table), just never read back out.
+
+### Known gap, not yet fixed: presence answers "connected", not "chosen"
+
+Live testing 2026-08-01 also surfaced a real design gap, tracked in `BACKLOG.md`: `chara_presence`
+writes wherever `ChannelRegistry.track()` fires, i.e. as soon as a character authenticates against
+a lobby process — not when the player picks that lobby from a menu. For lobbies that double as menu
+servers (Automatching, at least), that means a character merely browsing the menu reads identically
+to one actually queued. See `BACKLOG.md` § "Presence conflates 'connected to a lobby process' with
+'the player chose that lobby'" for the observed case and why it is not fixed yet (needs a real
+"entered" signal, which is ELF work).
 
 ### A trap step 3 had to avoid
 

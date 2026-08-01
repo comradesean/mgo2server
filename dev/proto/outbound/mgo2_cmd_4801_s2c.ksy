@@ -78,4 +78,13 @@ types:
         doc: "[ELF 0xD53E14] 16-byte NUL-padded name → nameTable+i*17 (17 in the struct, the extra byte being the terminator 0xD5D018 writes)."
       - id: code
         type: u4
-        doc: "[ELF 0xD53E48] u32 → codeTable+i*4. [UNKNOWN] which codes exist."
+        doc: |
+          [ELF 0xD53E48] u32 → codeTable+i*4.
+
+          [ELF 2026-08-01, chain 0x8EFD48] The per-recipient dialog dispatcher, one cmpwi per
+          candidate: -801/-820 -> 6158 "Improper address entered."; -802 -> 6159 "Receiver's
+          mailbox is full."; -810 -> 6160 "You are on the receiver's Block List."; -830 -> 6176
+          "The receiver has blocked incoming mail."; -831 -> 6177; -832 -> 6192; -833 -> 6193;
+          anything else -> 6161 "Unable to send mail." (the computed default). -802 was
+          independently confirmed by a live capture before the trace, which is what prompted it.
+          See dev/docs/ERRORS.md "The send-mail per-recipient failure chain".

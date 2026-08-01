@@ -441,6 +441,34 @@ the brackets and nothing else.
 (0x8E9DEC, 0x8EF750). They are in the mail
 family and are listed in the JSON rather than here.
 
+### The send-mail per-recipient failure chain  <sub>0x8EFD48</sub>
+
+A fourth inline chain, found 2026-08-01 chasing down `RECIPIENT_UNKNOWN` (see
+`MessageGameController.java`) after a live capture showed the server's guessed code rendering the
+wrong sentence. It walks the `0x4801` reply's per-recipient failure list — `{u32 count; 32 x 17B
+name at +4; 32 x i32 code at +548}` — one `cmpwi` per candidate code, `dialogId` and `code` both
+handed to the raiser (`0x8857dc`) so each failed recipient gets its own dialog in sequence (20-frame
+gap between them, `0x8EFE28`):
+
+| code | dialogId | sentence |
+| --- | --- | --- |
+| `-801` | 6158 | Improper address entered.\nUnable to send mail. |
+| `-802` | 6159 | Receiver's mailbox is full.\nUnable to send mail. — **confirmed independently by a live capture**, which is what sent this whole re-trace |
+| `-810` | 6160 | You are on the receiver's Block List.\nUnable to send mail. |
+| `-820` | 6158 | (same as -801) |
+| `-830` | 6176 | The receiver has blocked incoming mail. |
+| `-831` | 6177 | You are currently unable to use mail services. |
+| `-832` | 6192 | Mail subject contains an invalid word.\nUnable to send mail. |
+| `-833` | 6193 | Mail message contains an invalid word.\nUnable to send mail. |
+| `-1230` | 6416 | (re-raised, see the arm-1 discussion above) |
+| _anything else_ | 6161 | Unable to send mail. — the computed default; no `li r3,6161` exists in the image |
+
+Two dialogs in this family are **not** server-driven, found at the same time: 6157 ("A network
+server error…") fires from a hardcoded `li r4,-160` when the reply countdown at `368(r31)` goes
+negative — the timeout path, reached by not answering rather than by any code we send — and 6158
+has a second, purely client-side site at `0x8EECB8` (`li r4,0`) that catches blank/whitespace-only
+recipient slots before the packet is even sent, alongside 6195/6196/6197 for blank subject/body.
+
 **54 are unaccounted for.** They carry a result code but the tracer could not recover a chain for them and
 verify it, so nothing is claimed about them either way. That is a known gap, not a clean bill of
 health: a sentence absent from this document is not thereby proved unreachable unless the argument

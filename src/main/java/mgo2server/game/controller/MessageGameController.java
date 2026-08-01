@@ -120,20 +120,28 @@ public class MessageGameController implements IGameController {
 	private static final int RECIPIENT_BLOCKED_MAIL = -830;
 
 	/**
-	 * A recipient no character owns.
+	 * A recipient no character owns, or one that names the sender.
 	 * <p>
-	 * <b>[CANDIDATE, not established.]</b> The client's table carries
-	 * <em>"Improper address entered.\nUnable to send mail."</em> (dialog 6158, string 23791), which
-	 * is exactly this condition, but the code that reaches that dialog is not bound to this command
-	 * by any observation we have — only by the wording matching. {@code -802} is the neighbour our
-	 * own notes name for an invalid recipient.
-	 * <p>
-	 * It is used anyway because the alternative was worse: these recipients were silently dropped,
-	 * and a letter addressed only to unknown names reported success. A code that may render a
-	 * generic sentence still tells the truth; reporting success does not. If a capture ever shows
-	 * the right code, this is the one line to change.
+	 * <b>[CONFIRMED, ELF-traced 2026-08-01.]</b> The per-recipient failure list is walked by a single
+	 * chain at {@code 0x8EFD48}, {@code cmpwi} against each candidate code in turn: {@code -801} and
+	 * {@code -820} both branch to {@code li r27,6158} — <em>"Improper address entered.\nUnable to
+	 * send mail."</em> (string 23791). Found while re-deriving this constant after a live capture
+	 * disproved the original guess of {@code -802} for this meaning — see
+	 * {@link #RECIPIENT_MAILBOX_FULL}, which owns {@code -802} for real, also confirmed by the same
+	 * trace independently of the capture.
 	 */
-	private static final int RECIPIENT_UNKNOWN = -802;
+	private static final int RECIPIENT_UNKNOWN = -801;
+
+	/**
+	 * A recipient whose inbox already holds {@value #MAILBOX_MAX} undeleted letters — the client's
+	 * own list screen never shows more, so accepting a 17th would silently vanish it.
+	 * <p>
+	 * <b>[CONFIRMED live 2026-08-01, and ELF-traced the same day.]</b> {@code 0x8EFD50} branches
+	 * {@code -802} to {@code li r27,6159}, <em>"Receiver's mailbox is full.\nUnable to send mail."</em>
+	 * (string 23797) — matching a live capture that found this sentence where
+	 * {@link #RECIPIENT_UNKNOWN}'s old guessed code was expected instead.
+	 */
+	private static final int RECIPIENT_MAILBOX_FULL = -802;
 
 	/** Wire offset of the eight recipient-name slots: one leading count byte. */
 	private static final int SEND_RECIPIENTS_OFFSET = 1;
@@ -332,6 +340,7 @@ public class MessageGameController implements IGameController {
 		var delivered = 0;
 		var blocked = new java.util.ArrayList<String>();
 		var unknown = new java.util.ArrayList<String>();
+		var full = new java.util.ArrayList<String>();
 		for (var slot = 0; slot < count; slot++) {
 			var recipient = readString(payload, SEND_RECIPIENTS_OFFSET + slot * NAME_LENGTH,
 				NAME_LENGTH);
@@ -342,10 +351,23 @@ public class MessageGameController implements IGameController {
 			// receiver has blocked incoming mail" (lobby 23809) — but the block lives here, so the
 			// check has to be here too.
 			var target = characterService.findByName(recipient).orElse(null);
-			if (target != null && characterService.hasBlocked(target, charaId)) {
+			if (target != null && target.equals(charaId)) {
+				// Mailing yourself is refused as OPERATOR POLICY, not protocol -- no ELF evidence
+				// either way, and the compose screen's recipient field is free text, so nothing
+				// client-side stops a player from typing their own name. RECIPIENT_UNKNOWN is the
+				// right sentence for it too ("Improper address entered") — see its javadoc.
+				logger.info("Send mail: character {} addressed themselves; letter dropped.", charaId);
+				unknown.add(recipient);
+			} else if (target != null && characterService.hasBlocked(target, charaId)) {
 				logger.info("Send mail: \"{}\" has blocked character {}; letter dropped.",
 					recipient, charaId);
 				blocked.add(recipient);
+			} else if (target != null && characterService.mailboxSize(target) >= MAILBOX_MAX) {
+				// The client's own cap: the list screen never shows more than MAILBOX_MAX letters,
+				// so accepting one past it would store a letter nobody can ever read or delete.
+				logger.info("Send mail: \"{}\"'s mailbox already holds {} letters; letter dropped.",
+					recipient, MAILBOX_MAX);
+				full.add(recipient);
 			} else if (characterService.sendMail(charaId, senderName, recipient, subject, body)) {
 				delivered++;
 			} else {
@@ -357,7 +379,7 @@ public class MessageGameController implements IGameController {
 			senderName, delivered, count,
 			blocked.isEmpty() ? "" : " (" + blocked.size() + " blocked)", subject);
 
-		if (blocked.isEmpty() && unknown.isEmpty()) {
+		if (blocked.isEmpty() && unknown.isEmpty() && full.isEmpty()) {
 			var buffer = ctx.buffer(Integer.BYTES + 1);
 			buffer.writeInt(GameError.NONE.result()).writeByte(SEND_RESULT_FLAGS);
 			ctx.write(new GamePacket(SEND_MESSAGE_RESULT, buffer));
@@ -365,25 +387,26 @@ public class MessageGameController implements IGameController {
 		}
 
 		// A nonzero status makes the client read the per-recipient error list that follows, and each
-		// entry names one recipient and why it failed. -830 resolves to "The receiver has blocked
-		// incoming mail" through the client's error table; its neighbours are -810 "You are on the
-		// receiver's Block List", -801/-820 and -802 for unknown or invalid recipients.
+		// entry names one recipient and why it failed: -830 "blocked incoming mail", -802 "mailbox
+		// is full", -801 "Improper address entered" -- all three ELF-traced to the single dispatch
+		// chain at 0x8EFD48. See RECIPIENT_BLOCKED_MAIL / RECIPIENT_MAILBOX_FULL / RECIPIENT_UNKNOWN.
+		//
 		// UNKNOWN RECIPIENTS GO IN THE LIST TOO. They used to be logged and dropped, and if EVERY
 		// name was unknown the player was told the letter sent. Nothing had been sent.
-		//
-		// The per-recipient list already existed for blocked recipients; unknown ones simply were
-		// not being added to it. They carry RECIPIENT_UNKNOWN rather than the blocked code — saying
-		// "that player has blocked you" about a name that does not exist would be a specific lie,
-		// which is worse than a vague truth.
-		var failed = blocked.size() + unknown.size();
+		var failed = blocked.size() + unknown.size() + full.size();
 		var buffer = ctx.buffer(Integer.BYTES + 1 + Integer.BYTES
 			+ failed * (NAME_LENGTH + Integer.BYTES));
-		buffer.writeInt(blocked.isEmpty() ? RECIPIENT_UNKNOWN : RECIPIENT_BLOCKED_MAIL)
+		buffer.writeInt(!blocked.isEmpty() ? RECIPIENT_BLOCKED_MAIL
+				: !full.isEmpty() ? RECIPIENT_MAILBOX_FULL : RECIPIENT_UNKNOWN)
 			.writeByte(SEND_RESULT_FLAGS);
 		buffer.writeInt(failed);
 		for (var name : blocked) {
 			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
 			buffer.writeInt(RECIPIENT_BLOCKED_MAIL);
+		}
+		for (var name : full) {
+			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);
+			buffer.writeInt(RECIPIENT_MAILBOX_FULL);
 		}
 		for (var name : unknown) {
 			BufferUtil.writeString(buffer, name, StandardCharsets.ISO_8859_1, NAME_LENGTH);

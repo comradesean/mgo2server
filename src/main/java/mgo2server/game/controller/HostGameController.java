@@ -407,9 +407,10 @@ public class HostGameController implements IGameController {
 	public static final int LIST_ROSTER_END = 0x4583;
 
 	/**
-	 * A {@code 0x4582} roster entry: {@code u32 id, char[16] name}, then five fields whose meaning
-	 * the ELF trace could not pin (a u16, two more 16-byte strings, a u32, a trailing byte) — sent
-	 * zero, the same unknown-as-zero convention the other list replies use. Total 59 bytes.
+	 * A {@code 0x4582} roster entry: {@code u32 id, char[16] name}, then the same five-field
+	 * LOCATION BLOCK {@code 0x4602} carries — {@code u16 lobby_id}, {@code 16B lobby_name},
+	 * {@code u32 game_id}, {@code 16B game_name}, {@code u8 lobby_type} — settled 2026-07-31 by
+	 * {@code FIELD_MAPPING.md} batch 3b. Total 59 bytes.
 	 */
 	private static final int ROSTER_ENTRY_SIZE = 59;
 
@@ -635,8 +636,8 @@ public class HostGameController implements IGameController {
 
 		// One query for the whole roster rather than one per row: this is a list screen of up to 32
 		// entries, and asking per entry would be 32 round trips to draw one page.
-		var lobbies = presenceService == null ? java.util.Map.<Long, Long>of()
-			: presenceService.lobbiesOf(entries.stream().map(CharacterService.Relation::targetId)
+		var locations = presenceService == null ? java.util.Map.<Long, PresenceService.Location>of()
+			: presenceService.locationsOf(entries.stream().map(CharacterService.Relation::targetId)
 				.toList());
 
 		for (var offset = 0; offset < entries.size(); offset += ROSTER_PER_PACKET) {
@@ -646,21 +647,27 @@ public class HostGameController implements IGameController {
 				buffer.writeInt((int) relation.targetId());
 				BufferUtil.writeString(buffer, relation.name(), StandardCharsets.ISO_8859_1,
 					RELATION_NAME_LENGTH);
-				// The u16 at wire 0x14 is THE LOBBY THIS FRIEND IS IN [ELF 2026-07-31] -- see
-				// ROSTER_ENTRY_VISIBLE, which this replaced. The row painter 0x8F611C renders its
-				// companion string into a column the layout names STRING_F_LIST_LOBBY, and the
-				// value itself is handed to 0x884300 / 0xD47CE0 when the player picks "move to
-				// lobby". Sending a constant told every client that every friend was in lobby 1 and
-				// aimed the jump there.
+				// THE FIVE-FIELD TAIL IS THE SAME LOCATION BLOCK 0x4602 carries [ELF 2026-07-31] --
+				// see ROSTER_ENTRY_VISIBLE, which the bare-lobby-id version of this replaced. The
+				// row painter 0x8F611C draws lobby_name into the column the layout names
+				// STRING_F_LIST_LOBBY (STRING_B_LIST_HOST on the Black List -- same bytes, second
+				// caption), and the numeric lobby_id is a SEPARATE consumer: it is handed to
+				// 0x884300 / 0xD47CE0 only when the player picks "move to lobby". Sending the id
+				// alone left that jump target correct but the visible column blank.
 				//
-				// ZERO IS SAFE AND MEANS "not connected". The 0x4583 handler does compact records
-				// with a zero here out of one array -- but into list(x, -1), which nothing in the
-				// image reads, while the UI reads list(x, 0), which the compaction leaves intact.
-				// An offline friend still appears on the roster; the lobby column falls back to
-				// GetString(hash("lobby"), 18), which is "----".
-				buffer.writeShort(lobbies.getOrDefault(relation.targetId(), 0L).intValue());
-				buffer.writeZero(ROSTER_ENTRY_SIZE - Integer.BYTES - RELATION_NAME_LENGTH
-					- Short.BYTES);
+				// ZERO/EMPTY IS SAFE AND MEANS "not connected". The 0x4583 handler does compact
+				// records with a zero lobby_id here out of one array -- but into list(x, -1), which
+				// nothing in the image reads, while the UI reads list(x, 0), which the compaction
+				// leaves intact. An offline friend still appears on the roster; the lobby column
+				// falls back to GetString(hash("lobby"), 18), which is "----".
+				var where = locations.get(relation.targetId());
+				buffer.writeShort(where == null ? 0 : (int) where.lobbyId());
+				BufferUtil.writeString(buffer, where == null ? "" : where.lobbyName(),
+					StandardCharsets.ISO_8859_1, RELATION_NAME_LENGTH);
+				buffer.writeInt(where == null ? 0 : (int) where.gameId());
+				BufferUtil.writeString(buffer, where == null ? "" : where.gameName(),
+					StandardCharsets.ISO_8859_1, RELATION_NAME_LENGTH);
+				buffer.writeByte(where == null ? 0 : rosterLobbyLabel(where.lobbySubtype()));
 			}
 			ctx.write(new GamePacket(LIST_ROSTER_ENTRIES, buffer));
 		}
@@ -668,6 +675,20 @@ public class HostGameController implements IGameController {
 		var end = ctx.buffer(Integer.BYTES);
 		end.writeInt(GameError.NONE.result());
 		ctx.write(new GamePacket(LIST_ROSTER_END, end));
+	}
+
+	/**
+	 * The game-type label for a roster row's location block, from the lobby subtype.
+	 *
+	 * <p>Same table as {@code SocialGameController.searchLobbyLabel}, not
+	 * {@code SocialGameController.gameTypeLabel} -- this is the same five-field location block
+	 * {@code 0x4602} carries, decoded by the client through {@code 0x8E1110} (1 Free Battle, 2
+	 * Automatching, 3 Tournament, 4 Survival, 5/6 Official Tournament, 7/8 Training, no arm 9),
+	 * not the unrelated 9-arm table the match-history byte uses. See the warning on
+	 * {@code gameTypeLabel} about why the two must not be swapped.
+	 */
+	private static int rosterLobbyLabel(int lobbySubtype) {
+		return lobbySubtype >= 1 && lobbySubtype <= 8 ? lobbySubtype : 0;
 	}
 
 	/**

@@ -52,20 +52,33 @@ public class MailControllerIT extends BaseGameClientServerIT {
 
 	private long friendId;
 
+	/** Per-character login token, keyed by chara id — {@code account.session} is unique, so two
+	 * characters cannot share {@link #TOKEN} verbatim. Populated by {@link #givenCharacter}, read
+	 * by {@link #exchange(long, GamePacket...)}. */
+	private final java.util.Map<Long, String> tokens = new java.util.HashMap<>();
+
 	@Override
 	protected LobbyType lobbyType() {
 		return LobbyType.GAME;
 	}
 
-	private long givenCharacter(String name, boolean select) {
+	/** A sixteen-character token distinct per name, padded/truncated from {@link #TOKEN}. */
+	private static String tokenFor(String name) {
+		return (name + TOKEN).substring(0, SessionField.TOKEN_LENGTH);
+	}
+
+	/** Gives the character a real stored session, so {@link #exchange(long, GamePacket...)} can
+	 * log in as it. */
+	private long givenCharacter(String name) {
 		var jdbi = TestDatabase.get().jdbi();
+		var token = tokenFor(name);
 		var accountId = jdbi.withHandle(handle ->
 			handle.createUpdate("""
 					insert into account (username, password, session, slots)
 					values (:name, 'x', :session, 3)
 					""")
 				.bind("name", name)
-				.bind("session", select ? SessionField.stored(TOKEN) : name)
+				.bind("session", SessionField.stored(token))
 				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 
 		var id = jdbi.withHandle(handle ->
@@ -76,19 +89,25 @@ public class MailControllerIT extends BaseGameClientServerIT {
 		jdbi.useHandle(handle -> handle.createUpdate("""
 				update account set current_chara_id = :chara, main_chara_id = :chara where id = :id
 				""").bind("chara", id).bind("id", accountId).execute());
+		tokens.put(id, token);
 		return id;
 	}
 
 	private void givenTwoCharacters() {
-		charaId = givenCharacter("Snake", true);
-		friendId = givenCharacter("Otacon", false);
+		charaId = givenCharacter("Snake");
+		friendId = givenCharacter("Otacon");
 	}
 
-	/** Logs in, plays each request in turn, and collects every reply. */
+	/** Logs in as the test's default character, plays each request in turn, collects every reply. */
 	private List<GamePacket> exchange(GamePacket... requests) {
+		return exchange(charaId, requests);
+	}
+
+	/** Logs in as {@code asCharaId}, plays each request in turn, and collects every reply. */
+	private List<GamePacket> exchange(long asCharaId, GamePacket... requests) {
 		var login = Unpooled.buffer();
-		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeInt((int) asCharaId);
+		login.writeBytes(SessionField.of(tokens.get(asCharaId)));
 
 		var replies = java.util.Collections.synchronizedList(new ArrayList<GamePacket>());
 		var sent = new int[] { 0 };
@@ -296,25 +315,31 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	public void listCarriesOneEntryPerPacketWithARoutableCategory() {
 		givenTwoCharacters();
 
-		var replies = exchange(sendMail("Snake", "first", "one"),
-			sendMail("Snake", "second", "two"), listMail());
+		// Snake mails Otacon twice: two entries in Snake's Sent list, two in Otacon's Inbox — real
+		// recipients rather than self-mail, since the server now refuses mailing yourself.
+		exchange(sendMail("Otacon", "first", "one"), sendMail("Otacon", "second", "two"));
+		var sentReplies = exchange(listMail());
+		var inboxReplies = exchange(friendId, listMail());
 
-		var start = replies.stream()
+		var start = sentReplies.stream()
 			.filter(p -> p.getCommand() == MessageGameController.GET_MESSAGES_START).toList();
 		assertThat(start).hasSize(1);
 		assertThat(start.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
 
-		var data = entries(replies);
-		// Two letters to self = two inbox entries plus two sent entries, ONE per packet: the
-		// 0x4822 parser has no loop, so batching would silently drop all but the first.
-		assertThat(data).hasSize(4);
-		for (var packet : data) {
+		// Two letters = two Sent entries plus two Inbox entries, ONE per packet: the 0x4822 parser
+		// has no loop, so batching would silently drop all but the first.
+		var sentData = entries(sentReplies);
+		var inboxData = entries(inboxReplies);
+		assertThat(sentData).hasSize(2);
+		assertThat(inboxData).hasSize(2);
+		for (var packet : java.util.stream.Stream.concat(sentData.stream(), inboxData.stream())
+				.toList()) {
 			assertThat(packet.getPayload().readableBytes()).isEqualTo(ENTRY_SIZE);
 			// The leading byte indexes an array of four unchecked by the client.
 			assertThat(packet.getPayload().getByte(0)).isBetween((byte) 0, (byte) 3);
 		}
 
-		var end = replies.stream()
+		var end = sentReplies.stream()
 			.filter(p -> p.getCommand() == MessageGameController.GET_MESSAGES_END).toList();
 		assertThat(end).hasSize(1);
 		assertThat(end.get(0).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
@@ -324,25 +349,34 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	public void entryCarriesCounterpartyAndSubjectWithDistinctIndices() {
 		givenTwoCharacters();
 
-		var replies = exchange(sendMail("Snake", "hello", "body"), listMail());
-		var data = entries(replies);
-		assertThat(data).hasSize(2); // one inbox, one sent — same row, both ends
+		exchange(sendMail("Otacon", "hello", "body"));
 
-		for (var packet : data) {
-			var payload = packet.getPayload();
-			assertThat(stringAt(payload, 3, 128)).isEqualTo("Snake");
-			assertThat(stringAt(payload, 131, 128)).isEqualTo("hello");
-			assertThat(payload.getUnsignedByte(1)).isZero(); // first in its own list
-			assertThat(payload.getUnsignedByte(265)).isZero(); // 0 = unread
-		}
+		var sentData = entries(exchange(listMail()));
+		assertThat(sentData).hasSize(1);
+		var sentPayload = sentData.get(0).getPayload();
+		assertThat(stringAt(sentPayload, 3, 128)).isEqualTo("Otacon"); // counterparty: recipient
+		assertThat(stringAt(sentPayload, 131, 128)).isEqualTo("hello");
+		assertThat(sentPayload.getUnsignedByte(1)).isZero(); // first in its own list
+		assertThat(sentPayload.getUnsignedByte(265)).isZero(); // 0 = unread
+
+		var inboxData = entries(exchange(friendId, listMail()));
+		assertThat(inboxData).hasSize(1);
+		var inboxPayload = inboxData.get(0).getPayload();
+		assertThat(stringAt(inboxPayload, 3, 128)).isEqualTo("Snake"); // counterparty: sender
+		assertThat(stringAt(inboxPayload, 131, 128)).isEqualTo("hello");
+		assertThat(inboxPayload.getUnsignedByte(1)).isZero();
+		assertThat(inboxPayload.getUnsignedByte(265)).isZero();
 	}
 
 	@Test
 	public void openingReturnsTheFullBodyBlockAndPersistsTheReadFlag() {
 		givenTwoCharacters();
 
-		var replies = exchange(sendMail("Snake", "s", "the body"), listMail(),
-			openMail(0, 0), listMail());
+		exchange(sendMail("Otacon", "s", "the body"));
+
+		// Opened from Otacon's side — the recipient, category 0 (inbox) — which is what "opening a
+		// letter" actually means; self-mail used to blur inbox and sent into the same row.
+		var replies = exchange(friendId, listMail(), openMail(0, 0), listMail());
 
 		var read = replies.stream()
 			.filter(p -> p.getCommand() == MessageGameController.READ_MESSAGE_RESULT).toList();
@@ -365,19 +399,21 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	public void deletingFromOneSideLeavesTheOtherSidesCopy() {
 		givenTwoCharacters();
 
-		// Snake mails Snake, so both the inbox and the sent list show the same row.
-		var replies = exchange(sendMail("Snake", "s", "b"), deleteMail(0, 0), listMail());
+		exchange(sendMail("Otacon", "s", "b"));
 
-		var ack = replies.stream()
+		// Otacon (the recipient) deletes their inbox copy.
+		var ack = exchange(friendId, deleteMail(0, 0)).stream()
 			.filter(p -> p.getCommand() == MessageGameController.DELETE_MESSAGE_RESULT).toList();
 		assertThat(ack).hasSize(1);
 		assertThat(ack.get(0).getPayload().readableBytes()).isEqualTo(Integer.BYTES);
 
-		// Gone from the inbox, still in Sent — the wire has no deletion field, so this is only
-		// expressible in storage.
-		var data = entries(replies);
-		assertThat(data).hasSize(1);
-		assertThat(data.get(0).getPayload().getByte(0)).isEqualTo((byte) 1);
+		// Gone from Otacon's inbox...
+		assertThat(entries(exchange(friendId, listMail()))).isEmpty();
+		// ...but Snake's Sent copy is untouched — the wire has no deletion field, so this is only
+		// expressible in storage and in what each side's own list shows.
+		var sentData = entries(exchange(listMail()));
+		assertThat(sentData).hasSize(1);
+		assertThat(sentData.get(0).getPayload().getByte(0)).isEqualTo((byte) 1);
 
 		var remaining = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select count(*) from mail where not sender_deleted")
@@ -389,11 +425,61 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	public void deletingFromBothSidesRemovesTheRow() {
 		givenTwoCharacters();
 
-		exchange(sendMail("Snake", "s", "b"), deleteMail(0, 0), deleteMail(1, 0));
+		exchange(sendMail("Otacon", "s", "b"));
+		exchange(friendId, deleteMail(0, 0));  // Otacon deletes the inbox copy
+		exchange(deleteMail(1, 0));            // Snake deletes the sent copy
 
 		var rows = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select count(*) from mail").mapTo(Long.class).one());
 		assertThat(rows).isZero();
+	}
+
+	/**
+	 * Mailing yourself is refused as operator policy — confirmed live 2026-08-01 — and dropped into
+	 * the same {@code RECIPIENT_UNKNOWN} bucket as an invalid name, since the recipient is invalid
+	 * without being unknown and inventing a specific code would claim evidence that does not exist.
+	 */
+	@Test
+	public void mailingYourselfIsRefused() {
+		givenTwoCharacters();
+
+		var replies = exchange(sendMail("Snake", "s", "b"));
+		var payload = replies.get(0).getPayload();
+		assertThat(payload.getInt(0))
+			.as("a nonzero result is what makes the client read the failure list")
+			.isNotEqualTo(GameError.NONE.result());
+		assertThat(payload.getInt(5)).as("one failed recipient").isEqualTo(1);
+
+		var count = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from mail").mapTo(Long.class).one());
+		assertThat(count).as("nothing stored").isZero();
+	}
+
+	/**
+	 * The client's own list screen never shows more than {@code MAILBOX_MAX} (16) letters, so a 17th
+	 * accepted delivery would store a letter nobody could ever read or delete. Confirmed live
+	 * 2026-08-01 that a full mailbox really does refuse with a distinct sentence ({@code -802},
+	 * "Receiver's mailbox is full") rather than silently succeeding or overflowing the list.
+	 */
+	@Test
+	public void mailboxFullRefusesA17thLetter() {
+		givenTwoCharacters();
+
+		for (var i = 0; i < 16; i++) {
+			exchange(sendMail("Otacon", "s" + i, "b"));
+		}
+		var replies = exchange(sendMail("Otacon", "one too many", "b"));
+		var payload = replies.get(0).getPayload();
+		assertThat(payload.getInt(0))
+			.as("a nonzero result is what makes the client read the failure list")
+			.isNotEqualTo(GameError.NONE.result());
+		assertThat(payload.getInt(5)).as("one failed recipient").isEqualTo(1);
+
+		var count = TestDatabase.get().jdbi().withHandle(handle ->
+			handle.createQuery("select count(*) from mail where recipient_chara_id = :chara")
+				.bind("chara", friendId)
+				.mapTo(Long.class).one());
+		assertThat(count).as("still capped at 16 — the 17th never landed").isEqualTo(16);
 	}
 
 	/**

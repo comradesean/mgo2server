@@ -769,6 +769,21 @@ public class CharacterService {
 	}
 
 	/**
+	 * How many undeleted letters a character has received — the same rows {@link #mailbox} would
+	 * return, counted rather than listed, so {@code sendMail} can refuse before the recipient's
+	 * inbox grows past what the client's own list screen can ever show.
+	 */
+	public int mailboxSize(long charaId) {
+		return jdbi.withHandle(handle ->
+			handle.createQuery(
+					"select count(*) from mail where recipient_chara_id = :chara"
+						+ " and not recipient_deleted")
+				.bind("chara", charaId)
+				.mapTo(Integer.class)
+				.one());
+	}
+
+	/**
 	 * Letters a character has sent, newest first. Counterparty is the recipient.
 	 * <p>
 	 * Read from the same rows as {@link #mailbox}, from the other end — one row per delivery,

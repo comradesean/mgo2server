@@ -144,11 +144,11 @@ public class SocialGameController implements IGameController {
 			return;
 		}
 		var fullMatch = payload.readByte() != 0;
-		// Reverted 2026-07-31: live testing found the opposite of the 2026-07-27 note below — with
-		// this byte read directly as caseSensitive, toggling to "case sensitive" is what found
-		// "Sean" from a "sean" query, and case-insensitive missed it. Kept as a plain read rather
-		// than re-deriving a polarity that's flipped twice now; if it flips again, it needs a real
-		// packet capture (DEBUG logging) rather than another live-play report.
+		// CONFIRMED live 2026-08-01, after two prior flips on live-play evidence (2026-07-27,
+		// 2026-07-31) that each looked conclusive and then reversed. Read directly as
+		// caseSensitive: toggling to "case sensitive" is what finds "Sean" from a "sean" query, and
+		// case-insensitive misses it. Still no packet capture behind this -- if it ever needs
+		// revisiting, get one (DEBUG logging) rather than a fourth live-play report.
 		var caseSensitive = payload.readByte() != 0;
 		var name = readNulTerminated(payload, NAME_LENGTH);
 

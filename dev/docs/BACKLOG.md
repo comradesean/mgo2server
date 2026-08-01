@@ -182,6 +182,29 @@ Still open if true occupancy is ever wanted:
 - Whatever the source, what the client *renders* for the field is a presentation claim and has not
   been checked against the binary (see `CLAUDE.md` on presentation claims).
 
+## Presence conflates "connected to a lobby process" with "the player chose that lobby"
+
+*Noted 2026-08-01, from live testing.* `chara_presence` (see `PRESENCE.md`) writes a row wherever
+`ChannelRegistry.track()` fires, which is as soon as a character authenticates against a lobby
+process — not when the player actually picks that lobby from a menu. Automatching is the sharp
+case: connecting to browse Automatching's menus writes the same row as actually entering the
+Automatching queue, so a character sitting at a menu the automatching process happens to serve
+reads identically to one genuinely waiting for a match. Observed live: `poop` connected to the
+Automatching process for menu access, never chose a lobby or game type, was correctly not in a
+game — and still showed up everywhere as "in lobby RAIDEN" (Automatching's operator-assigned
+name).
+
+This is not the game/lobby-deletion bug fixed the same day (`round_report.lobby_subtype`,
+`listRoster`'s location block) — the data is accurate to what it measures, `track()`-time
+connection. The gap is that "connected to the process" and "the player deliberately entered this
+lobby" are being treated as the same event, and for the lobbies that double as menu servers
+(Automatching, at least — Gate and Account are excluded already, see `PRESENCE.md`) they are not.
+
+Not fixed yet because it needs a real signal for "entered," and none has been identified: is there
+a specific client packet sent on committing to Automatching (as opposed to merely opening its
+menu), or does presence need a mode split — "connected" vs "in queue" — with the roster/search
+screens reading the latter? Whatever the answer, it is ELF work, not a guess.
+
 ## The peer-connect FSM — fully traced; blocker is the UDP handshake
 
 *Pinned 2026-07-21, from a deep ELF trace of the client's peer state machine `0x276F60`.* The
