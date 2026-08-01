@@ -11,6 +11,15 @@ full run log that got the stub working end to end.
 `.inf` → confirmation dialog → HTTP download → completion → release note display — against this
 stub. See §0 below for how to run it, or finding 11 (§7) for the live-test log.
 
+**The deployed default is OFF, since 2026-08-01.** `checkver.html` served the two-record
+"update available" test reply as the committed default for a few days, which is both out of
+release-day scope (`CLAUDE.md`) and, more sharply, blocks ordinary login: the payload is research
+data, not real Konami content, so a client that accepts the offered update starts a download the
+server cannot service and gets stuck. `MGO2SERVER_PATCH_ENABLED` (default `false`) now gates
+`build_checkver_stub.py`'s output between the real stub below and the client's own single `0x00`
+"no update" byte — see `server.env`. Re-running the quickstart below with the variable unset
+regenerates the safe default; nothing here changed about how the stub itself works.
+
 ## 0. Quickstart — running the stub end to end
 
 Everything is static files served out of `dev/runtime/www/`; no Java web-controller code is
@@ -19,8 +28,10 @@ serves the docroot for everything else). The two builder scripts are the only th
 running by hand.
 
 1. **Set the target host and version jump** — env vars, not file edits, so switching the version
-   under test never means editing code (defaults shown; override only what differs):
+   under test never means editing code (defaults shown; override only what differs). All four
+   live in `server.env` now, alongside every other operator setting:
    ```
+   export MGO2SERVER_PATCH_ENABLED=true                    # off by default -- see above
    export MGO2SERVER_PATCH_HOST=http://192.168.1.200      # your server's LAN IP
    export MGO2SERVER_PATCH_FROM=1.0.0
    export MGO2SERVER_PATCH_TO=1.36.0

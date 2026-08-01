@@ -50,11 +50,23 @@ def _version_tuple(env_var, default):
     return parts
 
 
+# OFF BY DEFAULT -- CLAUDE.md's release-day scope: the 1.36.0 patch tree is post-launch content,
+# and even set to a real jump, this stub's payload is research data, not the actual Konami patch
+# -- accepting the offered update leads a client into a download the server cannot actually
+# service. MGO2SERVER_PATCH_ENABLED=true python3 build_checkver_stub.py opts in; anything else
+# (unset, "false", "0", ...) writes the client's own single 0x00 "no update" byte instead, which
+# is what this server sent before the auto-patch investigation began (ADDRESSES.md Sec 12,
+# OBSERVED.md) and is the only reply that lets ordinary play proceed.
+PATCH_ENABLED = os.environ.get("MGO2SERVER_PATCH_ENABLED", "false").strip().lower() \
+    in ("1", "true", "yes")
+
 # Overridable so the same stub can exercise any version jump without editing this file --
-# MGO2SERVER_PATCH_FROM=1.10.0 MGO2SERVER_PATCH_TO=1.34.0 python3 build_checkver_stub.py, then
-# the same env vars for build_inf_stub.py and build_torrent_stub.py (they import this module, so
-# they always see the same jump; there is no separate place version numbers can drift out of
-# sync). Real jumps seen in the wild (OBSERVED.md): 1.10.0->1.34.0, 1.0.0->1.36.0.
+# MGO2SERVER_PATCH_ENABLED=true MGO2SERVER_PATCH_FROM=1.10.0 MGO2SERVER_PATCH_TO=1.34.0 \
+#   python3 build_checkver_stub.py
+# then the same env vars for build_inf_stub.py and build_torrent_stub.py (they import this
+# module, so they always see the same jump; there is no separate place version numbers can drift
+# out of sync). Real jumps seen in the wild (OBSERVED.md): 1.10.0->1.34.0, 1.0.0->1.36.0. These
+# three are meaningless when PATCH_ENABLED is false -- the 0x00 reply carries no version.
 HOST = os.environ.get("MGO2SERVER_PATCH_HOST", "http://192.168.1.200")
 PATCH_BASE = f"{HOST}/us/mgo2/patch"
 FROM_VERSION = _version_tuple("MGO2SERVER_PATCH_FROM", "1.0.0")
@@ -108,6 +120,12 @@ def record(text):
 
 
 def build_reply():
+    if not PATCH_ENABLED:
+        # [ELF, ADDRESSES.md Sec 12] status byte 0x00 alone: uupdate.cc reads one byte, sees no
+        # update, and the version-check screen advances immediately. This is the whole reply --
+        # no opaque fields, no records, nothing else is read on this path.
+        return b"\x00"
+
     from_s, to_s = version_text(FROM_VERSION), version_text(TO_VERSION)
     # Two records: disc-qualified, then generic -- matches the real Konami 1.36 patch tree.
     # Tried dropping to one record 2026-07-31 on the theory that uupdate.cc's per-record loop
@@ -159,7 +177,15 @@ def main():
     reply = build_reply()
     checkver_path = DOCROOT / "checkver.html"
     checkver_path.write_bytes(reply)
-    print(f"wrote {checkver_path} ({len(reply)} bytes)")
+
+    if not PATCH_ENABLED:
+        print(f"wrote {checkver_path} ({len(reply)} bytes) -- PATCH DISABLED, no-update reply. "
+            "Set MGO2SERVER_PATCH_ENABLED=true to build a real version-jump stub instead.")
+        return
+
+    print(f"wrote {checkver_path} ({len(reply)} bytes) -- PATCH ENABLED, offering "
+        f"{version_text(FROM_VERSION)} -> {version_text(TO_VERSION)}. This is research-only "
+        "payload, not real Konami content; do not leave this the deployed default.")
 
     version_dir = DOCROOT / version_text(TO_VERSION)
     version_dir.mkdir(parents=True, exist_ok=True)
