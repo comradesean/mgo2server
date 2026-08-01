@@ -547,8 +547,16 @@ public class GameService {
 			.execute() > 0);
 	}
 
-	/** One row of the met-players history: a player encountered, and when last. */
-	public record MetPlayer(long charaId, String name, long lastMetEpochSeconds) {
+	/**
+	 * One row of the met-players history: a player encountered, when last, and the LOBBY SUBTYPE of
+	 * the game it happened in.
+	 *
+	 * <p>{@code lobbySubtype} feeds {@code 0x4682}'s trailing byte, which the history row painters
+	 * render as a game-type label. The two axes are not the same thing by definition, so see
+	 * {@link mgo2server.game.controller.SocialGameController} for why sending one as the other is a
+	 * defensible policy choice and what would refute it.
+	 */
+	public record MetPlayer(long charaId, String name, long lastMetEpochSeconds, int lobbySubtype) {
 	}
 
 	/**
@@ -566,11 +574,21 @@ public class GameService {
 		return jdbi.withHandle(handle ->
 			handle.createQuery("""
 					select o.chara_id, c.name,
-						extract(epoch from max(o.reported_at))::bigint as last_met
+						extract(epoch from max(o.reported_at))::bigint as last_met,
+						-- The subtype of the lobby of the MOST RECENT shared game, not of any of
+						-- them: a pair who met in several lobbies gets the latest, which is what
+						-- the row's date column already says. max(...) over the ordering column
+						-- would need a window function; picking the subtype that goes with the
+						-- max timestamp is what this does, and coalesce keeps a game whose lobby
+						-- row was deleted from dropping the whole history row.
+						coalesce((array_agg(l.subtype order by o.reported_at desc))[1], 0)
+							as lobby_subtype
 					from round_report mine
 					join round_report o
 						on o.game_id = mine.game_id and o.chara_id != mine.chara_id
 					join chara c on c.id = o.chara_id
+					left join game g on g.id = o.game_id
+					left join lobby l on l.id = g.lobby_id
 					where mine.chara_id = :chara
 					group by o.chara_id, c.name
 					order by last_met desc
@@ -579,7 +597,7 @@ public class GameService {
 				.bind("chara", charaId)
 				.bind("limit", limit)
 				.map((rs, ctx) -> new MetPlayer(rs.getLong("chara_id"), rs.getString("name"),
-					rs.getLong("last_met")))
+					rs.getLong("last_met"), rs.getInt("lobby_subtype")))
 				.list());
 	}
 

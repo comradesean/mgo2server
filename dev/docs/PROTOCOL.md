@@ -200,7 +200,7 @@ single-source, none of them confirmed by a capture.
 | `0x4124`, `0x4133` | 129 records | |
 | `0x4125`, `0x4129` | 128 | |
 | `0x4302` | 999 | the 18-per-packet figure elsewhere in this file is the `0x400` transport limit, not a client cap |
-| `0x4582` | 32 | vs `0x4602`'s 100 — the two records are the same width and the caps are not. **Divergence found 2026-07-26**: `0x4583` drops any record whose u16 at wire `0x14` is zero (`0xD466D4`); `0x4603` does no such pass. Same layout, different survival rules — they are not interchangeable |
+| `0x4582` | 32 | vs `0x4602`'s 100 — the two records are the same width and the caps are not. **Divergence found 2026-07-26**: `0x4583` compacts, dropping any record whose u16 at wire `0x14` (now `lobby_id`) is zero (`0xD466D4`); `0x4603` does no such pass. **CORRECTED 2026-07-31 (batch 3b): the drop is INERT — it copies into `list(x, -1)`, and nothing in the image reads that buffer.** The six `which = -1` accessor thunks (0xD46418, 0xD46430, 0xD464E8, 0xD46508, 0xD465B0, 0xD465C8) have zero `bl` sites text-wide and their OPD descriptors are unreferenced in an `ET_EXEC` image; the UI reads `list(x, 0)`, which 0x4583 leaves intact. So serving zeros there does **not** empty the roster. The structural reason `0x4603` has no such pass is that the search flow has only one array, not two. See `mgo2_cmd_4582_s2c.ksy` |
 | `0x4602` | 100 | |
 
 ## Lobby types

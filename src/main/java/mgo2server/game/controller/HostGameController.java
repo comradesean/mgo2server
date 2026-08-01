@@ -421,11 +421,28 @@ public class HostGameController implements IGameController {
 	private static final int RELATION_NAME_LENGTH = 16;
 
 	/**
-	 * The {@code 0x4582} u16 at wire {@code 0x14}, which decides whether the client keeps the
-	 * record at all — see the write site in {@link #listRoster}. Any nonzero value passes the
-	 * gate; 1 is chosen only because it is the smallest one, and it carries no claim about the
-	 * field's meaning. If a value ever shows up on the roster screen, this is the field to
-	 * fingerprint.
+	 * The {@code 0x4582} u16 at wire {@code 0x14}. <b>It is the LOBBY ID the player is in</b>
+	 * [ELF 2026-07-31], and both sentences this constant used to carry were wrong.
+	 *
+	 * <p><b>It does not decide whether the client keeps the record.</b> {@code 0x4583} really does
+	 * drop rows whose value is zero ({@code 0xD466D4}) — but it drops them into {@code list(x, -1)},
+	 * and <b>nothing in the image reads that list</b>: the six {@code which = -1} thunks
+	 * ({@code 0xD46418}, {@code 0xD46430}, {@code 0xD464E8}, {@code 0xD46508}, {@code 0xD465B0},
+	 * {@code 0xD465C8}) have zero {@code bl} sites text-wide and unreferenced OPD descriptors in an
+	 * {@code ET_EXEC} image. The UI reads {@code list(x, 0)}, which the compaction leaves intact.
+	 * So zero is safe and the roster does not empty — PROTOCOL.md said otherwise and is corrected.
+	 *
+	 * <p><b>And 1 is not a neutral placeholder.</b> The row painter {@code 0x8F611C} renders this
+	 * field's companion string into a column the layout names {@code STRING_F_LIST_LOBBY}, and the
+	 * value itself is handed to {@code 0x884300} / {@code 0xD47CE0} on "move to lobby". Sending a
+	 * hardcoded 1 therefore tells every client that every friend is in <b>lobby 1</b>, and aims the
+	 * jump there.
+	 *
+	 * <p><b>Kept at 1 pending a real source.</b> Filling it honestly needs per-character presence —
+	 * which lobby each character is currently connected to — which this server does not track
+	 * across lobby processes. Until it does, 0 (nobody anywhere) and 1 (everybody in lobby 1) are
+	 * both wrong; 1 is left because it is what has been shipped and observed, and changing it
+	 * without the presence data would trade a known wrong answer for an untested one.
 	 */
 	private static final int ROSTER_ENTRY_VISIBLE = 1;
 

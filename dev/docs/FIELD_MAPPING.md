@@ -8,8 +8,9 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**36 packets, 132 unknown fields**, as of 2026-07-31 (batch 3c; 3b still open). Was 44 / 178 at batch 1;
-`0x4302`, `0x4129`, `0x4b12`, `0x4b70`, `0x4682`, `0x4841`, `0x4822` and `0x4800` have reached zero (their rows stay in the table, marked
+**34 packets, 122 unknown fields**, as of 2026-07-31 (batches 3b and 3c). Was 44 / 178 at batch 1;
+`0x4302`, `0x4129`, `0x4b12`, `0x4b70`, `0x4682`, `0x4841`, `0x4822`, `0x4800`, `0x4582` and
+`0x4602` have reached zero (their rows stay in the table, marked
 **0**, so the count stays reproducible). Regenerate with the script in this file's
 history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
 
@@ -46,8 +47,8 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | `0x4b54` | s2c | 11 | **2** | clan | batch 2a-redo done — 3 more named (`lobby_name`, `game_id`, `game_name`) and **three false negatives corrected**; `unknown_30` proven live and feature-bit-2 gated; `unknown_18`'s negative re-run on the corrected band |
 | `0x4991` | s2c | 14 | **6** | lobby | open |
 | `0x4101` | s2c | 13 | **1** | connect | batch 2c done — 4 named: `beginner_flag`, `feature_flags`, `grade_points`, `dead_13100` |
-| `0x4582` | s2c | 8 | **5** | social | open |
-| `0x4602` | s2c | 8 | **5** | social | open |
+| `0x4582` | s2c | 8 | **0** | social | batch 3b done — **all five named**: `lobby_id`, `lobby_name`, `game_id`, `game_name`, `lobby_type`; the tail is a location block, proven by a consumer-code bijection with `0x4b54`. The `0x4583` filter is real but **inert** — its destination list has no reader anywhere in the image |
+| `0x4602` | s2c | 8 | **0** | social | batch 3b done — **all five named**, same block. `SocialGameController`'s open question is **CONFIRMED**: current lobby name and current game name, plus a lobby **id** (not level/rank) and a lobby **type** enum (not a lobby id) |
 | `0x4302` | s2c | 21 | **0** | game | batch 2b done — **all four named**: lobby_subtype, round_flags, selector_flags, selector_tiebreak |
 | `0x4b12` | s2c | 10 | **0** | clan | batch 2a-redo done — **all four named**: `row_display_flag`, `discarded_29`, `discarded_2a`, `dead_2b`; two are provable parser-level discards |
 | `0x4b75` | s2c | 7 | **4** | clan | batch 2a-redo done — count unchanged, but the consumer screen (0xA8A080) is found: two of the four are displayed integers, one is a precise negative, and `unknown_00` exposes a client width bug |
@@ -303,3 +304,47 @@ screen. That was a true observation and a useless one: the jump table rejects an
 1..9, so every value tested took the blank default. Per CLAUDE.md's elimination rule, the
 experiment could not have produced the confirming observation — **a fingerprint value must be
 inside the field's plausible domain before "nothing rendered" means anything.**
+
+## What batch 3b established (the two roster/search records, finished)
+
+**10 fields resolved, both packets to zero**, and the answer `SocialGameController` has been
+waiting on since 2026-07-26 is now settled. `0x4582`'s and `0x4602`'s five-field tail is one
+**location block** — `lobby_id` u16, `lobby_name` 16B, `game_id` u32, `game_name` 16B,
+`lobby_type` u8 — "where is this player right now".
+
+### The levers, in order of how much they bought
+
+| lever | what it bought |
+| --- | --- |
+| **`0x9351AC`, a six-argument call** | `0x8F6D78`-`0x8F6D88` (friend list) and `0x90D6F8`-`0x90D710` (player search) load six row fields and pass them together to `f(kind, charaId, name, gameId, gameName, lobbyId, lobbyType)`. **An argument list is a struct definition someone else already wrote down.** Both flows make the same call; the black list makes it with four of the six hardcoded to zero, which is itself a divergence |
+| **consumer-code bijection with `0x4b54`** | not merely the same field order and widths as the clan roster's named tail, but the *same instructions in the consumer*: `cmpwi 1` / `cmpwi 8` on the enum, then `game_id != 0`, then `0xD4908C(session) == 0`, then the "Move to Game" entry; and `lobby_id` → `0xD47CE0` → `0x27EF90(25)` + RecordSet key 254. This is rule 4's legitimate form — not "the neighbour is called X" but "these two fields are consumed by the same code" |
+| **the module TOC, read as data** | `lwz r30,-N(r2)` gives a mini-TOC whose slots are element-name string pointers. Dumping 0xFEFE38 and 0xFEFEE8 printed `l_shib_y02_03_bg_friend_list`, `STRING_F_LIST_NAME`, `STRING_F_LIST_LOBBY`, `l_shib_y02_04_bg_black_list`, `STRING_B_LIST_NAME`, `STRING_B_LIST_HOST` — **the screens name their own columns**. Cheaper than any disassembly and it works wherever a screen sets element text by hash |
+| **a small jump table over `GetString`** | `0x8E1110` turns the trailing u8 into 1 = Free Battle, 2 = Automatching, 3 = Tournament, 4 = Survival, 5/6 = Official Tournament, 7/8 = Training, else `"----"`. Batch 3c found the same shape at `0x4682`. **A jump table whose arms differ only in a string id is a free enum decode** |
+| **closed provenance instead of a band sweep** | `0x4602` rows come from `0xD473F4`, which has **exactly one `bl` site in the whole text section**. `0x4582` rows come from `0xD464F8`/`0xD464D8`, six sites. Nothing had to be bounded by an address range at all — see the caution below |
+
+### Three findings beyond field names
+
+1. **`0x4583`'s filter is real and inert.** It copies survivors into `list(x, -1)` and **nothing
+   reads that buffer**: the six `which = -1` thunks have zero `bl` sites text-wide and their OPD
+   descriptors are unreferenced in an `ET_EXEC` image. PROTOCOL.md's *"serving zeros yields an
+   empty roster"* is corrected. Note PROTOCOL.md had already tagged that whole table "traced from
+   the ELF, single-source, none confirmed by a capture" — **the caveat was doing its job and was
+   still worth re-testing.**
+2. **The `0x4583` / `0x4603` asymmetry has a structural cause, not a policy one.** `0x4582` writes
+   four arrays (2 lists × 2 buffers, `0xD33508`); the search flow has one. There is no second
+   buffer for `0x4603` to compact into.
+3. **The same bytes carry two captions.** `lobby_name` is `STRING_F_LIST_LOBBY` on the Friend List
+   and `STRING_B_LIST_HOST` on the Black List. The value is settled independently, so the second
+   caption is a layout misnomer — but it is exactly the kind of thing that would have "confirmed"
+   a wrong reading if a caption had been the only evidence.
+
+### The negative-space caution, restated
+
+Batch 2a's band error is still the cheapest mistake available. This batch avoided ranges entirely:
+**find the accessor the UI must go through, count its `bl` sites, and the provenance closes
+itself.** Where a thunk really is unused, the proof is `bl` count zero **plus** an unreferenced OPD
+descriptor **plus** `ET_EXEC` — all three, because any one alone is only a search result.
+
+And the placeholder rule fired again, in the direction batch 2a should have read it: `"----"`
+(disc `"lobby"` string 18) appears in both row painters. A placeholder is always evidence that
+something fills the slot.

@@ -211,11 +211,69 @@ public class SocialGameController implements IGameController {
 				buffer.writeInt((int) player.charaId());
 				BufferUtil.writeString(buffer, player.name(), StandardCharsets.ISO_8859_1,
 					NAME_LENGTH);
-				buffer.writeByte(0); // cosmetically inert in the fingerprint; meaning unknown
+				buffer.writeByte(gameTypeLabel(player.lobbySubtype()));
 			}
 			ctx.write(new GamePacket(MATCH_HISTORY_ENTRIES, buffer));
 		}
 		ctx.write(resultPacket(ctx, MATCH_HISTORY_END));
+	}
+
+	/**
+	 * The game-type label for a history row's trailing byte, from the lobby subtype of the game.
+	 *
+	 * <p><b>[ELF 2026-07-31]</b> The four met-players row painters ({@code 0x91E3AC},
+	 * {@code 0x91EA8C}, {@code 0x91F370}, {@code 0x9200DC}) read this byte, <b>reject anything
+	 * outside 1..9</b>, and dispatch a 9-arm jump table at {@code 0x91E5C4}. Six arms name
+	 * themselves from the array at {@code 0xFE85F0}: 1 {@code TYPE_FREEBATTLE}, 3
+	 * {@code TYPE_TOURNAMENT}, 4 {@code TYPE_SURVIVAL}, 5 {@code TYPE_TOURNAMENT_OFFICIAL}, 6
+	 * {@code TYPE_SURVIVAL_OFFICIAL}, 9 {@code TYPE_COOP}. Values 2, 7 and 8 resolve string hashes
+	 * whose text is not in the ELF. <b>0 and anything above 9 render a single space</b>, which is
+	 * what we sent until now — a blank column on every row.
+	 *
+	 * <p><b>THIS TABLE IS PACKET-SPECIFIC. Do not reuse it for {@code 0x4582}/{@code 0x4602}.</b>
+	 * Those carry their own {@code lobby_type} decoded by a <i>different</i> 8-arm table at
+	 * {@code 0x8E1110}. The two agree at 1/3/4 and <b>disagree at 5, 6 and 9</b> — {@code 0x8E1110}
+	 * has 5 and 6 both Official Tournament and no arm 9 at all, where this one has
+	 * {@code TYPE_SURVIVAL_OFFICIAL} and {@code TYPE_COOP}. Two enums that overlap on their common
+	 * values are exactly the trap that makes cross-packet name transfer illegal here.
+	 *
+	 * <p>Values 2, 7 and 8 are now <b>resolvable but not yet resolved</b>: the hashes go through
+	 * {@code GetString(0x00F914BF, …)}, and {@code 0x00F914BF} is {@code hash("lobby")}, whose disc
+	 * string base was proven to be <b>11034</b> (headers {@code $strres:9789}-{@code 11031},
+	 * validated against known ids 996 = "Move to Game" and 3 = a single space). Decoding
+	 * {@code 0x00A6FC6D} would name value 2 outright. The sibling table's arm 2 is Automatching,
+	 * which is suggestive and is <b>not</b> evidence about this one.
+	 *
+	 * <p><b>Sending the lobby subtype verbatim is OPERATOR POLICY</b>, not protocol. Nothing in the
+	 * binary says this enum and the lobby-subtype axis are the same numbering. What makes it
+	 * defensible is that they agree everywhere both are legible, on three independent points:
+	 *
+	 * <ul>
+	 * <li>value 1 is {@code TYPE_FREEBATTLE}; subtype 1 is Free Battle</li>
+	 * <li>values 3-6 are the tournament/survival family; subtypes 3-6 are the same family in
+	 *     {@code LOBBIES.md}</li>
+	 * <li>values 7 and 8 are two hashes <b>sharing resource group {@code 0x00654515}</b>; subtypes
+	 *     7 and 8 are Basic and Combat Training, and <b>share one menu scan</b> because that loop
+	 *     tests a range rather than a value. Two axes both pairing exactly 7 with 8 is not a
+	 *     coincidence worth ignoring</li>
+	 * </ul>
+	 *
+	 * <p>{@code TYPE_COOP} at 9 is consistent rather than contradictory: 9 is out of range for a
+	 * lobby subtype entirely, which is where a game type that has no lobby of its own belongs.
+	 *
+	 * <p><b>What would refute it:</b> a history row whose label disagrees with the lobby the game
+	 * was actually in. That is a one-look experiment, and it tests something else worth knowing —
+	 * our names for subtypes 1 and 2 are <b>tier 4</b>, inherited rather than observed, so a row
+	 * reading "Free Battle" for a subtype-1 game confirms the inherited name at the same time.
+	 * Subtype 2's label is the one to watch: its text is not in the ELF, so the screen is currently
+	 * the only way to learn what value 2 says.
+	 *
+	 * <p>Out-of-range input is clamped to 0 rather than to 1. A blank column is honest about not
+	 * knowing; a wrong label is a bug, and post-launch subtypes must not be labelled as though we
+	 * served them.
+	 */
+	private static int gameTypeLabel(int lobbySubtype) {
+		return lobbySubtype >= 1 && lobbySubtype <= 9 ? lobbySubtype : 0;
 	}
 
 	/**
