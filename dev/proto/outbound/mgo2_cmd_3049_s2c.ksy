@@ -164,12 +164,47 @@ types:
         doc: |
           [CONFIRMED] (order per PROTOCOL.md) Wire +21 -> entry +25..+33, nine separate u8 reads
           (0xd37438 .. 0xd37538). Appearance bytes 0-8: gender … pitch, same order as `0x4130`.
-      - id: unknown_1e
+      - id: dead_1e
         type: u4
         doc: |
-          [UNKNOWN] Wire +30 -> entry +36. PROTOCOL.md: "The four bytes at +9 remain skipped,
-          purpose unknown. They sit where the write path emits four zero bytes, so nothing is
-          known to be lost, but nothing confirms that either." Still true.
+          [ELF — PRECISE NEGATIVE by CLOSED PROVENANCE, 2026-08-01] Wire +30 -> entry +36.
+          **No reader anywhere in the image.** PROTOCOL.md's "the four bytes at +9 remain skipped,
+          purpose unknown … nothing is known to be lost, but nothing confirms that either" is now
+          confirmed on the client side: nothing can be lost, because nothing looks.
+
+          The proof enumerates every route to an entry instead of sweeping a band:
+
+          1. **The entry array base is computed once.** `addi r25,r29,21972` at `0xD3734C` is the
+             only `,21972` in the whole text section, and it is in this parser.
+          2. **The header base `ctx+21968` is computed at five sites**, all accounted for:
+             `0xD36C80` (the accessor `0xD36C74`), `0xD37358` (this parser), and `0x90FCFC` /
+             `0x911740` / `0x913008`, which take the address and then only ever touch `+21756`
+             and `+21960` — they never index by 60. (`0xD44160` also has `addi r29,r29,21968`, but
+             it is the `0x4313` parser and every displacement off it is `13624`+, a different
+             region of the session block.)
+          3. **`0xD36C74` has 11 `bl` sites**: the five tiny accessors at `0x906E28`, `0x906E6C`,
+             `0x906EC4` (`selected_slot`), `0x906EEC` (`count`), `0x906F14` (`slots`); `0x95082C`;
+             `0x9B9E24` and `0x9BAD9C` (the Codec Pack byte at `+487`, see `item_unlock_trailer`);
+             and `0xBC4A0C` / `0xBC5178`, a developer console path that does `strtol` into
+             header `+0` (`slots`).
+          4. **`GetCharaEntry` `0x906E28`** (`hdr + 60*idx + 4`, `mulli r29,r29,60` at `0x906E50`)
+             has **13 `bl` sites**: `0x88F8A0`, `0x89292C`, `0x8929B0`, `0x94F05C`, `0x94F3D4`,
+             `0x94FD14`, `0x94FDF4`, `0x95046C`, `0x950688`, `0x950854`, `0x9508C4`, `0x950A18`,
+             `0x951050`. Across all thirteen the entry is read at **+0, +4, +8, +26..+31, +40..+53
+             and +56** — the slot, the character id, the name, the two appearance runs and the
+             delete cooldown. **+36 is read at none of them**, and there is no `,36(rN)` load
+             anywhere in `0x88F000`-`0x952FFF` whose base is one of these pointers (the 20 that do
+             exist in that range are in unrelated functions: `0x8B594C`, `0x8C6660`, `0x8C6B38`,
+             `0x8C8C84`, `0x8C94B0`, `0x8D7A08`, `0x8FDEF0`, `0x8FFA60`, `0x8FFBA4`, `0x900208`,
+             `0x900224`, `0x901108`, `0x90137C`, `0x90F408`, `0x912658`, `0x918218`, `0x9188BC`,
+             `0x9292D4`, `0x929CFC`, `0x9344BC`).
+          5. **`GetSelectedCharaEntry` `0x906E6C`** — the sibling that indexes by `selected_slot` —
+             is **dead**: zero `bl` sites, its OPD descriptor `0x101C080` has no 4-aligned
+             reference anywhere, and the image is `ET_EXEC` with no relocation sections, so there
+             is no third way to reach it.
+
+          Nothing takes the address of `entry+36` either, so it cannot be reached as part of a
+          block copy. We send four zero bytes; the client stores them and never looks again.
       - id: appearance_b
         size: 14
         doc: "[CONFIRMED] (order per PROTOCOL.md) Wire +34 -> entry +40..+53, fourteen separate u8 reads. Appearance head … accessory-2 colour."

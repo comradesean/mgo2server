@@ -96,6 +96,51 @@ seq:
       a separate byte.
 
       We send zero.
+
+      ## [ELF 2026-08-01] It is a 4-bit enum with a predicate bank, and the in-game HUD reads it
+
+      The `0x8842B4` chain above stops at "record key 350", and CLIENT_STORE.md §3a stops there
+      too. It does not stop there in the binary. **Key 350 is a byte offset into the per-slot blob**
+      (ADDRESSES.md: "the key IS the byte offset"), which is why searching for `li r4,350` finds
+      only the two `RecordSet` writers (`0x276354` own slot, `0x2780CC` peers) and no reader —
+      readers address the blob directly. Searching for `lbz rX,350(rY)` instead finds **four
+      predicate thunks, and they are the whole readership**:
+
+      | thunk | subject | test |
+      | --- | --- | --- |
+      | `0x9BEB88` | `f(slot)`, blob via `0x6A95A0` | `(blob[350] & 0xF) == 2` |
+      | `0x9BEBE0` | `f(slot)`, same | `(blob[350] & 0xF) == 3` |
+      | `0x9BFFF0` | **local player**, `0x26E9A0` then `0x6A95A0` | `(blob[350] & 0xF) == 3` |
+      | `0x9C0050` | local player, same | `(blob[350] & 0xF) == 2` |
+
+      Each is the identical five-instruction shape — `bl` for the blob, null check, `lbz r0,350(r3)`,
+      `clrlwi r0,r0,28`, `cmpwi` — so the field is **four bits wide on the read side too**, and the
+      only values anything distinguishes are **2 and 3**. That matches the write side, where the
+      announce byte is `blob[350] = (profile+13096 & 0xF) | (bit from 0x9066FC << 5)`: the client's
+      own settings bit lives above the nibble, so bits 4-7 are not ours and bits 0-3 are.
+
+      **18 call sites between them**, all in the in-game HUD/nameplate band: `0x9BEB88` at
+      `0x9D4C2C`, `0x9FC6A0`; `0x9BEBE0` at `0x9D0BDC`, `0x9EA5E0`, `0x9EC5E0`, `0x9EC8C4`,
+      `0x9FC6B0`, `0xA44984`; `0x9BFFF0` at `0x99CC00`, `0x9D313C`, `0x9EA494`, `0x9EA4D8`,
+      `0x9F1674`, `0x9F16B8`, `0x9F1B60`, `0x9F1BA8`, `0xA3BB50`; `0x9C0050` at `0xA2FC94`.
+      `0x9FC698`-`0x9FC6BC` calls both slot forms back to back on the same slot and branches to a
+      different nameplate construction for `== 3`, which is what shows they are alternatives in one
+      enum rather than two independent flags.
+
+      **One consumer is worth naming because of what it is grouped with.** At `0x9EA47C` the code
+      reads `if (0x9C0600()) X; else if (0x9BFFF0()) X;` — the same arm for both — and `0x9C0600`
+      is `roundMode() == 10 && amHost()`, i.e. *you are the instructor of a Combat Training
+      session* (see `mgo2_cmd_3049_s2c.ksy`'s `item_unlock_trailer`, which identifies that
+      predicate). So nibble **3** puts a player in the same category as the training instructor for
+      at least one HUD decision. That is a strong hint about the family this enum belongs to and it
+      is deliberately **not** turned into a name: one shared branch is not an identity, and the
+      other seventeen sites have not been read.
+
+      **What would decide it.** Send wire `0x028` = 0, 1, 2, 3 on four successive logins and watch
+      the in-game nameplate — `0x9FC6A0`/`0x9FC6B0` guarantees 2 and 3 each produce a visibly
+      different construction, and 0/1 the default. Per CLAUDE.md's elimination rule this is a valid
+      experiment precisely because the domain being probed (2 and 3) is the domain the readers
+      distinguish; a fingerprint outside 0..15 would take the default arm and prove nothing.
   - id: friend_ids
     type: u4
     repeat: expr

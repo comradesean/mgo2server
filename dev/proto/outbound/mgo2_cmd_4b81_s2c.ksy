@@ -155,6 +155,14 @@ seq:
       via the number formatter `0xCFD018(buf, 20, v)`. Full trace and the reason its *meaning* is
       still [UNKNOWN] are in mgo2_cmd_4b21_s2c.ksy under the same field name.
 
+      [ELF 2026-08-01] The clan-info popup is now mapped element by element in
+      `mgo2_cmd_4b21_s2c.ksy` — this slot is `infoC_st-3`, drawn between `T+0xC68` (`infoC_st-5`,
+      clamped to 9,999,999) and `member_count` (`infoC_st-4`), and it is one of only **three**
+      numbers on that popup that either clan packet supplies; the other seven come from
+      `T+0x1730`-`0x1750`, which neither `0x4b21` nor `0x4b81` writes. The apparent second writer
+      at `0x4129F8` is a stride-16 engine table and is ruled out there. Meaning still [UNKNOWN];
+      the deciding experiment is also recorded there.
+
       Note this contradicts the top-level doc's overlap list only in emphasis: `T+0x1B34` was
       already listed as shared with 0x4b21. It is the one shared trailing slot that has a reader —
       `T+0x1B2C` and `T+0x1B30`, the two cooldowns, are 0x4b21-only.

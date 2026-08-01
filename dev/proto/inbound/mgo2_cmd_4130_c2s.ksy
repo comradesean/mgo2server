@@ -110,12 +110,48 @@ seq:
     doc: |
       [ELF] wire 0x18..0x1c, source +35..+39. Five slots, same reasoning as `skills`; the byte
       documented as the first of "0x1c 2 skipped" is slot index 4 here.
-  - id: unknown_1d
+  - id: echoed_from_4131_60
     type: u1
     doc: |
-      [UNKNOWN] wire 0x1d, source **+60** — a lone u8 from a source offset 20 bytes past the
-      level array, so it is structurally unrelated to it despite being adjacent on the wire.
-      Our reader skips it. `0x4131` writes a zero in the corresponding slot.
+      [CONFIRMED as an echo, ELF 2026-08-01; renamed from `unknown_1d`] wire 0x1d, source **+60**
+      — a lone u8 from a source offset 20 bytes past the skill-level array, so it is structurally
+      unrelated to it despite being adjacent on the wire. **Meaning still [UNKNOWN]; the fate is
+      now closed: this byte is server-authored, stored, and handed straight back.** Nothing on the
+      client ever chooses it.
+
+      **The struct is named.** Two of the three callers of the `0x4130` sender `0xD3BB28` pass
+      `0xD3A094(session) + 7648` (`addi r4,r4,7648` at `0x91D73C`, `addi r4,r3,7648` at
+      `0x9CB4E8`), so `r31` is **`profile + 7648`** and this field is **`profile + 7708`**. The
+      third caller, `0x93E7C0`, passes a screen-local copy at `screen+108`.
+
+      **The only writer is the reply parser.** `0x4131`'s parser runs `r27 = profile + 7648`
+      (`addi r27,r31,7648` at `0xD3EDBC`) and reads the packet field by field into it, ending
+      `+60` (`addi r4,r27,60` at `0xD3F0F4`, `bl 0xd5cb8c` = read-u8), `+64` (u32), `+68` (128-byte
+      comment), `+197`. So the server's byte lands here and this command sends it back unchanged.
+      That upgrades the old note "`0x4131` writes a zero in the corresponding slot" from a
+      statement about our current output to a statement about the *mechanism*: it is zero because
+      we send zero.
+
+      **The client's own change detector skips it, which is the load-bearing observation.**
+      `0x93E5B4`-`0x93E720` is the "has the player edited anything?" comparator that gates the
+      send. It compares the working copy against the stored one at offsets **0..8**, **16..29**,
+      then a five-iteration loop over **+30+i**, **+35+i** and a u32 at **+40+4i** — i.e. it
+      enumerates every field the personal-info screen can edit, including the five-slot arrays,
+      and **never touches +60**. A byte the editor's own equality test excludes is a byte the
+      editor does not own.
+
+      The same comparator incidentally sizes the region between the arrays and this field: **+40
+      to +59 is a five-element u32 array** (`lwz r0,40(r11)` with `r5` stepping by 4, `0x93E77C`),
+      read by the `0x4131` parser through `0xd5cc64` at `0xD3F0DC`. So `+60` is the byte
+      immediately after that array, not padding inside it.
+
+      Searches run, and their limits: `,7708(rN)` has twelve hits image-wide and **none** in the
+      MGO code ranges (they are libc-band `stw`/`sthu` at `0x559D0`-`0x56750`, `0x412DC0`,
+      `0xE00D78`, `0xE6B3AC`, `0xF32C78`, `0xF32EDC`, `0xF4AD98`, `0xF4AFFC`); `addi rX,rY,7708`
+      has none anywhere. Both edges are justified by the struct being addressed as a fixed
+      displacement off the profile pointer everywhere else in this file. What that does **not**
+      cover is a reader working from the `screen+108` copy, where the field would appear at
+      `screen+168`; that alias was not swept.
   - id: comment
     size: 128
     type: str

@@ -18,6 +18,20 @@ doc: |
   unread.
 doc-ref: dev/docs/PROTOCOL.md "0x2005 — get lobby list"; dev/docs/LOBBIES.md
 seq:
-  - id: unknown_body
+  - id: dead_body
     size-eos: true
-    doc: "[ELF] Not read (0xd36438). We send `00 00 00 00`."
+    doc: |
+      [ELF — PRECISE NEGATIVE, re-run 2026-08-01] **Neither a result code nor a count, and not read
+      at all.** The arm at `0xd36438` calls `READ_BEGIN` (`0xd36460`) and `READ_END` (`0xd3646c`)
+      with **no `bl` to any read primitive in between**, then `0xd32e08(session, event 10, state 2)`
+      and `stw r0,0(r31)` with `r0 = 0` — the list marker close. Nothing consumes a payload byte.
+
+      Contrast the packets that DO carry a u32 here, which settles which of the two shapes the
+      family uses: `0x4903` (`0xD47758`) reads a u32 at `0xD47794` and publishes it into request
+      slot 56 with **`lwa`** (`0xD477D4`) — sign-extended, i.e. a negative error code — and
+      `0x4901` (`0xD47850`) additionally *branches* on it, refusing to open the list when it is
+      nonzero (`0xD478B4`). That is a result code; an entry count could not drive that branch.
+
+      We send `00 00 00 00`. If it is ever made meaningful, it must be a **zero result code**, not
+      a count — see `mgo2_cmd_2002_s2c.ksy` for the same argument at greater length and for the
+      `1032:00000005` incident that is the reason this distinction is written down.

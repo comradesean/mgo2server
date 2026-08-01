@@ -181,6 +181,33 @@ types:
           set as the text of the element named by `[r28+48]`. That says it is a *number* and says
           nothing about which number.
 
+          [ELF 2026-08-01] **The column's element name is now resolved, and it is why the ELF
+          cannot name this field.** `r28 = r17 + 4*row` with `r17 = r1+200` (`addi r17,r1,200` at
+          `0xA89ED8`), so the loop reads a 5-column x 4-row table of element-name hashes built on
+          the stack at `0xA89F00`-`0xA8A04C` — column stride 16, row stride 4. Resolving each
+          store against the screen module's mini-TOC (`lwz r30,-27996(r2)`, r2 = `0x10353A8`, so
+          r30 = `0xFF4D18`) gives the whole table:
+
+          | col | read at | stack slots | element names | source |
+          | --- | --- | --- | --- | --- |
+          | 0 | `0(r28)` | 200-212 | `STRING_low1_DATE`..`low4_DATE` | `unknown_00` via `0xDC9358` + `strftime` |
+          | 1 | `16(r28)` | 216-228 | `STRING_low_1_1`..`low_4_1` | `text_04` |
+          | 2 | `32(r28)` | 232-244 | `STRING_low_1_2`..`low_4_2` | `name` |
+          | 3 | `48(r28)` | 248-260 | `STRING_low_1_3`..`low_4_3` | **this field** |
+          | 4 | `64(r28)` | 264-276 | `STRING_low_1_4`..`low_4_4` | `unknown_5c` |
+
+          The names are **purely positional** — row N, cell M. Unlike `NULL_OPENmail_SUBJECT` or
+          `STRING_F_LIST_LOBBY`, they carry no vocabulary, so the developer-element-name lever
+          (FIELD_MAPPING.md, batch 3c) is exhausted here: the caption is bound to `STRING_low_N_3`
+          in the **layout file**, not in the ELF. That is the thing that would have to be read to
+          name this field statically, and it is on the disc, not in the binary.
+
+          **Two corrections to this file's own account of the screen.** It paints **five** columns
+          per row, not four — the date column was not counted. And the row count is fixed at
+          **four**: `r29 = min(r29 - r16, 0)` then `r25 = r29 + 4` (`0xA8A044`-`0xA8A050`), so the
+          loop can never run more than four times, which matches the four-row element table exactly
+          and caps what the 32-record parser limit could ever display.
+
           **The `s4` here is not evidence and should be treated as suspect.** Its justification was
           "read with the SIGNED accessor 0xD5CC64" — the rule this file's own CORRECTION block
           declares superseded: 0xD5CC64 and 0xD5CCD8 are instruction-for-instruction identical, so
@@ -197,3 +224,16 @@ types:
           0xA8A1D4 `lwz r3,92(r26)`, `extsw`, `bl 0xCFB8C8`, then set as the text of the element
           named by `[r28+64]`. Same status as its neighbour — provably a displayed integer, with
           no evidence of what it counts.
+
+          [ELF 2026-08-01] Its element is `STRING_low_N_4`, the last of the five columns; the full
+          column table, how it was resolved and why it cannot name the field are under
+          `unknown_58`. Same conclusion: the caption binding lives in the layout file on the disc,
+          not in the ELF.
+
+          **What would decide both fields.** Nothing static — the ELF has been closed out. The
+          experiment is to make the client send `0x4b73` (it never does on its own; applications
+          arrive as mailbox type `0x10`), answer with a `0x4b74`/`0x4b75`/`0x4b76` triple carrying
+          distinct sentinels in `+0x58` and `+0x5C`, and read the two right-hand columns off the
+          screen against its printed captions. Note the row-0 hazard recorded under `unknown_00`:
+          the date column loads eight bytes from `+0`, so the first column will be garbage
+          regardless and is not evidence about anything.

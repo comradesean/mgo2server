@@ -58,12 +58,62 @@ types:
           see LOBBIES.md, which refuses the reference schema's naming as unproven.
           This is the top byte of what the reference servers write as an "attributes" u4 with
           the subtype in its high byte — the same bytes, described correctly.
-      - id: unknown_0x05
+      - id: dead_05
         type: u1
-        doc: "[UNKNOWN] parsed (0xD47EE8) into struct+0x05 and never seen read. Always 0 from us."
-      - id: unknown_0x06
+        doc: |
+          [ELF — PRECISE NEGATIVE by CLOSED PROVENANCE, 2026-08-01] parsed (0xD47EE8) into
+          struct+0x05. **Nothing in the image reads it**, and this is established by enumerating
+          every route to a stored entry rather than by sweeping an address band (batch 2a's
+          mistake).
+
+          The array lives at `session + 0x10000 - 18544` = `ctx+0xB790`, `{marker:u4, count:u4,
+          entries[64] of 120 bytes}`. That base is computed at **exactly six instructions in the
+          whole text section** — every `addi rX,rY,-18544`:
+
+          | site | what it is |
+          | --- | --- |
+          | `0xD47E64` | this parser |
+          | `0xD47850` | the `0x4901` parser (opens the list) |
+          | `0xD47758` | the `0x4903` parser (closes it) |
+          | `0xD48D10` | `GetLobbyCount(session)` — returns `count`, touches no entry |
+          | `0xD49040` | `GetLobbyEntry(session, i)` -> `base + 8 + i*120`, the only entry accessor |
+          | `0xD4744C` | `GetLobbyListIfReady(session)` -> the list **header** pointer |
+
+          `0xD49040` has **12 `bl` sites**, all enumerated: `0x884520`, `0x8845F8`, `0x89041C`,
+          `0x890458`, `0x890494`, `0x8904D8`, `0x890584`, `0x8905C0`, `0x89144C`, `0x89148C`,
+          `0xD4B4C0`, `0xD511E4`. Across all twelve the entry is touched only at **+0** (list
+          index), **+4** (subtype), **+6** (see below), **+8** (lobby id), **+10** (name) and
+          **+27** (the 64-byte text). `0xD4744C` has **3 `bl` sites** (`0x893374`, `0x893500`,
+          `0x893524`); two of them walk the array by hand with `addi r28,r28,120` and read only
+          `8(r28)` (= entry+0) and `r28+35` (= entry+27). No entry pointer escapes any of those
+          functions — the only values passed on are `entry+27` (a string) and the entry index.
+
+          So `+5` has no reader. Always 0 from us, and it may stay that way.
+      - id: subtype5_row_gate
         type: u1
-        doc: "[CONFIRMED READ, MEANING UNKNOWN] parsed into struct+0x06. The subtype-5 branch requires the value 3 before it will render the entry (0x8904F0), and nothing else reads it. Always 0 from us."
+        doc: |
+          [ELF — NAMED 2026-08-01, meaning of the value still UNKNOWN] parsed at `0xD47F04`
+          (`addi r4,r1,126` into the staging buffer, third of the three consecutive u8 reads at
+          `0xD47ECC`/`0xD47EE8`/`0xD47F04`) and memcpy'd to struct+0x06. **Exactly one reader in the image, and it is a hard gate**: at `0x8904F0`,
+          inside the subtype-5 scan of the hub menu builder, `lbz r0,6(r29); cmpwi cr7,r0,3; bne
+          -> skip`. A subtype-5 lobby whose byte here is anything other than **3** emits no Lobby
+          Select row at all. Everything downstream of that test — `GetString(264)` at `0x890504`,
+          the format call `0x94AD8C(screen, entry+27, 264, ...)` at `0x890520`, the help id 12 at
+          `0x89055C` — is unreachable without it.
+
+          The name says what the byte does, which is all the binary supports. **What the value 3
+          means is [UNKNOWN]** and is not guessed: it is not a subtype (that is `+4`), and 0, 1, 2
+          and 4..255 are all equally rejected, so the field has no observed domain beyond "3 or
+          not 3".
+
+          Same closed-provenance argument as `dead_05` above: six base computations, 12 + 3
+          consumer sites, all enumerated, and `+6` appears in exactly one of them.
+
+          Release-day note: subtype 5 is the **Official Tournament** family (`AUTOMATCH.md` §10;
+          its title string reads "OFFICIAL CUP LOBBY"), which is post-launch content. Naming this
+          gate is not a proposal to open it. `LOBBIES.md`'s open-questions list still files entry
+          fields `0x05`/`0x06` as unknown; `0x06` is now settled to this extent and `0x05` is a
+          proven dead field.
       - id: flags
         type: u1
         doc: "[UNKNOWN] a bit field: the parser expands all 8 bits one by one into the struct (0xD47F40-0xD47FEC), so each is a distinct boolean. No consumer identified. Always 0 from us."

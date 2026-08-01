@@ -8,7 +8,8 @@ we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are no
 
 ## The number
 
-**34 packets, 122 unknown fields**, as of 2026-07-31 (batches 3b and 3c). Was 44 / 178 at batch 1;
+**22 packets, 109 unknown fields — only 13 genuinely open**, as of 2026-08-01 (batch 4).
+The other 96 carry a stated negative and are terminal from static evidence. Was 44 / 178 at batch 1;
 `0x4302`, `0x4129`, `0x4b12`, `0x4b70`, `0x4682`, `0x4841`, `0x4822`, `0x4800`, `0x4582` and
 `0x4602` have reached zero (their rows stay in the table, marked
 **0**, so the count stays reproducible). Regenerate with the script in this file's
@@ -37,45 +38,45 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 | id | dir | fields | unknown | family | status |
 | --- | --- | --- | --- | --- | --- |
 | `0x4107` | s2c | 76 | **35** | stats | batch 1 done — 2 resolved (slots 33/34 = Team Sneaking), remaining 35 have **no reader in the image** |
-| `0x4313` | s2c | 52 | **12** | game | batch 2b done — 5 named (0x098 password_enabled, 0x099 dedicated, +176/+179 the flags word's two unread bytes, +184 host_ping); remaining 12 all carry precise negatives |
-| `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** (agent lost to quota) — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`; docs upgraded throughout. Not revisited by 2a-redo |
-| `0x4b81` | s2c | 18 | **10** | clan | batch 2a **partial** — no renames; all 10 given precise negatives and tier-1 provenance |
-| `0x4221` | s2c | 17 | **2** | social | batch 3a done — **7 named**: `experience`, `beginner_flag`, `worn_title`, `host_rating_numerator`, `host_rating_denominator`, `clan_emblem_flag`, `grade_points`. The card's whole renderer (`0x905818`) is mapped slot by slot; two more consumers of feature bit 2 found; OBSERVED.md's "the card's LEVEL is `T+0x484`" corrected |
+| `0x4313` | s2c | 52 | **12** | game | batch 2b done — 5 named; batch 4b done — count unchanged, but `unknown_48`/`unknown_49` are now proven a **two-element pair** (key 86 bytes 1 and 5, the rest of the record zeroed) with **no create-game widget writing either**, so the wire-watching experiment is ruled out |
+| `0x4b21` | s2c | 28 | **9** | clan | batch 2a **partial** — 2 named: `disband_cooldown_s`, `emblem_display_cooldown_s`. batch 4b — the clan-info popup is mapped element by element (`infoC_st-1`..`-13`); `unknown_1b34` is drawn between `T+0xC68` and `member_count`, a second writer at `0x4129F8` is disproved as a stride-16 engine table, and the deciding experiment is written down |
+| `0x4b81` | s2c | 18 | **10** | clan | batch 2a **partial** — no renames; all 10 given precise negatives and tier-1 provenance. batch 4b — `unknown_1b34` cross-referenced to `0x4b21`'s popup map |
+| `0x4221` | s2c | 17 | **2** | social | batch 4b re-examined `unknown_1e` and deliberately added nothing to the negative — it is already the campaign's strongest — recording the deciding experiment and its two traps instead. batch 3a done — **7 named**: `experience`, `beginner_flag`, `worn_title`, `host_rating_numerator`, `host_rating_denominator`, `clan_emblem_flag`, `grade_points`. The card's whole renderer (`0x905818`) is mapped slot by slot; two more consumers of feature bit 2 found; OBSERVED.md's "the card's LEVEL is `T+0x484`" corrected |
 | `0x4310` | c2s | 31 | **7** | game | batch 2b done — 0x0f7 = level_limit_tolerance; `common_c` renamed `common_flags_lsb`; the four echo-only negatives re-established independently |
 | `0x4120` | s2c | 27 | **2** | connect | batch 2c done — 5 named (`dead_settings_05`, `entry_id_0..3`); byte 0 bit 0 proven **load-bearing** |
-| `0x4305` | s2c | 33 | **7** | game | batch 2b done — count unchanged, but all 7 now carry tier-1 provenance; 4 stale tier-4 labels corrected (stance, tolerance, max_players, rule_timers) |
+| `0x4305` | s2c | 33 | **7** | game | batch 2b done — all 7 carry tier-1 provenance; 4 stale tier-4 labels corrected. batch 4b — `unknown_0d6`/`unknown_0d7` shown to be **one two-element publication**, with a complete 15-site census of displacement `+801` proving the only sites that reach this struct are the two parsers, the `0x4310` builder, the publisher and a dead accessor |
 | `0x4b54` | s2c | 11 | **2** | clan | batch 2a-redo done — 3 more named (`lobby_name`, `game_id`, `game_name`) and **three false negatives corrected**; `unknown_30` proven live and feature-bit-2 gated; `unknown_18`'s negative re-run on the corrected band |
 | `0x4991` | s2c | 14 | **6** | lobby | open |
-| `0x4101` | s2c | 13 | **1** | connect | batch 2c done — 4 named: `beginner_flag`, `feature_flags`, `grade_points`, `dead_13100` |
+| `0x4101` | s2c | 13 | **1** | connect | batch 2c done — 4 named. batch 4b — `unknown_028` is a **4-bit enum read by four predicate thunks** (`0x9BEB88`/`0x9BEBE0`/`0x9BFFF0`/`0x9C0050`, all `(blob[350] & 0xF) == 2 or 3`) with 18 call sites in the HUD; nibble 3 shares a branch with the training-instructor predicate. Still unnamed; the deciding experiment is now a four-value fingerprint |
 | `0x4582` | s2c | 8 | **0** | social | batch 3b done — **all five named**: `lobby_id`, `lobby_name`, `game_id`, `game_name`, `lobby_type`; the tail is a location block, proven by a consumer-code bijection with `0x4b54`. The `0x4583` filter is real but **inert** — its destination list has no reader anywhere in the image |
 | `0x4602` | s2c | 8 | **0** | social | batch 3b done — **all five named**, same block. `SocialGameController`'s open question is **CONFIRMED**: current lobby name and current game name, plus a lobby **id** (not level/rank) and a lobby **type** enum (not a lobby id) |
 | `0x4302` | s2c | 21 | **0** | game | batch 2b done — **all four named**: lobby_subtype, round_flags, selector_flags, selector_tiebreak |
 | `0x4b12` | s2c | 10 | **0** | clan | batch 2a-redo done — **all four named**: `row_display_flag`, `discarded_29`, `discarded_2a`, `dead_2b`; two are provable parser-level discards |
-| `0x4b75` | s2c | 7 | **4** | clan | batch 2a-redo done — count unchanged, but the consumer screen (0xA8A080) is found: two of the four are displayed integers, one is a precise negative, and `unknown_00` exposes a client width bug |
+| `0x4b75` | s2c | 7 | **4** | clan | batch 2a-redo done — consumer screen found. batch 4b — the screen's element table is resolved (5 columns x 4 rows, `STRING_low*`), which **corrects "four columns" to five** and caps the list at 4 rows; the two integers land in `STRING_low_N_3`/`_4`, positional names, so the ELF is exhausted and the caption binding is in the layout file |
 | `0x4129` | s2c | 18 | **0** | connect | batch 2c done — **all three named**; `play_time_seconds` drives the MGS4 single-player unlock |
 | `0x4105` | s2c | 21 | **2** | stats | batch 1 done — cols 13/15 have **no reader in the image**; both docs now carry the scan that establishes it |
 | `0x4122` | s2c | 17 | **2** | connect | batch 2c done — no new tier-1 name available; both negatives independently re-run |
-| `0x4902` | s2c | 12 | **2** | lobby | open |
-| `0x3101` | c2s | 26 | **1** | other | open |
-| `0x4112` | c2s | 1 | **1** | other | open |
-| `0x4130` | c2s | 23 | **1** | other | open |
-| `0x4150` | c2s | 1 | **1** | other | open |
-| `0x4316` | c2s | 1 | **1** | other | open |
-| `0x4344` | c2s | 2 | **1** | other | open |
-| `0x4390` | c2s | 81 | **1** | other | open |
-| `0x43a6` | c2s | 1 | **1** | other | open |
-| `0x43c0` | c2s | 5 | **1** | other | open |
+| `0x4902` | s2c | 12 | **0** | lobby | batch 4b done — **both named**: `dead_05` (closed-provenance negative: 6 base computations, 12+3 consumer sites, all enumerated) and `subtype5_row_gate` (one reader, `0x8904F0`, must equal 3 or the Official Tournament row is never emitted) |
+| `0x3101` | c2s | 26 | **1** | other | batch 4a — no rename; buffer located (`createScreen+136`, 48-byte payload at `screen+108`) and the appearance editor's complete write set enumerated. **The negative is explicitly withheld**: the same sweep misses `gender`/`voice`/`pitch`, so a second writer exists |
+| `0x4112` | c2s | 1 | **1** | other | batch 4a — source named: `0xD3A094(session)+6777`. Bytes 0..7 are **sixteen 4-bit fields** with a getter/setter pair each (`0x906BE8`-`0x906E24`); no accessor for bytes 8..31. Left as one blob |
+| `0x4130` | c2s | 23 | **0** | other | batch 4a done — `echoed_from_4131_60`: struct is `profile+7648`, written only by the `0x4131` parser (`0xD3F0F4`), and the client's own change detector provably skips it |
+| `0x4150` | c2s | 1 | **0** | other | batch 4a done — `always_zero`: **hardcoded 0 at all four callers**, entry set closed by the three-part test. Retires the "lobby subtype" candidate |
+| `0x4316` | c2s | 1 | **0** | other | batch 4a done — `lobby_subtype`, by instruction-for-instruction identity with `0x4310`'s. No capture needed after all |
+| `0x4344` | c2s | 2 | **0** | other | batch 4a done — `team`, raw roster `entry+1`; can carry 0/2/254 where `0x4440`'s cannot |
+| `0x4390` | c2s | 81 | **1** | other | batch 4a — reviewed, nothing to add: `unknown_b14` already carries a complete "identically zero on this build" derivation |
+| `0x43a6` | c2s | 1 | **1** | other | batch 4a — reviewed, nothing to add: provenance already PROVED (record field 332 via `0x27F160`) |
+| `0x43c0` | c2s | 5 | **0** | other | batch 4a done — `host_stance`: `settings+0x34E` **is** `0x4310`'s `src+846`, and four other fields already pin the struct identity |
 | `0x43c4` | c2s | 1 | **1** | other | open |
-| `0x43c8` | c2s | 2 | **1** | other | open |
-| `0x4440` | c2s | 1 | **1** | other | open |
+| `0x43c8` | c2s | 2 | **1** | other | batch 4a — reviewed, nothing to add: `unknown_04` is deliberately unrenamed pending the stated confirming observation |
+| `0x4440` | c2s | 1 | **0** | other | batch 4a done — `team` (1-based, only 1 or 2); sole caller `0xCA031C`, from record field 1, whose writers are the auto-balancer `0x6EB4F0` and the `254` sentinel |
 | `0x4700` | c2s | 4 | **1** | other | open |
 | `0x4800` | c2s | 6 | **0** | other | batch 3c done — `echoed_flag_273` named by struct bijection; the whole compose buffer proved to be a `0x4822` mail record |
-| `0x4b10` | c2s | 3 | **1** | other | batch 2a-redo — meaning still unknown, but the two concrete senders hardcode **1** |
-| `0x4b46` | c2s | 1 | **1** | other | batch 2a-redo — traced to the dispatcher's 4th arg; the OPD-table dead end recorded |
+| `0x4b10` | c2s | 3 | **0** | other | batch 4a done — `always_one`: the dispatcher's arm is **opcode 8, which no thunk sets**, so the paging path is the only sender and it hardcodes 1 |
+| `0x4b46` | c2s | 1 | **0** | other | batch 4a done — `notification_clear_mask`, the `profile+6838` word drained back; **the OPD dead end was wrong** — `0xA7DC48` has 20 `b` tail calls |
 | `0x4b70` | c2s | 1 | **0** | other | batch 2a-redo done — `clan_id`, from the binary rather than a capture |
-| `0x2002` | s2c | 1 | **1** | other | open |
-| `0x2004` | s2c | 1 | **1** | other | open |
-| `0x3049` | s2c | 14 | **1** | other | open |
+| `0x2002` | s2c | 1 | **0** | other | batch 4b done — `dead_body`: **neither a result code nor a count**, `READ_BEGIN`/`READ_END` back to back with no read primitive between. The contrast case is `0x4901`, which reads one u32 with `lwa` and refuses to open the list when it is nonzero — a result code, provably not a count |
+| `0x2004` | s2c | 1 | **0** | other | batch 4b done — `dead_body`, same proof; `0x4903` is its reading sibling |
+| `0x3049` | s2c | 14 | **0** | other | batch 4b done — `dead_1e`: no reader, by closed provenance. One base computation for the entry array, five for the header, 11 `bl` on the accessor, 13 on `GetCharaEntry`, all enumerated; `GetSelectedCharaEntry` `0x906E6C` is a **dead accessor** (zero `bl`, unreferenced OPD, `ET_EXEC`) |
 | `0x4131` | s2c | 9 | **1** | other | batch 2c done — negative re-run and recorded with near-misses named |
 | `0x4682` | s2c | 5 | **0** | other | batch 3c done — `lobby_type`, a 9-arm jump table; also settles `LOBBIES.md`'s open `0xFE85F0` index question |
 | `0x4822` | s2c | 9 | **0** | other | batch 3c done — `name_count` named; **four documented claims corrected** (`comment` is the subject, `message_type` 3 = GM and 1/2 = clan, `important` is read after all, the echo offset was off by one) |
@@ -348,3 +349,89 @@ descriptor **plus** `ET_EXEC` — all three, because any one alone is only a sea
 And the placeholder rule fired again, in the direction batch 2a should have read it: `"----"`
 (disc `"lobby"` string 18) appears in both row painters. A placeholder is always evidence that
 something fills the slot.
+
+## What batch 4a established (the client-to-server fields)
+
+**8 of 15 fields named, 7 packets to zero** — `0x4130`, `0x4150`, `0x4316`, `0x4344`, `0x43c0`,
+`0x4440`, `0x4b10`, `0x4b46`. Every one of them had survived three earlier batches, and the reason
+is a single method error worth stating before the results.
+
+### Every previous batch hunted for READERS. On a c2s field that is the wrong question.
+
+For a server-to-client field, "who consumes this?" is the right question and the whole campaign is
+built on it. **For a client-to-server field there is no reader in the image at all — we are the
+reader.** The client is the *writer*. So the searches that had been run on these fourteen schemas
+could not have succeeded, and their failure was never evidence about the fields.
+
+The question that works is: **what does the builder store, and where did that value come from?**
+Find the sender, find the store into the payload offset, walk backwards to a widget, a struct
+field, a menu selection or an immediate. And an immediate is a *complete* answer — `0x4150` and
+`0x4b10` are finished packets now, and neither field has a meaning.
+
+### The levers, in order of what they bought
+
+| lever | what it bought |
+| --- | --- |
+| **the sender's callers, with `li rN,K` read off the same basic block** | `0x4150`'s byte is `0` at all four call sites and `0x4440`'s is `(field1 == 1) ? 2 : 1`. Two packets closed by reading four instructions above a `bl` |
+| **struct-offset identity across two builders** | `0x43C0`'s `settings+0x34E` is `846`, and `0x4310`'s `host_stance` is `src+846`. Four other fields (name +4, comment +0x15, password flag +150, password +151) already pin the two structs as one, so this is rule 4's legitimate form, not a guess from position |
+| **the same computation, instruction for instruction** | `0x4316`'s byte and `0x4310`'s `lobby_subtype` run the identical seven-step sequence — `= 1`, `if (0xD4908C) if ((b = 0xD491F8)) = b[608]`, `if (0xD5BDA0) = 2`. The capture this file asked for could only ever have confirmed what the code forces |
+| **the setter, not the getter** | `0x4344`/`0x4440` both carry character-record field 1. Nothing *reads* it usefully; what names it is its three writers — the auto-balance picker `0x6EB4F0` (per-team counters at `game[1360+t*4+8]`, LCG tiebreak), a `li r4,2` third role, and eleven `li r4,254` "no team" sentinels |
+| **the accessor bank as a field map** | `0x4112`'s 32-byte `memcpy` body is `profile+6777`, and its first eight bytes have **sixteen getter/setter pairs, one per nibble** (`0x906BE8`-`0x906E24`). The serialiser gave no boundaries; the accessors give sixteen |
+| **the client's own change detector** | `0x93E5B4`-`0x93E720` enumerates every offset the personal-info screen can edit and skips `+60`. A field excluded from the editor's equality test is a field the editor does not own — which is what made `0x4130`'s byte a proven echo |
+
+### The correction that matters most: `b` is a call too
+
+`mgo2_cmd_4b10_c2s.ksy` and `mgo2_cmd_4b46_c2s.ksy` both recorded the same dead end — the generic
+clan request dispatcher `0xA7DC48` has **no `bl` site**, and its OPD descriptor at `0x10202D8` is
+referenced by no data word in an `ET_EXEC` image, so it must be entered by indexing an OPD table.
+
+**The OPD half is right. The conclusion is wrong. `0xA7DC48` is entered by twenty tail calls,
+`b 0xa7dc48`, from a thunk bank at `0xA7E9B0`-`0xA7EBC4`**, each setting an opcode as an immediate.
+A tail-called function has no `bl` site *by construction*, and a bank of one-line wrappers is the
+normal shape that produces one. The bank was three greps away the whole time.
+
+Two results fell straight out:
+
+1. **`0x4b46`'s u16 is `notification_clear_mask`.** Opcode 12's thunk is `0xA7EAD8(x, y)` and `y`
+   is the wire value; its call sites pass `li r4,256` (bit 8) literally, or
+   `(ctx[100] | *(u16*)(profile+6838)) & ~ctx[104]`. `profile+6838` is exactly where `0x4b47`'s
+   privilege word lands, so the client is handing back the notification bits it wants cleared —
+   which is the same "drain to zero" behaviour that file's own "the privilege word must be zero"
+   section had already characterised from the other end.
+2. **`0x4b10`'s byte is `always_one`, now provably.** Its dispatcher arm is opcode **8**, and the
+   twenty thunks set 3, 4, 9, 10, 11, 12, 15-24 — never 8. The arm is unreachable, so the paging
+   path is the only sender, and it hardcodes 1 at all three branches of its switch.
+
+The same test retires `0x4112`'s dispatcher call site (arm 13, also unset) as dead code.
+
+### The negative that was withheld, and why
+
+`0x3101`'s `unknown_09` got a located buffer (`createScreen+136`) and a complete enumeration of the
+appearance editor's write set — offsets 18-23 and 32-45, from all 25 `lwz rX,312(rY)` sites — which
+does **not** include it. That looks like a precise negative and was not published as one.
+
+**The check that stopped it: the same sweep also finds no writer for `gender`, `voice` and
+`pitch`, three fields in the same buffer that are certainly set.** So a second writer path exists
+and has not been found, and a sweep with three known false negatives cannot be trusted on a
+fourth. This is batch 2a's band error in a new costume — not a range whose edge fell short, but a
+*path* the method could not see — and the cheap defence is the same one: before trusting a
+negative, run it against a field in the same struct whose answer you already know.
+
+### Hardcoded constants, i.e. what the server may safely ignore
+
+* **`0x4150` byte 0 — always `0`.** `li r4,0` at `0x891870`, `0x891900`, `0x8981C8`, `0x8BCF44`.
+* **`0x4b10` byte 5 — always `1`.** `li r5,1` at `0xAC1C54` and `0xAC2B4C`, all switch arms.
+* **`0x4b46` u16 — always `0000` while we send a zero privilege word**, not by hardcoding but
+  structurally: the client can only hand back bits we gave it.
+
+The first two are closed by the three-part entry test — zero `bl` sites beyond those enumerated,
+an unreferenced OPD descriptor, and `ET_EXEC` with no relocations — plus, new in this batch, a
+check for `b <target>` tail calls. **All four, from now on.**
+
+### One width flagged, not changed
+
+`0x4344`'s `team` and `0x4440`'s `team` are the same character-record field and are **not**
+interchangeable: `0x4344` sends the raw slot (`lbz r5,1(entry)`, so `0`, `1`, `2` or `254` are all
+reachable) while `0x4440` sends `(v == 1) ? 2 : 1`, which is 1-based and collapses everything else
+onto `1`. Both widths are correct as written. The trap is that the same admin action — host
+Restart — fires both.

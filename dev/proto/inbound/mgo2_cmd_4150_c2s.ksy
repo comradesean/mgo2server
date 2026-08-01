@@ -16,13 +16,38 @@ doc: |
   says *which* lobby is being left, that information is currently thrown away.
 doc-ref: dev/docs/PROTOCOL.md "0x4150 — lobby disconnect"
 seq:
-  - id: unknown_00
+  - id: always_zero
     type: u1
     doc: |
-      [UNKNOWN] Position exact, meaning unestablished — the sender takes it as a plain
-      argument with no range check, so nothing at the call site narrows it.
-      **[INFERRED] candidate:** the lobby type or subtype being disconnected from. `0x4150`'s
-      sender sits in the same cluster as the game-lobby `0x3003` sender (`0xd39f18`), whose
-      own trailing byte is likewise an unexplained caller-supplied `u8` — see
-      `mgo2_cmd_3003.ksy`. Cheap experiment: log the byte on back-out from a GAME lobby versus
-      an ACCOUNT lobby and see whether it changes.
+      [CONFIRMED constant, ELF 2026-08-01; renamed from `unknown_00`] Position and width exact.
+      **The client can only ever send `0x00`.** Meaning still unestablished — a zero is a zero —
+      but the value is now closed, so the server has nothing to learn from this byte and nothing
+      to lose by ignoring it.
+
+      The sender `0xd38530` takes the byte as a plain `r4` argument with no range check
+      (spilled to `1416(r1)` at `0xd3855c`, written by `bl 0xd5c8a0` at `0xd385ac`), so the
+      answer had to come from the callers rather than from the sender. **All four `bl` sites
+      execute `li r4,0` immediately before the call:**
+
+      | call site | the `li r4,0` |
+      | --- | --- |
+      | `0x891890` | `0x891870` |
+      | `0x891920` | `0x891900` |
+      | `0x8981D0` | `0x8981C8` |
+      | `0x8BCF4C` | `0x8BCF44` |
+
+      No branch reaches any of the four with a different `r4`: in each case the immediate is in
+      the same basic block as the `bl`, three instructions or fewer above it, with no
+      intervening label.
+
+      **The four are the complete set of entries.** `0xd38530`'s OPD descriptor at `0x10290B0`
+      is referenced by no data word anywhere in the file, there is no `b 0xd38530` tail call, and
+      the image is `ET_EXEC` with no relocations — so it cannot be reached through a function
+      pointer either. That is the three-part test `FIELD_MAPPING.md`'s batch-3b section requires
+      before a "nothing else calls this" claim counts.
+
+      **This retires the [INFERRED] candidate this field used to carry** — "the lobby type or
+      subtype being disconnected from", by analogy with `0x3003`'s trailing byte. A subtype byte
+      that is 0 at every call site is not a subtype byte. The proposed experiment (back out of a
+      GAME lobby versus an ACCOUNT lobby and watch the byte) would have shown no change, and per
+      CLAUDE.md's elimination rule it could not have distinguished the two readings anyway.

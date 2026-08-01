@@ -217,6 +217,27 @@ types:
 
           No meaning is established and none is guessed. echo zeroes it. Note `+800` is a very
           common offset: 771 raw hits image-wide, all but these in unrelated structs.
+
+          [ELF 2026-08-01] **Shape, not meaning, has moved on two counts** — full working in
+          `mgo2_cmd_4305_s2c.ksy` under `unknown_0d6`, summarised here because the bijection
+          `block+X = struct+752+X` makes it the same byte:
+
+          1. **It is element 0 of a two-element publication.** The key-86 buffer is 8 bytes at
+             `r1+124`, zeroed whole at `0x8CA444`-`0x8CA450`, and **only bytes 1 and 5 are ever
+             filled** — `+800` -> byte 1, `+801` -> byte 5. Two big-endian u16 slots four bytes
+             apart. `unknown_48` and `unknown_49` are two elements of one array, so they are the
+             same kind of quantity.
+          2. **Nothing in the create-game UI writes either byte.** `+801` has a complete 15-site
+             census; the only sites that reach this struct are the two parsers, the `0x4310`
+             builder at `0xD44974` (`bl 0xD5C8A0`, put_u8 — it puts them straight back on the
+             wire), the publisher `0x8CA468` and the dead accessor `0x907844`. Everything else is
+             a different object, and `0x644FBC` is provably so: it writes `+800..+808` as a
+             9-byte run, which on this struct would overwrite `weapon_restrictions`.
+
+          So the pair is **server-authoritative and round-trips** with no client control bound to
+          it. That rules the obvious experiment out — per CLAUDE.md's elimination rule, moving a
+          slider and watching the bytes cannot settle a field the UI has no widget for. The
+          remaining route is the lobby stage script that consumes key 86.
       - id: unknown_49
         type: u1
         doc: |
@@ -225,6 +246,10 @@ types:
 
           Same fate as `unknown_48`: `0x8CA468` copies it to `stb r0,129(r1)` = **key 86, byte 5**
           of the same 8-byte property record. Dead accessor `0x907844`. Meaning [UNKNOWN].
+
+          [ELF 2026-08-01] Element **1** of the two-element key-86 publication; its displacement is
+          the rare one, so it is the byte whose 15-site census closes the pair. See `unknown_48`
+          above and `mgo2_cmd_4305_s2c.ksy`'s `unknown_0d6` for the census itself.
       - id: weapon_restrictions
         size: 16
         doc: |

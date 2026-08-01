@@ -105,12 +105,50 @@ seq:
       ELF-side accessor `0x90786C` is dead (no `bl`, OPD only, `ET_EXEC` with no relocations).
 
       No meaning established and none guessed.
+
+      [ELF 2026-08-01] **Two things are now settled about it that were not, and both are shape
+      rather than meaning.**
+
+      *It is half of a pair, and the property record says so.* The key-86 buffer is 8 bytes at
+      `r1+124`, zeroed in one go at `0x8CA444`-`0x8CA450` (`sth r0,0/2/4/6(r9)`, `r9 = r1+124`),
+      and **only bytes 1 and 5 are ever written** — `+800` to byte 1 (`0x8CA464`) and `+801` to
+      byte 5 (`0x8CA46C`). Two big-endian u16 slots four bytes apart, each carrying a u8 in its low
+      half. So the client publishes these two bytes as **two elements of one array**, not as two
+      unrelated settings, and whatever `unknown_0d6` is, `unknown_0d7` is the same kind of thing.
+
+      *No client-side widget can change them.* `+801` is a rare displacement and its census is
+      complete — **15 instructions image-wide**, every one accounted for:
+
+      | site | what |
+      | --- | --- |
+      | `0xD45674` | this parser's read (`addi r4,r29,801` into the struct) |
+      | `0xD43710` | `0x4313`'s block-relative equivalent (`+49`) |
+      | `0xD44974` | the **`0x4310` create-game builder** putting it back on the wire (`bl 0xD5C8A0`, put_u8) — sits between `+800` at `0xD44960` and the 16-byte weapon block at `0xD44988` |
+      | `0x8CA468` | the property-store publisher |
+      | `0x907844` | the dead accessor |
+      | `0xBC32C4`, `0xBC33D0`, `0xBC36E8`, `0xBC3890`, `0xBC3E58`, `0xBC4078` | the developer-console string parser — same function family as `0xBC4A0C`, which `strtol`s into the character-list header |
+      | `0x644FC0`, `0xA4E1A8`, `0xA53F9C`, `0xA53FC4`, `0xA54B54` | other objects. `0x644FBC`/`0x644FC0` is decisive on its own: it writes a 9-byte run at `+800..+808` beside another at `+784..+792` and fields at `+750`/`+751`, i.e. a stride-16 table. On this struct `+802..+817` is `weapon_restrictions` and `+750` is outside the settings block entirely, so it cannot be this object |
+
+      Every site that touches `+801` touches `+800` in the same breath and in the same way, which is
+      what carries the conclusion across to `+800` — whose own displacement is far too common (771
+      raw hits) to enumerate. **The pair is server-authoritative and round-trips: parser in,
+      `0x4310` builder out, publisher sideways. Nothing in the create-game UI writes either byte.**
+      That also means the obvious experiment — change the setting in game and watch the wire —
+      cannot exist, because there is no control bound to them in this build.
   - id: unknown_0d7
     type: u1
     doc: |
       [UNKNOWN — meaning; ELF — fate, 2026-07-30] wire 0x0d7, block +49, struct **+801**. Parser
       write `0xD45674`. Same fate: `0x8CA468` copies it to `stb r0,129(r1)` = **key 86, byte 5** of
       the same 8-byte record. Dead accessor `0x907844`. Meaning [UNKNOWN].
+
+      [ELF 2026-08-01] It is the **second element** of the key-86 array — see `unknown_0d6`, which
+      carries the 15-site census of this displacement, the proof that no create-game widget writes
+      either byte, and the reason the two must be read as a pair. The one experiment that could
+      still decide them is on the **stage-script** side, not the wire: key 86 is consumed by the
+      lobby `.gcx` script, so dumping that script's property reads (`dev/tools/gcx`) and finding
+      what it does with elements 0 and 2 of record 86 is the remaining route. Nothing in the ELF
+      can answer it.
   - id: weapon_restrictions
     size: 16
     doc: "[CONFIRMED] wire 0x0d8, block +50. 16-byte lock bitfield, 1 = locked; byte 0 bit 0 is the master enable. Bit map in PROTOCOL.md. The server copies this block opaquely between 0x4310, 0x4313 and here."

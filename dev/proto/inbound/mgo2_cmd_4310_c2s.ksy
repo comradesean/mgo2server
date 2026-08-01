@@ -113,6 +113,16 @@ seq:
       produces a false hit at essentially every offset in this range, and the create-game screen
       embeds this struct at `+108`, so each field also appears at `N+108` and `N+112` on other
       registers. The `0x907xxx` accessor bank pins **widths**, never liveness — all of it is dead.
+
+      **[ELF 2026-08-01] The offset sweep was re-run from scratch and adds a third decoy, no
+      fourth writer.** Every `st{b,h,w}` to displacement `800` or `801` in the whole image
+      resolves to one of three things: the documented push at `0x8CA460`/`0x8CA468`; the
+      `0x644FBC`/`0x644FC0` particle matrix this note already names; and — new — `0xA4E1A8`
+      (`stb r0,801(r5)`, guarded by a bitfield test on `[r4+8]`) and `0xA4ED8C`
+      (`stb r0,800(r29)`), both **`li r0,1` into a graphics object**, not this struct. The giveaway
+      is the same function's neighbours: `stw r9,768(r3)` / `stw r9,772(r3)` at `0xA4E114`/`0xA4E11C`
+      store the float constant `1.0f` (`0x3F800000`), and `0xA4E118` stores `128` at `+756`. Add
+      it to the decoy list rather than re-deriving it a third time.
   - id: unknown_0d4
     type: u1
     doc: |

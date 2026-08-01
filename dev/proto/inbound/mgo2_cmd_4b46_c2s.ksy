@@ -68,30 +68,65 @@ doc: |
   NULL plus the two generic connection checks (0xD38504, 0xD3844C). That is what lets it
   fire during the connect sequence before any clan record exists.
 seq:
-  - id: unknown_0000
+  - id: notification_clear_mask
     type: u2
     doc: |
-      [UNKNOWN] meaning; position and width [CONFIRMED] — 2 bytes, big-endian (0xD5C918),
-      observed as `0000` both in the connect burst (2026-07-23) and from the clan menu
-      (2026-07-27). It is the caller's u16 verbatim, unvalidated, and both call sites pass
-      zero, so the field has never been seen to vary and nothing distinguishes a
-      version/flags word from a "which record" selector.
+      [CONFIRMED, ELF 2026-08-01; renamed from `unknown_0000`] Position and width exact — 2 bytes,
+      big-endian (`0xD5C918`), observed as `0000` in the connect burst (2026-07-23) and from the
+      clan menu (2026-07-27). **The set of clan notification bits the client is asking to have
+      cleared** — the same 16-bit word `0x4b47` returns and lands at `profile+6838`.
 
-      The two contexts are not distinguished by this field: both captures carry `0000`. That
-      is why the server cannot tell the connect-burst probe from the clan-menu one and must
-      answer both identically.
+      **This corrects the 2026-07-30 dead end recorded here.** That note said `0xA7DC48`, the
+      dispatcher this sender's one `bl` site sits in, "has **no `bl` site**" and its OPD
+      descriptor `0x10202D8` is unreferenced, so it must be entered by indexing an OPD table —
+      "a genuine dead end for a static trace". The OPD half is right and still is. The conclusion
+      is not: **`0xA7DC48` is entered by twenty tail calls, `b 0xa7dc48`, from a thunk bank at
+      `0xA7E9B0`-`0xA7EBC4`.** The search that established the dead end looked for `bl` only.
+      *A tail-called function has no `bl` site by construction, and on PPC64 that is the normal
+      shape for a bank of one-line wrappers.*
 
-      **[ELF 2026-07-30] Where the value comes from, and where the trail ends.** `0xD58510` has
-      exactly **one** `bl` site in the image, **0xA7E0DC**, inside the generic clan request
-      dispatcher `0xA7DC48`. There the argument is `clrldi r4,r26,48` — the low 16 bits of the
-      dispatcher's **fourth** parameter (`mr r31,r6` at 0xA7DC94, `mr r26,r31` at 0xA7DCB8). So no
-      clan code chooses it; it is carried in from a request descriptor.
+      ## The dispatcher, now that it is reachable
 
-      `0xA7DC48` itself has **no `bl` site**, and its OPD descriptor at 0x10202D8 is referenced by
-      no data word in the file either (the image is `ET_EXEC`, no relocations), so it is entered by
-      indexing an OPD table rather than by a findable reference. That is a genuine dead end for a
-      static trace, and it is why "both call sites pass zero" above is an observation rather than
-      something the binary states: the two contexts are two *descriptors*, not two call sites.
+      `0xA7DC48(u8 flag, int opcode, void *out, u32 arg6, u32 arg7)`. The second parameter is an
+      opcode, range-checked `cmplwi 30 / bgt` at `0xA7DD48`, and dispatched through a 31-entry
+      jump table based at `0xA7DD90` whose entries are byte offsets from that same address.
+      This command is **opcode 12** — table entry `0x340`, arm `0xA7E0D0`, `bl 0xD58510` at
+      `0xA7E0DC` with `clrldi r4,r26,48`, the low 16 bits of the dispatcher's **fourth**
+      parameter (`mr r31,r6` at `0xA7DC94`, `mr r26,r31` at `0xA7DCB8`).
 
-      The one thing this does settle: the field is **not** computed from any clan record, since
-      nothing between the dispatcher's entry and the sender touches one.
+      The thunk for opcode 12 is **`0xA7EAD8`**: `f(x, y)` -> `(r3=1, r4=12, r5=x, r6=y, r7=0)`.
+      So the wire u16 is the thunk's **second argument**, and that argument is a mask:
+
+      | thunk call site | what it passes |
+      | --- | --- |
+      | `0xACF298`, `0xAD2D54` | `li r4,256` — **bit 8, literally** |
+      | `0xAB07D8` | `rlwinm r4,r28,0,23,23` — bit 8 masked out of a state word |
+      | `0xAB0134`, `0xAB4464` | `r4 = (ctx[100] \| *(u16*)(profile+6838)) & ~ctx[104]` |
+      | `0xAB6E28`, `0xABA024` | `r4 = accumulated \| *(u16*)(profile+6838)` |
+      | `0xAB497C` | `rlwinm r4,r29,0,23,23` — bit 8 again |
+
+      `profile+6838` is reached as `lhz r0,6838(0xD3A094(session))`, and `profile+6838` is exactly
+      where this command's own reply `0x4b47` puts its privilege/notification `u2` — see the
+      section above. So the client reads the word we sent it, ORs in whatever it has accumulated
+      locally, subtracts what it has already handled, and hands the remainder back here.
+
+      That closes the loop the "must be zero" section opens: the word is **a notification mask the
+      client drains to zero**, and this field is the drain. Bit 8 is the only bit a leader may
+      hold without the client spinning, and bit 8 is the bit two call sites name as a constant.
+
+      ## What follows for the server
+
+      **We send the privilege word as zero, so this field is structurally forced to `0000`.**
+      Every capture showing `0000` is therefore explained rather than merely observed, and the
+      earlier phrasing — "both call sites pass zero, so the field has never been seen to vary" —
+      was describing our own input coming back. It could never have varied while we send zero,
+      which per CLAUDE.md's elimination rule means the captures were incapable of settling the
+      field either way.
+
+      It also confirms the operational conclusion already in this file for a second reason: the
+      connect-burst probe and the clan-menu probe genuinely cannot be told apart from the request,
+      because the discriminator is the opcode inside the client, not anything on the wire. Answer
+      both identically.
+
+      Still true, and unchanged: the field is **not** computed from any clan record — nothing
+      between the dispatcher's entry and the sender touches one.

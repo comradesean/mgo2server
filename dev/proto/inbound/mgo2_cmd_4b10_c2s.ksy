@@ -82,14 +82,32 @@ seq:
       Derived client-side from the list cursor at `[clan_block+0x08]` as tabulated above;
       never a caller argument. Values past the end of the list are normal and expected — see
       the clamping note in the top-level doc.
-  - id: unknown_0005
+  - id: always_one
     type: u1
     doc: |
-      [UNKNOWN] meaning. Position and width exact (0xD5C86C). The sender's second u8 parameter,
-      passed through with no validation and untouched by the jump table, so nothing *in the
-      sender* narrows it. The list renders correctly while the server ignores this byte entirely,
-      which is evidence that it is not load-bearing for the list contents and no evidence at all
-      about what it means. A sort order or a filter selector would both look like this.
+      [CONFIRMED constant, ELF 2026-08-01; renamed from `unknown_0005`] Position and width exact
+      (0xD5C86C). Meaning still unestablished — a sort order or a filter selector would both look
+      like this — but **the value is closed: every path the client can actually take emits `1`.**
+      A server should keep ignoring the byte, and can now do so knowing it is not throwing
+      anything away.
+
+      **[ELF 2026-08-01] The second call site is dead code, which is what closes this.** The
+      2026-07-30 note below found two `bl` sites and could pin only one of them, because the
+      other sits in the generic clan request dispatcher `0xA7DC48` and that function looked
+      unreachable. It is reachable — by twenty `b 0xa7dc48` tail calls from the thunk bank at
+      `0xA7E9B0`-`0xA7EBC4`, which a `bl`-only search cannot see (see
+      `mgo2_cmd_4b46_c2s.ksy`, where the same correction resolved that command's u16).
+
+      Reachability now cuts the other way. `0xA7DC48`'s opcode is range-checked against 30 and
+      dispatched through the 31-entry jump table based at `0xA7DD90`. The `0x4b10` call at
+      `0xA7E030` lives in the arm at `0xA7E020`, table entry `0x290` — **opcode 8**. The twenty
+      thunks set opcodes 3, 4, 9, 10 (twice), 11 (twice), 12, 15, 16, 17, 18, 19, 20, 21, 22, 23
+      and 24. **No thunk sets opcode 8, no `bl` reaches `0xA7DC48` directly, and its OPD
+      descriptor at `0x10202D8` is referenced by no data word in an `ET_EXEC` image with no
+      relocations.** So arm 8 cannot execute, and the dispatcher can never send this command.
+
+      That leaves the paging path as the only sender, and the paging path hardcodes 1 at every
+      branch of its own switch.
 
       **[ELF 2026-07-30] The callers narrow it, and the answer is the constant 1.** `0xD58164` has
       two `bl` sites:
@@ -105,7 +123,8 @@ seq:
         function's *fifth* argument (`mr r24,r7` at 0xA7DCA4, `extsb r5,r24` at 0xA7E028) and
         arrives from a request descriptor. `0xA7DC48` has **no `bl` site in the image** and its OPD
         descriptor at 0x10202D8 is referenced by no data word either, so it is reached by indexing
-        an OPD table — which is where this trace stops.
+        an OPD table — which is where this trace stops. **Superseded 2026-08-01, see above: it is
+        reached by tail call, and this particular arm is not reached at all.**
 
-      Recorded as a value, not a meaning: 1 is what the two concrete senders emit. A server should
-      keep ignoring it.
+      Recorded as a value, not a meaning: 1 is what the client emits, on the only path that can
+      run. A server should keep ignoring it.

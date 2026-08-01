@@ -546,3 +546,43 @@ seq:
       the binding of a header cell to one of those labels is in the layout file, not the ELF.
       **0x4b81 sends the same slot** (mgo2_cmd_4b81_s2c.ksy), so a clan reached from search or the
       clan list needs it too.
+
+      ## [ELF 2026-08-01] The clan-info popup, mapped element by element
+
+      The popup renderer (`0xA7CD98`-`0xA7D820`, module mini-TOC `r30 = 0xFF4AF8` via
+      `lwz r30,-28004(r2)`, `r2 = 0x10353A8`) keeps the clan record in **r22** for the whole draw
+      and sets one element per block, each `format -> 0xD25D0(name) -> 0x244340 -> 0x2452A0 ->
+      0x246EC0`. Resolving every TOC slot it touches gives the complete popup:
+
+      | element | source | note |
+      | --- | --- | --- |
+      | `infoC_st-1` | clan name | `0xA7D794` |
+      | `infoC_st-2` | leader name | `0xA7D7FC` |
+      | `infoC_st-5` | `T+0xC68` | clamped to **9,999,999** at `0xA7D2C4`-`0xA7D2E0` |
+      | **`infoC_st-3`** | **`T+0x1B34`** | `0xA7D32C`, no clamp |
+      | `infoC_st-4` | `T+0x58` | `0xA7D398` — **`member_count`**, [CONFIRMED] elsewhere in this file |
+      | `infoC_st-6` .. `infoC_st-12` | `T+0x1730, 0x1738, 0x173C, 0x1740, 0x1748, 0x174C, 0x1750` | `r25 = r22+5788` (`0xA7D188`), reads at `+148, +152, +156, +160, +168, +172, +176` |
+      | `infoC_st-13` | derived from `T+0x1748` and `T+0x174C` | `0xA7D654`/`0xA7D65C` load both — a ratio cell |
+
+      Three things follow, and none of them names the field, which is why it keeps its name:
+
+      1. **It is drawn immediately before `member_count` and immediately after `T+0xC68`.** Both
+         neighbours are clan-wide totals, which is consistent with the existing "clan-wide
+         statistic" reading and adds a second, independent screen saying so.
+      2. **The popup's other numeric rows are not ours to send.** `infoC_st-6`..`-13` all come out
+         of `T+0x1730`-`0x1750`, and `0x4b21` writes none of that range. So of the popup's ten
+         numbers, `0x4b21` supplies exactly three — `T+0x58`, `T+0xC68` and this one.
+      3. **A tempting second writer is a decoy.** `stw r0,6964(r11)` at `0x4129F8` looks like a
+         client-side writer of this exact offset, and it is not: it sits in a `stw` run at
+         `6844..7012` with a **16-byte stride** (`6944/6948/6952/6956`, `6960/6964/6968/6972`,
+         `6976/6980/6984/6988`, …), i.e. a table of 16-byte records in an engine struct. On the
+         clan record `+6956` and `+6960` are the two cooldowns, which that run would trample. The
+         only writers of `T+0x1B34` remain the `0x4b21` and `0x4b81` parsers.
+
+      **What would decide it.** Nothing static — both renderers only format the number, and the
+      caption is bound in the layout file. The experiment is cheap and we control both inputs:
+      serve `T+0x1B34` and `T+0xC68` distinct, recognisable sentinels (they are the only two
+      unclamped/clamped numbers on the CLAN RECORD header) and read the two header cells against
+      their printed captions. Send `T+0x1B34` above 9,999,999 in one run as well — `T+0xC68` is
+      clamped there and this field is not, which distinguishes the two cells even if the captions
+      are ambiguous.

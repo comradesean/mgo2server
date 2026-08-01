@@ -184,6 +184,25 @@ seq:
       No tier-1 name. Both bit-2-gated numeric slots found so far (this one and `0x4b54 +0x30`
       in the clan roster) are unnamed for the same reason: a quantity that has never been on
       screen cannot be identified from a renderer that only formats it.
+
+      **[2026-08-01] Re-examined and left as is; recording what would actually decide it, because
+      the negative here is already as good as a static negative gets.** The 178-instruction
+      enumeration is the strongest form of evidence this campaign has produced and there is nothing
+      to add to it: one reader, gated, and the gate is closed. What is missing is not analysis, it
+      is an observation, and only one experiment can produce it — **open feature bit 2 on a test
+      account, then fingerprint `T+0x484` with distinct values across several cards and read the
+      slot that appears beside sprite 74.** Two cautions, both from this batch's rules:
+
+      * The value is printed bare with `"%d"` into an **11-byte** buffer, so it has no units and no
+        clamp to give it away; the fingerprint must be chosen to be recognisable on its own
+        (something like `123456`, not a plausible statistic).
+      * Feature bit 2 also opens the clan-roster column `0x4b54 +0x30`. Open it for one experiment
+        and both slots change at once, so vary **one** of them per run or the two cannot be told
+        apart — this is exactly the "one process emits both" trap FIELD_MAPPING.md records from
+        batch 1.
+
+      Bit 2 is a release-day gate we deliberately send closed (`GATES.md` §1). Opening it for a
+      test is not a proposal to serve it.
   - id: play_time_seconds
     type: u4
     doc: |

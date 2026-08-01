@@ -35,6 +35,44 @@ struct.unpack_from(">12I", data, VA - 0x10000)      # file offset = VA - 0x10000
 
 ---
 
+## Two corrections to the search method — 2026-08-01
+
+Both came out of the field-mapping campaign, and both invalidate a search that had been treated as
+conclusive. They belong here rather than in a schema because every future search inherits them.
+
+### A `bl`-only entry test misses tail calls
+
+"This function is never called — zero `bl` sites, OPD descriptor unreferenced, `ET_EXEC` so no
+relocations" was the campaign's standard **dead-accessor proof**. It has a hole: **a tail-called
+function has no `bl` site by construction.** `0xA7DC48` was recorded in two schemas as an
+unreferenced dead end and in fact has **20 tail calls** (`b 0xa7dc48`) from the thunk bank at
+`0xA7E9B0`-`0xA7EBC4`.
+
+**The entry test is `bl <target>` OR `b <target>`.** Add the second.
+
+**The blast radius was audited immediately and is zero elsewhere.** Every other address carrying a
+dead-accessor claim was re-checked for both forms on 2026-08-01 — `0x9072AC`, `0x9074B4`,
+`0x907784`, `0x907844`, `0x90786C`, `0xD465B0`, `0xD465C8` — and all have **0 `bl` and 0 `b`**. Those
+negatives stand. Only `0xA7DC48`'s did not, and it is corrected in place.
+
+Two findings followed from fixing it: `0x4b46`'s field resolved, and `0x4b10`'s dispatcher arm 8
+turns out to be reachable from no thunk at all — so the constant 1 it sends is the only value the
+client can emit there.
+
+### Validate a negative against a known-good field in the same struct
+
+A sweep that enumerates "every write to this struct" is only trustworthy if it **finds the writes you
+already know about**. Batch 4a enumerated all 25 `lwz rX,312(rY)` sites for the appearance editor and
+found offsets 18-23 and 32-45 — which would have made `0x3101`'s `unknown_09` a clean negative,
+except that the same sweep **also misses `gender`, `voice` and `pitch`**, which are certainly written.
+So a second writer path exists that the method cannot see, and the negative was correctly withheld.
+
+This is batch 2a's band error wearing a different costume: there, the swept *range* stopped short of
+the readers; here, the swept *path* could not reach them. The defence is the same in both cases and
+is cheap — **before publishing a negative, run the identical search against a field in the same
+structure whose answer is already known.** If it cannot find that one, it cannot support a negative
+about anything.
+
 ## The client's record store
 
 A 26-record in-memory property store. Full write-up in [CLIENT_STORE.md](CLIENT_STORE.md); the
