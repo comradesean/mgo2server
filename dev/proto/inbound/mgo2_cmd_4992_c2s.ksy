@@ -1,16 +1,43 @@
 meta:
   id: mgo2_cmd_4992_c2s
-  title: "MGO2 0x4992 — game entry info request (one u4) (client -> server)"
+  title: "MGO2 0x4992 — withdraw/cancel one 0x4991 entry by its key (client -> server)"
   endian: be
 doc: |
-  Sender `0xD47938`, builder call `0xD479AC`, subsystem index `0x47` (`li r4,71` at `0xD479E0`).
-  Unhandled. Single u32 from the sender's r4 argument (`stw 1416(r1)` at `0xD47964`).
-  Total payload: 4 bytes.
+  Sender `0xD47938`, builder call `0xD479AC`, wait slot `71` (`li r4,71` at `0xD479E0`,
+  `0xD32E08(session, 71, 1)` at `0xD479F8`). Total payload: 4 bytes.
+
+  **Pairs with `0x4993`, by wait slot.** `0x4993`'s parser `0xD48B98` closes slot 71
+  (`0xD32E08(...,71,2)` at `0xD48CC4`, result setter at `0xD48CD8`); nothing else in the image
+  touches slot 71. The reply is **mandatory**.
+
+  **What the reply does with this field — the bijection.** `0xD48B98` reads a result u32, and
+  when the result is 0 reads a **second u32** (`0xD48C3C`). It then walks the four-record,
+  72-byte table at `ctx + 0x1DAA8` (`ctx = *(session + 0x11904)`; loop `0xD48C70`-`0xD48CB0`,
+  bound 216 = 3*72) and **`memset`s to zero the record whose field `+0` equals that u32**
+  (`0xD48C98`, `0xDD36F8`). That table is the one the **`0x4991`** parser `0xD48D40` fills, and
+  record field `+0` is `0x4991`'s leading u32 (wire offset 0, `0xD48E54`). So `0x4992` is a
+  *remove this entry* request keyed on `0x4991`'s record key, and `0x4993` must echo the key
+  back or the client removes nothing.
+
+  Contrast `0x4986`, which acts on the **same records but a different field** (struct `+40`,
+  wire offset 30).
+
+  This sender does **not** call `0xD4908C`, so unlike `0x4986`/`0x49A0`/`0x49C2` it is legal
+  whether or not you are in a clan.
 
   Note this one is **not** in the Blowfish set even though its sibling `0x4990` is
   (PROTOCOL.md DECRYPT_COMMANDS lists `0x3003`, `0x4310`, `0x4320`, `0x43C0`, `0x4700`, `0x4990`).
 
-  Read from the send path in `MGO2.elf` (`dev/ref/MGO2 (decrypted).elf`) on 2026-07-26.
+  **Not reachable from any call site in this image.** Whole-image sweep of the 4.26M-line
+  disassembly for `bl 0xd47938` / `b 0xd47938` (both branch forms, so tail calls count):
+  zero hits. Control: the same sweep for `0xd4a578` (the `0x4984` sender) returns four call
+  sites, so the sweep works. The function descriptor at `0x1029900` also has no data
+  reference — but that test is **uninformative on its own**, because the control's descriptor
+  at `0x1029B20` has zero data references too while its function is demonstrably called. A
+  computed call through a table this sweep cannot see remains possible; what is established is
+  that no *direct* branch reaches it.
+
+  Read from the send path in `MGO2.elf` (`dev/ref/MGO2 (decrypted).elf`) on 2026-08-01.
   Method: the packet builder `0xD5CF40` (`li r4,<id>` at builder_call-4) memsets a 1024-byte
   payload buffer at `pkt+0x40`, zeroes the cursor at `pkt+0x454` and stores the id at `pkt+0x00`;
   the enclosing function then appends fields with the serialisation primitives; `0xD5C828`
@@ -21,6 +48,15 @@ doc: |
   `0xD5C86C` s1 · `0xD5C8A0` u1 · `0xD5C8D4` s2 · `0xD5C918` u2 · `0xD5C95C` s4 · `0xD5C9BC` u4 ·
   `0xD5CADC` NUL-terminated string · `0xD5D0AC` raw block of r5 bytes.
 seq:
-  - id: unknown_00
+  - id: entry_key
     type: u4
-    doc: "[ELF] `0xD5C9BC` at `0xD479BC`, source = sender arg r4. Meaning [UNKNOWN]."
+    doc: |
+      [ELF, high confidence] `0xD5C9BC` (u4) at `0xD479BC`, source = sender arg r4.
+      The key of the `0x4991` record to withdraw: the same value as that record's field `+0`
+      (struct and wire offset 0). Proven by what the paired reply does — `0x4993`'s parser
+      matches its own echoed u32 against record `+0` and zeroes the record (`0xD48C88`,
+      `0xD48C98`). The request field itself is unconstrained by the sender (no zero check, no
+      range check), so the identification rests on the pairing, which the wait slot makes
+      exact.
+      What the key *denotes* is [UNKNOWN] beyond "a `0x4991` record"; see `0x4986` for the
+      reading of that table as pending clan applications, which is inference.
