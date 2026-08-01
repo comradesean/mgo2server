@@ -468,10 +468,27 @@ because a field in a command nothing can send cannot stall anything:
 | 2 | `0x4310`, `0x4305`, `0x4221` | |
 | 1 | `0x4b81`, `0x43f4`, `0x43c8`, `0x43a6`, `0x4313`, `0x4131`, `0x4122`, `0x4107`, `0x3101` | |
 
-**333 of the 400 bare fields are in commands we do not serve** — overwhelmingly the `0x49xx` and
-`0x4Axx` blocks and the `0x4905`/`0x4909` detail records. If those resolve as post-launch content,
-the honest denominator for "100% mapped" is far smaller than 1,731. That question is open; see
-below.
+**333 of the 400 bare fields are in commands we do not currently serve** — overwhelmingly the
+`0x49xx` and `0x4Axx` blocks and the `0x4905`/`0x4909` detail records.
+
+> **This does NOT shrink the campaign, and an earlier revision of this section wrongly said it
+> might.** *Map now, build later* — the two are separate decisions, and only the second is gated on
+> the release-day rule:
+>
+> * **Mapping scope is everything.** Post-launch content is fully in scope for the field-mapping
+>   campaign, today. The target is **all 1,731 fields**, and the real remaining work is the **400
+>   bare** ones, not the 50 that happen to sit in commands we already answer.
+> * **Building scope is v1 only.** We do not implement Team Sneaking, BOMB, Survival, Tournament or
+>   the team family yet — not because they are unmappable, but because feature work waits until the
+>   v1 server is finished.
+>
+> So when a finding below says a family is "Ver. 1.10 / 1.20 content", read it as *do not serve
+> this yet*, never as *do not map this*. Knowing exactly how a mode is gated is what makes a future
+> toggle designable, and a mapped packet costs nothing to leave unserved.
+>
+> The one genuine limit is **testing**, not scope: there is no client build that exercises the
+> post-launch commands, so those mappings cannot be confirmed live. They stay tier-1 (read from the
+> binary) and never reach tier-2, and their `.ksy` docs should say so.
 
 ### Settled 2026-08-01: `session+0xD928` is the TEAM record
 
@@ -527,10 +544,11 @@ a preceding `addis …,1`; the only two outside `0xD49208`–`0xD4DC0C` are the 
 `0xD49380`, the 680-byte `memset` clear — which any correct sweep must contain.
 
 **Scope consequence, which is the reason this mattered.** The `0x49xx` family is
-team/tournament/survival throughout — **Ver. 1.10 / 1.20 content, out of scope for v1** under the
-target-version rule. In particular `0x49C2`/`0x49C3` are **join team**, not a clan operation, and
-are therefore *not* implementable now, which reverses the earlier note that they were the one
-ready-to-ship pair in the batch.
+team/tournament/survival throughout — **Ver. 1.10 / 1.20 content, so not served in v1** under the
+target-version rule, though fully in scope for mapping now (see the scope note above). In
+particular `0x49C2`/`0x49C3` are **join team**, not a clan operation, so they are not a
+ready-to-ship pair as an earlier note claimed — that was a build claim, and it was wrong. Their
+layout is nonetheless mapped and stays mapped.
 
 Still open, at medium confidence: that the second instance is specifically the *browse/join target*
 rests on caller locality rather than a resolved string. Resolving the disc strings at `0x8C6CD0` and

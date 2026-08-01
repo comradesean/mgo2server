@@ -34,8 +34,10 @@ doc: |
   **Release-day note.** The surrounding screens are the Official Tournament / Survival / Team
   family (disc strings 676 "TEAM CREATION", 38 "OFFICIAL TOURNAMENT", 72 "SURVIVAL",
   75 "TOURNAMENT", 640 "TEAM SELECT", 806 "Survival Match List"). Survival is Ver. 1.10 and
-  Tournament Ver. 1.20 content, so this whole family is **post-launch and out of scope for v1**;
-  mapping it is research, not a proposal to serve it.
+  Tournament Ver. 1.20 content, so this whole family is **post-launch and not served in v1** —
+  fully in scope for mapping now, which is what this file is. Note the family cannot be confirmed
+  live: no available client build exercises it, so these findings stay tier-1 and never reach
+  tier-2.
 
   Total payload: 4 bytes.
 

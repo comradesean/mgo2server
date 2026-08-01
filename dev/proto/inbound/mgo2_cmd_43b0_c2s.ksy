@@ -79,8 +79,8 @@ doc: |
 
   ### RELEASE-DAY SCOPE — this whole command is post-launch content
 
-  **Survival lobbies are Ver. 1.10**, i.e. out of scope for v1 per `CLAUDE.md`. Naming the gate is
-  the point here; opening it is not. Two gates are worth recording for a future toggle:
+  **Survival lobbies are Ver. 1.10**, i.e. not *served* in v1 per `CLAUDE.md` — mapping them is in
+  scope now, only opening them waits. Naming the gate is the point here; opening it is not. Two gates are worth recording for a future toggle:
 
   1. `0x2751A0` (the sender's caller) only reaches the `0x43B0` path when **bit `0x400` of
      `gameObj+0xBCC`** is set — `rlwinm r0,r0,0,21,21` at `0x2751E8`, `bne -> 0x2753AC` at

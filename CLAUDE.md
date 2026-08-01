@@ -151,6 +151,27 @@ Researching any of it is encouraged — knowing *how* a mode is gated is what ma
 designable, and the findings belong in OBSERVED.md and BACKLOG.md. Enabling it is the part that
 waits.
 
+### Map now, build later — the two are separate decisions
+
+The rule above governs **what the server serves**. It does not govern what gets *mapped*, and
+conflating the two has already caused documents in this repo to describe post-launch packets as
+"out of scope" in a way that reads as *do not investigate*. That is wrong.
+
+- **Mapping scope is everything.** Every command and every field is in scope for the field-mapping
+  campaign right now, post-launch content included. The v1 server is close to finished; mapping the
+  remaining protocol is the current step, and the goal is 100% of it.
+- **Building scope is v1 only.** Team Sneaking, BOMB, Survival, Tournament and the `0x49xx` team
+  family are not to be implemented yet — because feature work waits, not because they are
+  unmappable.
+
+So write **"not served in v1"**, never "out of scope", for anything that is merely post-launch. A
+mapped packet costs nothing to leave unserved, and the map is what makes the toggle designable.
+
+One real consequence follows, and it is about evidence rather than scope: **no available client
+build exercises the post-launch commands**, so those mappings cannot be confirmed against a live
+client. They are tier-1 (read from the binary) and cannot reach tier-2. Say so in the `.ksy` rather
+than leaving a reader to assume a capture backs them.
+
 ## Running the tests
 
 **Always `mvn verify`, never `mvn test`.** Surefire only picks up `*Test`; every `*IT` runs under
