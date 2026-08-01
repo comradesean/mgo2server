@@ -111,7 +111,8 @@ public class GameServerFactory {
 				controllers.add(new ClanGameController(services.getClanService(), services.getCharacterService()));
 				controllers.add(new HostGameController(services.getGameService(),
 					services.getCharacterService(), services.getClanService(),
-					services.getAwardService(), lobbyId, lobbySubtype, automatch::gameCreated));
+					services.getAwardService(), services.getPresenceService(), lobbyId, lobbySubtype,
+					automatch::gameCreated));
 			}
 		}
 

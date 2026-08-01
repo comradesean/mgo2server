@@ -6,6 +6,7 @@ import mgo2server.common.model.CharaSkill;
 import mgo2server.common.service.CharacterService;
 import mgo2server.common.service.AwardService;
 import mgo2server.common.service.ClanService;
+import mgo2server.common.service.PresenceService;
 import mgo2server.common.service.GameService;
 import mgo2server.game.LoadoutWriter;
 import mgo2server.game.PersonalInfoWriter;
@@ -421,30 +422,16 @@ public class HostGameController implements IGameController {
 	private static final int RELATION_NAME_LENGTH = 16;
 
 	/**
-	 * The {@code 0x4582} u16 at wire {@code 0x14}. <b>It is the LOBBY ID the player is in</b>
-	 * [ELF 2026-07-31], and both sentences this constant used to carry were wrong.
-	 *
-	 * <p><b>It does not decide whether the client keeps the record.</b> {@code 0x4583} really does
-	 * drop rows whose value is zero ({@code 0xD466D4}) — but it drops them into {@code list(x, -1)},
-	 * and <b>nothing in the image reads that list</b>: the six {@code which = -1} thunks
-	 * ({@code 0xD46418}, {@code 0xD46430}, {@code 0xD464E8}, {@code 0xD46508}, {@code 0xD465B0},
-	 * {@code 0xD465C8}) have zero {@code bl} sites text-wide and unreferenced OPD descriptors in an
-	 * {@code ET_EXEC} image. The UI reads {@code list(x, 0)}, which the compaction leaves intact.
-	 * So zero is safe and the roster does not empty — PROTOCOL.md said otherwise and is corrected.
-	 *
-	 * <p><b>And 1 is not a neutral placeholder.</b> The row painter {@code 0x8F611C} renders this
-	 * field's companion string into a column the layout names {@code STRING_F_LIST_LOBBY}, and the
-	 * value itself is handed to {@code 0x884300} / {@code 0xD47CE0} on "move to lobby". Sending a
-	 * hardcoded 1 therefore tells every client that every friend is in <b>lobby 1</b>, and aims the
-	 * jump there.
-	 *
-	 * <p><b>Kept at 1 pending a real source.</b> Filling it honestly needs per-character presence —
-	 * which lobby each character is currently connected to — which this server does not track
-	 * across lobby processes. Until it does, 0 (nobody anywhere) and 1 (everybody in lobby 1) are
-	 * both wrong; 1 is left because it is what has been shipped and observed, and changing it
-	 * without the presence data would trade a known wrong answer for an untested one.
+	 * <b>Removed 2026-08-01.</b> This was the constant {@code 1} written into {@code 0x4582}'s u16
+	 * at wire {@code 0x14}, on the belief that the field was a display gate whose value did not
+	 * matter. Both halves of that were wrong, and the field is now served from
+	 * {@link mgo2server.common.service.PresenceService} — see {@link #listRoster}.
+	 * <p>
+	 * Kept as a note rather than deleted silently because the old reasoning was recorded in detail
+	 * and someone may go looking for it: it is <em>not</em> that zero empties the roster (the
+	 * compaction it triggers targets an array nothing reads), and 1 was <em>not</em> neutral (it is
+	 * a lobby id the client dials).
 	 */
-	private static final int ROSTER_ENTRY_VISIBLE = 1;
 
 	/** Sent on leaving a game. Unanswered, the client sits on a black screen. */
 	public static final int QUIT_GAME = 0x4380;
@@ -462,6 +449,9 @@ public class HostGameController implements IGameController {
 	private final ClanService clanService;
 
 	private final AwardService awardService;
+
+	/** Where each character is, for the roster's lobby column. See {@code dev/docs/PRESENCE.md}. */
+	private final PresenceService presenceService;
 
 	private final long lobbyId;
 
@@ -486,19 +476,21 @@ public class HostGameController implements IGameController {
 	private final GameCreatedListener gameCreatedListener;
 
 	public HostGameController(GameService gameService, CharacterService characterService,
-			ClanService clanService, AwardService awardService, long lobbyId, int lobbySubtype) {
-		this(gameService, characterService, clanService, awardService, lobbyId, lobbySubtype,
-			GameCreatedListener.NONE);
+			ClanService clanService, AwardService awardService, PresenceService presenceService,
+			long lobbyId, int lobbySubtype) {
+		this(gameService, characterService, clanService, awardService, presenceService, lobbyId,
+			lobbySubtype, GameCreatedListener.NONE);
 	}
 
 	public HostGameController(GameService gameService, CharacterService characterService,
-			ClanService clanService, AwardService awardService, long lobbyId, int lobbySubtype,
-			GameCreatedListener gameCreatedListener) {
+			ClanService clanService, AwardService awardService, PresenceService presenceService,
+			long lobbyId, int lobbySubtype, GameCreatedListener gameCreatedListener) {
 		this.gameCreatedListener = gameCreatedListener;
 		this.clanService = clanService;
 		this.gameService = gameService;
 		this.characterService = characterService;
 		this.awardService = awardService;
+		this.presenceService = presenceService;
 		this.lobbyId = lobbyId;
 		this.lobbySubtype = lobbySubtype;
 	}
@@ -641,6 +633,12 @@ public class HostGameController implements IGameController {
 		start.writeInt(GameError.NONE.result());
 		ctx.write(new GamePacket(LIST_ROSTER_START, start));
 
+		// One query for the whole roster rather than one per row: this is a list screen of up to 32
+		// entries, and asking per entry would be 32 round trips to draw one page.
+		var lobbies = presenceService == null ? java.util.Map.<Long, Long>of()
+			: presenceService.lobbiesOf(entries.stream().map(CharacterService.Relation::targetId)
+				.toList());
+
 		for (var offset = 0; offset < entries.size(); offset += ROSTER_PER_PACKET) {
 			var batch = entries.subList(offset, Math.min(offset + ROSTER_PER_PACKET, entries.size()));
 			var buffer = ctx.buffer(batch.size() * ROSTER_ENTRY_SIZE);
@@ -648,15 +646,19 @@ public class HostGameController implements IGameController {
 				buffer.writeInt((int) relation.targetId());
 				BufferUtil.writeString(buffer, relation.name(), StandardCharsets.ISO_8859_1,
 					RELATION_NAME_LENGTH);
-				// The u16 at wire 0x14 is a DISPLAY GATE, not decoration: the 0x4583 end handler
-				// compacts the collected records and copies one into the display array only when
-				// this field is nonzero (lhz +30, compare, branch — 0xD466D4..0xD46734). Zero here
-				// means the roster screen comes up empty with every record having parsed
-				// perfectly. What the value MEANS is unknown; only its nonzero-ness is evidenced.
-				// Nomad puts 36 in the byte-identical 0x4602 record and guesses level or rank,
-				// which is tier 4 and not a reason to copy it. If it turns out to render, this
-				// must come from the character rather than being a constant.
-				buffer.writeShort(ROSTER_ENTRY_VISIBLE);
+				// The u16 at wire 0x14 is THE LOBBY THIS FRIEND IS IN [ELF 2026-07-31] -- see
+				// ROSTER_ENTRY_VISIBLE, which this replaced. The row painter 0x8F611C renders its
+				// companion string into a column the layout names STRING_F_LIST_LOBBY, and the
+				// value itself is handed to 0x884300 / 0xD47CE0 when the player picks "move to
+				// lobby". Sending a constant told every client that every friend was in lobby 1 and
+				// aimed the jump there.
+				//
+				// ZERO IS SAFE AND MEANS "not connected". The 0x4583 handler does compact records
+				// with a zero here out of one array -- but into list(x, -1), which nothing in the
+				// image reads, while the UI reads list(x, 0), which the compaction leaves intact.
+				// An offline friend still appears on the roster; the lobby column falls back to
+				// GetString(hash("lobby"), 18), which is "----".
+				buffer.writeShort(lobbies.getOrDefault(relation.targetId(), 0L).intValue());
 				buffer.writeZero(ROSTER_ENTRY_SIZE - Integer.BYTES - RELATION_NAME_LENGTH
 					- Short.BYTES);
 			}

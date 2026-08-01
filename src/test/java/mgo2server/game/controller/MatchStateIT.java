@@ -727,10 +727,69 @@ public class MatchStateIT extends BaseGameClientServerIT {
 		entry.getBytes(4, name);
 		assertThat(new String(name, java.nio.charset.StandardCharsets.ISO_8859_1).replace("\0", ""))
 			.isEqualTo("Otacon");
-		// The u16 at wire 0x14 must be nonzero or the 0x4583 end handler drops the record from
-		// the display array (0xD466D4) — the roster would render empty with every record parsed.
-		assertThat(entry.getUnsignedShort(0x14)).isNotZero();
+		// The u16 at wire 0x14 is the LOBBY THE FRIEND IS IN, and Otacon is not connected to one —
+		// givenJoinedPlayer writes database rows, not a channel — so zero is the correct answer.
+		//
+		// THIS ASSERTION USED TO READ isNotZero() AND WAS PINNING A WRONG BELIEF, the same way the
+		// count assertion three lines above was. The claim was that zero makes the 0x4583 handler
+		// drop the record and render an empty roster. It does compact zero-valued records out of an
+		// array (0xD466D4) — but into list(x, -1), which nothing in the image reads, while the UI
+		// reads list(x, 0) and the compaction leaves that intact. Proven 2026-07-31: the six
+		// which=-1 thunks have zero bl sites text-wide and unreferenced OPD descriptors in an
+		// ET_EXEC image. An offline friend appears on the roster with "----" for a lobby.
+		assertThat(entry.getUnsignedShort(0x14)).isZero();
 		assertThat(replies.get(2).getPayload().getInt(0)).isEqualTo(GameError.NONE.result());
+	}
+
+	/**
+	 * The other half: a friend who <em>is</em> connected carries the lobby they are in.
+	 * <p>
+	 * This is the field the client hands to {@code 0x884300}/{@code 0xD47CE0} when the player picks
+	 * "move to lobby", so a wrong value does not just mislabel a column — it sends the player
+	 * somewhere their friend is not. Until 2026-08-01 we sent a hardcoded 1 for everyone.
+	 */
+	@Test
+	public void rosterCarriesTheLobbyAFriendIsConnectedTo() {
+		givenSelectedCharacter("Snake");
+		var gameId = givenHostedGame();
+		var friend = givenJoinedPlayer(gameId, "Otacon");
+		services.getCharacterService().setRelation(charaId, friend, CharacterService.RELATION_FRIEND);
+		// Presence is normally written by ChannelRegistry when a client connects; this test has no
+		// second client, so the row is placed directly. lobbyId is this server's own lobby.
+		services.getPresenceService().enter(friend, lobbyId);
+
+		var login = Unpooled.buffer();
+		login.writeInt((int) charaId);
+		login.writeBytes(SessionField.of(TOKEN));
+		var replies = new ArrayList<GamePacket>();
+
+		client.run(10, new ChannelInboundHandlerAdapter() {
+			@Override
+			public void channelActive(ChannelHandlerContext ctx) {
+				ctx.writeAndFlush(new GamePacket(AccountGameController.CHECK_SESSION, login));
+			}
+
+			@Override
+			public void channelRead(ChannelHandlerContext ctx, Object msg) {
+				if (!(msg instanceof GamePacket packet)) {
+					return;
+				}
+				if (packet.getCommand() == AccountGameController.CHECK_SESSION_RESULT) {
+					var req = Unpooled.buffer();
+					req.writeByte(CharacterService.RELATION_FRIEND);
+					ctx.writeAndFlush(new GamePacket(HostGameController.LIST_ROSTER, req));
+					return;
+				}
+				replies.add(packet);
+				if (packet.getCommand() == HostGameController.LIST_ROSTER_END) {
+					ctx.close();
+				}
+			}
+		});
+
+		var entry = replies.get(1).getPayload();
+		assertThat(entry.getInt(0)).isEqualTo((int) friend);
+		assertThat(entry.getUnsignedShort(0x14)).isEqualTo((int) lobbyId);
 	}
 
 	/**

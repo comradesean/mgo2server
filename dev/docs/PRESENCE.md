@@ -132,7 +132,9 @@ Automatch slot-in eligibility becomes possible after step 1 and is tracked separ
 - **Step 1: DONE** (2026-08-01). `V72__chara_presence.sql`, `PresenceService`, hooks in
   `ChannelRegistry`, boot-clear and the periodic heartbeat/reap. `mvn verify` 233 unit / 236
   integration, ten of them `PresenceServiceIT`. No wire change: nothing the client sees moved.
-- Step 2: not started — `0x4582` wire `0x14`
+- **Step 2: DONE** (2026-08-01). `0x4582` wire `0x14` now carries the friend's actual lobby, from
+  one bulk lookup per roster rather than one query per row. Offline friends send 0, which the
+  client renders as `"----"` and still displays.
 - Step 3: not started — `0x4602`'s five-field tail
 
 ### Two things step 1 got wrong first, kept because they will recur
