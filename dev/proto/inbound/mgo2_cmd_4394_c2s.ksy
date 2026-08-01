@@ -127,11 +127,13 @@ seq:
       property-store key 86 (bytes 1 and 5 of an 8-byte record, rest zeroed) with **no create-game
       widget writing either**; see `mgo2_cmd_4313_s2c.ksy`. Position is exact, meaning is open in
       both directions.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
   - id: unknown_31
     type: u1
     doc: |
       [ELF] wire 0x31 = block 0x31, from `settingsBlock+0x31` (`0xD5C8A0` at `0xD41DA0`).
       `0x4313`'s `unknown_49` — the other half of the key-86 pair described just above.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
   - id: weapon_restrictions
     size: 16
     doc: |
@@ -183,6 +185,13 @@ seq:
       (property-store key 94). Independently anchored twice already: `0x4310` writes it from
       `src+846` and `0x43C0` from `settings+0x34E`, and `846 = 752 + 0x5E` under the
       `block+X = struct+752+X` bijection.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
   - id: level_limit_tolerance
     type: u1
     doc: |
@@ -231,6 +240,8 @@ seq:
       [ELF] wire 0xAF = block 0xB0, from `settingsBlock+0xB0`. **`0x4313`'s `common_flags_msb`** —
       the high byte of the Common Settings flag word `0x8CA2BC`-`0x8CA900` expands into the
       per-toggle property-store keys.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
   - id: common_a_b
     size: 2
     doc: |
@@ -267,6 +278,7 @@ seq:
       [ELF] wire 0xBD-0xCA = block 0xBE-0xCB. Raw 14-byte copy from `settingsBlock+0xBE`
       (`0xD5D0AC`, `r5=14`, at `0xD420F8`) — the last write before the seal, so the frame ends at
       0xCB = 203 bytes. **`0x4313`'s `unread_tail`**, which closes the 204-byte block at 0xCC.
+        **MOOT: this packet is never sent.** The builder `0xD41C90` has zero `bl`/`b`/`bc` entries over the full executable range, a scan validated by finding callers for `0x4390`'s and `0x43b0`'s builders. So no value ever reaches the wire here and there is nothing to name from traffic. The byte's twin in the shared 204-byte block -- same offset via `wire = block` below `0x43`, `wire = block - 1` above -- is analysed in `../outbound/mgo2_cmd_4313_s2c.ksy`; note that its negative there is a READER negative and does not transfer to a c2s field on its own. Recorded 2026-08-01.
 types:
   slot_triple:
     doc: |
