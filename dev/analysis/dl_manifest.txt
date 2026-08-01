@@ -1,0 +1,803 @@
+MGO2 download manifest (DLT2)
+==============================================================================
+source        : /mnt/d/rpcs3-v0.0.41-19598-357b7d44_win64_msvc/dev_hdd0/game/BLUS30109/USRDIR/o/dl/.p
+file size     : 29647 bytes (0x73cf)
+
+Byte order is BIG-endian throughout. The `14 00 00 00` run that looks like a
+little-endian 20 is not a length prefix at all: it straddles two big-endian fields,
+the low half of the version word and the high half of the size word. See
+dev/analysis/dl_manifest_format.md.
+
+The digests are HMAC-MD5 (16 bytes, not 20) under the key
+  9357a9dfb8eb8d03b843cd025f2a30ce   (MGO2.elf VA 0xE26D78)
+An entry's digest covers the file's PLAINTEXT bytes -- the decrypted form, whose length
+is the size field. The header's digest covers the manifest from 0x14 to EOF.
+
+HEADER
+------------------------------------------------------------------------------
+  0x0000  4   magic          'DLT2'
+  0x0004  16  digest         8e9cb6ab163a0719b1716579830f6ca9
+                             HMAC-MD5 over [0x14 .. EOF]: VERIFIED
+  0x0014  4   version        0x01240000  -> 1.36
+  0x0018  4   timestamp      0x4805e58c  -> 2008-04-16 11:39:56 UTC (if unix time)
+  0x001c  1   string[0]      ''
+  0x001d  3   string[1]      '.p'
+  0x0020  2   string[2]      'p'
+  0x0022  1   string[3]      ''
+  0x0023  6   string[4]      'patch'
+  0x0029      first entry record
+
+SUMMARY
+------------------------------------------------------------------------------
+  entries          : 691
+  directories      : 31
+  files            : 660
+  total file bytes : 2144989476 (2045.6 MiB)
+  version words seen (file count):
+      0x01010000    1.01      2
+      0x010a0000    1.10     93
+      0x010b0000    1.11      4
+      0x010c0000    1.12      2
+      0x01140000    1.20    134
+      0x01150000    1.21     15
+      0x011e0000    1.30    307
+      0x011f0000    1.31      7
+      0x01200000    1.32     36
+      0x01220000    1.34     11
+      0x01240000    1.36     49
+  flag bytes seen (entry count):
+      0x00   659   file
+      0x01    31   directory
+      0x06     1   file
+
+FOLDER STRUCTURE
+------------------------------------------------------------------------------
+  (directories only; parent index in brackets)
+  bgm/   [1]  152 files
+  sdpack/   [157]  22 files
+  sdpack_e/   [180]  22 files
+  shader/   [203]  1 files
+  slotdat/   [205]  17 files
+  speech/   [223]  8 files
+  speech_e/   [232]  8 files
+  stage/   [241]  0 files, 23 dirs
+      init_n/   [242]  23 files
+      lobby/   [266]  22 files
+      n001a/   [289]  15 files
+      n002a/   [305]  19 files
+      n003a/   [325]  21 files
+      n004a/   [347]  23 files
+      n005a/   [371]  21 files
+      n006a/   [393]  11 files
+      n007a/   [405]  19 files
+      n008a/   [425]  22 files
+      n009a/   [448]  11 files
+      n010a/   [460]  15 files
+      n012a/   [476]  21 files
+      n013a/   [498]  19 files
+      n014a/   [518]  23 files
+      n015a/   [542]  11 files
+      n018a/   [554]  9 files
+      nt_mgsetup/   [564]  18 files
+      nttitle/   [583]  20 files
+      ota_chat/   [604]  20 files
+      r_onlinelobby/   [625]  19 files
+      r_sna01_n/   [645]  21 files
+      r_sneak_n/   [667]  21 files
+
+ENTRIES
+------------------------------------------------------------------------------
+  off      idx  par   flg  version     size        digest
+  0x00029    0  65535  0x06  0x01240000  19615992    70f524ddfad388a2283139a64c43301d  MGO2.SELF
+  0x0004e    1  65535  0x01  <dir>                                                     bgm/
+  0x00055    2      1  0x00  0x01140000  2725888     7cc09245295fc9b086b454672d9b5b81  bgm/bgm_mgo_10mga1_alart.bgm
+  0x00089    3      1  0x00  0x01140000  4335616     aa43a401891b69a5cdb0a451c08c3f16  bgm/bgm_mgo_10mga1_normal.bgm
+  0x000be    4      1  0x00  0x01140000  2379776     1d12c75cb595f165a2ab8546a8b03792  bgm/bgm_mgo_11mga2_alart.bgm
+  0x000f2    5      1  0x00  0x01140000  4388864     6898f988d23941477e5f7609d7975f61  bgm/bgm_mgo_11mga2_normal.bgm
+  0x00127    6      1  0x00  0x01140000  3721216     3bcd868c58d8c42aa315afcd5772050c  bgm/bgm_mgo_12mgs1_boss.bgm
+  0x0015a    7      1  0x00  0x01140000  3483648     dee7504bfb8041ad2078471487c65b15  bgm/bgm_mgo_13mgs2_boss.bgm
+  0x0018d    8      1  0x00  0x01140000  9730048     3ad96f69645eab6e63cc27baf30e98bc  bgm/bgm_mgo_14mgs3_theboss.bgm
+  0x001c3    9      1  0x00  0x01140000  6324224     f69b833b93eaf0c387075545b79e8494  bgm/bgm_mgo_15zoe1_factory.bgm
+  0x001f9   10      1  0x00  0x01140000  9021440     182bf11949d148e310f0771a19edb3ff  bgm/bgm_mgo_16zoe2_bahrambattleship.bgm
+  0x00238   11      1  0x00  0x011e0000  6258688     0e166c2416cd9ea5617befeb7e0ff9cd  bgm/bgm_mgo_21bkds_alart_bossduma.bgm
+  0x00275   12      1  0x00  0x011e0000  5574656     d0547c930e4a6ac13929d9df11d1d9f7  bgm/bgm_mgo_21bkds_normal_st04.bgm
+  0x002af   13      1  0x00  0x011e0000  5511168     139ee490f4bdad2925f2eccc36538aa7  bgm/bgm_mgo_21bkds_org_shooting.bgm
+  0x002ea   14      1  0x00  0x011e0000  4282368     b49a76ff4acf0d89896d8934f6894a51  bgm/bgm_mgo_22bkgba_alart_md_boss.bgm
+  0x00327   15      1  0x00  0x011e0000  4806656     98a5c0d1fd95378b41432b594a39c652  bgm/bgm_mgo_22bkgba_normal_st01.bgm
+  0x00362   16      1  0x00  0x011e0000  5093376     31551a74e1c0b207e5de9c9dd2da1937  bgm/bgm_mgo_22bkgba_org_st05boss2.bgm
+  0x0039f   17      1  0x00  0x011e0000  1970176     8ab8e607a9ecdd52a66fa8e30b0f130f  bgm/bgm_mgo_23mggb_alart.bgm
+  0x003d3   18      1  0x00  0x011e0000  4372480     67be7c846c1207ecf04c749100071730  bgm/bgm_mgo_23mggb_normal.bgm
+  0x00408   19      1  0x00  0x011e0000  3094528     65b15f8eaa5622b25a31f64e2fb57514  bgm/bgm_mgo_23mggb_org_boss.bgm
+  0x0043f   20      1  0x00  0x011e0000  3000320     c77ef1602dcc5bec6e691d410b74a655  bgm/bgm_mgo_24pn_alart_shootforan.bgm
+  0x0047c   21      1  0x00  0x011e0000  2951168     cf76f14c1975043d02c5719db63f706d  bgm/bgm_mgo_24pn_normal_the_zone.bgm
+  0x004b8   22      1  0x00  0x011e0000  3604480     49bae782857a6e1fe9e34a2c13883340  bgm/bgm_mgo_24pn_org_domesticmoon.bgm
+  0x004f5   23      1  0x00  0x011e0000  1656832     dd92fc331e729c39d1c6d2cee1d39279  bgm/bgm_mgo_25sn_alart_justiceall.bgm
+  0x00532   24      1  0x00  0x011e0000  1566720     2d5479a7efa53d7e0b665ca8ab88035b  bgm/bgm_mgo_25sn_normal_dangerdnc.bgm
+  0x0056f   25      1  0x00  0x011e0000  3663872     8023f229fd82f73211914a740db1788f  bgm/bgm_mgo_25sn_org_etarnalprmse.bgm
+  0x005ac   26      1  0x00  0x011e0000  9832448     b8679b19a51c3ee6da4757dda34da883  bgm/bgm_mgo_26mpo_callintothenigh.bgm
+  0x005e9   27      1  0x00  0x011e0000  7448576     e50857a6af8aca10650bf181e66e1d0f  bgm/bgm_mgo_27mgs2_alart_arsenal.bgm
+  0x00625   28      1  0x00  0x011e0000  8112128     498ca3c5db73aa971e92c0ddcd933f28  bgm/bgm_mgo_27mgs2_normal_arsenal.bgm
+  0x00662   29      1  0x00  0x011e0000  9936896     f91b3d5bcd3620331a94805e77cd2e81  bgm/bgm_mgo_28mgs2s_alart_vr.bgm
+  0x0069a   30      1  0x00  0x011e0000  5044224     5d3f8f954d6fd7b9d615441a1c10ee7b  bgm/bgm_mgo_28mgs2s_normal_vr.bgm
+  0x006d3   31      1  0x00  0x011e0000  4384768     a1d789555a1266ed9ed499efb3a3974b  bgm/bgm_mgo_28mgs2s_org_sneakmiss.bgm
+  0x00710   32      1  0x00  0x011e0000  13246464    5b40d2f383b2be11eac0de0eb188563b  bgm/bgm_mgo_29mgs3_alart_esc.bgm
+  0x00748   33      1  0x00  0x011e0000  6504448     9b0bb3bc3c7cbe3e80eb62bd30b21259  bgm/bgm_mgo_29mgs3_caution_esc.bgm
+  0x00782   34      1  0x00  0x01220000  1943552     e30838eebd3b25a4a9e9602875c3ee2c  bgm/bgm_mgo_31mg1_escape.bgm
+  0x007b6   35      1  0x00  0x01220000  5951488     05f17a7cb253a25045c4878ae5e69a3b  bgm/bgm_mgo_32mg2_opening2.bgm
+  0x007ec   36      1  0x00  0x01220000  9451520     6802c8d901348c63a9f6eb8c5b29de10  bgm/bgm_mgo_33mgs1_blast_furnace.bgm
+  0x00828   37      1  0x00  0x01220000  3198976     e3829df4007d2bee1497ac4ed1148753  bgm/bgm_mgo_34mgs2_bomb.bgm
+  0x0085b   38      1  0x00  0x01220000  6504448     a1be549764063b67bd67cee61024ad4d  bgm/bgm_mgo_35mgs3_boss_chago.bgm
+  0x00894   39      1  0x00  0x01220000  6113280     955cb62555f3161eb1d73bdc133aa796  bgm/bgm_mgo_36mpo_showtime.bgm
+  0x008ca   40      1  0x00  0x01220000  4530176     dac66f0c0f62aa98f9d5f90ae0d6519e  bgm/bgm_mgo_37mga1_niko2.bgm
+  0x008fe   41      1  0x00  0x01220000  6924288     12a75bdb8226420cf377eb9c7d97a9d8  bgm/bgm_mgo_38mga2_duality.bgm
+  0x00934   42      1  0x00  0x01220000  3420160     d46b780ee072f6ce640d0bf304dc83ba  bgm/bgm_mgo_39zoe1_global.bgm
+  0x00969   43      1  0x00  0x01220000  7288832     bdc2f0cfa653f04d5a6363249cf68134  bgm/bgm_mgo_40zoe2_zakat.bgm
+  0x0099d   44      1  0x00  0x01220000  7174144     fce8e9eb636c70f42df3add5fb804183  bgm/bgm_mgo_41pw_e3theme.bgm
+  0x009d1   45      1  0x00  0x01240000  5703680     f8eb09be886919e1b6b23fefc69ab4ed  bgm/bgm_mgo_48mga_b03.bgm
+  0x00a02   46      1  0x00  0x01240000  5492736     4d8e6e6fdc62d6ff61d0be9491655cbf  bgm/bgm_mgo_49mga_alart_b01.bgm
+  0x00a39   47      1  0x00  0x01240000  5572608     92f674278ad4dc8faf0cad56d9d23f00  bgm/bgm_mgo_49mga_caution_T01.bgm
+  0x00a72   48      1  0x00  0x01240000  6346752     0d1de293bf3212acf632e0cd7b8f575b  bgm/bgm_mgo_49mga_normal_b02.bgm
+  0x00aaa   49      1  0x00  0x01240000  3825664     9c0575fd712f0d0e3916b0091a6426ee  bgm/bgm_mgo_50pw_alart_a01.bgm
+  0x00ae0   50      1  0x00  0x01240000  3485696     802e408d7d3b2400e29a73f54034aed1  bgm/bgm_mgo_50pw_caution_c01.bgm
+  0x00b18   51      1  0x00  0x01240000  5629952     6115f7af43d9b11e8775950684f741e3  bgm/bgm_mgo_51pw_alart_a05.bgm
+  0x00b4e   52      1  0x00  0x01240000  2265088     dedd915edbc344631a2c0050f676a950  bgm/bgm_mgo_51pw_caution_c07.bgm
+  0x00b86   53      1  0x00  0x01240000  5001216     be8de756926e48759e16c879eb1222b1  bgm/bgm_mgo_51pw_normal_s02.bgm
+  0x00bbd   54      1  0x00  0x01240000  3739648     793e9d762763e54e2b1cc0be96e18de6  bgm/bgm_mgo_52pw_action06.bgm
+  0x00bf2   55      1  0x00  0x01240000  4624384     c8ecb31b131f6f9820fb3496b9b83660  bgm/bgm_mgo_53pw_boss_aihov01.bgm
+  0x00c2b   56      1  0x00  0x01240000  5890048     f09dfa014fc7b726cd240bf36b7b592a  bgm/bgm_mgo_54pw_metal2.bgm
+  0x00c5e   57      1  0x00  0x01240000  18100224    2a6a0d9dfd0768a7225673f30a8c2b03  bgm/bgm_mgo_55pw_heavendivide.bgm
+  0x00c97   58      1  0x00  0x01240000  17092608    6720e49e3b7244399ea0e0bd85932dcc  bgm/bgm_mgo_56pw_yokushiryoku.bgm
+  0x00cd0   59      1  0x00  0x01240000  3962880     e7d5d597f4b8976d923b06595b529e55  bgm/bgm_mgo_57pw_boss_amc01.bgm
+  0x00d07   60      1  0x00  0x01240000  4997120     61b1b864c79f6b4d631ef8d0d75133d3  bgm/bgm_mgo_58pw_boss_tank01.bgm
+  0x00d3f   61      1  0x00  0x01240000  6283264     4ef58b1585f05bebb034832446142803  bgm/bgm_mgo_59pw_boss_hind01.bgm
+  0x00d77   62      1  0x00  0x01240000  6019072     642f454bbe67d93f7899e24d43fb07f8  bgm/bgm_mgo_60pw_boss_aiheli01.bgm
+  0x00db1   63      1  0x00  0x01240000  5009408     bae78cc783caa2e3ec16cbea4bdfad16  bgm/bgm_mgo_61pw_boss_aitank01.bgm
+  0x00deb   64      1  0x00  0x01240000  8103936     7a1325ce2e2234a8bb93d3a82b38b384  bgm/bgm_mgo_62pw_boss_metal1.bgm
+  0x00e23   65      1  0x00  0x01240000  3448832     826b952b1ff69d1d448c38398704b996  bgm/bgm_mgo_63pw_boss_grex.bgm
+  0x00e59   66      1  0x00  0x01240000  7071744     2983f79c7939d78bbf2bf7ae5269af58  bgm/bgm_mgo_64pw_boss_zeke.bgm
+  0x00e8f   67      1  0x00  0x01240000  14786560    4525fd7cb860d064df29fead0bc73f43  bgm/bgm_mgo_65mgr_e3theme.bgm
+  0x00ec4   68      1  0x00  0x01140000  4608000     36a296455fb860f5faa26ea603009f5e  bgm/env_n001a_01.bgm
+  0x00ef0   69      1  0x00  0x01140000  3393536     fc01c4569c25a81987e862d0592f997b  bgm/env_n001a_02.bgm
+  0x00f1c   70      1  0x00  0x01140000  3543040     a27484562b512c39f6795c991f0c6f55  bgm/env_n001a_03.bgm
+  0x00f48   71      1  0x00  0x01140000  3379200     1cdea0d847dd0525cc96fb64ccd6c004  bgm/env_n001a_04.bgm
+  0x00f74   72      1  0x00  0x01140000  3571712     91196aef58b3a13b17abc83060313276  bgm/env_n001a_05.bgm
+  0x00fa0   73      1  0x00  0x01140000  2285568     d70fe57c6de987d987cf96f606115b4b  bgm/env_n001a_06.bgm
+  0x00fcc   74      1  0x00  0x01140000  2220032     54bb87ec9090075276b45e4decaf7db9  bgm/env_n001a_08.bgm
+  0x00ff8   75      1  0x00  0x01140000  2215936     4e20ee1c6882b8a596ab01c072df6934  bgm/env_n001a_09.bgm
+  0x01024   76      1  0x00  0x01140000  2228224     3634886d07f468970e69dca71c9cb4e6  bgm/env_n001a_10.bgm
+  0x01050   77      1  0x00  0x01140000  2244608     954765834b280dacab02880241eef239  bgm/env_n001a_11.bgm
+  0x0107c   78      1  0x00  0x01140000  2242560     4cad5f09e16772b593da0c4be3c7d586  bgm/env_n001a_12.bgm
+  0x010a8   79      1  0x00  0x01140000  3457024     4ae63331989b1c7f48a9c89db7aece8e  bgm/env_n001a_13.bgm
+  0x010d4   80      1  0x00  0x010a0000  3194880     2a0bdcb7d4eec6cf1043aea4540c5940  bgm/env_n005a_01.bgm
+  0x01100   81      1  0x00  0x010a0000  3409920     be7a064ce699d162ee3de471df462df1  bgm/env_n005a_02.bgm
+  0x0112c   82      1  0x00  0x010a0000  1843200     8b869342b0db7266ba382974c183c763  bgm/env_n005a_03.bgm
+  0x01158   83      1  0x00  0x010a0000  3002368     2ff1ade4994f5e7b5d2c6b0ec7e9f327  bgm/env_n005a_04.bgm
+  0x01184   84      1  0x00  0x010a0000  2129920     e0c915b524d49163376dda9c3be1d8b3  bgm/env_n005a_05.bgm
+  0x011b0   85      1  0x00  0x011e0000  4343808     b7fc5e8a8234423492895f8d2079014f  bgm/env_n006a_01.bgm
+  0x011dc   86      1  0x00  0x011e0000  3428352     bc7f0ad571618f62d5576d53049fd5ff  bgm/env_n006a_02.bgm
+  0x01208   87      1  0x00  0x011e0000  3340288     a2c739991e504833f3866d75e3d1ed2b  bgm/env_n006a_03.bgm
+  0x01234   88      1  0x00  0x011e0000  3252224     ac1d8fbe8abd587b37e8a79783184d5a  bgm/env_n006a_04.bgm
+  0x01260   89      1  0x00  0x011e0000  3364864     f72e209ac0a0f6c90597592165f0524f  bgm/env_n006a_05.bgm
+  0x0128c   90      1  0x00  0x011e0000  3381248     05272beccbc98cae5d9b1f89f6b9f887  bgm/env_n006a_06.bgm
+  0x012b8   91      1  0x00  0x011e0000  2293760     9ceb9d93e44ccd5d2a995fdde7655b2e  bgm/env_n006a_07.bgm
+  0x012e4   92      1  0x00  0x011e0000  2234368     17295be2bf0dda4332a708f55975e55d  bgm/env_n006a_08.bgm
+  0x01310   93      1  0x00  0x011e0000  2273280     dc54e268c968b165543a7b3a0824ad92  bgm/env_n006a_09.bgm
+  0x0133c   94      1  0x00  0x011e0000  2199552     928e95b6b52b33a7c62aebb3d1b084fa  bgm/env_n006a_10.bgm
+  0x01368   95      1  0x00  0x011e0000  2258944     1b4781f9fbb5e3f4adc50ed2baf71cad  bgm/env_n006a_11.bgm
+  0x01394   96      1  0x00  0x011e0000  2199552     7abf7b7bc133dddc94445234feafe0b4  bgm/env_n006a_12.bgm
+  0x013c0   97      1  0x00  0x011e0000  2916352     56b8e902655a908c308a074f1f0f2f8e  bgm/env_n006a_13.bgm
+  0x013ec   98      1  0x00  0x010a0000  3895296     0892d6c7521db1d97d4986279fc8187b  bgm/env_n008a_01.bgm
+  0x01418   99      1  0x00  0x010a0000  3989504     5711e2d716ad4755cc9eb4ddb84453ee  bgm/env_n008a_02.bgm
+  0x01444  100      1  0x00  0x010a0000  3428352     4719fc048225b84096f9dc33de6a8ae2  bgm/env_n008a_03.bgm
+  0x01470  101      1  0x00  0x010a0000  2940928     67e33ba936080df4b596f2d99921aeee  bgm/env_n008a_04.bgm
+  0x0149c  102      1  0x00  0x010a0000  1941504     ac02ac7baf2597b58e9905c0c48f868c  bgm/env_n008a_05.bgm
+  0x014c8  103      1  0x00  0x010a0000  2797568     3d7e9fc010e17bfe99874e38454966f2  bgm/env_n008a_06.bgm
+  0x014f4  104      1  0x00  0x010a0000  2904064     734a0ab40e94df7194c271c947848faf  bgm/env_n008a_07.bgm
+  0x01520  105      1  0x00  0x010a0000  3278848     5525f8cdda85b8897cab282bf85c683a  bgm/env_n008a_08.bgm
+  0x0154c  106      1  0x00  0x011e0000  3424256     80be7d4c6cc6a48945cd826f34dac013  bgm/env_n009a_01.bgm
+  0x01578  107      1  0x00  0x011e0000  2379776     bb8f7798135391bba7659a0c6aace175  bgm/env_n009a_02.bgm
+  0x015a4  108      1  0x00  0x011e0000  3409920     03f6f496a0fe20649dbf7e450d798a23  bgm/env_n009a_03.bgm
+  0x015d0  109      1  0x00  0x011e0000  2791424     91e9b0425ee863a91fdc381871fe68b1  bgm/env_n009a_04.bgm
+  0x015fc  110      1  0x00  0x011e0000  3409920     35ff39e4ae5b475ea8fcaf5907469c0e  bgm/env_n009a_05.bgm
+  0x01628  111      1  0x00  0x011e0000  2281472     4e4ce9887e8a722f9ecde98b42981071  bgm/env_n009a_06.bgm
+  0x01654  112      1  0x00  0x011e0000  2215936     704574ac55ed64553e691d461d250bea  bgm/env_n009a_07.bgm
+  0x01680  113      1  0x00  0x011e0000  3381248     a85f48f9390482aec45e2154fc5f1339  bgm/env_n009a_08.bgm
+  0x016ac  114      1  0x00  0x011e0000  2166784     1ec3bd8b17d134b1b2823b162f047a3c  bgm/env_n009a_09.bgm
+  0x016d8  115      1  0x00  0x011e0000  2269184     945aab0ca653f3036869271f8054ce89  bgm/env_n009a_10.bgm
+  0x01704  116      1  0x00  0x011e0000  2183168     e84c4d25d733ff56f683958cb7ffe9d5  bgm/env_n009a_11.bgm
+  0x01730  117      1  0x00  0x011e0000  2187264     23ab8b3da4e0588646933fe757930516  bgm/env_n009a_12.bgm
+  0x0175c  118      1  0x00  0x011e0000  1804288     a16bc08f3c718e154c350c0a50577724  bgm/env_n009a_13.bgm
+  0x01788  119      1  0x00  0x011e0000  2197504     d29161fc68a541feff3b47844bad8b63  bgm/env_n009a_14.bgm
+  0x017b4  120      1  0x00  0x01140000  4567040     279d7111633ab3f24bd1a59c21670720  bgm/env_n010a_01.bgm
+  0x017e0  121      1  0x00  0x01140000  2775040     23d12f55509ea4ce0330917ce1b598f1  bgm/env_n010a_02.bgm
+  0x0180c  122      1  0x00  0x01140000  2242560     df351a17abaec7b8b063ce3eaee39162  bgm/env_n010a_03.bgm
+  0x01838  123      1  0x00  0x01140000  2301952     760864a44afd41b0441a8e4465b50dee  bgm/env_n010a_04.bgm
+  0x01864  124      1  0x00  0x01140000  2586624     766ff95a736dec6f47dc545552b39ae0  bgm/env_n010a_05.bgm
+  0x01890  125      1  0x00  0x01140000  2224128     0e8e7f87f38dab003cf43462996191d4  bgm/env_n010a_06.bgm
+  0x018bc  126      1  0x00  0x01140000  2426880     a8d08dba47baaf2ed11cc1c14ae747b9  bgm/env_n010a_07.bgm
+  0x018e8  127      1  0x00  0x01140000  3426304     704dc58b1e5982229ebb2d7cc650be79  bgm/env_n013a_01.bgm
+  0x01914  128      1  0x00  0x01140000  3201024     c306591d9ddcd23dd88da7ef8dc648c5  bgm/env_n013a_02.bgm
+  0x01940  129      1  0x00  0x01140000  2416640     8be5ade69098975944fe0280e5c8f948  bgm/env_n013a_03.bgm
+  0x0196c  130      1  0x00  0x01140000  3276800     382fcde0c93628f8019471144e11888c  bgm/env_n013a_04.bgm
+  0x01998  131      1  0x00  0x01140000  2920448     3fe8270c3e25dfd9b0767fd52b9e6ce9  bgm/env_n013a_05.bgm
+  0x019c4  132      1  0x00  0x01140000  2256896     e5f81b73a20c8220c4a37231b1f20715  bgm/env_n013a_06.bgm
+  0x019f0  133      1  0x00  0x010a0000  3383296     1ae2adcede76c65989cb5d5890d5a9d2  bgm/env_n014a_04.bgm
+  0x01a1c  134      1  0x00  0x011e0000  3475456     b0b12f403f7919da2d279c1109e6b5da  bgm/env_n015a_01.bgm
+  0x01a48  135      1  0x00  0x011e0000  3424256     adbc48489fccdff589335365ee6da95f  bgm/env_n015a_02.bgm
+  0x01a74  136      1  0x00  0x011e0000  3497984     b28064d0eb3292eb222cd683dd0e6346  bgm/env_n015a_03.bgm
+  0x01aa0  137      1  0x00  0x011e0000  2215936     9693ea17ec9b33f9792d7feb5a893e80  bgm/env_n015a_04.bgm
+  0x01acc  138      1  0x00  0x011e0000  3375104     192f219e9ef26bdff65d9dce79056319  bgm/env_n015a_05.bgm
+  0x01af8  139      1  0x00  0x011e0000  3403776     06c289ee733a6f7a648999cec3c58c36  bgm/env_n015a_06.bgm
+  0x01b24  140      1  0x00  0x011e0000  2273280     5fe0f1595e58f0ec29676c6fe57e408c  bgm/env_n015a_07.bgm
+  0x01b50  141      1  0x00  0x011e0000  2244608     0136afb9fab285119105237fe3881735  bgm/env_n015a_08.bgm
+  0x01b7c  142      1  0x00  0x011e0000  3268608     5b07672fe062196d735beed27474744a  bgm/env_n015a_09.bgm
+  0x01ba8  143      1  0x00  0x011e0000  2275328     d56d552fe795e204121d6e19e1595db7  bgm/env_n015a_10.bgm
+  0x01bd4  144      1  0x00  0x011e0000  2181120     7dc858d7b0e78d564f057f7d5ac1892e  bgm/env_n015a_11.bgm
+  0x01c00  145      1  0x00  0x011e0000  2250752     804a5505d7c432474421a98abf7b644b  bgm/env_n015a_12.bgm
+  0x01c2c  146      1  0x00  0x010a0000  6574080     6cb924004c72f09fdf19416d79f6ba7e  bgm/env_s02a20l_01.bgm
+  0x01c5a  147      1  0x00  0x010a0000  7643136     e083c93c162668904facf611849db43a  bgm/env_s02a20l_02.bgm
+  0x01c88  148      1  0x00  0x010a0000  4001792     b0251624445ce1b756737aefae476f55  bgm/env_s02a20l_03.bgm
+  0x01cb6  149      1  0x00  0x011e0000  2416640     4582d1271c4b856800828e7ea5e5073a  bgm/env_s04a30l_01.bgm
+  0x01ce4  150      1  0x00  0x011e0000  2535424     871677d11c8b08e7bfc47753cfaab880  bgm/env_s04a30l_02.bgm
+  0x01d12  151      1  0x00  0x011e0000  2465792     5be704b6cbb16856b4fee378e0806e72  bgm/env_s04a30l_03.bgm
+  0x01d40  152      1  0x00  0x011e0000  2555904     359b038966a822cc9b4ae208f03592f6  bgm/env_s04a30l_04.bgm
+  0x01d6e  153      1  0x00  0x011e0000  2496512     20b656daacc7a7e3538fce13aa409ec8  bgm/env_s04a30l_05.bgm
+  0x01d9c  154  65535  0x00  0x01240000  64          3f86f0d589a605fcf9ade290efd8f8e2  kit
+  0x01dbb  155  65535  0x00  0x011e0000  272560      49194b40118bbd33c1b91eb5192032ee  lippatch.dat
+  0x01de3  156  65535  0x00  0x011e0000  286864      dda1514fb08ca64738d1933fb05135f5  lippatch_e.dat
+  0x01e0d  157  65535  0x01  <dir>                                                     sdpack/
+  0x01e17  158    157  0x00  0x01140000  5842944     49db1da0d75140df13ae7585145450bd  sdpack/n001a_1.ssp
+  0x01e3e  159    157  0x00  0x011e0000  5881856     c410e82d7657169206b4fd608afa284e  sdpack/n001a_1_ex3.ssp
+  0x01e69  160    157  0x00  0x011e0000  5859328     5967f8e5697120e5afc0e7ed81e1709e  sdpack/n004a_1_ex3.ssp
+  0x01e94  161    157  0x00  0x011e0000  6023168     6f6bd64dbcfc86308439e7d28d1cf059  sdpack/n006a_1.ssp
+  0x01ebb  162    157  0x00  0x010a0000  7360512     ea6dcc1e394747dd81509fefdac3321e  sdpack/n008a_1.ssp
+  0x01ee2  163    157  0x00  0x011e0000  7399424     1fd504c5c697db497ff497eec72a4ea1  sdpack/n008a_1_ex3.ssp
+  0x01f0d  164    157  0x00  0x011e0000  7079936     22652ced9ae66b7a88aa732acb582a69  sdpack/n009a_1.ssp
+  0x01f34  165    157  0x00  0x01140000  6125568     a6cd2fc8fcdb1694bd4f15ae3c15f65f  sdpack/n013a_1.ssp
+  0x01f5b  166    157  0x00  0x011e0000  6164480     84917a9bff96492ee67b71d233046bfe  sdpack/n013a_1_ex3.ssp
+  0x01f86  167    157  0x00  0x010a0000  5910528     5ab37db6f96846774522cd9dbfcf80a7  sdpack/n014a_1.ssp
+  0x01fad  168    157  0x00  0x011e0000  5949440     bd66ee2ae9e2fd9184f71a687fd9d548  sdpack/n014a_1_ex3.ssp
+  0x01fd8  169    157  0x00  0x011e0000  6615040     cac62a95d2927cba9d8067220d96b76d  sdpack/n018a_1.ssp
+  0x01fff  170    157  0x00  0x010a0000  3848192     f9828c9ac2a4578a56af0af76fc12720  sdpack/nt_lobby_ex1.ssp
+  0x0202b  171    157  0x00  0x010a0000  219136      dfd81f156a936795e145ceda18cce868  sdpack/on_slot_ex1_jny.ssp
+  0x0205a  172    157  0x00  0x01140000  186368      a6d8e995f46967eb09237e897e74cdd1  sdpack/on_slot_ex1_mei.ssp
+  0x02089  173    157  0x00  0x010a0000  186368      076d732e74d1404e2eb75f1bb8c065c5  sdpack/on_slot_ex1_mrl.ssp
+  0x020b8  174    157  0x00  0x011e0000  217088      20412f4502213ff66d1057be4e0b2477  sdpack/on_slot_ex_vmp.ssp
+  0x020e6  175    157  0x00  0x011e0000  5859328     4e8f44290c878a43ee44b221844c0905  sdpack/onlinetest_ex3.ssp
+  0x02114  176    157  0x00  0x011e0000  7139328     4e0ab461c9a4e46c9c72d80f45061df8  sdpack/wpn903_mgo_common.ssp
+  0x02145  177    157  0x00  0x010a0000  337920      2fef7e90bbbc1a801bee0727c2025a73  sdpack/wpn905_mgo_common.ssp
+  0x02176  178    157  0x00  0x010a0000  7141376     a67c1f0bfa643574cfbd4df553756324  sdpack/wpn910_mgo_common.ssp
+  0x021a7  179    157  0x00  0x011e0000  7217152     05d680bea1faff3f98c08c85c8280e31  sdpack/wpn913_mgo_common.ssp
+  0x021d8  180  65535  0x01  <dir>                                                     sdpack_e/
+  0x021e4  181    180  0x00  0x01140000  5842944     49db1da0d75140df13ae7585145450bd  sdpack_e/n001a_1.ssp
+  0x0220b  182    180  0x00  0x011e0000  5881856     c410e82d7657169206b4fd608afa284e  sdpack_e/n001a_1_ex3.ssp
+  0x02236  183    180  0x00  0x011e0000  5859328     5967f8e5697120e5afc0e7ed81e1709e  sdpack_e/n004a_1_ex3.ssp
+  0x02261  184    180  0x00  0x011e0000  6023168     6f6bd64dbcfc86308439e7d28d1cf059  sdpack_e/n006a_1.ssp
+  0x02288  185    180  0x00  0x010a0000  7360512     ea6dcc1e394747dd81509fefdac3321e  sdpack_e/n008a_1.ssp
+  0x022af  186    180  0x00  0x011e0000  7399424     1fd504c5c697db497ff497eec72a4ea1  sdpack_e/n008a_1_ex3.ssp
+  0x022da  187    180  0x00  0x011e0000  7079936     22652ced9ae66b7a88aa732acb582a69  sdpack_e/n009a_1.ssp
+  0x02301  188    180  0x00  0x01140000  6125568     a6cd2fc8fcdb1694bd4f15ae3c15f65f  sdpack_e/n013a_1.ssp
+  0x02328  189    180  0x00  0x011e0000  6164480     84917a9bff96492ee67b71d233046bfe  sdpack_e/n013a_1_ex3.ssp
+  0x02353  190    180  0x00  0x010a0000  5910528     5ab37db6f96846774522cd9dbfcf80a7  sdpack_e/n014a_1.ssp
+  0x0237a  191    180  0x00  0x011e0000  5949440     bd66ee2ae9e2fd9184f71a687fd9d548  sdpack_e/n014a_1_ex3.ssp
+  0x023a5  192    180  0x00  0x011e0000  6615040     cac62a95d2927cba9d8067220d96b76d  sdpack_e/n018a_1.ssp
+  0x023cc  193    180  0x00  0x010a0000  3848192     f9828c9ac2a4578a56af0af76fc12720  sdpack_e/nt_lobby_ex1.ssp
+  0x023f8  194    180  0x00  0x010a0000  243712      a0a8917c92ade66dc6c5e3a165fe8d44  sdpack_e/on_slot_ex1_jny.ssp
+  0x02427  195    180  0x00  0x01140000  225280      f512df8d1574eb3e175d629fdd31d384  sdpack_e/on_slot_ex1_mei.ssp
+  0x02456  196    180  0x00  0x010a0000  231424      fbd77a788375058a280a04573e773a0a  sdpack_e/on_slot_ex1_mrl.ssp
+  0x02485  197    180  0x00  0x011e0000  290816      bb17d7c58e6ff2f59e53c29532614faf  sdpack_e/on_slot_ex_vmp.ssp
+  0x024b3  198    180  0x00  0x011e0000  5859328     4e8f44290c878a43ee44b221844c0905  sdpack_e/onlinetest_ex3.ssp
+  0x024e1  199    180  0x00  0x011e0000  7223296     f0aca2ccc7e86fa11dd35757a6ee027d  sdpack_e/wpn903_mgo_common.ssp
+  0x02512  200    180  0x00  0x010a0000  337920      2fef7e90bbbc1a801bee0727c2025a73  sdpack_e/wpn905_mgo_common.ssp
+  0x02543  201    180  0x00  0x010a0000  7141376     a67c1f0bfa643574cfbd4df553756324  sdpack_e/wpn910_mgo_common.ssp
+  0x02574  202    180  0x00  0x011e0000  7299072     31d4d53ae5dff3913ac84a2a0c327a72  sdpack_e/wpn913_mgo_common.ssp
+  0x025a5  203  65535  0x01  <dir>                                                     shader/
+  0x025af  204    203  0x00  0x011e0000  2129760     4d3190f6f6d2f34a985f62a19841db7f  shader/shader.vfp
+  0x025d5  205  65535  0x01  <dir>                                                     slotdat/
+  0x025e0  206    205  0x00  0x011e0000  32491520    9922803bb2e63df3126379c18ee97810  slotdat/slot_oct_list_online.slot
+  0x02615  207    205  0x00  0x011e0000  15304704    f884b9be0b2ec276dbe72ae042ee316d  slotdat/slot_online_chest.slot
+  0x02647  208    205  0x00  0x011e0000  12261376    0c34b54cfdf26118fc678633809af5e1  slotdat/slot_online_chest_color.slot
+  0x0267f  209    205  0x00  0x011e0000  4218880     7c83e02b124396af8440ca29bf1e501f  slotdat/slot_online_etc.slot
+  0x026af  210    205  0x00  0x011e0000  1685504     e387b450134f0cc4d19cc8bb722bf5f5  slotdat/slot_online_face.slot
+  0x026e0  211    205  0x00  0x01240000  33435648    bccdd1fc39af6475deecd1817a794d82  slotdat/slot_online_facepaint.slot
+  0x02716  212    205  0x00  0x011e0000  4024320     5e4137857147e4fa9463535406226e47  slotdat/slot_online_foot.slot
+  0x02747  213    205  0x00  0x011e0000  1746944     6e7ccd843720036ad821768637c72adf  slotdat/slot_online_foot_color.slot
+  0x0277e  214    205  0x00  0x011e0000  3364864     8ba023bcf09a06cf0f5c9dd4a0c03d82  slotdat/slot_online_hand.slot
+  0x027af  215    205  0x00  0x011e0000  7374848     5e1896d99ad98ca3bdf46f7afb65c54d  slotdat/slot_online_head.slot
+  0x027e0  216    205  0x00  0x011e0000  4548608     3e04c910abd9b8ceeb680b55021949b5  slotdat/slot_online_head_color.slot
+  0x02817  217    205  0x00  0x011e0000  462848      47c51a378fcdaec77f683c96a0ce7ea2  slotdat/slot_online_lower.slot
+  0x02849  218    205  0x00  0x011e0000  35938304    d45f9ce568c4337a14229ef35698d897  slotdat/slot_online_unique.slot
+  0x0287c  219    205  0x00  0x011e0000  503808      1645cb9b7c170a2623fef3f183ba33ec  slotdat/slot_online_upper.slot
+  0x028ae  220    205  0x00  0x011e0000  9465856     91abaa2117ff1458c92152b21e8470db  slotdat/slot_online_upper_color.slot
+  0x028e6  221    205  0x00  0x011e0000  6135808     e378002e40ff78c1faf31aab8aa1ac0c  slotdat/slot_online_waist.slot
+  0x02918  222    205  0x00  0x011e0000  3504128     1c851e85bd3cd27281fe2b64d67e9c47  slotdat/slot_online_waist_color.slot
+  0x02950  223  65535  0x01  <dir>                                                     speech/
+  0x0295a  224    223  0x00  0x010a0000  198656      92b7992bdc5d86da36c83afc6d6bc2af  speech/onlinevox_ex1_sof_hdd.spc
+  0x0298f  225    223  0x00  0x010a0000  32768       a6a639994c18a34d1e4544b2b3c4c04f  speech/onlinevox_ex1_som_hdd.spc
+  0x029c4  226    223  0x00  0x01140000  1607680     d6a828abca6ddc4b13af510537b65c20  speech/onlinevox_ex1_unq_hdd.spc
+  0x029f9  227    223  0x00  0x01140000  2164736     d18085d765692063324aa8f233bb82e7  speech/onlinevox_ex2_unq_hdd.spc
+  0x02a2e  228    223  0x00  0x011e0000  4179968     2100f3e709be69a80f2f793a5b75056e  speech/onlinevox_ex3_unq_hdd.spc
+  0x02a63  229    223  0x00  0x011e0000  10444800    78d439c8e192e3eac56335d284760671  speech/onlinevox_pac2_sof_hdd.spc
+  0x02a99  230    223  0x00  0x011e0000  9349120     e2ddf306f95fe513161af81590aa5429  speech/onlinevox_pac2_som_hdd.spc
+  0x02acf  231    223  0x00  0x011e0000  6606848     7aec978cedcf3867fc3bd53d7dbaec02  speech/onlinevox_pac2_unq_hdd.spc
+  0x02b05  232  65535  0x01  <dir>                                                     speech_e/
+  0x02b11  233    232  0x00  0x010a0000  178176      3f670bbb666804dc1d0df6ffda7492b2  speech_e/onlinevox_ex1_sof_hdd.spc
+  0x02b46  234    232  0x00  0x010a0000  34816       5a2dea12f1b92fdf0f062e858616087e  speech_e/onlinevox_ex1_som_hdd.spc
+  0x02b7b  235    232  0x00  0x01140000  1818624     7fb18be070120a07d868a5151fcad4f1  speech_e/onlinevox_ex1_unq_hdd.spc
+  0x02bb0  236    232  0x00  0x01140000  2371584     6e0b5618de0eb3f4b25fb48310f9a67e  speech_e/onlinevox_ex2_unq_hdd.spc
+  0x02be5  237    232  0x00  0x011e0000  5435392     6a9d98746b9d1701acb7568008be55b4  speech_e/onlinevox_ex3_unq_hdd.spc
+  0x02c1a  238    232  0x00  0x011e0000  11962368    bc0795b666b18fccc26b3dc9fa5904d5  speech_e/onlinevox_pac2_sof_hdd.spc
+  0x02c50  239    232  0x00  0x011e0000  10291200    88147d6f04c7300a22324b987557bede  speech_e/onlinevox_pac2_som_hdd.spc
+  0x02c86  240    232  0x00  0x011e0000  8257536     c25f8ff1a2967ec0add07867f8f9220b  speech_e/onlinevox_pac2_unq_hdd.spc
+  0x02cbc  241  65535  0x01  <dir>                                                     stage/
+  0x02cc5  242    241  0x01  <dir>                                                     stage/init_n/
+  0x02ccf  243    242  0x00  0x011e0000  580         bdc4c6ee6bb83662fbdce2ffb8fc49ad  stage/init_n/cache.dci
+  0x02cf4  244    242  0x00  0x011e0000  19680       2de44706eb6270f0074770541b835ad7  stage/init_n/cache.qar
+  0x02d19  245    242  0x00  0x011e0000  133984      b5708406585846b83da431ba8089d2c1  stage/init_n/cache.vfp
+  0x02d3e  246    242  0x00  0x010a0000  482193      5e8c75dfee26a76ffe83e31709c2477f  stage/init_n/cache_011000.dar
+  0x02d6a  247    242  0x00  0x010a0000  542720      c2a2005353c98968531828cf8d575d68  stage/init_n/cache_011000.dlz
+  0x02d96  248    242  0x00  0x01140000  59761       9698e729b85d304ca4e337bb0ef8298d  stage/init_n/cache_012000.dar
+  0x02dc2  249    242  0x00  0x01140000  20480       201e9052eae0f6a1044bcce9da9252eb  stage/init_n/cache_012000.dlz
+  0x02dee  250    242  0x00  0x011e0000  12369       d2ebc56bd1d8fcc958f48bf7f3fee46d  stage/init_n/cache_013000.dar
+  0x02e1a  251    242  0x00  0x011e0000  18432       a160d6f8f9b67e704e29c51a7e56a926  stage/init_n/cache_013000.dlz
+  0x02e46  252    242  0x00  0x011e0000  536         3c1e23b6141f1e085ddc2bebca6dd73f  stage/init_n/cache_d.dci
+  0x02e6d  253    242  0x00  0x010a0000  1390592     14095d4c6b86ac5968cbef0f14cd794b  stage/init_n/cache_d_011000.dlz
+  0x02e9b  254    242  0x00  0x01140000  47104       73623b9ec178746916ccde852da2c51c  stage/init_n/cache_d_012000.dlz
+  0x02ec9  255    242  0x00  0x011e0000  38912       d0213e2f2400ffea1e82c34fe2c702f7  stage/init_n/cache_d_013000.dlz
+  0x02ef7  256    242  0x00  0x01140000  340         3f19c1ff5017c836b0eeefa122f2c95a  stage/init_n/cache_nodld.dci
+  0x02f22  257    242  0x00  0x010a0000  124928      bc953ea7aff2bb24ed6cc1e8d998f569  stage/init_n/cache_nodld_011000.dlz
+  0x02f54  258    242  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/init_n/cache_nodld_012000.dld
+  0x02f86  259    242  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/init_n/cache_nodld_012000.dlz
+  0x02fb8  260    242  0x00  0x011e0000  531         8a0fed6f284ca286b6c7247a989322b6  stage/init_n/data.cnf
+  0x02fdc  261    242  0x00  0x01140000  3324736     c7dcff573766a4cfbf4301d902136142  stage/init_n/mgs4int_ex2.ssp
+  0x03007  262    242  0x00  0x011e0000  3325952     0d2f57f6b2b53fb295d6ef9b3dd17e7b  stage/init_n/mgs4int_ex3.ssp
+  0x03032  263    242  0x00  0x010a0000  3322992     622816209cf522d6e1bafda1b3fb1e42  stage/init_n/mgs4int_nt.ssp
+  0x0305c  264    242  0x00  0x010a0000  11          9aaf3da05b0fe2177fde1743cd110d1f  stage/init_n/noneed.nni
+  0x03082  265    242  0x00  0x01240000  424947      3318e67f84d2ca079b648dfd03182378  stage/init_n/scenerio.gcx
+  0x030aa  266    241  0x01  <dir>                                                     stage/lobby/
+  0x030b3  267    266  0x00  0x011e0000  4436        b3c7eb0027caa2c448d8c8eabc5eaf05  stage/lobby/cache.dci
+  0x030d8  268    266  0x00  0x01200000  12150132    e94283f3a884f89e7cfa06c24efdf431  stage/lobby/cache.qar
+  0x030fd  269    266  0x00  0x011e0000  1882000     ad1ec2397b192b5f4e3c737076e0a777  stage/lobby/cache.vfp
+  0x03122  270    266  0x00  0x010a0000  3820109     a9971001f23351cfb653c9520d64f1d8  stage/lobby/cache_011000.dar
+  0x0314e  271    266  0x00  0x010a0000  4816896     07ea7a871940efadbbdb667aeb167734  stage/lobby/cache_011000.dlz
+  0x0317a  272    266  0x00  0x01140000  4217445     576271678bea11759c00db4cd148401b  stage/lobby/cache_012000.dar
+  0x031a6  273    266  0x00  0x01140000  108544      6c4b4844705512950d628362e856ccc8  stage/lobby/cache_012000.dlz
+  0x031d2  274    266  0x00  0x011e0000  4507425     3738321ee88eed6461357a44ecda3186  stage/lobby/cache_013000.dar
+  0x031fe  275    266  0x00  0x011e0000  190464      18b990f2eeb573bb843c0acb17635f35  stage/lobby/cache_013000.dlz
+  0x0322a  276    266  0x00  0x01200000  163197      a4b23ca6a3973b90654907a21913574a  stage/lobby/cache_013200.dar
+  0x03256  277    266  0x00  0x011e0000  4392        715d2706deaef642e84e9dc4b4080d49  stage/lobby/cache_d.dci
+  0x0327d  278    266  0x00  0x010a0000  12849152    09d4d8d443164b6eec408d36f93e9fdc  stage/lobby/cache_d_011000.dlz
+  0x032ab  279    266  0x00  0x01140000  247808      e015b8103d83c56767e2497ce895f48c  stage/lobby/cache_d_012000.dlz
+  0x032d9  280    266  0x00  0x011e0000  438272      1c533b5be98751f67aeb6f95f981a409  stage/lobby/cache_d_013000.dlz
+  0x03307  281    266  0x00  0x01200000  1280        90a2ed7c59a88c31c74b0d3b0ee51057  stage/lobby/cache_nodld.dci
+  0x03332  282    266  0x00  0x010a0000  114688      d0ab432f228c1a0ebb1f8eecf3e50fff  stage/lobby/cache_nodld_011000.dlz
+  0x03364  283    266  0x00  0x01140000  45056       8e9b02e3c091f72488ab7f13410963b1  stage/lobby/cache_nodld_012000.dlz
+  0x03396  284    266  0x00  0x011e0000  79872       0456865d0967a6759f81d9453bd16bdf  stage/lobby/cache_nodld_013000.dlz
+  0x033c8  285    266  0x00  0x01200000  63488       f6c69c1f7da694603960f727b4233ba3  stage/lobby/cache_nodld_013200.dlz
+  0x033fa  286    266  0x00  0x01200000  460         52f86b54637653d437893142ce1770c0  stage/lobby/data.cnf
+  0x0341e  287    266  0x00  0x011e0000  2537        1e0b5f6f480dac5d6ed58bdeef54fc0a  stage/lobby/noneed.nni
+  0x03444  288    266  0x00  0x01240000  1541810     abcfbc0590fee8eb1206584f950d92f7  stage/lobby/scenerio.gcx
+  0x0346c  289    241  0x01  <dir>                                                     stage/n001a/
+  0x03475  290    289  0x00  0x01140000  6823681     9b3dcd1f4532aa051ea04b1b21212c17  stage/n001a/cache.dar
+  0x0349a  291    289  0x00  0x011e0000  1188        b987d93e599d6a06400577075efb3e03  stage/n001a/cache.dci
+  0x034bf  292    289  0x00  0x01140000  11952128    de17b0a116075482a6146eb384cdf6f0  stage/n001a/cache.dlz
+  0x034e4  293    289  0x00  0x011e0000  57960       2b5b640d3c1b7a58cce6a17f408efb0f  stage/n001a/cache.qar
+  0x03509  294    289  0x00  0x011e0000  1897440     65e7b176b6055ae59fd3c3c123a71016  stage/n001a/cache.vfp
+  0x0352e  295    289  0x00  0x011e0000  30225       190eab8aa3537e1199ee915b5d47f9bb  stage/n001a/cache_013000.dar
+  0x0355a  296    289  0x00  0x011e0000  71680       c046839989af505ee38eceec7619e5b7  stage/n001a/cache_013000.dlz
+  0x03586  297    289  0x00  0x011e0000  1124        652a7150c27c812453d5d57ca2dd1796  stage/n001a/cache_d.dci
+  0x035ad  298    289  0x00  0x01140000  33878016    0f280b6e6550449337d36a1196fa1bd4  stage/n001a/cache_d.dlz
+  0x035d4  299    289  0x00  0x011e0000  190464      f31eebd8577fe706530c5f858ffd3b02  stage/n001a/cache_d_013000.dlz
+  0x03602  300    289  0x00  0x01140000  135168      a7ee18edee9f4fc8f67c88a2720137bd  stage/n001a/cache_nodld.dlz
+  0x0362d  301    289  0x00  0x011e0000  232         a14996ba94c713ce22e5de8caefb95e5  stage/n001a/data.cnf
+  0x03651  302    289  0x00  0x011e0000  4605744     0f1e946cafb5cfa610e366c139364374  stage/n001a/n001a.geom
+  0x03677  303    289  0x00  0x011e0000  50544       24b0da7f8d538e9a6db2a1bafdd9faa2  stage/n001a/n001a.ptl
+  0x0369c  304    289  0x00  0x01240000  1484266     ca105a195dca8766fbd0ecd274438e61  stage/n001a/scenerio.gcx
+  0x036c4  305    241  0x01  <dir>                                                     stage/n002a/
+  0x036cd  306    305  0x00  0x011e0000  3436        9334fcfbd19c5d0f453531b8629fc246  stage/n002a/cache.dci
+  0x036f2  307    305  0x00  0x011e0000  51156       300b013319d01c3f6ffab051fb55d345  stage/n002a/cache.qar
+  0x03717  308    305  0x00  0x011e0000  1888592     678d08a0307c3529bab2bc649f4271c6  stage/n002a/cache.vfp
+  0x0373c  309    305  0x00  0x010a0000  16765       9c83a47b3b9bc6dc144199b955ed8d5a  stage/n002a/cache_011000.dar
+  0x03768  310    305  0x00  0x01140000  70113       50feeb0732d4e15e603d3de83701ce50  stage/n002a/cache_012000.dar
+  0x03794  311    305  0x00  0x01140000  6144        d2049939f1544633774d462dbc4293a3  stage/n002a/cache_012000.dlz
+  0x037c0  312    305  0x00  0x011e0000  40181       79b91ccf9e5d997ba2ec086f1bced12e  stage/n002a/cache_013000.dar
+  0x037ec  313    305  0x00  0x011e0000  71680       b761d53f6fe757e6f8996c4ba0ccfd92  stage/n002a/cache_013000.dlz
+  0x03818  314    305  0x00  0x011e0000  3348        09df35b0984ebf9be19dbc54a4c6e286  stage/n002a/cache_d.dci
+  0x0383f  315    305  0x00  0x01140000  14336       7ffdfeaa65a20015393b6518b4315bb7  stage/n002a/cache_d_012000.dlz
+  0x0386d  316    305  0x00  0x011e0000  190464      abedda6992ca7604dd3054f7cc24adba  stage/n002a/cache_d_013000.dlz
+  0x0389b  317    305  0x00  0x01140000  644         c4126213d75e91b4356cc7c27f12b9f2  stage/n002a/cache_nodld.dci
+  0x038c6  318    305  0x00  0x010a0000  53248       f3681f62ac897f5a6f5f7e85ab08d95e  stage/n002a/cache_nodld_011000.dlz
+  0x038f8  319    305  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n002a/cache_nodld_012000.dld
+  0x0392a  320    305  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n002a/cache_nodld_012000.dlz
+  0x0395c  321    305  0x00  0x011e0000  382         dcb1ce2913c454d43a3e3769b5a28bcd  stage/n002a/data.cnf
+  0x03980  322    305  0x00  0x011e0000  6113472     e67d66acb6ebdc1cb3d6d950cb3c613e  stage/n002a/n002a.geom
+  0x039a6  323    305  0x00  0x011f0000  2866        f901c03235825a50aeb0db290d455051  stage/n002a/noneed.nni
+  0x039cc  324    305  0x00  0x01240000  1482840     7707de5835a7b5d0106c4bca4d9c5f39  stage/n002a/scenerio.gcx
+  0x039f4  325    241  0x01  <dir>                                                     stage/n003a/
+  0x039fd  326    325  0x00  0x011e0000  5064        fb503710b166223548d9804d3be7d78a  stage/n003a/cache.dci
+  0x03a22  327    325  0x00  0x011e0000  70724       06b6ce750b866e4d14f917499e8bcb39  stage/n003a/cache.qar
+  0x03a47  328    325  0x00  0x011e0000  1888592     678d08a0307c3529bab2bc649f4271c6  stage/n003a/cache.vfp
+  0x03a6c  329    325  0x00  0x010a0000  725905      43f87da7fbd96915fb84d955a4c25ce3  stage/n003a/cache_011000.dar
+  0x03a98  330    325  0x00  0x010b0000  20769       2b7598ce340536642f31761fa46245a7  stage/n003a/cache_011100.dar
+  0x03ac4  331    325  0x00  0x01140000  98193       e1a452362cf6187e96e139d073be99e9  stage/n003a/cache_012000.dar
+  0x03af0  332    325  0x00  0x01140000  20480       79cc480ba7b94549bbb28400cf1f08ff  stage/n003a/cache_012000.dlz
+  0x03b1c  333    325  0x00  0x011e0000  18737       51ee26071dce5a0fe4e89f45a3037860  stage/n003a/cache_013000.dar
+  0x03b48  334    325  0x00  0x011e0000  71680       6bd229e38825e900899db6358569cac4  stage/n003a/cache_013000.dlz
+  0x03b74  335    325  0x00  0x011e0000  4816        f721ac9dd11744a3a1e345ea8e781fef  stage/n003a/cache_d.dci
+  0x03b9b  336    325  0x00  0x01140000  47104       a336efce2257042f1491c4ea64fc1a7a  stage/n003a/cache_d_012000.dlz
+  0x03bc9  337    325  0x00  0x011e0000  190464      13dd92ac289502694501af6ebdc98e9b  stage/n003a/cache_d_013000.dlz
+  0x03bf7  338    325  0x00  0x01140000  660         6aadabe76201b767371b5abc89a2fc5f  stage/n003a/cache_nodld.dci
+  0x03c22  339    325  0x00  0x010a0000  59392       a669d275c3a8caebdd3e5526391245a0  stage/n003a/cache_nodld_011000.dlz
+  0x03c54  340    325  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n003a/cache_nodld_012000.dld
+  0x03c86  341    325  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n003a/cache_nodld_012000.dlz
+  0x03cb8  342    325  0x00  0x011e0000  399         13be9f8c6f2f9afd46fa929733c97b92  stage/n003a/data.cnf
+  0x03cdc  343    325  0x00  0x011e0000  7144928     a218e4b9d3c24748e3a44c1d2b8eff43  stage/n003a/n003a.geom
+  0x03d02  344    325  0x00  0x011e0000  75840       ce8917f4ab79635f0937118c8e96d49d  stage/n003a/n003a.ptl
+  0x03d27  345    325  0x00  0x01150000  2871        a51e562e853577b9d1fe8169aa429584  stage/n003a/noneed.nni
+  0x03d4d  346    325  0x00  0x01240000  1489521     ad2e9a8273b2ba1f34829002da85b98a  stage/n003a/scenerio.gcx
+  0x03d75  347    241  0x01  <dir>                                                     stage/n004a/
+  0x03d7e  348    347  0x00  0x011e0000  5840        e2873146e2f522c993ca0fbb1837a0ef  stage/n004a/cache.dci
+  0x03da3  349    347  0x00  0x011e0000  86996       94fc317ca842cfccb779167028f8e705  stage/n004a/cache.qar
+  0x03dc8  350    347  0x00  0x011e0000  1888592     678d08a0307c3529bab2bc649f4271c6  stage/n004a/cache.vfp
+  0x03ded  351    347  0x00  0x010a0000  5963713     89e632fbb4e423d878d763b6bb84c0ff  stage/n004a/cache_011000.dar
+  0x03e19  352    347  0x00  0x010a0000  36864       0fb9800bbe57b9883966b04de059e4b3  stage/n004a/cache_011000.dlz
+  0x03e45  353    347  0x00  0x010b0000  5354897     9d355947c91c372f07f98b96ec2e8181  stage/n004a/cache_011100.dar
+  0x03e71  354    347  0x00  0x01140000  124353      c8244d09995126b734f98c51e304d2de  stage/n004a/cache_012000.dar
+  0x03e9d  355    347  0x00  0x01140000  22528       a1cef5c21f31b6e79e54cb47d0845395  stage/n004a/cache_012000.dlz
+  0x03ec9  356    347  0x00  0x011e0000  35473       b4bb5f05b4bcc016f008f3d0b2c9fcc0  stage/n004a/cache_013000.dar
+  0x03ef5  357    347  0x00  0x011e0000  67584       c428eb9b252efcfb7e9de8838564c07c  stage/n004a/cache_013000.dlz
+  0x03f21  358    347  0x00  0x011e0000  5648        3ee65fc7bd2c6fb82c36d0706d0c61bd  stage/n004a/cache_d.dci
+  0x03f48  359    347  0x00  0x010a0000  106496      4664c3f2295b36c1919f98e00b2fc918  stage/n004a/cache_d_011000.dlz
+  0x03f76  360    347  0x00  0x01140000  51200       f7d6c53ff22cb0378773bb5d742b0e68  stage/n004a/cache_d_012000.dlz
+  0x03fa4  361    347  0x00  0x011e0000  182272      928245ffef3aa29f01f4178d04357f3d  stage/n004a/cache_d_013000.dlz
+  0x03fd2  362    347  0x00  0x01140000  692         2096f83b7111831899d24f290be0c87c  stage/n004a/cache_nodld.dci
+  0x03ffd  363    347  0x00  0x010a0000  61440       c65a337ed103e6ab4a13a81b3cc7758f  stage/n004a/cache_nodld_011000.dlz
+  0x0402f  364    347  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n004a/cache_nodld_012000.dld
+  0x04061  365    347  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n004a/cache_nodld_012000.dlz
+  0x04093  366    347  0x00  0x011e0000  435         e63db27f85f045a7498df43cd576e335  stage/n004a/data.cnf
+  0x040b7  367    347  0x00  0x011e0000  8650384     53a5574ea2a236c79ca64f20870a3dd5  stage/n004a/n004a.geom
+  0x040dd  368    347  0x00  0x011e0000  79008       bdf4c48fec4c38e5137db65bbac692c5  stage/n004a/n004a.ptl
+  0x04102  369    347  0x00  0x010b0000  2883        a341e8f61f0d9dc3f4afa2485390e643  stage/n004a/noneed.nni
+  0x04128  370    347  0x00  0x01240000  1492701     fe741a62f47b67c19297a9e11f782dab  stage/n004a/scenerio.gcx
+  0x04150  371    241  0x01  <dir>                                                     stage/n005a/
+  0x04159  372    371  0x00  0x010a0000  10569185    fb765998f3c7a900ae47fc0c710458a4  stage/n005a/cache.dar
+  0x0417e  373    371  0x00  0x011e0000  660         3dd35caa0d8aaccc8a5f60db005d4e55  stage/n005a/cache.dci
+  0x041a3  374    371  0x00  0x010a0000  12701696    9acafd3377fdfe12c20ef5964688bb4e  stage/n005a/cache.dlz
+  0x041c8  375    371  0x00  0x011e0000  67872       2e878c472355531c1e81d25e8010fae2  stage/n005a/cache.qar
+  0x041ed  376    371  0x00  0x011e0000  1894784     ad594f2108fc593c0ae1e325d1b56b37  stage/n005a/cache.vfp
+  0x04212  377    371  0x00  0x01140000  152945      58efec3e5f62c472ae2cfdf2624c3a20  stage/n005a/cache_012000.dar
+  0x0423e  378    371  0x00  0x01140000  6144        2eb6a535c61beaca7da662a4d63e5279  stage/n005a/cache_012000.dlz
+  0x0426a  379    371  0x00  0x011e0000  30421       8ca9e017f3973de35454da6d2d42ca7d  stage/n005a/cache_013000.dar
+  0x04296  380    371  0x00  0x011e0000  71680       c54d28f81e80ac08b2748596458fbaad  stage/n005a/cache_013000.dlz
+  0x042c2  381    371  0x00  0x01200000  20017       aa922e3d320f2cf6a6631a439e8dec94  stage/n005a/cache_013200.dar
+  0x042ee  382    371  0x00  0x011e0000  608         634e35dedba8cee19759294a11e7b5b0  stage/n005a/cache_d.dci
+  0x04315  383    371  0x00  0x010a0000  36151296    061b96eb16e6a310992646f55c967caa  stage/n005a/cache_d.dlz
+  0x0433c  384    371  0x00  0x01140000  14336       953bcb5568432290723fdc0ac5d2ce66  stage/n005a/cache_d_012000.dlz
+  0x0436a  385    371  0x00  0x011e0000  190464      540f828462d956424a1b326760f7026a  stage/n005a/cache_d_013000.dlz
+  0x04398  386    371  0x00  0x01140000  332         16c6c591794137b87c1c7eae9e9b1687  stage/n005a/cache_nodld.dci
+  0x043c3  387    371  0x00  0x010a0000  129024      132873d28efb03ae908a3a369550754d  stage/n005a/cache_nodld.dlz
+  0x043ee  388    371  0x00  0x01140000  6144        a1016c8b3f90be3db3c70ce97094211a  stage/n005a/cache_nodld_012000.dlz
+  0x04420  389    371  0x00  0x01200000  341         15249d3546773a293a6a02b538ee7d24  stage/n005a/data.cnf
+  0x04444  390    371  0x00  0x01200000  5038944     0837f0f0bc1186cde06b6dd7c3d7e213  stage/n005a/n005a.geom
+  0x0446a  391    371  0x00  0x010a0000  66512       221695e0d37b7ef7ee56668b36e3a485  stage/n005a/n005a.ptl
+  0x0448f  392    371  0x00  0x01240000  1486658     b7fb9fd6dbee6dd59d8543c950ec4be8  stage/n005a/scenerio.gcx
+  0x044b7  393    241  0x01  <dir>                                                     stage/n006a/
+  0x044c0  394    393  0x00  0x011e0000  13967041    7c38113cebbc76de1e5f16acb474105c  stage/n006a/cache.dar
+  0x044e5  395    393  0x00  0x011e0000  11491328    91a3605251d4f2ffacf87dde7e29df3e  stage/n006a/cache.dlz
+  0x0450a  396    393  0x00  0x011e0000  78828       a18d62fde73f5fc15445da711600825b  stage/n006a/cache.qar
+  0x0452f  397    393  0x00  0x011e0000  1908768     415323cbcbae525bf8e2756754b0eee6  stage/n006a/cache.vfp
+  0x04554  398    393  0x00  0x01200000  43265       425aea7b58cdfe4b95fd1da13c1b4a80  stage/n006a/cache_013200.dar
+  0x04580  399    393  0x00  0x011e0000  31500288    39dafba2ca09f71f5b8c461b1f592403  stage/n006a/cache_d.dlz
+  0x045a7  400    393  0x00  0x011e0000  153600      3636be257617781dd300bb159faa11b7  stage/n006a/cache_nodld.dlz
+  0x045d2  401    393  0x00  0x01200000  174         3c002b3cbfe86748db6fd9cf378b784e  stage/n006a/data.cnf
+  0x045f6  402    393  0x00  0x01200000  8241072     1b8c1efcf890a7fba76adf8d26317f7e  stage/n006a/n006a.geom
+  0x0461c  403    393  0x00  0x01200000  98704       3ffb19347ef1b7af4e148e2ccc6f8035  stage/n006a/n006a.ptl
+  0x04641  404    393  0x00  0x01240000  1493109     c292c4ae4046fae62f29e5997c4e66ae  stage/n006a/scenerio.gcx
+  0x04669  405    241  0x01  <dir>                                                     stage/n007a/
+  0x04672  406    405  0x00  0x011e0000  3700        9e4c8cd23cdac19443858e0c3107c928  stage/n007a/cache.dci
+  0x04697  407    405  0x00  0x011e0000  49092       2fbd9ebab36ee9607408681543e05fe0  stage/n007a/cache.qar
+  0x046bc  408    405  0x00  0x011e0000  1893136     29ae02ec68f34e21a084e33cdfce94e9  stage/n007a/cache.vfp
+  0x046e1  409    405  0x00  0x010a0000  220561      5b0a45b3a55362011faddde7f444687b  stage/n007a/cache_011000.dar
+  0x0470d  410    405  0x00  0x01140000  66657       7829f8e9073348c933796041dade3aec  stage/n007a/cache_012000.dar
+  0x04739  411    405  0x00  0x01140000  20480       dfd8284daac1e7183754c5296d621bbd  stage/n007a/cache_012000.dlz
+  0x04765  412    405  0x00  0x011e0000  16037       776640084ee93a7a80e8d3abc1e2ba66  stage/n007a/cache_013000.dar
+  0x04791  413    405  0x00  0x011e0000  71680       f9dc9175491c61f44d6619f853584b17  stage/n007a/cache_013000.dlz
+  0x047bd  414    405  0x00  0x011e0000  3504        fbb899f18b61f1b5681e05a98d93afce  stage/n007a/cache_d.dci
+  0x047e4  415    405  0x00  0x01140000  47104       05048e9fe067df887eab9f301a7d6bcc  stage/n007a/cache_d_012000.dlz
+  0x04812  416    405  0x00  0x011e0000  190464      619497fc4de99ecac4ef760191ff26d4  stage/n007a/cache_d_013000.dlz
+  0x04840  417    405  0x00  0x01140000  660         6aadabe76201b767371b5abc89a2fc5f  stage/n007a/cache_nodld.dci
+  0x0486b  418    405  0x00  0x010a0000  69632       6a32c54d52d194981f31186aa6912798  stage/n007a/cache_nodld_011000.dlz
+  0x0489d  419    405  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n007a/cache_nodld_012000.dld
+  0x048cf  420    405  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n007a/cache_nodld_012000.dlz
+  0x04901  421    405  0x00  0x011e0000  382         11767bff1cc8f99f363d370a717aa965  stage/n007a/data.cnf
+  0x04925  422    405  0x00  0x011e0000  4494784     eb7752e0e67800cfb764100ab4b104a6  stage/n007a/n007a.geom
+  0x0494b  423    405  0x00  0x010b0000  2838        fd30b3ce6f24b81a0f2983a0c3bc6059  stage/n007a/noneed.nni
+  0x04971  424    405  0x00  0x01240000  1480825     938a71f36f872af2b8c6d604bd2bd8f7  stage/n007a/scenerio.gcx
+  0x04999  425    241  0x01  <dir>                                                     stage/n008a/
+  0x049a2  426    425  0x00  0x010a0000  11733137    4674f2e9a452f8db7824372363e5bfb5  stage/n008a/cache.dar
+  0x049c7  427    425  0x00  0x011e0000  968         be3ab436b3b1dd62cfcf58349a18ff29  stage/n008a/cache.dci
+  0x049ec  428    425  0x00  0x010a0000  12726272    c3447db59dc98b7402fe4625d0b79f19  stage/n008a/cache.dlz
+  0x04a11  429    425  0x00  0x011e0000  63976       2a50ac42bb5c85b113ce63185f89ccde  stage/n008a/cache.qar
+  0x04a36  430    425  0x00  0x011e0000  1925744     f3e6717c9ac0e93c094002ed649c2623  stage/n008a/cache.vfp
+  0x04a5b  431    425  0x00  0x010c0000  27777       60e238528e99618d6fbc3761e8a4274b  stage/n008a/cache_011200.dar
+  0x04a87  432    425  0x00  0x01140000  160113      7afd9b5fa1936c3eb487ded7f2cf5c64  stage/n008a/cache_012000.dar
+  0x04ab3  433    425  0x00  0x01140000  20480       cdf250896cc94a5f9a3fc3896d338880  stage/n008a/cache_012000.dlz
+  0x04adf  434    425  0x00  0x011e0000  320737      cb49c3b7030e86488311df7c3572cf97  stage/n008a/cache_013000.dar
+  0x04b0b  435    425  0x00  0x011e0000  71680       dd0ae542d03da5870b250ecc6fdbf446  stage/n008a/cache_013000.dlz
+  0x04b37  436    425  0x00  0x011e0000  892         c271b1cb00403615559dd5ed79210bb2  stage/n008a/cache_d.dci
+  0x04b5e  437    425  0x00  0x010a0000  36530176    7fc06f09d66fbc38deb272e0f7717bad  stage/n008a/cache_d.dlz
+  0x04b85  438    425  0x00  0x01140000  47104       fcf1720fbff0f6521a016330fc82d50d  stage/n008a/cache_d_012000.dlz
+  0x04bb3  439    425  0x00  0x011e0000  190464      d108763824eb6019699d3e62a5b06ddd  stage/n008a/cache_d_013000.dlz
+  0x04be1  440    425  0x00  0x01140000  292         b2cea8ee2e67f3148dde51067384f070  stage/n008a/cache_nodld.dci
+  0x04c0c  441    425  0x00  0x010a0000  135168      cab17692ee24fd3b585a71d2d29dbf60  stage/n008a/cache_nodld.dlz
+  0x04c37  442    425  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n008a/cache_nodld_012000.dld
+  0x04c69  443    425  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n008a/cache_nodld_012000.dlz
+  0x04c9b  444    425  0x00  0x011e0000  341         ae3ff692042cebf69fcd1330751a85cb  stage/n008a/data.cnf
+  0x04cbf  445    425  0x00  0x011e0000  5531024     ba87f358ef4a21cd264db6066491f6bb  stage/n008a/n008a.geom
+  0x04ce5  446    425  0x00  0x010a0000  21872       8921dc8272d567e4976663e540d9c9dc  stage/n008a/n008a.ptl
+  0x04d0a  447    425  0x00  0x01240000  1483559     374a70ca57740e97d758c81ab6f05d2d  stage/n008a/scenerio.gcx
+  0x04d32  448    241  0x01  <dir>                                                     stage/n009a/
+  0x04d3b  449    448  0x00  0x011e0000  15626657    9d91e193519cbcf4c56595b3fff9745b  stage/n009a/cache.dar
+  0x04d60  450    448  0x00  0x011e0000  13785088    cc95b0275bc63d2b5d5d5cd3aad8915a  stage/n009a/cache.dlz
+  0x04d85  451    448  0x00  0x011e0000  81696       1cb82e9c04d23f49b0bf8d6f30f12cc9  stage/n009a/cache.qar
+  0x04daa  452    448  0x00  0x011e0000  1915248     2c872dae95bed2e3a8d57a15e014f3cf  stage/n009a/cache.vfp
+  0x04dcf  453    448  0x00  0x01200000  38017       431d297a6fe0f107742d1e703bd8307f  stage/n009a/cache_013200.dar
+  0x04dfb  454    448  0x00  0x011e0000  39256064    bc650f639b212075e918ba60807e9c9f  stage/n009a/cache_d.dlz
+  0x04e22  455    448  0x00  0x011e0000  139264      eeb196d2a0fec62cf3fbc7d10712bc0e  stage/n009a/cache_nodld.dlz
+  0x04e4d  456    448  0x00  0x01200000  174         71ad43868513dbd71c682a0160e639ee  stage/n009a/data.cnf
+  0x04e71  457    448  0x00  0x01200000  7927360     8011e091d4e268a414a2faf4a2c65bf5  stage/n009a/n009a.geom
+  0x04e97  458    448  0x00  0x01200000  184576      85e24f80cca92ca9b058ec65595d771f  stage/n009a/n009a.ptl
+  0x04ebc  459    448  0x00  0x01240000  1491991     450f1da10f7b3d1e1be39727bb40708d  stage/n009a/scenerio.gcx
+  0x04ee4  460    241  0x01  <dir>                                                     stage/n010a/
+  0x04eed  461    460  0x00  0x01140000  12247361    f5a92d0edd42ad6613bb3f590f1a27f4  stage/n010a/cache.dar
+  0x04f12  462    460  0x00  0x011e0000  952         4268e438c01b86c16dd4fc1373ea6a63  stage/n010a/cache.dci
+  0x04f37  463    460  0x00  0x01140000  13232128    ebdd23e1846298746a365156dfb9e2aa  stage/n010a/cache.dlz
+  0x04f5c  464    460  0x00  0x011e0000  63568       32e6fc2c3bb53e7ceb045a0124c9c2a2  stage/n010a/cache.qar
+  0x04f81  465    460  0x00  0x011e0000  1888592     678d08a0307c3529bab2bc649f4271c6  stage/n010a/cache.vfp
+  0x04fa6  466    460  0x00  0x011e0000  45381       eaf6b068ef3b6db5a9e5a097ecffe783  stage/n010a/cache_013000.dar
+  0x04fd2  467    460  0x00  0x011e0000  71680       dadd181be4ce14793edc01fff798359f  stage/n010a/cache_013000.dlz
+  0x04ffe  468    460  0x00  0x011e0000  888         f18d6b49a71f6b0fdf77eabf65cbad7f  stage/n010a/cache_d.dci
+  0x05025  469    460  0x00  0x01140000  37697536    5f48b02451421e94d8deaf8d2a6bd016  stage/n010a/cache_d.dlz
+  0x0504c  470    460  0x00  0x011e0000  190464      12bc007228dc0ecf1131f53b87303f68  stage/n010a/cache_d_013000.dlz
+  0x0507a  471    460  0x00  0x01140000  133120      bafe5e58662484359326888e4aaa7465  stage/n010a/cache_nodld.dlz
+  0x050a5  472    460  0x00  0x011e0000  232         04ec14c57a2997ab067a7d8487154665  stage/n010a/data.cnf
+  0x050c9  473    460  0x00  0x011e0000  5714272     b28c1812236ee75715db28523b1f5f70  stage/n010a/n010a.geom
+  0x050ef  474    460  0x00  0x011e0000  84304       50bae13588fd79a012f76afaffa78c25  stage/n010a/n010a.ptl
+  0x05114  475    460  0x00  0x01240000  1485532     fefee666c2da195105664c9622b5a50e  stage/n010a/scenerio.gcx
+  0x0513c  476    241  0x01  <dir>                                                     stage/n012a/
+  0x05145  477    476  0x00  0x01010000  14518257    17ee2986e3f614bdc73f4773986def2e  stage/n012a/cache.dar
+  0x0516a  478    476  0x00  0x011e0000  4040        b6fc8a550987a128c509d07cd86c4dea  stage/n012a/cache.dci
+  0x0518f  479    476  0x00  0x011e0000  68744       a7c75065a02b8c416c329553b5ba1c75  stage/n012a/cache.qar
+  0x051b4  480    476  0x00  0x011e0000  1891696     89c4e67d057cec15103ef7f731961f61  stage/n012a/cache.vfp
+  0x051d9  481    476  0x00  0x010a0000  246001      d6159aed40a39016c8862c6ed58a6795  stage/n012a/cache_011000.dar
+  0x05205  482    476  0x00  0x01140000  69649       73bf03a2905e69bd2575391d7f63fefc  stage/n012a/cache_012000.dar
+  0x05231  483    476  0x00  0x01140000  6144        8f1e47b3400c26685074e9a738d54017  stage/n012a/cache_012000.dlz
+  0x0525d  484    476  0x00  0x01150000  8625        69c71a703e15cc50d9f2f5a448b8eba5  stage/n012a/cache_012100.dar
+  0x05289  485    476  0x00  0x011e0000  19009       60686f9654b6f9be5e8f604f907025a0  stage/n012a/cache_013000.dar
+  0x052b5  486    476  0x00  0x011e0000  69632       10bca7a90f0a591ac6c435bbb1704a2b  stage/n012a/cache_013000.dlz
+  0x052e1  487    476  0x00  0x011e0000  3916        2b08e020a32ecab0e6e49ac1aff9a179  stage/n012a/cache_d.dci
+  0x05308  488    476  0x00  0x01140000  14336       04b3dda4cf9ac8afe8c50dbd39ef7b49  stage/n012a/cache_d_012000.dlz
+  0x05336  489    476  0x00  0x011e0000  186368      b2135d9d514e30acf0d608877e596466  stage/n012a/cache_d_013000.dlz
+  0x05364  490    476  0x00  0x01140000  644         dc6eec73ef82e1f52deb20cc2e922dfc  stage/n012a/cache_nodld.dci
+  0x0538f  491    476  0x00  0x010a0000  55296       6ec7c7722e385786398960140650db94  stage/n012a/cache_nodld_011000.dlz
+  0x053c1  492    476  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n012a/cache_nodld_012000.dld
+  0x053f3  493    476  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n012a/cache_nodld_012000.dlz
+  0x05425  494    476  0x00  0x011e0000  399         6f88b7e96191b05ded67bf457ebfc255  stage/n012a/data.cnf
+  0x05449  495    476  0x00  0x011e0000  7234832     b9c1789802051216bd205bb96dc8941b  stage/n012a/n012a.geom
+  0x0546f  496    476  0x00  0x01150000  2854        4fc94dcb96ea6a0e0651711e1a091da9  stage/n012a/noneed.nni
+  0x05495  497    476  0x00  0x01240000  1482203     96af9213ab2abf2c04fa54ff9a9db755  stage/n012a/scenerio.gcx
+  0x054bd  498    241  0x01  <dir>                                                     stage/n013a/
+  0x054c6  499    498  0x00  0x01140000  13104321    a138ddcf48dc0fc3457612118c1dd8a1  stage/n013a/cache.dar
+  0x054eb  500    498  0x00  0x011e0000  1168        5251c29ecf394dade1b1c38a73fd4bbb  stage/n013a/cache.dci
+  0x05510  501    498  0x00  0x01140000  14084096    e1286531b46215418ace87e3b1f38a47  stage/n013a/cache.dlz
+  0x05535  502    498  0x00  0x011e0000  73488       f99854c5dfe2914ebfd26fb619fe6ba9  stage/n013a/cache.qar
+  0x0555a  503    498  0x00  0x011e0000  1899840     45c1b5a224e145eda2fd0f25750a5fef  stage/n013a/cache.vfp
+  0x0557f  504    498  0x00  0x01150000  34913       430053076e6b472251bec3d3d882ddbc  stage/n013a/cache_012100.dar
+  0x055ab  505    498  0x00  0x011e0000  54257       f4e79564de7863d49ea767928be61409  stage/n013a/cache_013000.dar
+  0x055d7  506    498  0x00  0x011e0000  26624       67255ef694815e06b29e57e21877e152  stage/n013a/cache_013000.dlz
+  0x05603  507    498  0x00  0x01200000  34913       d96a9acc2f8f92c5af60d821c39078bc  stage/n013a/cache_013200.dar
+  0x0562f  508    498  0x00  0x011e0000  1068        28d0264aa20fd24a81c1c6615d5bedce  stage/n013a/cache_d.dci
+  0x05656  509    498  0x00  0x01140000  40003584    5d7d8f3980d39894e666c025fcb33273  stage/n013a/cache_d.dlz
+  0x0567d  510    498  0x00  0x011e0000  55296       f31dc8c854549ba27fbff0b4d3015b7d  stage/n013a/cache_d_013000.dlz
+  0x056ab  511    498  0x00  0x011e0000  324         fcbf0885393e7d6c1043186fd434d5fb  stage/n013a/cache_nodld.dci
+  0x056d6  512    498  0x00  0x01140000  139264      d2952a991e055de7096500ea0cb67d34  stage/n013a/cache_nodld.dlz
+  0x05701  513    498  0x00  0x011e0000  8192        00d3a086e62f4ec502f88c4d787dd233  stage/n013a/cache_nodld_013000.dlz
+  0x05733  514    498  0x00  0x01200000  305         9625735960063e1c7a4eb5a691c5852d  stage/n013a/data.cnf
+  0x05757  515    498  0x00  0x01200000  7995072     e3bc763a127c09766b703f06809d23a0  stage/n013a/n013a.geom
+  0x0577d  516    498  0x00  0x01200000  99008       e4c35bd6d1216a18404bcf7e4c1b5964  stage/n013a/n013a.ptl
+  0x057a2  517    498  0x00  0x01240000  1480866     5d7eaaa2ecc675002a20ba31f7d0675d  stage/n013a/scenerio.gcx
+  0x057ca  518    241  0x01  <dir>                                                     stage/n014a/
+  0x057d3  519    518  0x00  0x010a0000  11163169    1e48faeb37ae13fcaa7371ee0909fbea  stage/n014a/cache.dar
+  0x057f8  520    518  0x00  0x011f0000  2792        c7782d0c5509db1b38a83a6632824dc6  stage/n014a/cache.dci
+  0x0581d  521    518  0x00  0x010a0000  14397440    ea038d95a238b6fbe18e39dcf0ee0484  stage/n014a/cache.dlz
+  0x05842  522    518  0x00  0x011e0000  58348       0f5ae176bc05551c909d9d23e7b064f0  stage/n014a/cache.qar
+  0x05867  523    518  0x00  0x011e0000  1888592     678d08a0307c3529bab2bc649f4271c6  stage/n014a/cache.vfp
+  0x0588c  524    518  0x00  0x010c0000  10273       5c3bf4910a1c8a5bbd7e37e5647971cd  stage/n014a/cache_011200.dar
+  0x058b8  525    518  0x00  0x01140000  71313       17479211a919375ef5e1777a15d1cfad  stage/n014a/cache_012000.dar
+  0x058e4  526    518  0x00  0x01140000  20480       61985a8413abea3cb549d79489905cf5  stage/n014a/cache_012000.dlz
+  0x05910  527    518  0x00  0x01150000  3553        4c3e02a275c08ea7ce4a3da1ea87099c  stage/n014a/cache_012100.dar
+  0x0593c  528    518  0x00  0x011e0000  20677       14c95e96ffcb9d44488ce6406630c3ca  stage/n014a/cache_013000.dar
+  0x05968  529    518  0x00  0x011e0000  120832      5bdc4c0f57490e97548306b9930c6b64  stage/n014a/cache_013000.dlz
+  0x05994  530    518  0x00  0x011f0000  2624        c798fbe4085725e4992983b8d409ba1e  stage/n014a/cache_d.dci
+  0x059bb  531    518  0x00  0x010a0000  41170944    98ff48d6e788d0ea6d80c885764760ae  stage/n014a/cache_d.dlz
+  0x059e2  532    518  0x00  0x01140000  47104       415f03681f3feb9354f0fdd3d9d70446  stage/n014a/cache_d_012000.dlz
+  0x05a10  533    518  0x00  0x011e0000  307200      fa52af623ff0e637592e457b714e877d  stage/n014a/cache_d_013000.dlz
+  0x05a3e  534    518  0x00  0x01140000  292         b2cea8ee2e67f3148dde51067384f070  stage/n014a/cache_nodld.dci
+  0x05a69  535    518  0x00  0x010a0000  126976      761d43ca731e0f522f3f5490c025f351  stage/n014a/cache_nodld.dlz
+  0x05a94  536    518  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/n014a/cache_nodld_012000.dld
+  0x05ac6  537    518  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/n014a/cache_nodld_012000.dlz
+  0x05af8  538    518  0x00  0x011e0000  366         8adf92de348f7868f7a5457e76f403a2  stage/n014a/data.cnf
+  0x05b1c  539    518  0x00  0x011e0000  7324704     72a9f91266816dad7ff9bee40c0ab355  stage/n014a/n014a.geom
+  0x05b42  540    518  0x00  0x011e0000  188         ccbc022693b39b3d601f03e832fcfdec  stage/n014a/noneed.nni
+  0x05b68  541    518  0x00  0x01240000  1483864     1837aa36fdcacd73248e48e675ba4606  stage/n014a/scenerio.gcx
+  0x05b90  542    241  0x01  <dir>                                                     stage/n015a/
+  0x05b99  543    542  0x00  0x011e0000  15540241    daf1ab027a6169105ea0329c33e301bb  stage/n015a/cache.dar
+  0x05bbe  544    542  0x00  0x011e0000  9644032     46c1e55c79bcf088011cc9661051617b  stage/n015a/cache.dlz
+  0x05be3  545    542  0x00  0x011e0000  82848       a44677d4fa79b0daf953cf5fe9b1956b  stage/n015a/cache.qar
+  0x05c08  546    542  0x00  0x011e0000  1918928     53848ff8dfa0512972ce373007d7dcb5  stage/n015a/cache.vfp
+  0x05c2d  547    542  0x00  0x01200000  35441       5a24de16fd1740dcc6cd9ddcb3d2b467  stage/n015a/cache_013200.dar
+  0x05c59  548    542  0x00  0x011e0000  25348096    8b70222b9cbc3d8514f31411a1ea635d  stage/n015a/cache_d.dlz
+  0x05c80  549    542  0x00  0x011e0000  133120      978b41436f9711e3a32d1d098e147f55  stage/n015a/cache_nodld.dlz
+  0x05cab  550    542  0x00  0x01200000  174         5d89dfca97d8aad6107c36642c785ac9  stage/n015a/data.cnf
+  0x05ccf  551    542  0x00  0x01200000  8076592     0979eb3a4ba71bd40e4f186a2d22c7c4  stage/n015a/n015a.geom
+  0x05cf5  552    542  0x00  0x01200000  66752       d42faa0c06c98c2ac1b5f08045f9a5b1  stage/n015a/n015a.ptl
+  0x05d1a  553    542  0x00  0x01240000  1485350     302f5882c10cc233a01ef762474b38e0  stage/n015a/scenerio.gcx
+  0x05d42  554    241  0x01  <dir>                                                     stage/n018a/
+  0x05d4b  555    554  0x00  0x011e0000  12775169    cf556e6bccd160c8341fc685dc633773  stage/n018a/cache.dar
+  0x05d70  556    554  0x00  0x011e0000  12228608    64d1df7eb41c185fca3f3197532c56d7  stage/n018a/cache.dlz
+  0x05d95  557    554  0x00  0x011e0000  51744       ce7ea2fb449abbdb29dcb3243d14916d  stage/n018a/cache.qar
+  0x05dba  558    554  0x00  0x011e0000  1892560     b695c28cae756085a7b12398e98b2834  stage/n018a/cache.vfp
+  0x05ddf  559    554  0x00  0x011e0000  33474560    5a47cb142d797215895d7a04c7e1e1b8  stage/n018a/cache_d.dlz
+  0x05e06  560    554  0x00  0x011e0000  126976      1eaeee9965da00a5e9d5bd0b81123106  stage/n018a/cache_nodld.dlz
+  0x05e31  561    554  0x00  0x011e0000  147         490c0e2dc00137ef6fb1bd70ec601804  stage/n018a/data.cnf
+  0x05e55  562    554  0x00  0x011e0000  7490944     86b6dbc44cc352a250f379091d1d1230  stage/n018a/n018a.geom
+  0x05e7b  563    554  0x00  0x01240000  1484944     9c8c55140f939aee3d6ba2cab668128b  stage/n018a/scenerio.gcx
+  0x05ea3  564    241  0x01  <dir>                                                     stage/nt_mgsetup/
+  0x05eb1  565    564  0x00  0x01010000  10846545    8cfc8e2772595627d3804dfd99801f37  stage/nt_mgsetup/cache.dar
+  0x05ed6  566    564  0x00  0x011e0000  1000        ed22b196746048fdcef0df6c4e7af1f7  stage/nt_mgsetup/cache.dci
+  0x05efb  567    564  0x00  0x011e0000  18864       c8bd187a10e7f827522a0abd362e2aca  stage/nt_mgsetup/cache.qar
+  0x05f20  568    564  0x00  0x011e0000  133984      b5708406585846b83da431ba8089d2c1  stage/nt_mgsetup/cache.vfp
+  0x05f45  569    564  0x00  0x010a0000  47953       d74d7bf332a3cf8414694cf1f72418a7  stage/nt_mgsetup/cache_011000.dar
+  0x05f71  570    564  0x00  0x01140000  59761       9698e729b85d304ca4e337bb0ef8298d  stage/nt_mgsetup/cache_012000.dar
+  0x05f9d  571    564  0x00  0x01140000  20480       6b85c264ffd4dc3d556cfcb77ecc9b4a  stage/nt_mgsetup/cache_012000.dlz
+  0x05fc9  572    564  0x00  0x011e0000  8785        49f5aa169781db20a5b79f7bf5a82950  stage/nt_mgsetup/cache_013000.dar
+  0x05ff5  573    564  0x00  0x011e0000  18432       5521706791b9275cc18ffd0ed37df6b2  stage/nt_mgsetup/cache_013000.dlz
+  0x06021  574    564  0x00  0x011e0000  956         171c43ac191af0dedfb14d06ea04f1d1  stage/nt_mgsetup/cache_d.dci
+  0x06048  575    564  0x00  0x01140000  47104       75539491730bb2902daad988ac828b16  stage/nt_mgsetup/cache_d_012000.dlz
+  0x06076  576    564  0x00  0x011e0000  38912       5d24ba3b9e69654701a9e35c26d3db9c  stage/nt_mgsetup/cache_d_013000.dlz
+  0x060a4  577    564  0x00  0x01140000  476         069916d28043aa9295d6e38b1dc5c50b  stage/nt_mgsetup/cache_nodld.dci
+  0x060cf  578    564  0x00  0x010a0000  69632       d24323fe5dd85628f4c1135d3e106f8e  stage/nt_mgsetup/cache_nodld_011000.dlz
+  0x06101  579    564  0x00  0x01140000  26624       ebc937d30c7d91f27afffe62531d68e2  stage/nt_mgsetup/cache_nodld_012000.dlz
+  0x06133  580    564  0x00  0x011e0000  361         e2975371e2414235a0fc3bf23d2a43de  stage/nt_mgsetup/data.cnf
+  0x06157  581    564  0x00  0x011e0000  2543        eab9192915ddc045cff43a96852c8008  stage/nt_mgsetup/noneed.nni
+  0x0617d  582    564  0x00  0x01240000  22112       3b12fab9df649c5725acd7fa74198302  stage/nt_mgsetup/scenerio.gcx
+  0x061a5  583    241  0x01  <dir>                                                     stage/nttitle/
+  0x061b0  584    583  0x00  0x011e0000  1012        08821d2bf97ef37449dc9480cc353e5f  stage/nttitle/cache.dci
+  0x061d5  585    583  0x00  0x01200000  21360       f473bb3a372d3e6fdbd0cffb7ab3d039  stage/nttitle/cache.qar
+  0x061fa  586    583  0x00  0x011e0000  1882000     ad1ec2397b192b5f4e3c737076e0a777  stage/nttitle/cache.vfp
+  0x0621f  587    583  0x00  0x010a0000  63201       b5f6d4ee522f13305986a09f1d28e343  stage/nttitle/cache_011000.dar
+  0x0624b  588    583  0x00  0x01140000  59761       9698e729b85d304ca4e337bb0ef8298d  stage/nttitle/cache_012000.dar
+  0x06277  589    583  0x00  0x01140000  20480       6b85c264ffd4dc3d556cfcb77ecc9b4a  stage/nttitle/cache_012000.dlz
+  0x062a3  590    583  0x00  0x011e0000  8785        49f5aa169781db20a5b79f7bf5a82950  stage/nttitle/cache_013000.dar
+  0x062cf  591    583  0x00  0x011e0000  18432       5521706791b9275cc18ffd0ed37df6b2  stage/nttitle/cache_013000.dlz
+  0x062fb  592    583  0x00  0x01200000  171489      42db3ad05c32d42380f4d594edcf99af  stage/nttitle/cache_013200.dar
+  0x06327  593    583  0x00  0x011e0000  968         1fce0119e002640bf1101821dfd3402d  stage/nttitle/cache_d.dci
+  0x0634e  594    583  0x00  0x01140000  47104       75539491730bb2902daad988ac828b16  stage/nttitle/cache_d_012000.dlz
+  0x0637c  595    583  0x00  0x011e0000  38912       5d24ba3b9e69654701a9e35c26d3db9c  stage/nttitle/cache_d_013000.dlz
+  0x063aa  596    583  0x00  0x01200000  724         f363bc5471cba8a060a1e2ba174440fa  stage/nttitle/cache_nodld.dci
+  0x063d5  597    583  0x00  0x010a0000  282624      4d07418bbbeb0affb4cdf5a177097461  stage/nttitle/cache_nodld_011000.dlz
+  0x06407  598    583  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/nttitle/cache_nodld_012000.dld
+  0x06439  599    583  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/nttitle/cache_nodld_012000.dlz
+  0x0646b  600    583  0x00  0x01200000  98304       ed8b5f4e20e7ec58de16ddbbe1f59d24  stage/nttitle/cache_nodld_013200.dlz
+  0x0649d  601    583  0x00  0x01200000  401         3519ad4a3e55f245ff61fe191e3716b2  stage/nttitle/data.cnf
+  0x064c1  602    583  0x00  0x011e0000  2554        2d3df77f10cdab41bbd539372673ae30  stage/nttitle/noneed.nni
+  0x064e7  603    583  0x00  0x01240000  1404287     a872d84e93b7a6d5ec4ac2cec47de69b  stage/nttitle/scenerio.gcx
+  0x0650f  604    241  0x01  <dir>                                                     stage/ota_chat/
+  0x0651b  605    604  0x00  0x011e0000  580         bdc4c6ee6bb83662fbdce2ffb8fc49ad  stage/ota_chat/cache.dci
+  0x06540  606    604  0x00  0x011e0000  24264       7b831df2ba374a5ff22b9bd3aca0be78  stage/ota_chat/cache.qar
+  0x06565  607    604  0x00  0x011e0000  133984      b5708406585846b83da431ba8089d2c1  stage/ota_chat/cache.vfp
+  0x0658a  608    604  0x00  0x010a0000  475777      1a84f5c626ac5ae90a5c4df541c26466  stage/ota_chat/cache_011000.dar
+  0x065b6  609    604  0x00  0x010a0000  542720      c2a2005353c98968531828cf8d575d68  stage/ota_chat/cache_011000.dlz
+  0x065e2  610    604  0x00  0x01140000  59761       9698e729b85d304ca4e337bb0ef8298d  stage/ota_chat/cache_012000.dar
+  0x0660e  611    604  0x00  0x01140000  20480       201e9052eae0f6a1044bcce9da9252eb  stage/ota_chat/cache_012000.dlz
+  0x0663a  612    604  0x00  0x011e0000  12369       d2ebc56bd1d8fcc958f48bf7f3fee46d  stage/ota_chat/cache_013000.dar
+  0x06666  613    604  0x00  0x011e0000  18432       a160d6f8f9b67e704e29c51a7e56a926  stage/ota_chat/cache_013000.dlz
+  0x06692  614    604  0x00  0x011e0000  536         3c1e23b6141f1e085ddc2bebca6dd73f  stage/ota_chat/cache_d.dci
+  0x066b9  615    604  0x00  0x010a0000  1390592     14095d4c6b86ac5968cbef0f14cd794b  stage/ota_chat/cache_d_011000.dlz
+  0x066e7  616    604  0x00  0x01140000  47104       73623b9ec178746916ccde852da2c51c  stage/ota_chat/cache_d_012000.dlz
+  0x06715  617    604  0x00  0x011e0000  38912       d0213e2f2400ffea1e82c34fe2c702f7  stage/ota_chat/cache_d_013000.dlz
+  0x06743  618    604  0x00  0x01140000  364         44747f1dd9b94aba741f89560d259bf1  stage/ota_chat/cache_nodld.dci
+  0x0676e  619    604  0x00  0x010a0000  71680       f2059703a787961de6a3af8a83b416d4  stage/ota_chat/cache_nodld_011000.dlz
+  0x067a0  620    604  0x00  0x01140000  1488        e000e7360d3d5daf15afb5f4cfc617fc  stage/ota_chat/cache_nodld_012000.dld
+  0x067d2  621    604  0x00  0x01150000  2048        e76452e208cf783c3aa51fae1f022fd1  stage/ota_chat/cache_nodld_012000.dlz
+  0x06804  622    604  0x00  0x011e0000  397         38a484ee0bad46b0fa16194d0aa407d8  stage/ota_chat/data.cnf
+  0x06828  623    604  0x00  0x010a0000  11          9aaf3da05b0fe2177fde1743cd110d1f  stage/ota_chat/noneed.nni
+  0x0684e  624    604  0x00  0x01240000  587986      c55d7c9d4db786d814adea580c9ddcda  stage/ota_chat/scenerio.gcx
+  0x06876  625    241  0x01  <dir>                                                     stage/r_onlinelobby/
+  0x06887  626    625  0x00  0x011e0000  1018        528ad6c64914fd329ca6e1b356854ee9  stage/r_onlinelobby/data.cnf
+  0x068ab  627    625  0x00  0x011f0000  2588        d2fdedb008c7716907e2ab6523ded365  stage/r_onlinelobby/noneed.nni
+  0x068d1  628    625  0x00  0x011e0000  2696        59672ed9414eb11a50965dff827a0591  stage/r_onlinelobby/resident.dci
+  0x068f9  629    625  0x00  0x01200000  39136       ebf4a1ae07e59b71d4ea3ae2b8408d05  stage/r_onlinelobby/resident.qar
+  0x06921  630    625  0x00  0x010a0000  3011009     c8e2328ca7c82755ed3d7b66b01ca8a4  stage/r_onlinelobby/resident_011000.dar
+  0x06950  631    625  0x00  0x010a0000  3729408     b0a265ff90ebf771cde8200bb648e194  stage/r_onlinelobby/resident_011000.dlz
+  0x0697f  632    625  0x00  0x01140000  452001      8260c98cfe5f505e5a2c0252d5662fcb  stage/r_onlinelobby/resident_012000.dar
+  0x069ae  633    625  0x00  0x01140000  464896      15bf7334e15fed54973a1c9af8d986ea  stage/r_onlinelobby/resident_012000.dlz
+  0x069dd  634    625  0x00  0x011e0000  1763569     b80acd50eb772950f47093f3c9a078bd  stage/r_onlinelobby/resident_013000.dar
+  0x06a0c  635    625  0x00  0x011e0000  2193408     e3c9ad52394e30a165b55f36cf94eac7  stage/r_onlinelobby/resident_013000.dlz
+  0x06a3b  636    625  0x00  0x011e0000  1884        a7bc7b0c0b12f2e602b4da2fab3365fb  stage/r_onlinelobby/resident_d.dci
+  0x06a65  637    625  0x00  0x010a0000  9930752     44fc1821c530d809ee088a1379752651  stage/r_onlinelobby/resident_d_011000.dlz
+  0x06a96  638    625  0x00  0x01140000  1042432     c86f25ce23bf0e5dc255bd168848a84f  stage/r_onlinelobby/resident_d_012000.dlz
+  0x06ac7  639    625  0x00  0x011e0000  5711872     8beee1f4e563163acd91796b84498a14  stage/r_onlinelobby/resident_d_013000.dlz
+  0x06af8  640    625  0x00  0x011e0000  504         c323312655785a19ab879aedece61cf6  stage/r_onlinelobby/resident_nodld.dci
+  0x06b26  641    625  0x00  0x010a0000  43008       871c9e226736986614b2143dc3b31a07  stage/r_onlinelobby/resident_nodld_011000.dlz
+  0x06b5b  642    625  0x00  0x01140000  18432       32f9f9116cf176285548ed2b55c13d88  stage/r_onlinelobby/resident_nodld_012000.dlz
+  0x06b90  643    625  0x00  0x011e0000  12288       2c398470833eb25f2d55360218437095  stage/r_onlinelobby/resident_nodld_013000.dlz
+  0x06bc5  644    625  0x00  0x01240000  77          c8450dab6490edb33ba4bb68a4130990  stage/r_onlinelobby/scenerio.gcx
+  0x06bed  645    241  0x01  <dir>                                                     stage/r_sna01_n/
+  0x06bfa  646    645  0x00  0x01200000  1140        66083a273c17dd90270ff455ca9ce894  stage/r_sna01_n/data.cnf
+  0x06c1e  647    645  0x00  0x011e0000  2725        d048650ebec601284ab18bb6b9553674  stage/r_sna01_n/noneed.nni
+  0x06c44  648    645  0x00  0x011f0000  3896        f3914871bd81362901f30c74b8591351  stage/r_sna01_n/resident.dci
+  0x06c6c  649    645  0x00  0x01200000  117108      537313143f98fab834d7d720097c4053  stage/r_sna01_n/resident.qar
+  0x06c94  650    645  0x00  0x01140000  14240       e26fca5a0f328c46856ee27fd9759796  stage/r_sna01_n/resident.vfp
+  0x06cbc  651    645  0x00  0x010a0000  14598641    7ac246ad20011b583f3c87fb54978f40  stage/r_sna01_n/resident_011000.dar
+  0x06ceb  652    645  0x00  0x010a0000  1337344     12cbc6548c28d992253161e21275694a  stage/r_sna01_n/resident_011000.dlz
+  0x06d1a  653    645  0x00  0x01140000  12243677    46f8c94553a46dab440f2498504b8b29  stage/r_sna01_n/resident_012000.dar
+  0x06d49  654    645  0x00  0x01140000  530432      0fb10cd9c1c892cd4cb8393ea2c5f2e8  stage/r_sna01_n/resident_012000.dlz
+  0x06d78  655    645  0x00  0x011e0000  13494221    1eb1d0ad7f9f44fc99152cb99595d233  stage/r_sna01_n/resident_013000.dar
+  0x06da7  656    645  0x00  0x011e0000  2572288     703a40e2ce82051d286c6a6ed535c649  stage/r_sna01_n/resident_013000.dlz
+  0x06dd6  657    645  0x00  0x01200000  53969       7f24ef528dba68afece758c339926667  stage/r_sna01_n/resident_013200.dar
+  0x06e05  658    645  0x00  0x011f0000  3348        09ca9373d598bbd31dd77e43d5ce0de5  stage/r_sna01_n/resident_d.dci
+  0x06e2f  659    645  0x00  0x010a0000  3313664     3b769ef87dcc6d66941ba9716b4f6559  stage/r_sna01_n/resident_d_011000.dlz
+  0x06e60  660    645  0x00  0x01140000  1423360     f221e3c6ea72abf4fd2784d0156f7ad1  stage/r_sna01_n/resident_d_012000.dlz
+  0x06e91  661    645  0x00  0x011e0000  6905856     5fc1e647a0f7f646ad5615b5934ea332  stage/r_sna01_n/resident_d_013000.dlz
+  0x06ec2  662    645  0x00  0x011e0000  2872        aaf9a12c47dc39cccc05e688ed19b319  stage/r_sna01_n/resident_nodld.dci
+  0x06ef0  663    645  0x00  0x010a0000  845824      586410a324983b676b5c3e756852ddc5  stage/r_sna01_n/resident_nodld_011000.dlz
+  0x06f25  664    645  0x00  0x01140000  778240      15c0d4d6a98c9904f1bbed06b1c1798b  stage/r_sna01_n/resident_nodld_012000.dlz
+  0x06f5a  665    645  0x00  0x011e0000  559104      05f2e65467ea98ffdc780dfe8da40943  stage/r_sna01_n/resident_nodld_013000.dlz
+  0x06f8f  666    645  0x00  0x01240000  77          c8450dab6490edb33ba4bb68a4130990  stage/r_sna01_n/scenerio.gcx
+  0x06fb7  667    241  0x01  <dir>                                                     stage/r_sneak_n/
+  0x06fc4  668    667  0x00  0x01200000  1140        3abc823cf94effe3c288aeabd9335497  stage/r_sneak_n/data.cnf
+  0x06fe8  669    667  0x00  0x011f0000  2566        bd6835e83c1ff836dbc6964fc4368c10  stage/r_sneak_n/noneed.nni
+  0x0700e  670    667  0x00  0x011e0000  3260        4aaf1e0245b69ef29da59345303876c6  stage/r_sneak_n/resident.dci
+  0x07036  671    667  0x00  0x01200000  92236       bc57f3b5506c14aa369bfee6ddeb9040  stage/r_sneak_n/resident.qar
+  0x0705e  672    667  0x00  0x01140000  14240       e26fca5a0f328c46856ee27fd9759796  stage/r_sneak_n/resident.vfp
+  0x07086  673    667  0x00  0x010a0000  13838497    259adb522c4bf55fe2a38cf7bb56dcd3  stage/r_sneak_n/resident_011000.dar
+  0x070b5  674    667  0x00  0x010a0000  1325056     cee19d5e26424236fc7b14816ece9afd  stage/r_sneak_n/resident_011000.dlz
+  0x070e4  675    667  0x00  0x01140000  12202317    f9179153467e3aaf2f999cb9419fc1c7  stage/r_sneak_n/resident_012000.dar
+  0x07113  676    667  0x00  0x01140000  526336      0a87c1135195ae2205ea7359306dc492  stage/r_sneak_n/resident_012000.dlz
+  0x07142  677    667  0x00  0x011e0000  12975277    79a14c503dd75b071b9849df24fd5ab5  stage/r_sneak_n/resident_013000.dar
+  0x07171  678    667  0x00  0x011e0000  2189312     d8768eee2f6785c5f7c126f70a12010c  stage/r_sneak_n/resident_013000.dlz
+  0x071a0  679    667  0x00  0x01200000  23517       057d780f430c20be331cd8a8f77c5be2  stage/r_sneak_n/resident_013200.dar
+  0x071cf  680    667  0x00  0x011e0000  2720        540fb62f1f4b7a459d45056a8024bd47  stage/r_sneak_n/resident_d.dci
+  0x071f9  681    667  0x00  0x010a0000  3301376     e53b3b743a1779861acf6fcb00fd5ff8  stage/r_sneak_n/resident_d_011000.dlz
+  0x0722a  682    667  0x00  0x01140000  1409024     f2cfee0e22b1538d8854a2bad8307b20  stage/r_sneak_n/resident_d_012000.dlz
+  0x0725b  683    667  0x00  0x011e0000  5920768     50ae703b35b81b18d67dbe46e21c8f44  stage/r_sneak_n/resident_d_013000.dlz
+  0x0728c  684    667  0x00  0x011e0000  2764        21da545a47d8724fe43b795513277f82  stage/r_sneak_n/resident_nodld.dci
+  0x072ba  685    667  0x00  0x010a0000  819200      b87ed35be84cc7fe133935560479cef9  stage/r_sneak_n/resident_nodld_011000.dlz
+  0x072ef  686    667  0x00  0x01140000  737280      f61fe566ee2246ed0653efe97bd52ba5  stage/r_sneak_n/resident_nodld_012000.dlz
+  0x07324  687    667  0x00  0x011e0000  575488      aaa399818abc6bf0756a76f011e72068  stage/r_sneak_n/resident_nodld_013000.dlz
+  0x07359  688    667  0x00  0x01240000  77          c8450dab6490edb33ba4bb68a4130990  stage/r_sneak_n/scenerio.gcx
+  0x07381  689  65535  0x00  0x010a0000  2140160     f44671e2ad0d9fab4a06f1fe1aec503d  vox_ex1.dat
+  0x073a8  690  65535  0x00  0x011e0000  786432      8b9b71dddeb6f3e142ac8c4cf1b20127  vox_ex3.dat
+
+PAYLOAD CROSS-CHECK
+------------------------------------------------------------------------------
+  against /mnt/d/rpcs3-v0.0.41-19598-357b7d44_win64_msvc/dev_hdd0/game/BLUS30109/USRDIR/o/dl/p
+  delta = on-disk size minus manifest size.
+  A delta of +24 means the stored copy is still in the path-keyed asset-cipher
+  container (CRYPTO.md), whose overhead is a constant 24 bytes. Those files cannot
+  be digest-checked without decrypting them first, because the digest covers the
+  plaintext.
+
+  delta       +0 :  235 files
+  delta      +24 :  424 files
+
+  digest verified (delta 0, hashed as-is) : 234
+  digest MISMATCH                         : 1
+      kit
+  missing on disk : 1
+      MGO2.SELF
+
+TRAILER
+------------------------------------------------------------------------------
+  None. The last entry's digest ends at 0x73cf, which is EOF exactly.
