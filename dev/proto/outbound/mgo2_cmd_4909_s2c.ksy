@@ -318,12 +318,63 @@ types:
   block_204:
     doc: |
       [ELF 0xD4364C] Shared 204-byte block; nine call sites, listed in the top-level doc.
-      **Canonical model: `mgo2_cmd_4313_s2c.ksy` type `game_settings`** — this is a mirror kept
-      for byte accounting only. Offsets below are
-      relative to the block's own destination. The leading section is **interleaved on the
-      wire**: 16 iterations of {u8 -> +0x00+i, u8 -> +0x10+i, u8 -> +0x20+i}, so the wire
-      order is triple(0), triple(1) ... triple(15) while the struct holds three 16-byte
-      arrays. Every field's meaning is [UNKNOWN]; only positions and widths are established.
+      **Canonical model: `mgo2_cmd_4313_s2c.ksy` type `game_settings`** — this remains a mirror,
+      and where the two disagree that file wins. Offsets below are relative to the block's own
+      destination. The leading section is **interleaved on the wire**: 16 iterations of
+      {u8 -> +0x00+i, u8 -> +0x10+i, u8 -> +0x20+i}, so the wire order is triple(0), triple(1)
+      ... triple(15) while the struct holds three 16-byte arrays.
+
+      ## THE BIJECTION WITH `game_settings`, AND WHY THE NAMES NOW TRANSFER (2026-08-02)
+
+      The line that used to close this doc — "every field's meaning is [UNKNOWN]; only positions
+      and widths are established" — was true when written and is no longer. Two separate things
+      had to be settled to retire it, and they are settled by different evidence.
+
+      **1. Same struct, same offsets — by construction.** `0xD4364C` is ONE function whose
+      destination base is `r29`, the block pointer; every field is a literal displacement off it.
+      Disassembling `0xD4364C`-`0xD43BC0` yields exactly this displacement list, and it does not
+      depend on which call site supplied `r29`:
+
+          0..47   3x u8 per iteration, 16 iterations   (0xD4368C / 0xD436B0 / 0xD436D0)
+          48 u8   49 u8   50 raw16   66 u8   67 u8   68 u32   72 u32   76 u32
+          80 u16  82 u16  84 u32     88 u32  92 u16   94 u8    95 u8
+          96..164 u32 x18 (unrolled)
+          168 raw2  170 u16  172 u32  176 u8  177 raw2  179 u8
+          180 u16   182 u16  184 u32  188 u8  189 u8    190 raw14   = 204 total
+
+      `mgo2_cmd_4313_s2c.ksy` transcribes the same list from the same function, so there is no
+      wire position at which the two types could disagree. This is offset identity, not
+      resemblance.
+
+      **2. The meanings carry into THIS record specifically** — and unusually for a post-launch
+      command, that has a same-carrier proof rather than an argument by analogy. The tournament
+      RULE DETAIL panel `0x901808` reads this block **through this record's own base**, and what
+      it reads it as matches `game_settings` field for field:
+
+      - `block+0x10..+0x16` — the first seven `triple.b` bytes — are resolved as stage names via
+        `strres(0x654515, b + 74)`. That is `rotation_round.map`.
+      - `block+0x6C..+0xA4` are selected in pairs and triples by an 8-way jump table on the
+        record's `rule` byte and formatted with `%d分` / `%d回` / `%d枚` into widgets named
+        `NULL_tournamentrule_time` / `_round` / `_ticket`. That is `rule_timers`, in the canonical
+        order, including Deathmatch's missing rounds slot.
+
+      So in a `0x4909` record this block is the event's game settings, with the same fields in the
+      same places. Names below are transferred on that basis.
+
+      **Tier, stated once.** Offsets and widths are [ELF]. The names originate in the
+      capture-proven `0x4310` push and `0x4305` reply of the same 204 bytes (OBSERVED.md, plus the
+      214 archived payloads in `../samples/4310/captures.psv`), so they are tier 2 **on the
+      struct**. No available client build exercises `0x4909`, so nothing here is tier 2 *for this
+      command* and no capture backs any statement about a tournament record.
+
+      **What deliberately does NOT transfer: the canonical file's "no reader in the image"
+      verdicts** for block +72, +76, +80, +82, +84, +88, +92, +170 and +172. Those were
+      established against the **game-details object**, where the block sits at struct `+752` and a
+      displacement sweep could use the marker offsets 802/818/819/846/847/940/941 to separate that
+      object from every other. Here the block sits at `T+0x040` of a 912-byte tournament record,
+      so the displacements are different numbers and the sweep does not carry across. **Liveness
+      is a property of the carrier; layout is not.** Where a field below reports a negative, it is
+      reported as the canonical carrier's negative and labelled as such.
     seq:
       - id: triples
         type: triple
@@ -332,10 +383,35 @@ types:
         doc: "[ELF 0xd43678-0xd436e4] 16 wire triples scattering into three 16-byte arrays at +0x00/+0x10/+0x20."
       - id: unknown_30
         type: u1
-        doc: "[UNKNOWN] +0x30."
+        doc: |
+          [UNKNOWN — meaning] +0x30 (block +48). Offset and width [ELF] `0xD436F4`.
+
+          **No name exists to transfer**: the canonical file carries this byte as `unknown_48`
+          too, so it is unnamed campaign-wide rather than merely un-caught-up here. What travels
+          with the byte, recorded so the gap is explicit:
+
+          - In the **game-details carrier** it is published and then read by nothing. `0x8CA460`
+            copies struct `+800` into a scratch byte and `0x8CA6F0` publishes that scratch as
+            client property-store **key 86**, an 8-byte record of which only bytes 1 and 5 are
+            ever filled — this byte and `unknown_31`. The two ELF-side readers of those bytes,
+            `0x7F4C98` and `0x7F4C50`, are **dead code**: no `bl` reaches either and neither OPD
+            appears in the GCX native table, while their immediate neighbours' OPDs do (the
+            control that shows the search finds registrations when they exist).
+          - **Nothing in the create-game UI writes it**, so it is server-authoritative and simply
+            round-trips through the client's own `0x4310`.
+          - **Capture value: 0x00 in all 214 archived `0x4310` payloads.**
+
+          None of that is claimed for a tournament record — see the liveness note in the type doc.
+          The pairing with `unknown_31` is structural and does carry.
       - id: unknown_31
         type: u1
-        doc: "[UNKNOWN] +0x31."
+        doc: |
+          [UNKNOWN — meaning] +0x31 (block +49). Offset and width [ELF] `0xD43710`. Canonical
+          `unknown_49`; no name exists to transfer.
+
+          Element 1 of the pair described under `unknown_30`: `0x8CA468` publishes it as key 86
+          byte 5, its only ELF reader `0x7F4C50` is uncalled and unregistered, and no UI widget
+          writes it. **Capture value: 0x00 in all 214 archived payloads.** Same carrier caveat.
       - id: weapon_restrictions
         size: 16
         doc: |
@@ -351,42 +427,117 @@ types:
           `0x4310` omitting the same fields `0x4305` omits, briefing `0xE6` = +68, tolerance
           `0xF7` = +95, level-limit base `0xF8` = +96, commonA/B `0x142`/`0x143` = +177/+178.
           16 bytes of ISO-8859-1 text is what a 16-byte bitfield looks like from the width alone.
-      - id: unknown_42
+      - id: max_players
         type: u1
-        doc: "[UNKNOWN] +0x42."
-      - id: unknown_43
+        doc: |
+          [ELF offset+width `0xD43744` -> +0x42 (block 66); name INFERRED from capture]
+          **Maximum player count.** Renamed from `unknown_42` 2026-08-02.
+
+          Capture-proven at `0x4310` wire `0xE5` — `0xA3 + 0x42`, with no omitted field before it,
+          which is the shortest mapping in the whole block. 176 of the 214 archived payloads read
+          `0x10` = 16, the game's own maximum; the other 38 read 2, 3 or 17.
+      - id: player_count
         type: u1
-        doc: "[UNKNOWN] +0x43."
-      - id: unknown_44
+        doc: |
+          [ELF offset+width `0xD43760` -> +0x43 (block 67); name INFERRED] **Current player
+          count.** Renamed from `unknown_43` 2026-08-02.
+
+          The identification is a negative that happens to be sharp: `0x4305` (saved settings) and
+          `0x4310` (host push) both omit **exactly this byte** out of this whole region, which is
+          what a live-session field looks like in a saved-settings reply. In the game-details
+          carrier the validator at `0x883FB4` rejects zero here. Whether a tournament record
+          validates it is not claimed.
+      - id: briefing_time
         type: u4
-        doc: "[UNKNOWN] +0x44."
+        doc: |
+          [ELF offset+width `0xD4377C` -> +0x44 (block 68); name INFERRED from capture]
+          **Briefing length.** Renamed from `unknown_44` 2026-08-02.
+
+          Capture-proven at `0x4310` wire `0xE6`. The create-game adjuster at
+          `0x8A6D14`-`0x8A6E74` steps it by ±1 with a ±30 jump and bounds-tests against 1 and 29,
+          so the range is about [0,30]; `0x8CA588` publishes it as property-store **key 96**, and
+          the units label is disc string 574. 172 of 214 archived payloads read 2, the other 42
+          read 1.
       - id: unknown_48
         type: u4
-        doc: "[UNKNOWN] +0x48."
+        doc: |
+          [UNKNOWN — meaning] +0x48 (**block 72**; note the id is the hex wire offset, not the
+          canonical file's decimal `unknown_72`). Width [ELF] in both directions: the parser at
+          `0xD43790` uses the u32 reader `0xD5CCD8` and the `0x4310` builder at `0xD449C8` the u32
+          writer `0xD5C9BC` — so a captured `0x02000000` is the value 33554432, not a `2` with
+          three pad bytes. The wire bytes are identical either way, which is why it needed
+          checking.
+
+          **No name to transfer.** In the game-details carrier the canonical file reports no
+          reader and no writer anywhere in the image, and no accessor-bank getter either; that is
+          a statement about struct `+824`, not about `T+0x88` of a tournament record, and is not
+          re-asserted here.
+
+          Captures read `0x02000000` in 182 of 214 and `0x00000000` in 32 — and that split is
+          **exactly** the split of `common_flags_lsb` below, 214 for 214, the two never disagree.
       - id: unknown_4c
         type: u4
-        doc: "[UNKNOWN] +0x4c."
+        doc: |
+          [UNKNOWN — meaning] +0x4c (block 76). Width [ELF] u32 reader `0xD5CCD8` at `0xD437AC`.
+          Canonical `unknown_76`; no name to transfer, and **not carried by `0x4310` or `0x4305`
+          at all** — this family, `0x4313` and `0x43F1` are the only ways to set it, so there is
+          no archived capture of it either.
       - id: unknown_50
         type: u2
-        doc: "[UNKNOWN] +0x50."
+        doc: |
+          [UNKNOWN — meaning] +0x50 (block 80). Width [ELF] u16 reader `0xD5CC14` at `0xD437C8` —
+          a halfword, not the top half of a u32. Canonical `unknown_80`; no name to transfer.
+          Capture value `0x0000`, 214 of 214.
       - id: unknown_52
         type: u2
-        doc: "[UNKNOWN] +0x52."
+        doc: |
+          [UNKNOWN — meaning] +0x52 (block 82). Width [ELF] **twice**: u16 reader `0xD5CC14` at
+          `0xD437E4`, and an independent compiler-emitted `lhz r3,834(r3)` in the game-details
+          accessor bank at `0x907784`. That bank is dead code, but a dead accessor still declares
+          a width. Canonical `unknown_82`; no name to transfer. Not carried by `0x4310`/`0x4305`.
       - id: unknown_54
         type: u4
-        doc: "[UNKNOWN] +0x54."
+        doc: |
+          [UNKNOWN — meaning] +0x54 (block 84). Width [ELF] u32 reader `0xD5CCD8` at `0xD43800`.
+          Canonical `unknown_84`; no name to transfer. Capture value `0x00000000`, 214 of 214.
       - id: unknown_58
         type: u4
-        doc: "[UNKNOWN] +0x58."
+        doc: |
+          [UNKNOWN — meaning] +0x58 (block 88). Width [ELF] twice: u32 reader `0xD5CCD8` at
+          `0xD4381C`, and `lwz r3,840(r3)` in the dead game-details accessor bank at `0x90775C`.
+          Canonical `unknown_88`; no name to transfer. Not carried by `0x4310`/`0x4305`.
       - id: unknown_5c
         type: u2
-        doc: "[UNKNOWN] +0x5c."
-      - id: unknown_5e
+        doc: |
+          [UNKNOWN — meaning] +0x5c (block 92). Width [ELF] u16 reader `0xD5CC14` at `0xD43838`.
+          Canonical `unknown_92`; no name to transfer. Capture value `0x0000`, 214 of 214.
+      - id: host_stance
         type: u1
-        doc: "[UNKNOWN] +0x5e."
-      - id: unknown_5f
+        doc: |
+          [ELF offset+width `0xD43854` -> +0x5e (block 94); name CONFIRMED from the binary's own
+          developer table] **The host stance.** Renamed from `unknown_5e` 2026-08-02.
+
+          Better evidenced than a transferred name: the client carries nine NUL-padded 20-byte
+          entries at **`0xE1BC48`** reading `HOST_STANCE_EASY`, `HOST_STANCE_REAL`,
+          `HOST_STANCE_BEGINNER`, `HOST_STANCE_EVERYONE`, `HOST_STANCE_OTHER`,
+          `HOST_STANCE_TRAINING`, `HOST_STANCE_INSTRUCTOR_ENTRY`, `HOST_STANCE_INSTRUCTOR_STARTED`,
+          `HOST_STANCE_NONE` — ids 0..8 — and range-gates the value with `cmplwi 9 / bgt` at
+          `0xA31230`. In the game-details carrier `0x8CA580` publishes it as property-store key 94
+          and `0xD49530` copies it into a `0x4302` row at `T+0x24`, which that spec also calls
+          stance. Archived payloads carry 0 (156), 2 (32), 6 (19) and 5 (7).
+      - id: level_limit_tolerance
         type: u1
-        doc: "[UNKNOWN] +0x5f."
+        doc: |
+          [ELF offset+width `0xD43868` -> +0x5f (block 95); name INFERRED from capture]
+          **The level-limit tolerance, in LEVELS** — applied as `base ± tolerance` around
+          `words[0]`. Renamed from `unknown_5f` 2026-08-02.
+
+          Capture-proven at `0x4310` wire `0xF7`, immediately before the level-limit base at
+          `0xF8` (OBSERVED.md 2026-07-22). Corroborated twice in the game-details carrier:
+          `0x8CA544` publishes it as property-store key 98, directly beside key 99 = the base, and
+          the game picker at `0x93452C`-`0x93455C` tests a candidate's level against entry `+38`
+          as a tolerance around entry `+40`. 211 of 214 archived payloads read `0x16` = 22, the
+          level cap — i.e. hosts overwhelmingly leave the limit wide open.
       - id: words
         type: u4
         repeat: expr
@@ -418,42 +569,175 @@ types:
 
           Field ids here are **left unrenamed on purpose**: `block_204` is a byte-accounting
           mirror and `mgo2_cmd_4313_s2c.ksy` is canonical. The naming belongs there.
-      - id: unknown_a8
+      - id: pair_a8
         size: 2
-        doc: "[UNKNOWN] +0xa8, read as a 2-byte raw block (not a u16 — 0xD5D018 with r5=2)."
+        doc: |
+          [ELF] +0xa8 (block 168), read as a **2-byte raw block**, not a u16 (`0xD5D018` with
+          r5=2) — the parser draws no boundary between the two bytes, which is why the
+          declaration stays raw. Renamed from `unknown_a8` 2026-08-02.
+
+          The client itself does split them: in the game-details carrier `0x8CA5C0` and `0x8CA5C8`
+          load struct `+920` and `+921` as two separate `lbz`, and `0x8CA87C` publishes the pair
+          as a 2-byte property-store record, **key 134**. The canonical file names them
+          `unique_red` / `unique_blue`; that name is **tier 4 and doubtful**, since unique
+          characters were absent from this build's UI and untestable (OBSERVED.md).
+
+          The archived captures argue against reading it as a per-team setting at all: **all 214
+          read `00 01`**, never any other combination. A pair of independently chosen team values
+          would vary; a constant would not. Meaning [UNKNOWN] — the observed value is not.
       - id: unknown_aa
         type: u2
-        doc: "[UNKNOWN] +0xaa."
+        doc: |
+          [UNKNOWN — meaning] +0xaa (block 170). Width [ELF] twice: u16 reader `0xD5CC14` at
+          `0xD43A9C`, and `lhz r3,922(r3)` in the dead game-details accessor bank at `0x9074B4`.
+          Canonical `unknown_170`; **no name to transfer**.
+
+          Worth one structural note: that accessor is separate from the indexed getter at
+          `0x907174`, which walks `920 + idx` and stops short of 922. So this halfword sits
+          **outside** the `pair_a8` pair rather than being a third element of it. Not carried by
+          `0x4310` or `0x4305`.
       - id: unknown_ac
         type: u4
-        doc: "[UNKNOWN] +0xac."
-      - id: unknown_b0
+        doc: |
+          [UNKNOWN — meaning] +0xac (block 172). Width [ELF] twice: u32 reader `0xD5CCD8` at
+          `0xD43AB8`, and `lwz r3,924(r3)` in the dead game-details accessor bank at `0x90748C`.
+          Canonical `unknown_172`; no name to transfer. Not carried by `0x4310` or `0x4305`.
+      - id: common_flags_msb
         type: u1
-        doc: "[UNKNOWN] +0xb0."
-      - id: unknown_b1
+        doc: |
+          [ELF offset+width `0xD43AD4` -> +0xb0 (block 176); name ELF-derived] The **most
+          significant byte of the 32-bit Common Settings flags word**. Renamed from `unknown_b0`
+          2026-08-02.
+
+          In the game-details carrier the word is the big-endian u32 at struct `+928`, i.e. this
+          byte, then `common_ab`, then `common_flags_lsb`: bits 31..24 here, 23..16 =
+          `common_ab[0]`, 15..8 = `common_ab[1]`, 7..0 = the lsb byte. 117 sites image-wide do
+          `lwz rX,928(rB)` and bit-test the result, and **every tested bit lies in 8..23**, so no
+          bit this byte owns is consumed anywhere. The name says what the byte IS; what a set bit
+          would mean is [UNKNOWN].
+
+          The bit arithmetic, because it is easy to get backwards: the tests are
+          `rldicl. rX,r0,sh,63`, which selects LSB index **`64 - sh`**. The fifteen tests at
+          `0x8CA2BC`-`0x8CA420` use `sh` in 41..56, i.e. bits 8..21 and 23. Control: `sh=49` gives
+          bit 15, and bit 15 is independently the one the create-game team-kill row sets and clears
+          with `ori 32768` / `rlwinm 16,1,31` at `0x8A5FA0`-`0x8A5FAC`.
+      - id: common_ab
         size: 2
-        doc: "[UNKNOWN] +0xb1, 2-byte raw block."
-      - id: unknown_b3
+        doc: |
+          [ELF] +0xb1 (block 177), 2-byte raw block. **The two live Common Settings toggle
+          bytes** — `common_a` then `common_b` in the canonical file, bits 23..16 and 15..8 of the
+          flags word described under `common_flags_msb`. Renamed from `unknown_b1` 2026-08-02.
+
+          The two offsets are capture-proven at `0x4310` wire `0x142`/`0x143`; the individual bits
+          are **not** all identified. Kept as one raw 2 because that is how the parser reads it and
+          how both the `0x4310` builder and the `0x4302` row builder copy it.
+
+          Archived values: `common_a` is `0x24` in 149 payloads, `0x2c` in 63, `0x25` and `0x34`
+          once each; `common_b` is `0x00` in 170 and nonzero in 44. `common_a` bit 0 is the
+          idle-kick enable, and the gate is confirmed 214 for 214 — the single payload with
+          `common_a = 0x25` is the single payload with a nonzero `idle_kick`.
+      - id: common_flags_lsb
         type: u1
-        doc: "[UNKNOWN] +0xb3."
-      - id: unknown_b4
+        doc: |
+          [ELF offset+width `0xD43B10` -> +0xb3 (block 179); name ELF-derived] The **least
+          significant byte** (bits 7..0) of that same 32-bit flags word. Renamed from `unknown_b3`
+          2026-08-02.
+
+          It has its own u8 read, distinct from the raw-2 covering `common_ab`, and the `0x4310`
+          builder splits the same way — so the four-byte word is three separate wire fields, not
+          one. **Bits 0..7 are never tested** by any of the 117 flag-word sites, and the only load
+          of struct `+931` in the game-details carrier is the dead accessor `0x9072AC`.
+
+          Archived captures read `0x20` in 182 and `0x00` in 32, and that split is **exactly** the
+          split of `unknown_48` (block 72) — 214 for 214, the two never disagree. All 26 payloads
+          from lobby subtypes 7 and 8 (training) are in the zero group, plus six from subtypes 0
+          and 1. So the byte covaries with something about the session while having no reader,
+          which is a reason to echo it rather than to invent it. Meaning [UNKNOWN].
+      - id: idle_kick
         type: u2
-        doc: "[UNKNOWN] +0xb4."
-      - id: unknown_b6
+        doc: |
+          [ELF offset+width `0xD43B2C` -> +0xb4 (block 180); name INFERRED from capture]
+          **The idle-kick threshold, in MINUTES.** Renamed from `unknown_b4` 2026-08-02.
+
+          The unit is read from the binary rather than guessed: in the game-details carrier
+          `0x8CA424` loads struct `+932` and `0x8CA458` multiplies it by 60 before `0x8CA63C`
+          publishes it as property-store **key 76**. Gated by `common_ab[0]` bit 0, and that gate
+          is capture-confirmed 214 for 214 — see `common_ab`.
+      - id: team_kill_kick
         type: u2
-        doc: "[UNKNOWN] +0xb6."
-      - id: unknown_b8
+        doc: |
+          [ELF offset+width `0xD43B48` -> +0xb6 (block 182); name INFERRED from capture]
+          **Team kills tolerated before a kick.** Renamed from `unknown_b6` 2026-08-02.
+
+          Published as property-store **key 69** at `0x8CA534`/`0x8CA608` — and note the client
+          truncates there (`stb` after an `lhz`), so its own downstream copy cannot exceed 255 even
+          though the wire field is 16 bits.
+
+          **A gating claim the captures REFUTE, recorded so it is not re-derived.** The
+          create-game screen keeps flags-word bit 15 in step with this field —
+          `0x8A5F90`-`0x8A5FB0` sets the bit when the count is nonzero and clears it when zero —
+          which invites the reading that a clear bit 15 makes a nonzero count inert. It does not.
+          170 of the 214 archived `0x4310` payloads carry `common_b = 0x00`, i.e. bit 15 clear,
+          **with this field = 3**, and the publisher at `0x8CA534` copies the value out with no bit
+          test at all. The invariant is local to that one screen. `mgo2_cmd_4313_s2c.ksy`'s
+          "Zeroed when commonB bit 7 is clear" is therefore too strong; its `idle_kick`
+          counterpart is not.
+      - id: host_ping
         type: u4
-        doc: "[UNKNOWN] +0xb8."
-      - id: unknown_bc
+        doc: |
+          [ELF offset+width `0xD43B64` -> +0xb8 (block 184); name ELF-derived, unit UNKNOWN]
+          Renamed from `unknown_b8` 2026-08-02. **Not carried by `0x4310` or `0x4305`**, so this
+          family, `0x4313` and `0x43F1` are the only ways to set it and no archived capture of it
+          exists.
+
+          In the game-details carrier the hosted-game row synthesiser `0xD493CC` does
+          `lwz r0,936(r31)` at `0xD49548` and stores the result at the row's `T+0x20`, which
+          `mgo2_cmd_4302_s2c.ksy` calls `ping` and which the game picker at
+          `0x934574`-`0x934590` buckets against 20 and 80, preferring lower. **What is proven is
+          the destination slot, not a unit**, and whether a tournament record ever reaches that
+          synthesiser is not claimed.
+      - id: capture_extra_time
         type: u1
-        doc: "[UNKNOWN] +0xbc."
-      - id: unknown_bd
+        doc: |
+          [ELF offset+width `0xD43B80` -> +0xbc (block 188); name CONFIRMED from disc strings]
+          **Capture Mission "EXTRA TIME"** — extend the round until a victor emerges. Renamed from
+          `unknown_bc` 2026-08-02.
+
+          A plain toggle: handler `0x8A02B4` is `x = x ? 0 : 1`, drawn as disc string 33 "ON" / 34
+          "OFF", row label 507 "EXTRA TIME" under header 498 "Capture Mission", help 541
+          *"Enabling this adds extra time to the end of the round until a victor emerges."*
+          Published as property-store key 132. Archived payloads read 0 in 207 and 1 in 7.
+      - id: sneaking_snake_kills
         type: u1
-        doc: "[UNKNOWN] +0xbd."
-      - id: unknown_be
+        doc: |
+          [ELF offset+width `0xD43B9C` -> +0xbd (block 189); name CONFIRMED from disc strings]
+          **Sneaking Mission "SNAKE"** — how many times Snake must be defeated for Red and Blue to
+          win. Renamed from `unknown_bd` 2026-08-02.
+
+          It is a count, not a side index: `0x89D7B8` renders it as a number and the create-game
+          adjuster `0x8A1AC8` clamps it to [1,5], where a side would be 0/1/2 drawn as a name. Disc
+          row label 508 "SNAKE", units 520 "times", help 542 *"Set the number of times Snake must
+          be defeated (victory condition for Red and Blue Teams)."* Published as property-store key
+          131. Archived payloads read 3 (175), 5 (17), 2 (13) and 1 (9).
+
+          It is deliberately **not** in the `words` timer array — Sneaking shows three settings and
+          owns only two slots there; this is the third.
+      - id: unread_tail
         size: 14
-        doc: "[UNKNOWN] +0xbe, 14-byte raw block; ends the 204-byte block at +0xcc."
+        doc: |
+          [ELF] +0xbe (block 190..203), 14-byte raw block; ends the 204-byte block at +0xcc.
+          Renamed from `unknown_be` 2026-08-02, matching the canonical file.
+
+          **One raw read, so the parser draws no field boundaries inside it at all.** In the
+          game-details carrier the client never reads or writes any byte of it: three touch points
+          image-wide — the `0x4310` builder emitting it, the `0x4305` parser reading it, and the
+          create-game initialiser memsetting it to zero at `0x89B5E8`. All 214 archived payloads
+          carry it entirely zero.
+
+          PROTOCOL.md's subdivision of this region — byte-sized timers for Stealth DM, Interval,
+          Solo Capture and Race, a flag and four zeros — is a reference-server reading naming modes
+          whose strings **do not exist on this disc**, and is not adopted. Splitting it needs live
+          divergence testing, which no available build can perform for a `0x4909` record.
   triple:
     seq:
       - id: a
