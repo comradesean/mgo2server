@@ -74,7 +74,7 @@ public class AutomatchPolicyTest {
 		assertThat(policy.enabled()).isFalse();
 		assertThat(policy.windows()).isEmpty();
 		assertThat(policy.zone()).isEqualTo(ZoneId.of("UTC"));
-		assertThat(policy.mode()).isEqualTo(Mode.BOTH);
+		assertThat(policy.mode()).isEqualTo(Mode.FORM_ONLY);
 		assertThat(policy.minPlayers()).isEqualTo(AutomatchPolicy.DEFAULT_MIN_PLAYERS);
 		assertThat(policy.tick()).isEqualTo(AutomatchPolicy.DEFAULT_TICK);
 		assertThat(policy.slotInLobbies()).isEmpty();
@@ -180,9 +180,13 @@ public class AutomatchPolicyTest {
 			.isEqualTo(Mode.FORM_ONLY);
 		assertThat(of(Map.of("MGO2SERVER_AUTOMATCH_MODE", " slot_in_only ")).mode())
 			.isEqualTo(Mode.SLOT_IN_ONLY);
-		// Unset is BOTH: slot in where possible, form where not, which is the useful shape on a
-		// server too small to fill a game from the queue alone.
-		assertThat(of(Map.of()).mode()).isEqualTo(Mode.BOTH);
+		// Unset is FORM_ONLY, changed 2026-08-02. Automatching forms a brand-new game; it does not
+		// slot searchers into games that already exist. The old default was BOTH, which encoded a
+		// planned slot-in pass that was never built and that the architecture argues against -- the
+		// automatching lobby has no Create Game and no browser, so the only games in it are ones
+		// automatch itself formed. Behaviourally identical today, since BOTH degrades to FORM_ONLY
+		// while slot-in is unimplemented; this asserts the intent rather than the coincidence.
+		assertThat(of(Map.of()).mode()).isEqualTo(Mode.FORM_ONLY);
 	}
 
 	/** An unknown mode has to name the alternatives, or the operator is guessing at a restart. */
@@ -336,7 +340,7 @@ public class AutomatchPolicyTest {
 		assertThat(policy.enabled()).isFalse();
 		assertThat(policy.windows()).isEmpty();
 		assertThat(policy.zone()).isEqualTo(ZoneId.of("UTC"));
-		assertThat(policy.mode()).isEqualTo(Mode.BOTH);
+		assertThat(policy.mode()).isEqualTo(Mode.FORM_ONLY);
 		assertThat(policy.minPlayers()).isEqualTo(2);
 		assertThat(policy.tick()).isEqualTo(Duration.ofSeconds(5));
 		assertThat(policy.slotInLobbies()).isEmpty();

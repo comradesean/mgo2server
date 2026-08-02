@@ -60,24 +60,58 @@ public record AutomatchPolicy(
 	/**
 	 * Which matching strategies to run.
 	 *
-	 * <p>The disc implies both existed: the automatch screen ships three distinct search messages —
-	 * "Searching for opponents… until the required number of players are found" (string 911),
-	 * "Searching for joinable games in progress" (912) and "Searching for open games" (913). The
-	 * first is forming; the other two are slotting in.
+	 * <p><b>Automatching forms a brand-new game. That is the whole architecture, and slot-in is not
+	 * part of it</b> — operator judgement, 2026-08-02, and this enum previously implied the
+	 * opposite.
+	 *
+	 * <p>The claim it used to make was that "the disc implies both existed", resting on three search
+	 * messages: 911 <em>"Searching for opponents… until the required number of players are
+	 * found"</em> against 912 <em>"Searching for joinable games in progress"</em> and 913
+	 * <em>"Searching for open games"</em>. <b>That inference does not carry.</b> The strings prove
+	 * the client can <em>display</em> three search states; they say nothing about which the server
+	 * ever entered. That is the project's standing distinction between what shipped on the disc and
+	 * what Konami had switched on — and here it is sharper than usual, because the automatch screen
+	 * is driven entirely by server pushes, so every message it can render is a message the client
+	 * needs a string for whether or not the state occurs.
+	 *
+	 * <p>What points the other way is structural rather than textual, and it is the reason the
+	 * default is now {@link #FORM_ONLY}:
+	 * <ul>
+	 *   <li>the automatching lobby has <b>no Create Game and no browser</b>, so the only games in it
+	 *       are ones automatch itself formed — there is nothing to slot into that automatch did not
+	 *       build;</li>
+	 *   <li>reaching into other lobbies to find candidates is a policy invention with nothing behind
+	 *       it, and would drop searchers into games whose hosts never agreed to receive them;</li>
+	 *   <li>the one observed automatch session <b>formed</b>, assembling its rotation from the union
+	 *       of what its searchers had asked for — a game built for that group.</li>
+	 * </ul>
+	 *
+	 * <p>There is also no post-match lobby screen to see such a game in: automatch goes from the
+	 * search straight into the formed game.
+	 *
+	 * <p>Slot-in stays in this enum as a <b>future</b> possibility rather than being deleted, because
+	 * a later MGO2 version may well have added it and the strings would then be its evidence. It is
+	 * not how this server behaves and not what v1 targets.
 	 */
 	public enum Mode {
 		/**
-		 * Form a game from the queue, and — <b>once slot-in is built</b> — try an existing game
+		 * Form a game from the queue, and — <b>if slot-in is ever built</b> — try an existing game
 		 * first.
 		 * <p>
 		 * <b>Today this behaves exactly like {@link #FORM_ONLY}</b>, because the slot-in pass is not
-		 * implemented. See {@link #SLOT_IN_ONLY} for why it is parked rather than missing.
+		 * implemented, and it is <b>no longer the default</b> (changed 2026-08-02): the default is
+		 * {@link #FORM_ONLY}, which states the architecture rather than a plan we no longer hold.
+		 * Selecting {@code BOTH} today is therefore indistinguishable from {@code FORM_ONLY} and is
+		 * kept only so an existing deployment's {@code server.env} does not fail to start.
 		 */
 		BOTH,
 
 		/**
 		 * Only ever form new games from queued searchers. Every automatch game is then a purpose-made
 		 * one and nobody is dropped into a match already in progress.
+		 *
+		 * <p><b>The default since 2026-08-02, and believed to be how the original worked.</b> See the
+		 * enum's own documentation for why the three disc strings do not argue otherwise.
 		 */
 		FORM_ONLY,
 
@@ -368,7 +402,10 @@ public record AutomatchPolicy(
 
 	private static Mode mode(UnaryOperator<String> env, String name) {
 		var value = env.apply(name);
-		return value == null || value.isBlank() ? Mode.BOTH : Mode.of(value, name);
+		// FORM_ONLY, not BOTH. A behaviour no-op today -- slot-in is unimplemented, so the two are
+		// identical -- but the default should state the architecture rather than a plan we no longer
+		// hold. See Mode's documentation.
+		return value == null || value.isBlank() ? Mode.FORM_ONLY : Mode.of(value, name);
 	}
 
 	private static Set<Long> lobbyIds(UnaryOperator<String> env, String name) {

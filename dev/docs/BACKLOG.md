@@ -4,6 +4,46 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
+## What HOST_STANCE should an automatch game carry? — findable from video
+
+**Open question, 2026-08-02.** We send `host_stance = 0` in the automatch settings block
+(`AutomatchSettingsBlock`, block `+94`). Zero is `HOST_STANCE_EASY`, the modal value across 214
+archived `0x4310` captures (156/214), so it is legal and defensible — but every one of those
+captures is a **human host** who picked a stance or accepted the Create Game default. An automatch
+game has no human host, so nothing establishes what the original server put here.
+
+The client's own developer table at `0xE1BC48`, with the inferred disc labels (set `[40eff4]`,
+ids 172-181):
+
+```
+0 HOST_STANCE_EASY                 Casual
+1 HOST_STANCE_REAL                 Serious
+2 HOST_STANCE_BEGINNER             Newbies Welcome
+3 HOST_STANCE_EVERYONE             Everyone Welcome
+4 HOST_STANCE_OTHER                Other
+5 HOST_STANCE_TRAINING             Training
+6 HOST_STANCE_INSTRUCTOR_ENTRY     Accepting Trainees
+7 HOST_STANCE_INSTRUCTOR_STARTED   Closed to New Applicants
+8 (slot left zero)                 Special
+9 HOST_STANCE_NONE                 No Conditions
+```
+
+**Two traps recorded before anyone acts on this.** `HOST_STANCE_NONE` is **9, not 8** — slot 8 is an
+unnamed gap in the table, and an earlier suggestion to "send 8 for NONE" would have set *Special*.
+And values **above 4 are gated on a lobby flag** (`0x964470`, mask `0x20020`) — the training-only
+half — so in a normal lobby the +/- cycler at `0xA32700` only offers 0..4. Automatching is subtype
+2, a normal lobby, so sending 9 would put a stance on the wire that no host in that lobby could
+select. That is why the value was left at 0 rather than "improved".
+
+**Why this is answerable, and cheaply.** The stance is **visible in-match** — it is the "Conditions"
+row, published as property-store key 94 and copied into the game-list row. So a recording of a real
+automatch game from the live service shows it directly. Community video is tier 2 evidence for
+exactly this kind of question, and it beats any amount of further disassembly, because the ELF can
+only say which values are *legal*, never which one Konami's server chose.
+
+**What to look for:** the Conditions row on an automatch game's info panel, or the game-list entry
+for one. Any of the ten labels above identifies it outright.
+
 ## The instructor recognition prompt is peer-supplied — the server cannot trigger it
 
 *Pinned 2026-07-26, after several live sessions and an ELF trace. **Stop changing server data to chase
