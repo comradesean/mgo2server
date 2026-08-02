@@ -1,16 +1,39 @@
 meta:
   id: mgo2_cmd_4a31_s2c
-  title: "MGO2 0x4A31 - unmapped 0x4Axx full-record reply (server -> client)"
+  title: "MGO2 0x4A31 - Tournament/Survival event detail, reply to 0x4A30 (server -> client)"
   endian: be
 params:
-  - id: group_count
+  - id: round_count
     type: u2
     doc: |
-      NOT A WIRE FIELD. The client takes the `groups` count from its own state (the u16 at
+      NOT A WIRE FIELD. The client takes the `rounds` count from its own state (the u16 at
       obj+0x0DC, read at 0xD4FEF0), which is `halves[3]` of this same layout as most recently
       stored. Declared as a parameter so a spec reader cannot mistake it for a length prefix.
+      [ELF] It is the tournament's **round count**: obj+0x0DC is compared against obj+0x0E0
+      (the current round) at 0x8CDB3C, and when they differ the screen prints lobby string 773,
+      "Round %d of the tournament is complete." The hard ceiling is **8** - the parser memcpys
+      exactly 128 bytes out of this array at 0xD50124 and 128/16 = 8 - so a server sending more
+      than 8 overruns obj+0x1B70.
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in PROTOCOL.md or OBSERVED.md describes 0x4A31.
+  THE 0x4Axx SUBSYSTEM IS **TOURNAMENT / SURVIVAL** (identified 2026-08-02, ELF, tier 1).
+  0x4A31 is the **reply to the client's 0x4A30** and carries the same event detail record as
+  0x4A24 - name, settings, entrant list size, round count, current round, per-round bracket
+  bitmaps and the final standings. Not ranking; COMMANDS.md's 2026-07-27 negative on that
+  reading stands. Full identification evidence is in mgo2_cmd_4a00_s2c.ksy.
+
+  THE REQUEST/REPLY PAIR IS PROVED, not guessed. The request-status table is
+  0xD32E08(session, slot, state) at session[360 + 4*slot], 117 slots. **Slot 87** is armed with
+  state 1 at 0xD5056C, inside the sender at 0xD504A0 that emits `li r4,0x4A30` (0xD504FC) with
+  a single u32 body; this parser is the one that reads slot 87 back (0xD4FC4C, gated on
+  `cmpwi cr4,r0,0x4A31` at 0xD4FC3C - 0x4A24 skips it) and the one that sets it to state 2
+  (0xD501E8). **0x4A30 -> 0x4A31.** The same sender stashes its u32 argument at
+  `*(session+0x11904) + 0x26D08` (0xD50568), which is exactly what this parser validates
+  `obj_id` against at 0xD4FCC8 - so the echo is the client's own request key.
+
+  TIER. Tournament and Survival are post-launch content (Ver. 1.20 and Ver. 1.10). No available
+  client build exercises 0x4A31, so **every statement here is tier 1, read from MGO2.elf, and
+  cannot be raised to tier 2**. Nothing below is backed by a capture. Mapping is in scope;
+  serving it in v1 is not.
 
   Evidence: GAME dispatcher 0xD387C8 (compare tree at 0xD38804), entry stub 0xD39900 (which sets `li r4,0x4A31` and tail-calls the
   shared parser), parser 0xD4FB80.
@@ -20,7 +43,28 @@ doc: |
   client object is validated (cr4 at 0xD4FC3C) - the READ SEQUENCE IS THE SAME FOR BOTH, so the
   two payload layouts are identical by construction, not by resemblance.
 
-  THE BIG CAVEAT: the length of the `groups` array is NOT on the wire. The outer loop bound is
+  SHARED RECORD - SETTLED 2026-08-02. Same layout, **different destination instance**.
+    * Same TYPE: one parser, one read sequence, one 7296-byte (0x1C80) struct shape. This arm
+      memsets exactly 7296 bytes at 0xD4FCDC before parsing, which is what pins the size.
+    * Different INSTANCE: base chosen at 0xD4FBFC-0xD4FC1C. 0x4A31 takes
+      `lwz r9,6404(session+0x10000); addis r9,r9,2; addi r31,r9,-22464` =
+      **`*(u32*)(session+0x11904) + 0x1A840`**, a heap-side instance. 0x4A24 takes
+      `addis r9,r27,1; addi r31,r9,-9264` = **session+0xDBD0**, an inline one with its own
+      getter (0xD4EA60). Not the same address, not the same allocation - so this is the
+      0x4212/0x4682 outcome for the destination even though it is the 0x4905/0x4909 outcome
+      for the layout.
+    * Consequence worth stating: **only session+0xDBD0 is what the UI reads.** Every reader
+      cited in the field notes below (0x8CC398-0x8CDEB8, 0x8F95C4, 0x8FB218-0x8FB588, and the
+      slot accessor 0xD51CF4) resolves the record through 0xD4EA60 or the fixed session
+      offset, i.e. through 0x4A24's copy. No reader of 0x4A31's instance was found in the same
+      sweep. Field MEANINGS below are therefore carried over from 0x4A24 by the parser
+      identity, which is exact for layout; whether the heap instance is displayed by some other
+      path is an open question, stated as such.
+
+  0x4A00 also writes session+0xDBD0 (proved by the identical `addi ...,-9264` at 0xD51068), but
+  it does not touch this instance. See mgo2_cmd_4a24_s2c.ksy.
+
+  THE BIG CAVEAT: the length of the `rounds` array is NOT on the wire. The outer loop bound is
   a u16 the client already holds at obj+0x0DC (0xD4FEF0: `lhz r0,220(r9)`), which is the FOURTH
   of the eight u16s this same packet reads into obj+0x0D6..0x0E4 - i.e. the count is taken from
   client state, and if this packet is what most recently wrote that state then it is
@@ -46,72 +90,204 @@ seq:
       and NOTHING else in the payload is read. This is the one established field here.
   - id: obj_id
     type: u4
-    doc: "[ELF] read at 0xD4FC94, validated against the open client object (0xD4FCCC / 0xD4FD08); mismatch aborts. [UNKNOWN] which id."
-  - id: unknown_0x08
+    doc: |
+      [ELF] read at 0xD4FC94 and stored to obj+0x000 (0xD4FD28). **The request key the client
+      itself chose**, echoed back. Validated before anything else is stored: 0xD4FCC8 loads
+      `*(u32*)(*(u32*)(session+0x11904) + 0x26D08)` and compares, aborting with **0** (the
+      "silently ignore" exit at 0xD5015C) on a mismatch. That slot is written by the 0x4A30
+      sender at 0xD50568 from 0x4A30's single u32 body, so **a server must echo 0x4A30's u32
+      here verbatim**; anything else is dropped without a message.
+      Contrast 0x4A24, whose copy of this field is checked against team+0x298 instead and
+      aborts with -1106.
+  - id: phase
     type: u1
-    doc: "[UNKNOWN] read at 0xD4FD2C -> obj+0x0D4."
+    doc: |
+      [ELF] read at 0xD4FD2C -> obj+0x0D4. **The event's phase / status code**, and the field
+      that decides which screen the player gets. 0x8F95D8 loads it straight off this record and
+      computes `(u8)(phase - 2) <= 8`: in range, the screen state is set to 14; out of range,
+      to 26. So values **2..10 are the "live event" states** and everything else falls to the
+      other branch. It is also the payload the sibling parser at 0xD50A44 hands to the screen
+      event dispatcher 0xD33CD8 as event 21, i.e. the client re-broadcasts it as a
+      state-changed notification. The individual code-to-phase assignments are [UNKNOWN] -
+      nothing in the binary enumerates them, and no capture can, because no available client
+      build reaches this command.
   - id: halves
     type: u2
     repeat: expr
     repeat-expr: 8
     doc: |
       [ELF] eight u16, read by eight unrolled calls 0xD4FD48-0xD4FE0C into obj+0x0D6, +0x0D8,
-      +0x0DA, +0x0DC, +0x0DE, +0x0E0, +0x0E2, +0x0E4. Index 3 (obj+0x0DC) is the value the
-      `groups` loop bound is later taken from. [UNKNOWN] meanings.
+      +0x0DA, +0x0DC, +0x0DE, +0x0E0, +0x0E2, +0x0E4. Four of the eight are read back; four are
+      not. Sweep behind the negatives: every reader of this record obtains it either from the
+      getter 0xD4EA60 (all call sites lie in 0x8CC398-0x8FB88C) or from the fixed session
+      displacement in the network library (0xD44DC8-0xD5B1A0), so the swept windows are
+      0x8C0000-0x900000 and 0xD30000-0xD70000, filtered to `lhz` because these are u16.
+      Controls that DID come back: 0x0DA, 0x0DC, 0x0E0 below, plus obj+0x1BF8/+0x1BFC/+0x1BFD
+      and obj+0x1C40. So the sweep works and the empty results below are real.
+
+        [0] obj+0x0D6 - [INFERRED] **entrant capacity / cap on the entrant table.** Read only
+            at 0xD520E8 and 0xD526C8, both in sibling 0x4Axx parsers, and in both it is the
+            upper bound of an append: `if (halves[0] > count) { count++; store the new 52-byte
+            entrant record }`. Reading it as a capacity is the only construction that fits, but
+            the two readers write a *different* object's table, so this is inference from the
+            use, not a bijection.
+        [1] obj+0x0D8 - **no reader.** Nothing loads a u16 from +0x0D8 anywhere in either swept
+            window.
+        [2] obj+0x0DA - [ELF] **number of entrants**, i.e. the live length of the 128-entry,
+            52-byte-stride table at obj+0x0F0. It is the bound of the slot accessor 0xD51CF4
+            (`if (index >= halves[2]) return NULL; return obj + 0xF0 + 52*index`) and of the
+            display loops at 0x8CC450, 0x8CDA80, 0x8CDEB8, 0x8FB480 and 0xD50A28.
+        [3] obj+0x0DC - [ELF] **round count**; see the `round_count` parameter. Also copied to
+            the automatch object at +0x0C by the sibling parser at 0xD509E8.
+        [4] obj+0x0DE - **no reader.**
+        [5] obj+0x0E0 - [ELF] **current round.** It is the `%d` of lobby string 773, "Round %d
+            of the tournament is complete." (0x8CDB3C-0x8CDB58), and it selects which row of
+            `rounds` the bracket renderer reads (0x8CDC8C, 0x8FB23C). Also copied to the
+            automatch object at +0x10 (0xD509F0).
+        [6] obj+0x0E2 - **no reader.**
+        [7] obj+0x0E4 - **no reader.**
+
+      Note that 0x4A00 zeroes [0]..[5] at 0xD51194-0xD511AC and a sibling parser (0xD519C4)
+      writes [0], [1], [6] and [7] - so the four unread ones are live state somewhere, just not
+      state this client displays.
   - id: unknown_0x19
     type: u4
-    doc: "[UNKNOWN] read at 0xD4FE24 and widened to 64 bits at obj+0x1BF0 - the widening is what a time_t looks like on this target (compare mgo2_cmd_4902.ksy open_time), but that is a guess, not a trace."
-  - id: unknown_0x1d
+    doc: |
+      [UNKNOWN] read at 0xD4FE24 and widened to 64 bits at obj+0x1BF0. The widening is what a
+      time_t looks like on this target (compare mgo2_cmd_4902.ksy open_time), and a scheduled
+      start time would fit a tournament record, but that remains a guess - **no reader at all.**
+      Swept 0x8C0000-0x900000 and 0xD30000-0xD70000 for any load at displacement 7152, and
+      binary-wide as a backstop: three stores (0xD4FE44 here, 0xD507D4 and 0xD5127C in siblings)
+      and zero loads outside stack frames. Control: the same sweep found the readers of
+      obj+0x1BF8/+0x1BFC/+0x1BFD immediately below.
+      [ELF] Cross-packet bijection: 0x4A00's `unknown_after_block` writes this exact slot
+      (0xD5127C, `std r0,7152(r29)` with r29 = session+0xDBD0). Same field, two commands.
+  - id: lobby_id
     type: u4
-    doc: "[UNKNOWN] read at 0xD4FE48 -> obj+0x1BF8."
-  - id: unknown_0x21
+    doc: |
+      [ELF] read at 0xD4FE48 -> obj+0x1BF8. **The lobby id** the event runs in. Named by
+      struct-offset bijection, not resemblance: 0x4A00's parser tail copies **team+0x25C** into
+      this same slot at 0xD511B8, and dev/docs/AUTOMATCH.md already resolved team+0x25C as the
+      lobby id (0x43F1 wire +0x04). The same three-field block is copied on to the automatch
+      object at 0xD512A8 as +0x04.
+  - id: lobby_subtype
     type: u1
-    doc: "[UNKNOWN] read at 0xD4FE64 -> obj+0x1BFC."
-  - id: unknown_0x22
+    doc: |
+      [ELF] read at 0xD4FE64 -> obj+0x1BFC. **The lobby subtype.** Same bijection: 0x4A00 copies
+      **team+0x260** here (0xD511C0), which AUTOMATCH.md resolves as the subtype, with
+      **3 = Tournament, 4 = Survival, 5 = Official Tournament** (read from the disc string
+      resources, section 10). Corroborated from the other direction by the 0x4A25 caller at
+      0x8CCD8C, which tests the subtype byte for == 4 to choose between the Survival sentence
+      (dialog 5522) and the Tournament one (dialog 5376).
+  - id: rule_id
     type: u1
-    doc: "[UNKNOWN] read at 0xD4FE80 -> obj+0x1BFD."
-  - id: text
+    doc: |
+      [ELF] read at 0xD4FE80 -> obj+0x1BFD. **The game rule id**, same enum as 0x4310's rotation
+      rule. Bijection: 0x4A00 copies **team+0x261** here (0xD511C8), and AUTOMATCH.md records
+      team+0x261 as the rule id, read as a rule at four sites via `strres(0x654515, 2*rule)`.
+  - id: lobby_name
     size: 64
     type: str
     encoding: ISO-8859-1
     pad-right: 0
-    doc: "[INFERRED] 64-byte raw read (0xD4FEA4) -> obj+0x1BFE. Width certain; string role from the width alone."
-  - id: groups
-    type: group
+    doc: |
+      [ELF] 64-byte raw read (0xD4FEA4) -> obj+0x1BFE. **The lobby / event name.** Previously
+      typed a string on width alone; it now has positive evidence. 0x4A00 fills the same slot
+      without a wire field for it: at 0xD511E4-0xD51214 it walks the client's own lobby list,
+      matches each entry's id against obj+0x1BF8 (`lobby_id`), and on a hit memcpys **64 bytes
+      from entry+27** into obj+0x1BFE (0xD50F34). A 64-byte field that the client will
+      reconstruct from a lobby-list entry's name is a name.
+  - id: rounds
+    type: round_bits
     repeat: expr
-    repeat-expr: group_count
+    repeat-expr: round_count
     doc: |
       [ELF] outer loop 0xD4FEB8-0xD4FF04, stride 16 into obj+0x1AF0, bound `halves[3]` READ
       FROM CLIENT STATE at obj+0x0DC (0xD4FEF0), not from this packet's parse buffer. See the
       caveat in the top-level doc.
-  - id: words
+      [ELF] **One row per round, and each row is a 128-bit bitmap over the entrant table.** The
+      bracket renderer at 0x8CDC84 (and its second copy at 0x8FB234) addresses it as
+      `obj + 0x1AF0 + 4*(4*halves[5] + slot/32)`, bit `slot & 31` - i.e. row = the current
+      round, bit = the entrant's index in the obj+0x0F0 table, which caps entrants at 128 and
+      matches the 128x52 = 6656-byte table 0x4A00 clears at 0xD5121C. **Max 8 rows**: the
+      parser memcpys exactly 128 bytes of this array to obj+0x1B70 at 0xD50124.
+      That second copy is what the renderer diffs against - for adjacent slots i and i+1 it
+      requires the bit set in one array and clear in the other before it draws a matchup, so
+      the pair encodes a per-round transition. Which of the two is "before" and which is
+      "after" is [UNKNOWN]; only the diff is observable.
+  - id: standings
     type: u4
     repeat: expr
     repeat-expr: 8
-    doc: "[ELF] exactly 8 u32, loop 0xD4FF0C-0xD4FF3C (`cmpdi r29,8`) -> obj+0x1C40 + 4*i. Fixed count."
+    doc: |
+      [ELF] exactly 8 u32, loop 0xD4FF0C-0xD4FF3C (`cmpdi r29,8`) -> obj+0x1C40 + 4*i. Fixed
+      count.
+      [ELF] **`standings[0]` is the winning team's id.** Two independent sites - 0x8CC414 and
+      0x8CDA2C - scan the 52-byte entrant table for the entry whose id at +0x00 equals
+      obj+0x1C40, copy that entry's 32-byte name, and feed it as the `%s` of lobby string 742,
+      "The championship match has ended.\nWinning team: %s\nYour reward: %d".
+      **`standings[1..7]` have no reader.** Swept both windows for loads at displacements
+      7236/7240/7244/7248/7252/7256/7260 and for the indexed form `addi rX,rY,7232`: the only
+      hits are the two writers (this parser at 0xD4FF14 and 0x4A28's at 0xD50DCC) plus one
+      unrelated struct at 0x412B48ff. Control: the same sweep found both readers of
+      `standings[0]` named above. Runner-up placings are the obvious reading of a fixed 8-slot
+      array beside a winner, but nothing in this build displays them, so it stays [INFERRED].
+      Note also that string 742's `%d` comes from obj+0x1C60, which **this packet does not
+      write** - the sibling 0x4A28 does (0xD50E04), which is also the only other writer of
+      `standings`.
   - id: flags
     type: u1
-    doc: "[ELF] 1-byte raw read (0xD4FF50) expanded bit by bit into a flags word; each bit a distinct boolean. [UNKNOWN]."
+    doc: |
+      [ELF] 1-byte raw read (0xD4FF50) expanded bit by bit into the 64-bit word at obj+0x000 by
+      the `oris` ladder at 0xD4FF60-0xD50044; each bit a distinct boolean. The eight bits all
+      land in the single byte **obj+0x004**, bit-reversed - wire bit 0 becomes bit 7 (`oris`
+      0x8000), wire bit 7 becomes bit 0 (`oris` 0x0100) - and the `ld`/`std` pair leaves
+      obj+0x000..0x003 (the record id) untouched.
+      No consumer identified for any of the eight. [UNKNOWN] individually. 0x4A00's `flags`
+      byte drives the identical ladder into the identical word (0xD5105C-0xD51144), so whatever
+      the bits mean, the two commands must agree on them.
   - id: unknown_after_flags
     type: u1
-    doc: "[UNKNOWN] read at 0xD50050 -> obj+0x005."
+    doc: |
+      [UNKNOWN] read at 0xD50050 -> obj+0x005. **No reader**: swept 0x8C0000-0x900000 and
+      0xD30000-0xD70000 for a `lbz` at displacement 5 off any register holding this record, and
+      binary-wide for displacement 5; nothing resolves to this object. Control: the same
+      windows yield obj+0x0D4's reader at 0x8F95D8 one byte-field away in the same struct.
+      [ELF] 0x4A00's `unknown_last` writes this exact slot (0xD51148/0xD51154), so it is one
+      field shared by two commands.
   - id: block
     type: block_204
-    doc: "[ELF] the shared 204-byte sub-record, read by 0xD4364C (called at 0xD5006C). Same block 0x4A00 embeds."
+    doc: |
+      [ELF] the shared 204-byte sub-record, read by 0xD4364C (called at 0xD5006C) into
+      obj+0x008. Same block 0x4A00 embeds - and literally the same destination: 0x4A00 memcpys
+      its own copy into obj+0x008 at 0xD511B0. In this subsystem it is **the event's game
+      settings**: rule, map rotation and the weapon-restriction bitfield the tournament runs
+      under. See mgo2_cmd_4313_s2c.ksy, which remains canonical.
   - id: trailing_words
     type: u4
     repeat: expr
     repeat-expr: 6
-    doc: "[ELF] six u32, unrolled 0xD50088-0xD50114 -> obj+0x1C64, +0x1C68, +0x1C6C, +0x1C70, +0x1C74, +0x1C78. [UNKNOWN] meanings."
+    doc: |
+      [ELF] six u32, unrolled 0xD50088-0xD50114 -> obj+0x1C64, +0x1C68, +0x1C6C, +0x1C70,
+      +0x1C74, +0x1C78. [UNKNOWN] meanings, and **none of the six has a reader.** Swept
+      0x8C0000-0x900000 and 0xD30000-0xD70000 for loads at those six displacements, plus a
+      binary-wide backstop and the indexed form `addi rX,rY,7268`: the only matches are this
+      parser, the sibling parser at 0xD5091C, 0x4E10's at 0xD5AF48, an unrelated struct at
+      0x412B80ff, and stack traffic off r1. Control: the identical sweep found the readers of
+      obj+0x1C40 and obj+0x1C60, which bracket this range. Written by two commands, read by
+      none - so these are the last six fields of the record and currently inert in this build.
 types:
-  group:
-    doc: "[ELF] 16 bytes: four u32, read by the inner loop at 0xD4FECC (`cmpwi r29,3`)."
+  round_bits:
+    doc: |
+      [ELF] 16 bytes: four u32, read by the inner loop at 0xD4FECC (`cmpwi r29,3`). One round's
+      **128-bit entrant bitmap** - bit `n` is entrant `n` of the obj+0x0F0 table. See the
+      `rounds` doc for the addressing that proves the bit-per-entrant reading.
     seq:
-      - id: words
+      - id: bits
         type: u4
         repeat: expr
         repeat-expr: 4
-        doc: "[UNKNOWN] four u32 per group."
+        doc: "[ELF] four u32 = 128 bits, one per entrant slot; word i covers slots 32*i..32*i+31, LSB first (`slw` at 0x8CDCC4)."
   block_204:
     doc: |
       [ELF] The 204-byte sub-record read by the shared helper 0xD4364C. That helper has NINE
