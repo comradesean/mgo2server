@@ -1,12 +1,22 @@
 meta:
   id: mgo2_cmd_4a28_s2c
-  title: "MGO2 0x4A28 - unmapped 0x4Axx reply, eight-word array (server -> client)"
+  title: "MGO2 0x4A28 - Tournament/Survival final standings and reward (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A28; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
-  not - almost every field is [UNKNOWN] on purpose.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1); mgo2_cmd_4a24_s2c.ksy is canonical for the event record. **0x4A28
+  delivers the result**: the eight standings words and the reward, which together are the two
+  substitutions of lobby string **742**, *"The championship match has ended.\nWinning team:
+  %s\nYour reward: %d"*.
+
+  TIER. Post-launch content; no available client build exercises 0x4A28, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  Destination is the event record at session+0xDBD0; the fields below land at +0x1C40 and
+  +0x1C60, the same slots 0x4A24 fills, so the names transfer by struct-offset bijection.
+  0x4A28 is the **only** writer of +0x1C60, which 0x4A24 does not carry a field for at all.
+  After parsing it pushes +0x1C60 into the automatch object at that object's +0x8C and fires
+  **event 29**.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39990,
   parser 0xD50CDC.
@@ -38,14 +48,27 @@ seq:
   - id: obj_serial
     type: u2
     doc: "[ELF] identity header, helper 0xD49230."
-  - id: echo_id
+  - id: event_id
     type: u4
-    doc: "[ELF] read at 0xD50D90, compared at 0xD50DB8 against a u32 the client holds; mismatch aborts. [UNKNOWN] which id."
-  - id: words
+    doc: "[ELF] read at 0xD50D90, compared at 0xD50DB8 against **event record +0x000**; mismatch aborts with -1106. Same id as 0x4A24's `obj_id`, i.e. what 0x4A00 stamped. **Not a result code**: compared against stored state, never sign-extended into 0xD32E70, and this command consumes no request slot."
+  - id: standings
     type: u4
     repeat: expr
     repeat-expr: 8
-    doc: "[ELF] exactly 8 u32, loop 0xD50DC4-0xD50DF4 -> obj+0x1C40 + 4*i. Fixed count. [UNKNOWN] meaning."
-  - id: unknown_tail
+    doc: |
+      [ELF] exactly 8 u32, loop 0xD50DC4-0xD50DF4 -> **event record +0x1C40 + 4*i**. Fixed
+      count, no wire length.
+      **`standings[0]` is the winning team's id**: 0x8CC414 and 0x8CDA2C scan the entrant table
+      for the row whose id at +0x00 equals +0x1C40 and print that row's name as the `%s` of
+      lobby string 742. See mgo2_cmd_4a24_s2c.ksy, which carries the reader addresses and the
+      sweep showing **`standings[1..7]` have no reader** (runner-up placings is the obvious
+      reading beside a winner, but nothing in this build displays them, so it stays [INFERRED]).
+      0x4A24 is the only other writer of these eight slots.
+  - id: reward
     type: u4
-    doc: "[UNKNOWN] read at 0xD50E04 -> obj+0x1C60. Position exact, meaning unestablished."
+    doc: |
+      [ELF] read at 0xD50E04 -> **event record +0x1C60**. **The `%d` of lobby string 742,
+      \"Your reward: %d\"** - and the same number the other reward sentences use (762 *"Match
+      #%d has ended... Your reward: %d"*, 763, 765, 767). 0x4A28 is its only writer: 0x4A24
+      stops at +0x1C40..+0x1C5C and resumes at +0x1C64, leaving this slot alone. The parser
+      also copies it into the automatch object at +0x8C before firing event 29.

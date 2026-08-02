@@ -1,12 +1,36 @@
 meta:
   id: mgo2_cmd_4a02_s2c
-  title: "MGO2 0x4A02 - unmapped 0x4Axx reply, echo plus a 128-byte blob (server -> client)"
+  title: "MGO2 0x4A02 - Tournament/Survival team roster status update, eight member slots (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A02; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
-  not - almost every field is [UNKNOWN] on purpose.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1). **0x4A02 updates the eight member slots of the player's TEAM record** -
+  the object behind getter 0xD491F8 at session+0xD928, *not* the event record at
+  session+0xDBD0. Keep the two apart: they are adjacent (0xD928 + 0x2A8 = 0xDBD0) and the same
+  shape of mistake produced this project's team-vs-clan misidentification.
+
+  TIER. Post-launch content; no available client build exercises 0x4A02, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  WHAT THE PARSER DOES AFTER RD_END (0xD4F0D4-0xD4F174), which is what names the blob. It walks
+  **eight 28-byte slots starting at team+0x17C** and, for slot `i`:
+    * skips the slot if its leading u32 (the member id) is 0;
+    * remembers `i` if that id equals the local player's own id (`lwz r0,0(r21)`);
+    * takes **byte `i` of the blob**: if the byte is 0 it `memset`s the whole 28-byte slot to
+      zero - i.e. **0 removes the member**; otherwise it stores the byte at **slot+0x15**, the
+      member's status byte.
+  Then, if the local player's own slot was found, it fires **event 20** with `slot+0x11` as the
+  payload (0xD4F150-0xD4F170); if it was not found the whole command fails with **-1007**.
+  So a server must include the recipient in the roster or the update is rejected outright.
+
+  **SIZE HAZARD - THE BLOB IS 8 BYTES, NOT 128.** The loop cursor is initialised by
+  `mr r23,r1` / `stdu r0,120(r23)` (0xD4F000-0xD4F00C), which leaves r23 = r1+120, and the
+  loop exits when the cursor reaches **r1+128** (`addi r0,r1,128` / `cmpw cr6` at
+  0xD4F09C-0xD4F0B0). Eight iterations, eight bytes, one per member slot - and the `stdu`
+  zeroing exactly 8 bytes corroborates it. The `size: 128` declared below is wrong by 120
+  bytes. Not corrected here because sizes are evidence and this batch may only rename and
+  document; **flagged for a structural correction**. The same error is in
+  mgo2_cmd_4a22_s2c.ksy and mgo2_cmd_4a29_s2c.ksy, which have the identical loop.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39860,
   parser 0xD4EF5C.
@@ -52,9 +76,12 @@ seq:
       same id it delivered in the earlier packet of this exchange. [UNKNOWN] which id that is.
   - id: unknown_after_echo
     type: u1
-    doc: "[UNKNOWN] read at 0xD4F070 -> obj+0x004. Position exact, meaning unestablished."
-  - id: blob
+    doc: "[UNKNOWN] read at 0xD4F070 -> **team record +0x004** (`addi r4,r26,4`, r26 = 0xD491F8's object). Position exact, meaning unestablished; no reader traced. Note this is the team record's +0x004, not the event record's flags byte at the same displacement - different object."
+  - id: member_status
     size: 128
     doc: |
-      [ELF] exactly 128 bytes, consumed by a byte-at-a-time loop (0xD4F084..0xD4F0A8). Fixed
-      length - no count field anywhere in this packet. [UNKNOWN] contents.
+      [ELF] **8 bytes on the wire, one per team member slot** - see the size hazard in the
+      top-level doc; the declared 128 is wrong and is left only because sizes are evidence.
+      Byte-at-a-time loop 0xD4F084-0xD4F0B0 into r1+120..r1+127. Fixed length, no count field.
+      Byte `i` is the status of member slot `i` of the eight 28-byte slots at team+0x17C:
+      **0 clears the slot** (`memset(slot,0,28)` at 0xD4F124), non-zero is stored at slot+0x15.

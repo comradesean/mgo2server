@@ -1,12 +1,22 @@
 meta:
   id: mgo2_cmd_4a27_s2c
-  title: "MGO2 0x4A27 - unmapped 0x4Axx reply, byte plus 8-byte blob (server -> client)"
+  title: "MGO2 0x4A27 - Tournament/Survival team roster status update, no id echo (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A27; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
-  not - almost every field is [UNKNOWN] on purpose.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1). **0x4A27 is the same eight-member roster update as 0x4A02** - see
+  mgo2_cmd_4a02_s2c.ksy for the full write-up. The post-RD_END walk is at 0xD4EE5C
+  (`addi r29,r26,380` = team+0x17C, eight 28-byte slots), the same code as 0x4A02's at
+  0xD4F0D4.
+
+  TIER. Post-launch content; no available client build exercises 0x4A27, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  **THE DIFFERENCE FROM 0x4A02/0x4A22/0x4A29 is that 0x4A27 has no id echo at all.** Its only
+  validation is the 6-byte identity header the shared helper 0xD49230 checks; there is no
+  fourth-word compare against the event record id. And uniquely in that family its blob buffer
+  really is 8 bytes as declared - `addi r29,r1,112` (0xD4EE28) to `addi r0,r1,120` (0xD4EE44) -
+  so the size hazard recorded in the three sibling schemas does not apply here.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD39980,
   parser 0xD4ED40.
@@ -42,7 +52,13 @@ seq:
     doc: "[ELF] identity header, helper 0xD49230."
   - id: unknown_0x06
     type: u1
-    doc: "[UNKNOWN] read at 0xD4EE18 -> obj+0x004."
-  - id: blob
+    doc: "[UNKNOWN] read at 0xD4EE18 -> **team record +0x004** (`addi r4,r26,4`, r26 = 0xD491F8's object at session+0xD928 - not the event record at session+0xDBD0). No reader traced."
+  - id: member_status
     size: 8
-    doc: "[ELF] exactly 8 bytes, byte-at-a-time loop 0xD4EE2C-0xD4EE58. [UNKNOWN] contents."
+    doc: |
+      [ELF] exactly 8 bytes, byte-at-a-time loop 0xD4EE28-0xD4EE54 into r1+112..r1+119, and the
+      size here is correct as declared.
+      **One byte per team member slot.** Byte `i` is the status of member slot `i` of the eight
+      28-byte slots at team+0x17C: 0 clears the slot (`memset(slot,0,28)`), non-zero is stored
+      at slot+0x15, and the parser fires event 20 with slot+0x11 once it finds the local
+      player's own slot. Full semantics in mgo2_cmd_4a02_s2c.ksy. [UNKNOWN] what the codes mean.

@@ -1,12 +1,26 @@
 meta:
   id: mgo2_cmd_4a29_s2c
-  title: "MGO2 0x4A29 - unmapped 0x4Axx reply, echo plus a 128-byte blob (server -> client)"
+  title: "MGO2 0x4A29 - Tournament/Survival team roster status update, eight member slots (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A29; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
-  not - almost every field is [UNKNOWN] on purpose.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1). **0x4A29 is the same shape as 0x4A02** - see mgo2_cmd_4a02_s2c.ksy,
+  which carries the full write-up: it updates the eight 28-byte member slots at team+0x17C of
+  the TEAM record (getter 0xD491F8, session+0xD928), not the event record at session+0xDBD0.
+  The post-RD_END walk is at 0xD50BE4 (`addi r29,r26,380`), instruction-for-instruction the
+  same as 0x4A02's at 0xD4F0D4.
+
+  TIER. Post-launch content; no available client build exercises 0x4A29, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  **SIZE HAZARD - THE BLOB IS 8 BYTES, NOT 128.** `mr r25,r1` / `stdu r0,120(r25)` at
+  0xD50B2C-0xD50B38 leaves r25 = r1+120 and zeroes exactly 8 bytes; the loop exits at r1+128
+  (`addi r0,r1,128` / `cmpw cr6` at 0xD50BCC-0xD50BD8). Eight iterations, one byte per member
+  slot. The `size: 128` declared below is wrong by 120 bytes; not corrected here because sizes
+  are evidence and this batch may only rename and document. **Flagged for a structural
+  correction**, together with mgo2_cmd_4a02_s2c.ksy and mgo2_cmd_4a22_s2c.ksy.
+
+  WHAT 0x4A29 DOES NOT SHARE WITH 0x4A02 is which copy of the id it checks - see `echo_id`.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD399A0,
   parser 0xD50A90.
@@ -43,18 +57,26 @@ seq:
   - id: obj_serial
     type: u2
     doc: "[ELF] see the identity-header note above (helper 0xD49230, read at 0xD492B0)."
-  - id: echo_id
+  - id: event_id
     type: u4
     doc: |
-      [ELF] read at 0xD50B6C and compared against a u32 the client already holds
-      (obj+0x298 in the 0x4A02 path, 0xD4F050). A mismatch aborts the parse with -1106
-      (0xFFFFFBAE) and NOTHING after this field is consumed. So the server must echo back the
-      same id it delivered in the earlier packet of this exchange. [UNKNOWN] which id that is.
+      [ELF] read at 0xD50B6C and compared at 0xD50B88-0xD50B90 against **event record +0x000**
+      (`addis r9,r31,1` / `lwz r9,-9264(r9)` = session+0xDBD0). A mismatch aborts with **-1106**
+      and NOTHING after this field is consumed. That is the id 0x4A00 stamps and 0x4A24 echoes,
+      so the name is a struct-offset bijection, not a guess.
+      Note the difference from 0x4A02, which reads the same value from its other home,
+      team+0x298 (0xD4F050); the two are kept in step by 0x4A00 (0xD50FA8).
+      **Not a result code**: compared against stored state, never sign-extended into 0xD32E70,
+      and this command consumes no request slot.
   - id: unknown_after_echo
     type: u1
-    doc: "[UNKNOWN] read at 0xD50BA0 -> obj+0x004. Position exact, meaning unestablished."
-  - id: blob
+    doc: "[UNKNOWN] read at 0xD50BA0 -> **team record +0x004** (`addi r4,r26,4`, r26 = 0xD491F8's object). Position exact, meaning unestablished; no reader traced."
+  - id: member_status
     size: 128
     doc: |
-      [ELF] exactly 128 bytes, consumed by a byte-at-a-time loop (0xD50BB4..0xD50BD8). Fixed
-      length - no count field anywhere in this packet. [UNKNOWN] contents.
+      [ELF] **8 bytes on the wire, one per team member slot** - see the size hazard in the
+      top-level doc; the declared 128 is wrong and is left only because sizes are evidence.
+      Byte-at-a-time loop 0xD50BB4-0xD50BE0 into r1+120..r1+127. Fixed length, no count field.
+      Byte `i` is the status of member slot `i` of the eight 28-byte slots at team+0x17C:
+      0 clears the slot, non-zero is stored at slot+0x15. Full semantics in
+      mgo2_cmd_4a02_s2c.ksy.

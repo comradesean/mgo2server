@@ -1,15 +1,42 @@
 meta:
   id: mgo2_cmd_4a20_s2c
-  title: "MGO2 0x4A20 - unmapped 0x4Axx reply, counted groups plus state-bounded blob (server -> client)"
+  title: "MGO2 0x4A20 - Tournament/Survival round result: one round's bracket bitmap plus the entrant status column (server -> client)"
   endian: be
 params:
   - id: blob_len
     type: u4
-    doc: "NOT A WIRE FIELD. min(u16 at obj+0x0DA, 128), from client state (0xD51C14)."
+    doc: "NOT A WIRE FIELD. min(u16 at event record +0x0DA, 128), from client state (0xD51C14). That u16 is `halves[2]`, the entrant count, so the blob is **one byte per entrant**."
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A20; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below come out of the client parser and are solid. MEANINGS are not.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1); mgo2_cmd_4a24_s2c.ksy is canonical for the event record. **0x4A20
+  advances the bracket by one round**: it sets the current round number, writes that round's
+  128-bit entrant bitmap, snapshots the bitmap array, and replaces the whole per-entrant status
+  column. Destination is `addi r26,r28,-9264` = **session+0xDBD0**, the same event record
+  0x4A24 and 0x4A01 write.
+
+  TIER. Post-launch content; no available client build exercises 0x4A20, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  **STRUCTURAL CORRECTION - `groups` IS NOT REPEATED.** The loop at 0xD51B88-0xD51BC8 runs
+  exactly **four** times (`cmpdi cr6,r29,4` at 0xD51BB8) and writes
+  `event record + 6896 + (round << 4) + 4*i - 16`. The u16 that the current schema calls
+  `group_count` is reloaded inside the loop only to recompute that address: it is the **round
+  number**, not a count, and it is stored as such at event record +0x0E0 (0xD51B84), which is
+  `halves[5]`, `current round`. So the wire carries **one 16-byte row**, always, and the
+  declared `repeat-expr: group_count` overstates the packet by 16 bytes per extra round.
+  Left as declared because widths, sizes and repeats are evidence and this batch may only
+  rename and document; **flagged for a structural correction**. Reading it the current way
+  would make a server emit N rows for round N and desync the blob that follows.
+
+  AFTER THE ROW, the parser does three more things:
+    * `memcpy(record+0x1B70, record+0x1AF0, 128)` at 0xD51BCC-0xD51BE4 - the snapshot the
+      bracket renderer diffs against (mgo2_cmd_4a24_s2c.ksy, `rounds`). Note the direction:
+      destination is the **second** array. Because this happens after the new row is written,
+      the two arrays are identical on exit, which means the renderer's diff can only be
+      non-empty between updates; whether that is the intent is [UNKNOWN].
+    * pushes `halves[3]` and `halves[5]` into the object 0xD3F7B0 returns, at its +0x0C and
+      +0x10 (0xD51C44-0xD51C58) - the same two slots 0x4A13 fills directly.
+    * fires **event 25** with the record's `phase` byte (+0x0D4) as payload (0xD51CA4-0xD51CB0).
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD398B0,
   parser 0xD51A08.
@@ -39,34 +66,56 @@ seq:
   - id: obj_serial
     type: u2
     doc: "[ELF] identity header, helper 0xD49230."
-  - id: echo_id
+  - id: event_id
     type: u4
-    doc: "[ELF] read at 0xD51ADC, compared at 0xD51B04 against a u32 the client holds; mismatch aborts. [UNKNOWN] which id."
+    doc: "[ELF] read at 0xD51ADC, compared at 0xD51B04 against **event record +0x000**; mismatch aborts with -1106. Same id as 0x4A24's `obj_id`. Not a result code - compared against stored state, never sign-extended into 0xD32E70, and this command consumes no request slot."
   - id: unknown_0x0a
     type: u1
-    doc: "[UNKNOWN] read at 0xD51B18 -> obj+0x004."
-  - id: unknown_0x0b
+    doc: "[UNKNOWN] read at 0xD51B18 -> the currently open TEAM record's +0x004 (0xD491F8's object at session+0xD928 - not the event record at session+0xDBD0; the two are adjacent and must not be conflated). No reader traced."
+  - id: phase
     type: u1
-    doc: "[UNKNOWN] read at 0xD51B34, into a second object's +0x000."
-  - id: unknown_0x0c
+    doc: "[ELF] read at 0xD51B34 -> **event record +0x0D4**. mgo2_cmd_4a24_s2c.ksy's `phase`, named there from 0x8F95D8 (`(u8)(phase-2) <= 8` picks screen 14 vs 26). It is also this parser's event-25 payload (0xD51CA8). Struct-offset bijection; the old reading as \"a second object's +0x000\" was wrong. [UNKNOWN] what the codes mean."
+  - id: half_0x0de
     type: u2
-    doc: "[UNKNOWN] read at 0xD51B4C (-> r1+114). Read BEFORE group_count. Position exact, meaning unestablished."
+    doc: "[ELF] read at 0xD51B4C (-> r1+114) and stored at 0xD51B80 to **event record +0x0DE** = `halves[4]`. Read BEFORE the round number. [UNKNOWN] meaning: 0x4A24's sweep found no reader for +0x0DE in either window, with `halves[2]`/`[3]`/`[5]` as the controls that did come back."
   - id: group_count
     type: u2
-    doc: "[ELF] read at 0xD51B64 (-> r1+112) and used as the outer bound of the group loop (0xD51B88, `lhz r4,112(r1)`, stride 16). A real wire count."
+    doc: |
+      [ELF] read at 0xD51B64 (-> r1+112) and stored at 0xD51B84 to **event record +0x0E0** =
+      `halves[5]`, **the current round**. mgo2_cmd_4a24_s2c.ksy names that slot from two
+      readers: it is the `%d` of lobby string 773, *"Round %d of the tournament is complete."*
+      (0x8CDB3C), and it selects which row of the bracket bitmap the renderer reads (0x8CDC8C,
+      0x8FB23C).
+      **It is NOT a count.** The name is retained only because renaming a field that another
+      field's `repeat-expr` references would be a structural edit; see the top-level correction.
+      Inside the loop it is used solely as `round << 4`, the row's byte offset. The row it
+      writes is `round - 1` (`addi r4,r4,-16` at 0xD51BA8), so the first round must be sent as
+      1, not 0, and 8 is the ceiling - row 8 would start at +0x1B70, which is the snapshot.
   - id: groups
     type: group
     repeat: expr
     repeat-expr: group_count
-    doc: "[ELF] loop 0xD51B88-0xD51BC8; four u32 per group (`cmpdi r29,4` at 0xD51BB8), stride 16."
-  - id: blob
+    doc: |
+      [ELF] loop 0xD51B88-0xD51BC8, four u32 (`cmpdi cr6,r29,4` at 0xD51BB8), written to
+      `event record + 0x1AF0 + 16*(group_count-1)`.
+      **On the wire this occurs exactly ONCE, not `group_count` times** - see the top-level
+      correction. One 16-byte row = one round's **128-bit entrant bitmap**, bit `n` = entrant
+      `n` of the +0x0F0 table, LSB first; mgo2_cmd_4a24_s2c.ksy's `round_bits` carries the
+      addressing proof from the bracket renderer.
+  - id: entrant_status
     size: blob_len
-    doc: "[ELF] byte-at-a-time loop at 0xD51BF0. Length = min(client state u16 at obj+0x0DA, 128), NOT a wire field. [UNKNOWN] contents."
+    doc: |
+      [ELF] byte-at-a-time loop at 0xD51BF0-0xD51C28 into a stack buffer. Length =
+      min(event record +0x0DA, 128) = one byte per entrant, NOT a wire field.
+      **Each byte is one entrant's `status`**: 0xD51C5C-0xD51CA0 copies byte `i` to
+      `table + 261 + 52*i` = entrant row `i`, offset 0x15 - the same field 0x4A11/0x4A33 set
+      per row and 0x4A01 replaces the same way. [UNKNOWN] what the codes mean.
 types:
   group:
+    doc: "[ELF] 16 bytes: one round's 128-bit entrant bitmap."
     seq:
       - id: words
         type: u4
         repeat: expr
         repeat-expr: 4
-        doc: "[UNKNOWN] four u32 per group, read at 0xD51BB0."
+        doc: "[ELF] four u32 = 128 bits, one per entrant slot; word i covers slots 32*i..32*i+31, LSB first. Read at 0xD51BB0."

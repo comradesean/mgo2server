@@ -1,12 +1,29 @@
 meta:
   id: mgo2_cmd_4a22_s2c
-  title: "MGO2 0x4A22 - unmapped 0x4Axx reply, blob plus trailing word (server -> client)"
+  title: "MGO2 0x4A22 - Tournament/Survival team roster status update plus a trailing word (server -> client)"
   endian: be
 doc: |
-  UNMAPPED SUBSYSTEM. Nothing in dev/docs/PROTOCOL.md or dev/docs/OBSERVED.md describes
-  0x4A22; COMMANDS.md lists the 0x49xx/0x4Axx/0x4Bxx blocks only as "parsed but never sent".
-  Field ORDER and WIDTH below are read out of the client parser and are solid. MEANINGS are
-  not - almost every field is [UNKNOWN] on purpose.
+  TOURNAMENT / SURVIVAL. The 0x4Axx block is the Tournament / Survival subsystem, settled
+  2026-08-02 (tier 1). **0x4A22 is 0x4A02's shape with one extra word on the end** - see
+  mgo2_cmd_4a02_s2c.ksy for the full write-up: it updates the eight 28-byte member slots at
+  team+0x17C of the TEAM record (getter 0xD491F8, session+0xD928), not the event record at
+  session+0xDBD0. The post-RD_END walk is at 0xD51540 (`addi r29,r26,380`),
+  instruction-for-instruction the same as 0x4A02's at 0xD4F0D4.
+
+  TIER. Post-launch content; no available client build exercises 0x4A22, so **everything here
+  is tier 1, read from MGO2.elf, and cannot be raised to tier 2.**
+
+  **SIZE HAZARD - THE BLOB IS 8 BYTES, NOT 128.** `mr r24,r1` / `stdu r0,120(r24)` at
+  0xD51470-0xD5147C leaves r24 = r1+120 and zeroes exactly 8 bytes; the loop exits at r1+128
+  (`addi r0,r1,128` / `cmpw cr6` at 0xD51510-0xD51518). Eight iterations, one byte per member
+  slot. The `size: 128` declared below is wrong by 120 bytes; not corrected here because sizes
+  are evidence and this batch may only rename and document. **Flagged for a structural
+  correction**, together with mgo2_cmd_4a02_s2c.ksy and mgo2_cmd_4a29_s2c.ksy. This one also
+  makes the following `unknown_tail` land 120 bytes late for anyone parsing to the schema.
+
+  FOR THE RECORD, the parser at 0xD50700-0xD50A60 that rewrites the *entrant* status column is
+  **0x4A01**, not this command and not 0x4A29: its only id compare is `cmpwi r0,0x4A01` at
+  0xD50608. 0x4A22's is `cmpwi r0,0x4A22` at 0xD51454.
 
   Evidence: GAME dispatcher 0xD387C8, compare tree at 0xD38804, entry stub 0xD398E0,
   parser 0xD513D0.
@@ -37,15 +54,20 @@ seq:
   - id: obj_serial
     type: u2
     doc: "[ELF] identity header, helper 0xD49230."
-  - id: echo_id
+  - id: event_id
     type: u4
-    doc: "[ELF] read at 0xD514B0, compared at 0xD514D0 against a u32 the client holds; mismatch aborts and nothing further is read. [UNKNOWN] which id."
+    doc: "[ELF] read at 0xD514B0, compared at 0xD514D0 against **event record +0x000** (equivalently team+0x298; 0x4A00 keeps the two in step at 0xD50FA8). Mismatch aborts with -1106 and nothing further is read. Same id as 0x4A24's `obj_id`. **Not a result code**: compared against stored state, never sign-extended into 0xD32E70, and this command consumes no request slot."
   - id: unknown_after_echo
     type: u1
-    doc: "[UNKNOWN] read at 0xD514E4 -> obj+0x004."
-  - id: blob
+    doc: "[UNKNOWN] read at 0xD514E4 -> **team record +0x004** (`addi r4,r26,4`, r26 = 0xD491F8's object). No reader traced."
+  - id: member_status
     size: 128
-    doc: "[ELF] exactly 128 bytes, byte-at-a-time loop 0xD514F8-0xD51518. Fixed length. [UNKNOWN] contents."
+    doc: |
+      [ELF] **8 bytes on the wire, one per team member slot** - see the size hazard in the
+      top-level doc; the declared 128 is wrong and is left only because sizes are evidence.
+      Byte-at-a-time loop 0xD514F4-0xD51520 into r1+120..r1+127. Byte `i` is the status of
+      member slot `i` of the eight 28-byte slots at team+0x17C: 0 clears the slot, non-zero is
+      stored at slot+0x15. Full semantics in mgo2_cmd_4a02_s2c.ksy.
   - id: unknown_tail
     type: u4
-    doc: "[UNKNOWN] read at 0xD5152C (-> r1+116), after the blob. Position exact, meaning unestablished."
+    doc: "[UNKNOWN] read at 0xD5152C (-> r1+116) after the status bytes - the one field 0x4A02 and 0x4A29 do not have. It is read into a stack slot that the post-RD_END walk never touches, so it is parsed and discarded within this function; no consumer traced. Position exact, meaning unestablished."
