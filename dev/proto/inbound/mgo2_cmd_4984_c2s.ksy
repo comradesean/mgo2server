@@ -74,11 +74,11 @@ doc: |
   `0xD5C86C` s1 · `0xD5C8A0` u1 · `0xD5C8D4` s2 · `0xD5C918` u2 · `0xD5C95C` s4 · `0xD5C9BC` u4 ·
   `0xD5CADC` NUL-terminated string · `0xD5D0AC` raw block of r5 bytes.
 seq:
-  - id: clan_id
+  - id: team_id
     type: u4
     doc: |
       [ELF, high confidence] `0xD5C9BC` (u4) at `0xD4A5FC`, source = sender arg r4.
-      The id of the clan record being fetched. Proof chain, all tier 1:
+      The id of the **team** record being fetched. Proof chain, all tier 1:
       (a) the sender stashes this exact word at `ctx+0x26CFC` (`0xD4A654`) and the reply parser
       rejects `0x4985` unless its own leading u32 equals it (`0xD4B0D8`), so the request field
       and the record's identity field are the same value;

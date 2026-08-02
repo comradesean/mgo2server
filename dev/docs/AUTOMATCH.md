@@ -241,9 +241,9 @@ non-automatch ones say what each slot holds.
 | wire | size | meaning |
 | --- | --- | --- |
 | `0x00` | u32 | **host character id.** Compared at `0xD5B7F4` against `net+0x57D8`; never stored |
-| `0x04` | u32 | **lobby id** (`lobbyObj+0x25C` in all four siblings) |
+| `0x04` | u32 | **lobby id** (`team+0x25C` in all four siblings — the *team record* from `0xD491F8`, not a lobby object; this table said `lobbyObj` until 2026-08-01) |
 | `0x08` | u8 | **lobby subtype** — the same field as `0x4310[0xA2]` and `0x4316`'s u8 |
-| `0x09` | u8 | subtype's sibling, `lobbyObj+0x261`. Meaning not established |
+| `0x09` | u8 | **rule id** — `team+0x261`, read at four sites as `lbz 609` / `rlwinm r3,r3,1,23,30` / `strres(0x654515, 2*rule)`. Same enum as `0x4310`'s rotation rule. **Resolved 2026-08-01**; we sent 0 until then |
 | `0x0A` | u32 | **zeroed by all four sibling writers.** Send 0 |
 | `0x0E` | u32 | likewise. Send 0 |
 | `0x12` | u8 | **rotation index** — which of the 16 rotation entries the match starts on |
@@ -1091,8 +1091,17 @@ This also names three lobby subtypes `LOBBIES.md` left unnamed: **3 = Tournament
 - **Byte `+0x04` of the status block**, and the four tail bytes of each nibble array. Written, never
   read.
 - ~~**The wire meaning of `0x43f1`'s fields between the host id and the settings block.**~~
-  **Mostly resolved** — see §3: `0x04` is the lobby id, `0x08` the lobby subtype, `0x0A` and `0x0E`
-  are zeroed by all four sibling writers, and `0x12` is the rotation index. **What remains is one
-  byte:** `0x09`, the subtype's sibling at `lobbyObj+0x261`.
+  **Fully resolved 2026-08-01.** `0x04` is the lobby id, `0x08` the lobby subtype, `0x09` the
+  **rule id**, `0x0A` and `0x0E` are zeroed by all four sibling writers, and `0x12` is the rotation
+  index. Nothing in this header is open.
+
+  The last byte fell to a **struct-offset bijection**, not a resemblance: the five parsers that fill
+  the automatch object at `session+0x11558` copy `lwz 604` / `lbz 608` / `lbz 609` off **one base
+  register** as a straight-line block, and that base is the team record returned by `0xD491F8`. So
+  `0x04`/`0x08`/`0x09` are `team+0x25C`/`+0x260`/`+0x261` — and `team+0x261` is read as a rule at
+  four sites. The reverse direction agrees independently: `0x8C53E4`-`0x8C5400` copies
+  `app+0x290/0x294/0x295` back into a stack team record at exactly `+0x25C`/`+0x260`/`+0x261`.
+
+  Note this section previously called the source `lobbyObj`. It is the **team record**.
 - **The 150 units/s calibration**, which is anchored on a tier-2 observation. If the ~40 s figure is
   loose, the 20-minute search window moves with it.

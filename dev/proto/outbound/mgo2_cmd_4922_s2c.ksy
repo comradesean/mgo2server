@@ -1,6 +1,6 @@
 meta:
   id: mgo2_cmd_4922_s2c
-  title: "MGO2 0x4922 — server -> client: clan notification carrying u32 + u8 + u32"
+  title: "MGO2 0x4922 — server -> client: team notification carrying u32 + u8 + u32"
   endian: be
   encoding: ISO-8859-1
 doc: |
@@ -13,19 +13,34 @@ doc: |
   Every reader bound-checks against the **1023-byte receive buffer, not the payload length**,
   so a short payload does not fail — it silently reads whatever follows in the buffer.
 
-  This is an **unsolicited clan notification**, not a reply: there is no result code and no
+  This is an **unsolicited team notification**, not a reply: there is no result code and no
   request-status slot. The parser ends by raising client event **7** via `0xD33CD8(ctx, 7)`.
 
-  The payload opens with the 6-byte key read by the shared helper `0xD49230(ctx, clan, reader)`:
-  a u32 compared against the client's cached clan id (`clan+0x000`) and a u16 compared against
-  `clan+0x29C`. Either mismatch returns `-1018` (`0xFFFFFC06`) and the packet is **discarded
+  The payload opens with the 6-byte key read by the shared helper `0xD49230(ctx, team, reader)`:
+  a u32 compared against the client's cached team id (`team+0x000`) and a u16 compared against
+  `team+0x29C`. Either mismatch returns `-1018` (`0xFFFFFC06`) and the packet is **discarded
   silently** — no dialog, no state change. So both words gate delivery; they are not payload.
   (`0x4960` is the one exception: the helper skips both comparisons for that id.)
 
-  Header, then u32, u8, u32. They land at clan+0x25C, clan+0x261 and clan+0x2A4 respectively
-  [READ 0xd4d108-0xd4d110] — the same three slots the shared clan-record parser fills near the
+  Header, then u32, u8, u32. They land at team+0x25C, team+0x261 and team+0x2A4 respectively
+  [READ 0xd4d108-0xd4d110] — the lobby id, the rule and the entry fee of the team record's
+  trailer, the same three slots the shared team-record parser fills near the
   end of its layout, so this notification is a partial update of that record. Payload 15
   bytes; event 7.
+
+  **RELABELLED 2026-08-01 — the header pair is the TEAM id and the TEAM record serial, not a
+  clan's.** The object `0xD49230` validates against is `session + 0xD928`, the 680-byte team
+  record: this parser re-bases it with `addis` +1 / `addi ...,-9944` at [ELF 0xd4d050] and passes
+  that pointer as the helper's second argument, and the family's missing-record gate answers
+  `-1007` -> dialog 5170 *"You have already left the team."* A **clan** is a separate object the
+  team merely points at, via `team+0x280` (clan id), `team+0x284` (clan name) and flag bit
+  `0x40` in `team+0x094`; genuine clan operations answer in the disjoint `-12xx` band rather
+  than this record's `-10xx`. Where the word "clan" still appears below it means that separate
+  object and is deliberate.
+
+  **Tier note.** No available client build exercises the `0x49xx` family, so **nothing in this
+  file is backed by a capture.** Every claim is tier 1 (read from `MGO2.elf`) or is explicitly
+  marked [INFERRED] or [UNKNOWN]. Do not read any of it as tier 2.
 
   DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
   the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
@@ -47,22 +62,29 @@ doc: |
 
 doc-ref: dev/docs/COMMANDS.md
 seq:
-  - id: clan_id
+  - id: team_id
     type: u4
     doc: |
-      [ELF 0xd49274] Must equal the client's cached clan id (`clan+0x000`) or the packet is
+      [ELF 0xd49274] Must equal the client's cached team id (`team+0x000`) or the packet is
       dropped with `-1018`.
-  - id: clan_serial
+  - id: team_serial
     type: u2
     doc: |
-      [ELF 0xd492b0] Must equal the u16 at `clan+0x29C` — the serial the clan-record replies
+      [ELF 0xd492b0] Must equal the u16 at `team+0x29C` — the serial the team-record replies
       set and `0x49a8` updates. Mismatch -> `-1018`, packet dropped.
-  - id: unknown_06
+  - id: lobby_id
     type: u4
-    doc: "[UNKNOWN] -> clan+0x25C, the same slot as `unknown_a` in the shared clan record."
-  - id: unknown_0a
+    doc: |
+      [ELF 0xd4d10c] -> team+0x25C, the lobby-id slot of the team record's trailer.
+  - id: rule
     type: u1
-    doc: "[UNKNOWN] -> clan+0x261, the same slot as `unknown_c` in the shared clan record."
-  - id: unknown_0b
+    doc: |
+      [ELF 0xd4d110] -> team+0x261, the rule slot of the team record's trailer. The client
+      renders that byte as disc string `2*rule` from group `0x654515` at four independent
+      sites (`0x8C1194`, `0x8C4208`, `0x8C4DA0`, `0x8CE908`, each `lbz r3,609(team)` /
+      `rlwinm r3,r3,1,23,30` / `bl 0x8E0BF0`), so 0 is Deathmatch through 8 Coop.
+  - id: entry_fee
     type: u4
-    doc: "[UNKNOWN] -> clan+0x2A4, the same slot as `unknown_k` in the shared clan record."
+    doc: |
+      [ELF 0xd4d108] -> team+0x2A4, the entry-fee slot of the team record's trailer.
+      [INFERRED] name from the trailer mapping; this parser applies no check to it.

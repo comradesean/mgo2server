@@ -530,11 +530,17 @@ public class Automatch {
 		logger.info("Automatch formed: host {} of {} players, rules {}, map {}.", host.charaId(),
 			members.size(), rules, map);
 
+		// The rule we announce in 0x43f1's own header, as distinct from the rotation inside the
+		// settings block. Entry 0 is the right one to name: the client's rotation-index fallback
+		// discards any other index, so entry 0 is what actually starts, and `rules` is a
+		// LinkedHashSet whose iteration order is the order AutomatchSettingsBlock.build lays out.
+		var announcedRule = rules.iterator().next();
+
 		for (var searcher : waiting) {
 			push(searcher.channel(), AutomatchPackets.MATCH_FOUND,
 				AutomatchPackets.MATCH_FOUND_SIZE,
 				buffer -> AutomatchPackets.writeMatchFound(buffer, match.hostCharaId, lobbyId,
-					lobbySubtype, settings));
+					lobbySubtype, announcedRule, settings));
 		}
 	}
 

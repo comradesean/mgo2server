@@ -64,16 +64,35 @@ public final class AutomatchPackets {
 	 * @param hostCharaId the elected host's character id — the id we send at {@code 0x4101 + 0x00}
 	 * @param lobbyId this lobby's id, which the four sibling parsers all fill from the lobby object
 	 * @param lobbySubtype likewise. 2 here, and the same field as {@code 0x4310}'s byte at `0xA2`
+	 * @param rule the rule at rotation entry 0 — see the byte's comment below
 	 * @param settings exactly {@link AutomatchSettingsBlock#SIZE} bytes
 	 */
 	public static void writeMatchFound(ByteBuf buffer, long hostCharaId, long lobbyId,
-			int lobbySubtype, byte[] settings) {
+			int lobbySubtype, int rule, byte[] settings) {
 		buffer.writeInt((int) hostCharaId);
 		buffer.writeInt((int) lobbyId);
 		buffer.writeByte(lobbySubtype);
-		// The subtype's sibling, lobbyObj+0x261. Meaning not established; zero is what the four
-		// non-automatch writers of this slot leave when they have nothing.
-		buffer.writeByte(0);
+		// The RULE ID. Was hardcoded 0 with "meaning not established" until 2026-08-01, which meant
+		// we announced Deathmatch regardless of what the group had actually been matched into.
+		//
+		// The three bytes before this one are not three unrelated fields: the five parsers that
+		// fill the automatch object at session+0x11558 copy `lwz 604` / `lbz 608` / `lbz 609` off
+		// one base register as a straight-line block, and that base is the team record from
+		// 0xD491F8. So this byte is team+0x261, the sibling of the lobby id at +0x25C and the
+		// subtype at +0x260 -- and team+0x261 is read as a rule at four sites, each doing
+		// `lbz r3,609` then `rlwinm r3,r3,1,23,30` then strres(0x654515, 2*rule). Same enum as
+		// 0x4310's rotation rule. lobbyId and lobbySubtype above are accepted on exactly this
+		// evidence; this byte rides the same block.
+		//
+		// Note the doc calls the source "lobbyObj". It is the team record, not a lobby object.
+		//
+		// It is not a VISIBLE defect today: amObj+0x09's two readers both store to app+0x295,
+		// whose onward copy at +0x2C9 is stored five times and loaded zero times, and the 0x49A0
+		// sender explicitly re-zeroes +0x261 before building its packet. Nothing branches on it.
+		// It is fixed anyway because it is a wrong value in a currently-served feature, the fix is
+		// one byte, and 0x8C53FC is a hand-rolled struct copy -- anything that later reads
+		// app+0x295 would inherit a bogus "Deathmatch".
+		buffer.writeByte(rule);
 		// Both zeroed by every sibling writer in the binary, so zero is the read value, not a guess.
 		buffer.writeInt(0);
 		buffer.writeInt(0);

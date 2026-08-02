@@ -64,11 +64,11 @@ doc: |
   `0xD5C86C` s1 · `0xD5C8A0` u1 · `0xD5C8D4` s2 · `0xD5C918` u2 · `0xD5C95C` s4 · `0xD5C9BC` u4 ·
   `0xD5CADC` NUL-terminated string · `0xD5D0AC` raw block of r5 bytes.
 seq:
-  - id: clan_id
+  - id: team_id
     type: u4
     doc: |
       [ELF, high confidence] `0xD5C9BC` (u4) at `0xD4A4E0`, source = sender arg r4.
-      The id of the clan record being fetched, and the value the reply must echo: the sender
+      The id of the **team** record being fetched, and the value the reply must echo: the sender
       writes it to `ctx+0x26CFC` (`0xD4A548`) and `0xD4AF34` rejects `0x49B1` unless the
       record's own `+0` matches (`0xD4B0D8`). Same slot, same test and therefore the same id
       space as `0x4984`/`0x4985`. No range check; any u32 is sent, including 0.
