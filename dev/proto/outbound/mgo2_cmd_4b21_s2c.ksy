@@ -76,6 +76,43 @@ doc: |
   is rendered. Full mechanism and its consequences: `dev/docs/PROTOCOL.md` "UI events: how
   0xD33CD8 dispatches".
 
+  ## [ELF 2026-08-02] THE "READ BY NOTHING" NEGATIVE, INDEPENDENTLY REPRODUCED AND WIDENED
+
+  Eight slots below (`T+0x30`, `T+0x34`, `T+0x48`, `T+0x5C`, `T+0x60`, `T+0x64`, `T+0x68`,
+  `T+0x6C`) plus `T+0x70`/`T+0x74` carry the 2026-07-30 "written by the parser, read by nothing"
+  finding. That sweep was re-run from scratch and **reproduces exactly**: 108 `bl 0xD54404` call
+  sites, taint-propagated through `mr`/`clrldi`/`extsw`/`addi` to the end of each enclosing
+  function, killing `r0`-`r12` at every call, gives the displacement set
+  `0x00, 0x18, 0x58, 0x77, 0x378, 0x6FC, 0x904, 0xC68, 0x1730, 0x1734, 0x1738, 0x173C, 0x1744,
+  0x1748, 0x174C, 0x1B2C, 0x1B30, 0x1B34` and the same four pointer escapes (`0xA8A418`
+  `stw r3,96(r31)`; `0xABCC24` / `0xABD82C` `stw r3,84(rN)`; `0xAE2C04` `T+0x67A` into `+176`).
+  Controls inside the sweep succeed — `T+0x58` (`member_count`), `T+0x1B2C`, `T+0x1B30` and
+  `T+0x1B34` are all found, and they are the slots we already know have readers.
+
+  **Two addressing forms the 2026-07-30 sweep did not cover were then swept as well**, because a
+  reader can reach `T` without ever calling the accessor:
+
+  1. **`addis rX,rY,1` then a load/store at a NEGATIVE displacement** — i.e. addressing the struct
+     straight off the session as `session+0x10000-1968+off`, which is the form the parsers
+     themselves use to *build* the pointer. Over the whole image, at any of
+     `-1968, -1920, -1916, -1896, -1880, -1876, -1872, -1868, -1864, -1860, -1856, -1852`:
+     **zero hits**. Control: the identical matcher run at `+6404` (the session's own clan-context
+     pointer, `lwz r3,6404(r9)` at `0xD5886C`) fires **208** times, so the form is in live use and
+     the negative is not a matcher artefact.
+  2. **`addis rX,rY,1` then `addi rZ,rX,-19xx`** — a pointer taken to one *field* rather than to
+     `T`. Over `-2000..-1800` the only sites are the parsers' own per-field `addi`s and **five**
+     producers of `T` itself: `0xD344B8` (the reset, and note it memsets only 296 bytes),
+     `0xD54414` (the accessor `GetClanProfile`), `0xD58898` (`0x4b21` parser), `0xD58CF8`
+     (`0x4b81` parser) and **`0xD599E0` — the `0x4b71` parser, a fifth writer the 2026-07-30 note
+     did not list** (it fills `T+0x91C + rec*72 + mode*864`, which is where `T+0x1730`-`0x1750`
+     come from). The `-1856` / `-1848` clusters around `0xA66C88` are **not** this struct: their
+     base is `slwi rN,rN,3` index arithmetic added to `r21`, an unrelated table.
+
+  So the negative now rests on three independent sweeps rather than one, and it is a statement
+  about **this build**: every one of those slots is **inert**, and the server sends zero into all
+  of them, which is safe precisely because nothing reads them. That inertness is the part that can
+  change, so it is recorded per field rather than assumed.
+
 seq:
   - id: result
     type: s4
@@ -134,7 +171,14 @@ seq:
   - id: unknown_30
     type: u4
     doc: |
-      [ELF] T+0x30. [UNKNOWN]
+      [ELF] T+0x30, read at `0xD58930`. [UNKNOWN]
+
+      **Structural note, which is all that can be said about the meaning.** `T+0x30` (u4) followed
+      immediately by `T+0x34` (16-byte name) is the *same {id, name[16]} shape* as
+      `leader_chara_id` at `T+0x18` / `leader_name` at `T+0x1C` — a second character-id-and-name
+      pair. That is a shape, not a name, and there is no reader to settle whose pair it is.
+      `0x4b81` reads neither slot (its parser `0xD58C74` goes `T+0x18` -> `T+0x1C` -> `T+0x378`),
+      so whatever it is, it is own-clan-only.
 
       **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
       it can be re-run: the only producer of a pointer to this struct is the accessor
@@ -152,14 +196,23 @@ seq:
       slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
 
   - id: name_c
     size: 16
     type: str
     encoding: ASCII
     doc: |
-      [ELF] T+0x34, 16 bytes fixed. [UNKNOWN] which name — the id is inherited, and nothing in the
-      binary says this is a name at all beyond its 16-byte width.
+      [ELF] T+0x34, 16 bytes fixed, read at `0xD5894C` with the block primitive `0xD5D018`
+      (`li r5,16`). [UNKNOWN] which name — the id is inherited, and nothing in the binary says this
+      is a name at all beyond its 16-byte width and the `{u4, char[16]}` pairing with
+      `unknown_30`; see that field's structural note. `0x4b81` does not carry this slot.
 
       **[ELF — PRECISE NEGATIVE 2026-07-30] Written by the parser, read by nothing.** Method, so
       it can be re-run: the only producer of a pointer to this struct is the accessor
@@ -178,11 +231,26 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
   - id: unknown_48
     type: u4
     doc: |
-      [ELF] Read as u4 into a stack slot then stored with `std` into T+0x48 as a 64-bit word
-      (0xD5899C). Only 4 bytes are on the wire. Meaning still [UNKNOWN].
+      [ELF] Read as u4 into a stack slot (`0xD5896C`, primitive `0xD5CCD8`) then stored with `std`
+      into T+0x48 as a 64-bit word (`0xD5899C`). Only 4 bytes are on the wire. Meaning still
+      [UNKNOWN].
+
+      **[ELF 2026-08-02] That `std` is the ONLY 64-bit widening in this parser**, and it is the
+      same u32-read/`std`-store shape this binary uses for `time_t` elsewhere — `0x4822`'s `time`
+      (`0xD537B8`, record+264) and `0x4902`'s open/close times. So the *client-side type* is
+      64-bit and timestamp-shaped; that is structural evidence about the slot's width, and it is
+      not evidence about the meaning, which the 2026-07-27 live elimination below already put
+      beyond the emblem cooldown.
 
       **[ELIMINATED LIVE 2026-07-27] It is NOT the emblem re-display cooldown.** It was the obvious
       candidate — the only timestamp-shaped slot the server sends that the client never renders,
@@ -213,6 +281,13 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
   - id: member_count
     type: u4
     doc: |
@@ -241,6 +316,13 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
   - id: unknown_60
     type: u4
     doc: |
@@ -262,6 +344,13 @@ seq:
       slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
 
   - id: unknown_64
     type: u4
@@ -285,6 +374,13 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
   - id: unknown_68
     type: u4
     doc: |
@@ -307,6 +403,13 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
   - id: unknown_6c
     type: u4
     doc: |
@@ -328,6 +431,13 @@ seq:
       slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
 
   - id: flags_word
     type: u4
@@ -352,6 +462,13 @@ seq:
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
 
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
+
       Because `T+0x70` has no reader, the three bits `flags_byte` ORs into it are dead as well.
 
   - id: unknown_74
@@ -375,6 +492,13 @@ seq:
       slots was followed and they reach only `+0x04`, `+0x67A`, `+0xC68` and `+0x1B34`. The only two
       functions handed plain `T` (`0x9C2918`, `0x2810E0`) ignore the argument entirely. What would
       overturn this: a reader that reaches the struct through a base other than `0xD54404`'s return.
+
+      **[ELF 2026-08-02] Reproduced, and widened to two addressing forms the original sweep did
+      not cover — still no reader.** See "THE 'READ BY NOTHING' NEGATIVE" in the header for the
+      three sweeps, their controls and the fifth writer of the struct. The field is **inert** on
+      this build. **What we send: zero** (`ClanGameController.clanProfile`), which is correct
+      while nothing reads it; the hazard is that inertness is a property of this client build, not
+      of the protocol.
 
   - id: flags_byte
     size: 1
@@ -489,6 +613,19 @@ seq:
       So this is a server-side cooldown the client only *displays*; the refusal itself must still
       come from us. Units are seconds because the value is decremented by the frame delta and
       divided by 60 twice.
+
+      **[BUG 2026-08-02 — WRONG AND REACHABLE. The server sends 0 while enforcing the cooldown.]**
+      `ClanGameController.clanProfile` writes `buffer.writeZero(4 + 4 + 4)` over
+      `T+0x1B2C`..`T+0x1B34`, so this field is always 0. But `disband()` **does** enforce a
+      cooldown — `clanService.secondsUntilDisbandable(membership.id())`, default
+      `ClanService.DISBAND_COOLDOWN` = one week — and refuses `0x4b05` with `-1205`. A leader
+      inside the cooldown therefore sees the bare refusal *"A fixed amount of time must pass in
+      order to disband the clan."* with **no number**, because the countdown the client would have
+      drawn is fed from here and we told it there is no wait.
+      **Correct value: `clanService.secondsUntilDisbandable(clan.id())`**, clamped at 0. The two
+      must agree; sending 0 while refusing is the server contradicting itself.
+      Note this is the same class of miss as the ones `CLAUDE.md` lists: the field was *named*
+      correctly on 2026-07-30 and what we send was never checked against the new meaning.
   - id: emblem_display_cooldown_s
     type: u4
     doc: |
@@ -523,11 +660,29 @@ seq:
 
       Note this only draws the countdown. Refusing the action is still ours — `0x4b50` answered
       with `-1216` — so the two must be kept consistent by the server.
+
+      **[BUG 2026-08-02 — WRONG AND REACHABLE. The server sends 0 while enforcing the cooldown.]**
+      Same single `buffer.writeZero(4 + 4 + 4)` in `ClanGameController.clanProfile` covers this
+      slot. Meanwhile `EMBLEM_COOLDOWN_SECONDS` (`Policy.current().clanEmblemCooldown()`, default
+      one week) is enforced and `0x4b50` is refused with `EMBLEM_REFUSED = -1216`. So Emblem Edit
+      refuses the display and the countdown never appears — and the javadoc on
+      `EMBLEM_COOLDOWN_SECONDS` still says the countdown is "unreachable" and that nothing feeds
+      it, which was true only until `T+0x1B30` was traced on 2026-07-30.
+      **Correct value: the seconds remaining of `EMBLEM_COOLDOWN_SECONDS` for this clan**, 0 when
+      none. Sending 0 here is what makes the refusal look arbitrary.
   - id: unknown_1b34
     type: u4
     doc: |
-      [ELF] T+0x1B34, last 4 bytes of the payload. Meaning still [UNKNOWN], but the render path is
-      now tier 1 and it is **not** dead like its neighbours.
+      [ELF] T+0x1B34, last 4 bytes of the payload. Meaning still [UNKNOWN] — and it is a stated
+      **open question**, not an unsearched slot: the two readers are known and traced, and neither
+      can name the cell because the caption is bound in the layout file rather than the ELF. The
+      render path is tier 1 and this field is **not** dead like its neighbours.
+
+      **What we send: zero** (`ClanGameController.clanProfile`'s
+      `buffer.writeZero(4 + 4 + 4)`), and unlike its neighbours this one **is drawn** — a `0`
+      appears in `infoC_st-3` of the clan-info popup and in `STRING_0_3` of the CLAN RECORD
+      header. That is not a wrong value, because we have no candidate to put there; it is the
+      reason the deciding experiment below is worth running.
 
       Two readers, both drawing it as a plain number through the formatter `0xCFD018(buf, 20, v)`:
         * `0xA7D32C` `lwz r5,6964(r22)` -> element **`infoC_st-3`** of the clan-info popup
@@ -578,6 +733,27 @@ seq:
          `6976/6980/6984/6988`, …), i.e. a table of 16-byte records in an engine struct. On the
          clan record `+6956` and `+6960` are the two cooldowns, which that run would trample. The
          only writers of `T+0x1B34` remain the `0x4b21` and `0x4b81` parsers.
+
+      ## [ELF 2026-08-02] 0x4b21 and 0x4b81 write the SAME field — bijection, not resemblance
+
+      Asked as a struct-offset bijection rather than a shape match, because "same layout,
+      different instance" is the standing trap in this protocol. It is the same **absolute
+      address**, not merely the same displacement into two structs:
+
+      * `0x4b21` parser `0xD587AC`: `addis r29,r27,1` (`0xD58890`) makes `r29 = session+0x10000`,
+        and `T = r29-1968` (`0xD58898`). The field is read at `0xD58BE8`
+        `addi r4,r29,4996` -> `session+0x10000+4996` = `T+6964` = `T+0x1B34`.
+      * `0x4b81` parser `0xD58C74`: `addis r31,r31,1` makes `r31 = session+0x10000`, and the same
+        `T = r31-1968` (`0xD58CF8`). The field is read at `0xD58DA8` `addi r4,r31,4996` —
+        **byte-for-byte the same expression**, off the same session argument.
+
+      Both parsers take the session as their argument and neither indexes an instance, so the two
+      packets address one object at one address. The three other slots the two share resolve the
+      same way (`T+0x00`, `T+0x04`, `T+0x18`, `T+0x1C`, `T+0x378`, `T+0x67A`, `T+0x58`), which is
+      the control: a bijection that only worked for the field under test would be suspect.
+      **Consequence: whatever this is, it must be filled for a foreign clan too, and one fix
+      covers both packets.** (`0x4b71`'s parser `0xD5992C` computes the identical `T` at
+      `0xD599E0` — a third writer of the struct, and it writes `T+0x91C` upward, not this slot.)
 
       **What would decide it.** Nothing static — both renderers only format the number, and the
       caption is bound in the layout file. The experiment is cheap and we control both inputs:
