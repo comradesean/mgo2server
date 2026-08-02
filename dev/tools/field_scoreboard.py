@@ -1,6 +1,11 @@
 import re,glob,collections,subprocess
 files=sorted(glob.glob('dev/proto/inbound/*.ksy')+glob.glob('dev/proto/outbound/*.ksy')+glob.glob('dev/proto/*.ksy'))
-NEG=re.compile(r'\b(swept|no store found|no reader|no caller|dead code|never read|no writer|moot|open question|no consumer|inert|discarded)\b',re.I)
+# A field counts as "explained" when its doc states WHY nothing more is knowable. The vocabulary
+# is deliberately broad: batches phrase the same finding as "no reader", "no live consumer",
+# "dead accessor", "uncalled and unregistered". Missing a phrasing silently understates the work.
+NEG=re.compile(r'\b(swept|no store found|no reader|no caller|no live consumer|no consumer'
+               r'|dead code|dead accessor|uncalled|unregistered|never read|no writer|moot'
+               r'|inert|discarded|unknowable|hazard, not bug|open question)\b',re.I)
 # which ids the server actually implements
 src=subprocess.run(['bash','-c',"command grep -rhoE '0x4[0-9a-fA-F]{3}|0x[23][0-9a-fA-F]{3}' src/main/java | tr 'A-F' 'a-f' | sort -u"],capture_output=True,text=True).stdout.split()
 served=set(src)

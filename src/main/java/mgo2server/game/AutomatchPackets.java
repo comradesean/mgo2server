@@ -93,7 +93,16 @@ public final class AutomatchPackets {
 		// one byte, and 0x8C53FC is a hand-rolled struct copy -- anything that later reads
 		// app+0x295 would inherit a bogus "Deathmatch".
 		buffer.writeByte(rule);
-		// Both zeroed by every sibling writer in the binary, so zero is the read value, not a guess.
+		// These two are NOT spare slots, and the comment here used to imply they were. They land on
+		// the automatch object's +12 and +16, which 0x43F0 fills with a real total/index pair --
+		// 0x6EAC48 and 0x6EBF80 evaluate `total - 1 == index` as an "is this the last one"
+		// predicate over them.
+		//
+		// Zero is still correct for us, but for a narrower reason than "every sibling writer sends
+		// zero": that predicate is reachable only when lobby_subtype is 3 or 5, and automatching is
+		// subtype 2. So the fields are unread on our lobby by gating, not by being unused. If a
+		// future toggle ever serves a tournament or survival lobby, these become load-bearing and
+		// this comment is the warning that they do.
 		buffer.writeInt(0);
 		buffer.writeInt(0);
 		// The rotation index. ALWAYS 0: the client copies entry idx into entry 0 without clearing

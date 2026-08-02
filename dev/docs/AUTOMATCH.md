@@ -99,7 +99,7 @@ from the binary; the joiner stagger corroborates it (`(charId & 7)*150 + 150` de
 | `0x43e2` | C→S | builder `0xD5BBDC` | empty | **CANCEL** |
 | `0x43e3` | S→C | parser `0xD5BB04` | 4 B | u32 result |
 | `0x43e4` | S→C push | parser `0xD5BDCC` | 36 B | search panel; event 42 |
-| `0x43f0` | S→C push | parser `0xD5B868` | 78 B | event 43 — **the automatch screen ignores it** |
+| `0x43f0` | S→C push | parser `0xD5B868` | 78 B | **server-assigned team rosters** for the tournament/survival lobbies (subtypes 3-6) — *not* an automatch packet despite the id. Two 8-entry character-id arrays that set each player's team byte. Event 43 is a deliberate no-op arm, so the automatch screen ignores it correctly. **Identified 2026-08-02** |
 | `0x43f1` | S→C push | parser `0xD5B664` | 223 B | **THE MATCH.** u32 host char id + settings; event 44 |
 | `0x43f2` | S→C push | parser `0xD5B588` | 4 B | **u32 game id** — releases the joiners; event 45 |
 | `0x43f3` | S→C push | parser `0xD5B4D0` | 4 B | event 46 ⇒ error 4945 |
@@ -990,8 +990,9 @@ If it is ever built, the client path is believed to be **`0x43f2` alone**, carry
 game's id with no preceding `0x43f1` — a *reading* of the state machine, not an observation.
 Confirm that before relying on it.
 
-**Also still unimplemented:** `0x43f4` on window close, and `0x43f0`/`0x43f5`, which the automatch
-screen ignores anyway.
+**Also still unimplemented:** `0x43f4` on window close, and `0x43f5`, which the automatch screen
+ignores anyway. **`0x43f0` is no longer on this list** — it is team assignment for subtypes 3-6,
+is unreachable on subtype 2, and is correctly unsent rather than missing (see §"open questions").
 
 ## 8. Release-day scope
 
@@ -1085,8 +1086,20 @@ This also names three lobby subtypes `LOBBIES.md` left unnamed: **3 = Tournament
 
 - **Which nibble array is "Matching" and which is "In Game".** The client only displays the sum, so
   no client behaviour can distinguish them. Unknowable from this side.
-- **What `0x43f0` (event 43) is for.** Its parser fills the settings block and two 8-element arrays,
-  but the automatch screen's dispatcher explicitly does nothing with event 43 (`0x93DE5C`).
+- ~~**What `0x43f0` (event 43) is for.**~~ **Answered 2026-08-02: it assigns teams.** The two
+  8-element arrays are character-id lists, one per team. `0x270CA4`-`0x270DA4`, inside the
+  roster-slot installer, compares the id the server sent at `0x4101` wire `0x00` against all eight
+  of each, interleaved: a hit in the first array stores team **0** at the character record's field
+  1, a hit in the second stores **1**, and no match leaves the default `255`. Eight plus eight is
+  the 16-player maximum split two ways, and that field-1 team byte is independently mapped in
+  `mgo2_cmd_4440_c2s.ksy`. Exactly one writer and exactly one reader.
+
+  **Not sending it is correct, not a gap**, on three independent grounds: the consuming lookup runs
+  only when `(*(u32*)(game+3020) & 0x201) == 0x201`, and bit 9 is set at one site that requires
+  lobby_subtype in `2..6` *and not 2* — automatching is subtype 2, so the code is unreachable on the
+  lobby we deploy; event 43's jump-table arm is `0x93DE5C`, the handler's own return, i.e. a
+  deliberate empty arm rather than a missing one; and it has no result field, no request slot and is
+  not polled. A cosmetic zero, never a stall.
 - **Where event 55 (`0x43f5`) is handled.** Not on channel 60, not in this screen.
 - **Byte `+0x04` of the status block**, and the four tail bytes of each nibble array. Written, never
   read.

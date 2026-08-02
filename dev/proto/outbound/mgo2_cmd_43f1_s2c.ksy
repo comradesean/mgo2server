@@ -79,13 +79,33 @@ seq:
       carries 2 whether or not automatching is involved. Only `0x4316`'s u8 discriminates.
   - id: lobby_subtype_sibling
     type: u1
-    doc: "[UNKNOWN] `lobbyObj+0x261`. Position and width exact; the meaning is not established."
+    doc: |
+      [UNKNOWN] `lobbyObj+0x261` -> `R+9`. Position and width exact; the meaning is not established
+      **from any reader**. `0x8F9C00` copies `R+9` to the game object's `+661` and `0x8BE094` to
+      another object's `+713`; neither destination has a consumer that branches on the value.
+
+      The server currently sends the **rule id** here (`AutomatchPackets.writeMatchFound`), on
+      evidence taken from the *source* side of the `0x49xx` parsers — `team+0x261`, read as a rule
+      at four `strres` sites. That argument is about where the byte comes from in a different
+      packet, not about what this client does with it, so the two readings are not in conflict and
+      neither is decisive. Left `lobby_subtype_sibling` here so the name does not assert more than
+      the destination trace supports; `0x43F0` carries the same byte onto the same slot, see
+      `mgo2_cmd_43f0_s2c.ksy`.
   - id: zero_0a
     type: u4
-    doc: "[CONFIRMED] **Zeroed by all four sibling writers.** Send 0."
+    doc: |
+      [CONFIRMED] **Zeroed by all four sibling writers.** Send 0.
+
+      **Not an inert slot, though** [ELF 2026-08-02]. It lands on `R+12`, and `0x43F0` puts a real
+      value there: `0x6EAC48` and `0x6EBF80` evaluate `R+12 - 1 == R+16` as an "is this the last
+      one" predicate. That test is gated on `R+8` (`lobby_subtype`) being **3 or 5**, and
+      automatching is subtype 2, so zero is safe *here* — by the gate, not by the slot being dead.
+      See `mgo2_cmd_43f0_s2c.ksy` `series_total`.
   - id: zero_0e
     type: u4
-    doc: "[CONFIRMED] Likewise. Send 0."
+    doc: |
+      [CONFIRMED] Likewise. Send 0. Lands on `R+16`, the index half of the pair described under
+      `zero_0a`; also read alone at `0x2753BC`. Same gate, same reasoning.
   - id: rotation_index
     type: u1
     doc: |
@@ -132,16 +152,102 @@ types:
       the **offset and width are [ELF]** — same reader function, so they are identical by
       construction, not by analogy — while the **name is [INFERRED]** from those two captures.
       Nothing in this packet is [CONFIRMED].
+
+      ## The reader sweep behind every "no reader" claim below (2026-08-02)
+
+      Ten fields here are recorded as having no consumer. That is one experiment, stated once:
+
+      **Method.** The block lands at **struct `+752`** of the game-settings object, so block offset
+      `N` is struct offset `752 + N`. Every load/store in the image with a literal displacement in
+      `[752, 959]` and a base register other than `r1` was enumerated and clustered by address
+      proximity. A cluster counts as *this* struct only if it also touches one of the **marker
+      offsets** — `802` (weapon restrictions), `818`/`819` (max/current players), `846` (stance),
+      `847` (level tolerance), `940`/`941` (capture extra, SNAKE) — which no other structure in the
+      image touches together.
+
+      **Result — the complete set of functions that operate on this object:**
+
+      | site | what it is |
+      | --- | --- |
+      | `0x883FB4`-`0x884020` | the host-information validator (`768`, `819`) |
+      | `0x89CB44`-`0x89DFF8` | timer/SNAKE rendering |
+      | `0x8A1110`-`0x8A2408` | create-game timer adjusters |
+      | `0x8A5158`, `0x8A5CB0`-`0x8A6FC8`, `0x8A8A2C`-`0x8A9344` | the create-game settings screen |
+      | `0x8CA2BC`-`0x8CA5C8` | the in-game publisher: copies settings into **record 0** |
+      | `0x907038`-`0x90786C` | the accessor bank — **entirely dead code**, see below |
+      | `0xD49510`-`0xD49558` | the `0x4302` game-list row builder |
+      | `0xD4364C` / `0xD449xx` | this block's own parser and builder |
+
+      **Controls.** The sweep reproduces every field whose reader was already known: `818` (12
+      sites), `847` (12), `941` (9), `848`, `820`, `846`, `936`. The false-positive families it
+      correctly rejects are the several unrelated structs in `0x13Dxxx`, `0x31xxxx`, `0x77xxxx`,
+      `0x83xxxx` and `0x9Dxxxx` that happen to have u32 arrays at 4-byte strides across 824-844 or
+      912-956, and the unrolled 320-stride graphics copy at `0x644F10`-`0x64525C` that writes
+      *every* byte of `704..959` on a different object. Each was disqualified by base-object
+      identity, not by looking odd.
+
+      **The accessor bank at `0x907024`-`0x907944` is dead.** It is a complete per-field getter API
+      over this struct — `lbz 800`, `lbz 801`, `lhz 834`, `lwz 840`, `lhz 922`, `lwz 924`, the
+      16 `lwz 928` bit tests, indexed getters for `rules[]`/`maps[]`/`flags[]`/`weapons[]`, and so
+      on, each preceded by `bl 0xD3F71C`. **Not one of them is called and not one is registered.**
+      There is no `bl` to any of them, their OPD descriptors (`0x101C0E0`-`0x101C238`) appear in no
+      data word, and the image is `ET_EXEC` with no relocations, so a runtime-patched reference is
+      impossible. It is not reachable through the GCX native table either — that table is a sorted
+      `{u32 hash, u32 opd}` array around `0x1030000`-`0x1031800`, and none of these OPDs occurs in
+      it (control: the level-table native `0x6F9370` does, at `0x1031584`, and two functions in the
+      neighbouring in-game rules API do, at `0x1031060` and `0x1031090`).
+
+      That bank is still **useful as evidence**: it is the game's own declaration of each field's
+      width, produced by a different compiler pass from the parser, and it agrees with `0xD4364C`
+      on every offset. It is **not** evidence that anything reads the value.
     seq:
       - id: rotation
         size: 48
         doc: "block +0. Sixteen {rule, map, flags} triples. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
       - id: unknown_48
         type: u1
-        doc: "block +48. [UNKNOWN]"
+        doc: |
+          block +48, struct **+800**. Meaning [UNKNOWN]; width [ELF] twice over (`lbz` in the
+          parser at `0xD436F4`, `lbz 800(r9)` in the dead accessor `0x907854`).
+
+          **It is the one field in this group that leaves the settings object**, and the trail is
+          worth recording because it ends in a wall rather than a name:
+
+          ```
+          8ca460  lbz r0,800(r9) ; stb r0,125(r1)     ; the in-game publisher
+          8ca6f0  RecordSet(record 0, key 86, len 8, &r1[124])
+          ```
+
+          `r1[124..131]` is zeroed as four u16s at `0x8CA444`-`0x8CA450`, then byte 125 takes this
+          field and byte 129 takes `unknown_49`. So record 0 key 86 is **four u16s**, of which slot
+          0 carries block `+48` and slot 2 carries block `+49`. Record 0 is the 144-byte "global"
+          record of the client property store (`CLIENT_STORE.md` §1), and its access rule makes
+          writer/reader searches closed by construction: **`0x8CA6F0` is the only writer of key
+          86.**
+
+          The **only two readers** are `0x7F4C98` (returns key 86 byte 1 = this field) and
+          `0x7F4C50` (returns byte 5 = `unknown_49`) — a pair of one-line getters in the in-game
+          rules API. **Both are dead.** No `bl` reaches either, and neither OPD (`0x1018990`,
+          `0x1018988`) appears in the GCX native table, while their immediate neighbours
+          `0x7F4CE0` (current rotation entry's map) and `0x7F4D68` (its flags) *are* registered, at
+          `0x1031060` and `0x1031090`. That contrast is the control: the search finds registrations
+          when they exist.
+
+          So the value is **server-authored, published into the client's global record, and read by
+          nothing**. Our server sends **0**; there is no evidence for any other value and no reader
+          that could tell the difference. Hazard, not bug.
       - id: unknown_49
         type: u1
-        doc: "block +49. [UNKNOWN]"
+        doc: |
+          block +49, struct **+801**. Meaning [UNKNOWN]; width [ELF] (`lbz` at `0xD43710`; dead
+          accessor `0x90782C`).
+
+          Same trail as `unknown_48` and the same dead end: `0x8CA468` copies it to `r1[129]`, it
+          rides record 0 key 86 as u16 slot 2, and its only reader `0x7F4C50` is uncalled and
+          unregistered. Our server sends **0**. Hazard, not bug.
+
+          The two travel together and are adjacent in both the block and the record, so whatever
+          they are, they are a pair.
       - id: weapon_restrictions
         size: 16
         doc: "block +50. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
@@ -183,22 +289,61 @@ types:
           artifacts.
       - id: unknown_76
         type: u4
-        doc: "block +76. [UNKNOWN]"
+        doc: |
+          block +76, struct **+828**. [UNKNOWN]. Width [ELF]: the parser reads it with the u32
+          reader `0xd5ccd8` at `0xD437AC`.
+
+          **No consumer of any kind** [ELF 2026-08-02]. The reader sweep in the block doc above
+          found no site in any settings-object function, and — unlike `+82`, `+88`, `+170` and
+          `+172` — there is not even a getter for it in the dead accessor bank. It is in the same
+          category as `+72`: a hole the client parses, stores, echoes back in its own `0x4310`, and
+          never looks at.
+
+          Our server sends **0** and always has. There is no captured non-zero value for it, so
+          unlike `+72` and `+179` zero is not a change we are making — it is what a create-game
+          screen leaves here too (the screen never writes it either). Hazard, not bug.
       - id: unknown_80
         type: u2
-        doc: "block +80. [UNKNOWN]"
+        doc: |
+          block +80, struct **+832**. [UNKNOWN]. Width [ELF]: u16 reader `0xd5cc14` at `0xD437C8`.
+
+          **No consumer of any kind**, and no accessor-bank getter. Same category as `+76`. Our
+          server sends **0**. Hazard, not bug.
       - id: unknown_82
         type: u2
-        doc: "block +82. [UNKNOWN]"
+        doc: |
+          block +82, struct **+834**. [UNKNOWN]. Width [ELF] **twice**: u16 reader `0xd5cc14` at
+          `0xD437E4`, and `lhz r3,834(r3)` in the accessor bank at `0x907784` — an independent
+          compiler-emitted declaration that this is a halfword, not two bytes and not the top half
+          of a u32.
+
+          **No live consumer.** That accessor is dead code (see the block doc: the whole bank is
+          uncalled and unregistered), and the sweep found nothing else. The nearby `lhz ...,834(...)`
+          cluster at `0x7ED52C`-`0x7F4628` is a *different* object — none of those functions touches
+          any marker offset of this struct — and was disqualified on that basis, not on appearance.
+
+          Our server sends **0**. Hazard, not bug.
       - id: unknown_84
         type: u4
-        doc: "block +84. [UNKNOWN]"
+        doc: |
+          block +84, struct **+836**. [UNKNOWN]. Width [ELF]: u32 reader `0xd5ccd8` at `0xD43800`.
+
+          **No consumer of any kind**, and no accessor-bank getter. Same category as `+76` and
+          `+80`. Our server sends **0**. Hazard, not bug.
       - id: unknown_88
         type: u4
-        doc: "block +88. [UNKNOWN]"
+        doc: |
+          block +88, struct **+840**. [UNKNOWN]. Width [ELF] **twice**: u32 reader `0xd5ccd8` at
+          `0xD4381C`, and `lwz r3,840(r3)` at `0x907744` in the dead accessor bank.
+
+          **No live consumer.** Our server sends **0**. Hazard, not bug.
       - id: unknown_92
         type: u2
-        doc: "block +92. [UNKNOWN]"
+        doc: |
+          block +92, struct **+844**. [UNKNOWN]. Width [ELF]: u16 reader `0xd5cc14` at `0xD43838`.
+
+          **No consumer of any kind**, and no accessor-bank getter. Our server sends **0**. Hazard,
+          not bug.
       - id: stance
         type: u1
         doc: "block +94. [ELF offset+width via the shared reader 0xD4364C; name INFERRED — see the tag note in the block doc]"
@@ -227,10 +372,30 @@ types:
         doc: "block +169. [ELF] position only; second byte of that raw pair. Name [UNKNOWN]."
       - id: unknown_170
         type: u2
-        doc: "block +170. [UNKNOWN]"
+        doc: |
+          block +170, struct **+922**. [UNKNOWN]. Width [ELF] **twice**: u16 reader `0xd5cc14` at
+          `0xD43A9C`, and `lhz r3,922(r3)` at `0x9074B4` in the dead accessor bank.
+
+          **No live consumer.** Note the contrast with its immediate neighbours `+168`/`+169`
+          (struct 920/921), which *are* live: `0x8CA5C0`-`0x8CA5CC` copies both into record 0 key
+          134, and the bank has an indexed getter at `0x907174` reading `920 + idx`. That getter
+          stops short of 922 — 922 has its own separate halfword accessor — so `+170` is outside the
+          920/921 pair rather than a third element of it.
+
+          Our server sends **0**. Hazard, not bug.
       - id: unknown_172
         type: u4
-        doc: "block +172. [UNKNOWN]"
+        doc: |
+          block +172, struct **+924**. [UNKNOWN]. Width [ELF] **twice**: u32 reader `0xd5ccd8` at
+          `0xD43AB8`, and `lwz r3,924(r3)` at `0x90748C` in the dead accessor bank.
+
+          **No live consumer.** `924` is the noisiest offset in this whole sweep — it appears in
+          roughly two dozen unrelated functions (`0x83xxxx`, `0x93xxxx`, `0x99xxxx`, `0xA3xxxx`,
+          `0xA4xxxx`) that all have u32 arrays striding 912-956 or byte fields at 924 on other
+          objects. Every one was disqualified because none touches a marker offset of this struct;
+          several use `stb` where this field is a u32, which is the tell.
+
+          Our server sends **0**. Hazard, not bug.
       - id: common_flags_msb
         type: u1
         doc: |
