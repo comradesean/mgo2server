@@ -261,8 +261,13 @@ public class ClanGameController implements IGameController {
 	 * Refusing a disband inside the cooldown: {@code -1205} ->
 	 * <em>"A fixed amount of time must pass in order to disband the clan."</em> ({@code 0xA7E74C}).
 	 * <p>
-	 * This is the message the orphaned countdown strings (17312/17318) would have accompanied. The
-	 * countdown itself is still unreachable — this says the same thing without the number.
+	 * This is the message the orphaned countdown strings (17312/17318) would have accompanied.
+	 * <p>
+	 * <b>The countdown is no longer unreachable — corrected 2026-08-02.</b> This javadoc said it was,
+	 * and that was true only because {@code clanProfile} was zeroing the field. {@code 0x4b21}'s
+	 * {@code T+0x1B2C} is the disband countdown and has carried
+	 * {@code clanService.secondsUntilDisbandable} since; the refusal and the number now come from
+	 * the same source.
 	 */
 	private static final int DISBAND_TOO_SOON = -1205;
 
@@ -273,8 +278,14 @@ public class ClanGameController implements IGameController {
 	 * carries the countdown string ("You must wait another %d hours %d minutes", lobby 17247), but
 	 * nothing client-side enforces it on this build: the emblem can be re-displayed immediately, and
 	 * the one timestamp-shaped field the server sends that could have driven it, {@code 0x4b21}'s
-	 * {@code T+0x48}, was tried and eliminated. So either the retail servers refused the upload
-	 * themselves, or the countdown is fed by something not yet found.
+	 * {@code T+0x48}, was tried and eliminated.
+	 * <p>
+	 * <b>The countdown's source WAS found, and this paragraph's "not yet found" is stale — corrected
+	 * 2026-08-02.</b> It is {@code 0x4b21}'s {@code T+0x1B30}, named 2026-07-30 and traced again on
+	 * 2026-08-02; {@code clanProfile} was zeroing it, which is why nothing appeared to feed it. It
+	 * now carries {@link #emblemCooldownRemaining}. What remains true is the first half: nothing
+	 * client-side <em>enforces</em> the interval, so the refusal is still ours to make — the client
+	 * only prints the number we give it.
 	 * <p>
 	 * The interval is a guess — the client computes its own from a constant we have not located.
 	 * Tune with {@code MGO2SERVER_CLAN_EMBLEM_COOLDOWN_HOURS} in {@code server.env}; {@code 0}
@@ -1325,6 +1336,24 @@ public class ClanGameController implements IGameController {
 		return EMBLEM_COOLDOWN_SECONDS;
 	}
 
+	/**
+	 * Seconds of emblem re-display cooldown still to run for a clan, or 0 if it may display now.
+	 * <p>
+	 * This is what {@code 0x4b21}'s {@code T+0x1B30} carries, so the countdown the client prints
+	 * matches the one {@link #uploadEmblem} enforces. The two must come from the same arithmetic or
+	 * the screen will disagree with the refusal.
+	 * <p>
+	 * {@code secondsSinceEmblem} returns a negative for a clan that has never set one, which is not
+	 * a cooldown — hence the {@code since >= 0} guard, the same one the enforcement path uses.
+	 */
+	private int emblemCooldownRemaining(long clanId) {
+		var since = clanService.secondsSinceEmblem(clanId);
+		if (since < 0 || since >= displayCooldownSeconds()) {
+			return 0;
+		}
+		return (int) (displayCooldownSeconds() - since);
+	}
+
 /** Everything a leader may do, nothing for anyone else. See {@link #LEADER_PRIVILEGES}. */
 	private static int privileges(int state) {
 		return state == ClanService.STATE_LEADER ? LEADER_PRIVILEGES : 0;
@@ -1431,7 +1460,20 @@ public class ClanGameController implements IGameController {
 		buffer.writeInt(clan.noticeAt() == 0 ? NO_TIMESTAMP : (int) clan.noticeAt());  // T+0x904
 		BufferUtil.writeString(buffer, clan.noticeWriter(), StandardCharsets.ISO_8859_1,
 			CLAN_NAME_LENGTH);                                                // T+0x908
-		buffer.writeZero(4 + 4 + 4);                                          // T+0x1B2C .. T+0x1B34
+		// T+0x1B2C and T+0x1B30 are the two COOLDOWN COUNTDOWNS, and they were a single
+		// writeZero(4 + 4 + 4) until 2026-08-02. Both were named on 2026-07-30 and what we send was
+		// never re-checked against the new meaning -- the exact failure CLAUDE.md's third scope case
+		// describes, and the reason that rule exists.
+		//
+		// The server ENFORCES both cooldowns and was telling the client neither. A leader on
+		// cooldown got the bare refusal with no number in it, because the number the client prints
+		// comes from here and we sent 0.
+		buffer.writeInt((int) clanService.secondsUntilDisbandable(clan.id()));  // T+0x1B2C
+		buffer.writeInt(emblemCooldownRemaining(clan.id()));                   // T+0x1B30
+		// T+0x1B34 is shared with 0x4b81 -- same address, proven by identical `addis rN,session,1`
+		// plus `addi r4,rN,4996` in both parsers (0xD58BE8 and 0xD58DA8), not merely the same
+		// shape. Its meaning is still open, so zero stays until the sentinel experiment names it.
+		buffer.writeZero(4);                                                  // T+0x1B34
 
 		assert buffer.writerIndex() - start == PROFILE_SIZE
 			: "Clan profile must be " + PROFILE_SIZE + " bytes";
