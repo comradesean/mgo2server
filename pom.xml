@@ -35,7 +35,7 @@
         <docker.api.version>1.44</docker.api.version>
 
         <!-- Plugins -->
-        <compiler.plugin.version>3.14.0</compiler.plugin.version>
+        <compiler.plugin.version>3.15.0</compiler.plugin.version>
         <surefire.plugin.version>3.5.3</surefire.plugin.version>
         <failsafe.plugin.version>3.5.3</failsafe.plugin.version>
         <shade.plugin.version>3.6.2</shade.plugin.version>
