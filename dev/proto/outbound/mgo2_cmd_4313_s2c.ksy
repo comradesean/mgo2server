@@ -462,11 +462,19 @@ types:
         type: u1
         doc: |
           [CONFIRMED] block +177 (wire 0x159), struct **+929**. Same bitfield as the 0x4302 entry.
-          Read as a 2-byte raw block with common_b (`0xD43AF4` / `0xD459A8`). Bits 8-15 of the
-          32-bit flags word based at `common_flags_msb`.
+          Read as a 2-byte raw block with common_b (`0xD43AF4` / `0xD459A8`).
+
+          **Bits 23-16** of the 32-bit flags word based at `common_flags_msb`. *Corrected
+          2026-08-02: this said "bits 8-15", and `common_b` said "bits 16-23". The word is
+          big-endian, so the byte order is msb, 23-16, 15-8, lsb — the two labels were swapped.*
+          The `team_kill_kick` note below already said "commonB bit 7", which is consistent with
+          the corrected reading and not with the old one, so the error was in these two range
+          labels alone.
       - id: common_b
         type: u1
-        doc: "[CONFIRMED] block +178 (wire 0x15a), struct **+930**. Bits 16-23 of that same word."
+        doc: |
+          [CONFIRMED] block +178 (wire 0x15a), struct **+930**. **Bits 15-8** of that same word —
+          corrected 2026-08-02, see `common_a` above for why the two were swapped.
       - id: common_flags_lsb
         type: u1
         doc: |
@@ -494,7 +502,17 @@ types:
       - id: team_kill_kick
         type: u2
         doc: |
-          [CONFIRMED] block +182 (wire 0x15e), struct **+934**. Zeroed when commonB bit 7 is clear.
+          [CONFIRMED] block +182 (wire 0x15e), struct **+934**.
+
+          **The claim "zeroed when commonB bit 7 is clear" was too strong and is REFUTED
+          (2026-08-02).** It came from the create-game screen, which does keep flags bit 15 in step
+          with this value at `0x8A5F90`-`0x8A5FB0` — but that invariant is **local to that one
+          screen**. 170 of 214 archived `0x4310` captures carry exactly the pairing the claim says
+          cannot exist (`common_b` zero, `team_kill_kick` = 3), and the publisher at `0x8CA534`
+          copies the value out with **no bit test**. So the value is live regardless of the bit.
+
+          The parallel claim on `idle_kick`/`commonA` bit 0 is a different matter: it is
+          **confirmed 214/214** and stands.
           Published as property-store key 69 at `0x8CA534`/`0x8CA608` — **as a single byte**
           (`stb r0,273(r1)` after an `lhz`), so the client's own downstream copy truncates above 255
           even though the wire field is 16 bits.
