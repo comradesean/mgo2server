@@ -35,14 +35,39 @@ half — so in a normal lobby the +/- cycler at `0xA32700` only offers 0..4. Aut
 2, a normal lobby, so sending 9 would put a stance on the wire that no host in that lobby could
 select. That is why the value was left at 0 rather than "improved".
 
-**Why this is answerable, and cheaply.** The stance is **visible in-match** — it is the "Conditions"
-row, published as property-store key 94 and copied into the game-list row. So a recording of a real
-automatch game from the live service shows it directly. Community video is tier 2 evidence for
-exactly this kind of question, and it beats any amount of further disassembly, because the ELF can
-only say which values are *legal*, never which one Konami's server chose.
+**First question is not "what value" but "is it observable at all" — corrected 2026-08-02.** This
+item originally said the stance is visible in-match and a video would settle it. **That premise is
+not established**, and the objection that broke it is that an automatch game has no host in the
+sense the stance describes: nobody opened Create Game and chose a posture.
 
-**What to look for:** the Conditions row on an automatch game's info panel, or the game-list entry
-for one. Any of the ten labels above identifies it outright.
+Both traced consumers are doubtful for *this* lobby specifically:
+
+- `0xD49530` copies `+846` into the game-list entry's `T+0x24`. But that site sits inside
+  `0xD493CC`, the client's **own hosted-game entry synthesiser** — the row a client builds for a
+  game *it* hosts — and **the automatching lobby has no browser**, which is the same fact that
+  argues against slot-in. A game-list row nothing renders is not an observation.
+- `0x8CA580` publishes `+846` as **property-store key 94**, which feeds the lobby's GCX script. Where
+  that script draws it, or whether it draws it at all for an automatch game, is **not readable from
+  the ELF** — it is in the stage script. That is the same wall the `block_204` mapping hit for
+  `+48`/`+49`: "the remaining route is the script, not the disassembler."
+
+So the honest state is that **we cannot currently name the observation that would confirm an
+answer**, which by this project's own standard means the question is not yet in a form that can be
+settled. Establish observability first:
+
+1. Trace the GCX consumer of property-store key 94 in the lobby script (`dev/tools/gcx`,
+   `dev/tools/solideye`; method in `ASSETS.md`). Does anything render it, and under what conditions?
+2. Only if something does: look for it in footage of a real automatch game.
+
+**If it turns out to be unobservable, that is a result and should be written down here.** It would
+mean our `0` is unfalsifiable operator policy — which is *fine*, and is a much better place to leave
+it than a value we keep intending to verify. What is not fine is leaving this item claiming a video
+can answer it when nothing has shown the field is ever drawn.
+
+**Protocol-level note, so nobody trips over the phrase "no host":** automatch does elect one at the
+protocol level — `0x43f1` names a host character id, that client creates the game, and P2P requires
+some console to host. What it has no host *for* is the settings screen. The stance is a
+human-authored field with no human to author it, which is the whole reason this question exists.
 
 ## The instructor recognition prompt is peer-supplied — the server cannot trigger it
 
