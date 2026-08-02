@@ -580,13 +580,25 @@ types:
         doc: |
           [CONFIRMED] Game rule (mode) id for this rotation slot -> block+0x00+i. Capture-proven
           as a rotation entry via the 0x4310 push, whose copy of this block starts at wire 0xA3
-          and whose 16 triples occupy 0xA3..0xD2 (OBSERVED.md / PROTOCOL.md 0x4310). The
-          rule-id-to-mode mapping itself is [INFERRED], tier 4.
+          and whose 16 triples occupy 0xA3..0xD2 (OBSERVED.md / PROTOCOL.md 0x4310).
+
+          **The rule-id-to-mode mapping is now TIER 1** [2026-08-02] — it was tier 4, inherited
+          from a reference server, and it turns out to have been correct. The tournament detail
+          panel resolves it from the client's own string table: `strres(0x654515, rule + 22)` at
+          `0x9019C8` gives `DM TDM RES CAP SNE BASE BOMB TSNE` for ids 0..7, and the long forms at
+          `2*rule` agree. The client bounds the id 0..7 itself (`cmplwi 7` / `bgt` at `0x901A70`).
       - id: map
         type: u1
         doc: |
-          [CONFIRMED] Map id for this rotation slot -> block+0x10+i. Position and role as above;
-          the id-to-map-name table is [INFERRED], tier 4.
+          [CONFIRMED] Map id for this rotation slot -> block+0x10+i. Position and role as above.
+
+          **The id-to-map-name table is now TIER 1** [2026-08-02], and was also correct as
+          inherited. `0x902010` / `0x90205C` call `strres(0x654515, map + 74)`; ids 75..89 give
+          `JNGL A.A. U.U. G.G. B.TOWN L.D B.B. UNDER CLOCK N.SILO M.DEPO M.M. SANO S.A SHOP`, with
+          the long forms at `map + 59` (ids 60..74).
+
+          **Map ids are 1-based: 1..15, with 0 meaning empty.** Worth stating outright, because an
+          off-by-one here silently selects the wrong map rather than failing.
       - id: flags
         type: u1
         doc: |

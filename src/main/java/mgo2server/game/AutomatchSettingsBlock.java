@@ -120,11 +120,20 @@ public final class AutomatchSettingsBlock {
 	/**
 	 * Timer-array index of each rule's first slot, and how many slots it owns.
 	 *
-	 * <p><b>Confirmed, not inferred.</b> Two independent lines agree. The client scales exactly the
-	 * eight <em>time</em> indices by 60 ({@code 0x8CA470}), giving a 2/2/2/3/2/2/2/2 shape; and four
+	 * <p><b>Confirmed, not inferred.</b> Three independent lines now agree. The client scales exactly
+	 * the eight <em>time</em> indices by 60 ({@code 0x8CA470}), giving a 2/2/2/3/2/2/2/2 shape; four
 	 * stored blobs from characters that had never edited a timer read {@code [0]=8 [1]=4} and
 	 * {@code [6]=3 [7]=4 [8]=15}, matching the client's documented defaults for Sneaking (8/4) and
 	 * Team Deathmatch (3/4/15) at exactly these indices.
+	 *
+	 * <p><b>Third line, 2026-08-02, and the strongest:</b> the tournament RULE DETAIL panel's jump
+	 * table at {@code 0x901A90} reproduces this map slot for slot, including Deathmatch's missing
+	 * rounds entry, and its time indices fall out as {@code {9,6,4,2,0,11,13,15}} — identical to the
+	 * first element of each row below. That site has no connection to {@code 0x4310} and no ×60
+	 * scaling argument; it labels the slots with the client's own widget names
+	 * ({@code NULL_tournamentrule_time} / {@code _round} / {@code _ticket}). So the shape is
+	 * corroborated by a screen that renders these fields as text rather than by how they are
+	 * consumed. <b>Checked against what we send: the values here are right. Do not re-derive.</b>
 	 */
 	private static final Map<Integer, int[]> RULE_TIMERS = Map.of(
 		0, new int[] {9, 2},    // Deathmatch      — time, tickets (no rounds slot)
