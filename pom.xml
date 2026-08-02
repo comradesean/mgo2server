@@ -37,7 +37,7 @@
         <!-- Plugins -->
         <compiler.plugin.version>3.14.0</compiler.plugin.version>
         <surefire.plugin.version>3.5.3</surefire.plugin.version>
-        <failsafe.plugin.version>3.5.3</failsafe.plugin.version>
+        <failsafe.plugin.version>3.5.6</failsafe.plugin.version>
         <shade.plugin.version>3.6.2</shade.plugin.version>
         <enforcer.plugin.version>3.5.0</enforcer.plugin.version>
         <cyclonedx.plugin.version>2.9.2</cyclonedx.plugin.version>
