@@ -1,23 +1,62 @@
 meta:
   id: mgo2_cmd_4e23_s2c
-  title: "MGO2 0x4e23 — context update, 8 bytes (server -> client)"
+  title: "MGO2 0x4e23 — Survival: per-slot status column + teardown of the Survival event record (server -> client)"
   endian: be
 doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
   every field below comes from the client parser only, so tags are [ELF] at best.
 
+  **SURVIVAL MATCH LIST.** The 0x4Exx block is the Survival Match List browser; the identification
+  is in mgo2_cmd_4e00_c2s.ksy. `0x4E23` is `0x4E22` **plus a full teardown of the Survival event
+  record** — it is the "this Survival event is over, drop everything" push.
+
+  TIER. Post-launch content; no available client build exercises this command, so **everything
+  here is tier 1 and cannot be raised to tier 2.** Not served in v1.
+
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD5A1D0**, which re-checks the id (`cmpwi r0,20003`) before reading anything.
 
-  Opens with the shared header validator **0xD49230** (u4 + u2, checked against the client's
-  current context; mismatch = -1018 and the packet is dropped), then reads just two bytes. No
-  request slot; fires **UI event 41** (0xD33CD8) on success, after memsetting a 28-byte scratch
-  area and comparing one of the bytes against 7 and -1.
-  Extra step 0x4e23 has and 0x4e22 does not: a call to 0xD4EC14 before the UI event.
+  Opens with the shared header validator **0xD49230** (u4 + u2, checked against `team+0x00` and
+  `team+0x29C` on `team = 0xD491F8(session) = session+0xD928`; mismatch = -1018 and the packet is
+  dropped). No request slot.
 
-  Wire size: **8 bytes**. 0x4e22 and 0x4e23 have byte-identical layouts (parsers 0xD5A3F0 and
-  0xD5A1D0 differ only in the id compared, the UI event fired, and the extra call noted above),
-  so they are almost certainly a pair over the same record.
+  ## !! WIRE LENGTH FLAGGED, NOT CHANGED — 15 bytes, not 8 !!
+
+  Identical to `0x4E22`'s flag, and left unfixed for the same reason (adding it is a `repeat`
+  change). The read sequence is `u4 + u2` via 0xD49230, one u1 at 0xD5A2A8, then an **eight-iteration
+  u1 loop** at 0xD5A2B8-0xD5A2D8 into r1+112..r1+119 (pre-zeroed by the `std r0,112(r1)` at
+  0xD5A288). `4 + 2 + 1 + 8*1 =` **15 bytes**. See mgo2_cmd_4e22_s2c.ksy for the disassembly and
+  for what the eight bytes do (per-slot status on the team record's 8-entry, 28-byte table at
+  `team+0x17C`; non-zero -> `entry+0x15`, **zero deletes the slot**).
+
+  ## The extra step, and it is not small
+
+  `bl 0xD4EC14` at **0xD5A374**, run after the slot walk and before the UI event. `0xD4EC14` is
+
+  ```
+  d4ec14  addis r9,r3,1 ; addi r3,r9,-9264   ; = session+0xDBD0, the Survival event record
+  d4ec30  li r5,7296                          ; = 0x1C80
+  d4ec3c  bl 0xdd36f8                         ; memset(record, 0, 7296)
+  ```
+
+  i.e. it **zeroes the entire 7296-byte Survival event record** — the settings block, the entrant
+  count at +0x0DA, the whole 128-row entrant table at +0x0F0, the list magic at +0x0E8 and the six
+  trailing words. 7296 is the same size `0x4A31`'s arm memsets at 0xD4FCDC, which is what pins the
+  record's length. After `0x4E23` the Survival Match List is empty and the client must send a fresh
+  `0x4E00` to repopulate it. `0x4E22` does not do this; that is the whole difference between them.
+
+  Then it fires **UI event 41** with `arg = *(u8*)(team + 384 + 28*myslot + 17)`, exactly as
+  `0x4E22` fires event 39 and `0x4E21` fires event 40.
+
+  **CORRECTION 2026-08-02.** "After memsetting a 28-byte scratch area and comparing one of the
+  bytes against 7 and -1" is a misreading: the 28-byte memset is the per-slot delete, the 7 is the
+  loop bound (`cmpwi cr7,r28,7`, 0xD5A358) and the -1 is the not-found sentinel (0xD5A37C). No
+  payload byte is compared against either, so the "enum/index with a sentinel" reading of the field
+  below is withdrawn.
+
+  0x4e21, 0x4e22 and 0x4e23 have byte-identical layouts (parsers 0xD5A600, 0xD5A3F0 and 0xD5A1D0
+  differ only in the id compared, the UI event fired, and the teardown call above). **`0x4E21`
+  (id 20001, parser 0xD5A600, stub 0xD39D10) has no `.ksy` file** — reported, not created here.
 
   Read primitives (from the primitive table at 0xD5C844+): 0xD5CB8C u1, 0xD5CC14 u2,
   0xD5CC64 / 0xD5CCD8 u4 (identical twins — see the CORRECTION below), 0xD5D018 fixed byte
@@ -69,15 +108,42 @@ doc: |
   0xD33CD8 dispatches".
 
 seq:
-  - id: context_id
+  - id: team_id
     type: u4
-    doc: "[ELF] Validated against ctx+0x00 by 0xD49230. [UNKNOWN]"
-  - id: context_seq
+    doc: |
+      [ELF 2026-08-02, renamed from `context_id`] Validated by 0xD49230 against **`team+0x00`**
+      (`team = 0xD491F8(session) = session+0xD928`); mismatch = -1018 and the packet is dropped —
+      which, for this command, also means the teardown does not happen. mgo2_cmd_491b_c2s.ksy names
+      that slot the **team id**. Same field as `0x4E20.team_id` and `0x4E22.team_id`.
+  - id: team_seq
     type: u2
-    doc: "[ELF] Validated against ctx+0x29C by 0xD49230. [UNKNOWN]"
-  - id: unknown_06
+    doc: |
+      [ELF 2026-08-02, renamed from `context_seq`] Validated by 0xD49230 against the u16 at
+      **`team+0x29C`** (`lhz r0,668(r29)`, 0xD492D4); mismatch = -1018. [UNKNOWN] what increments
+      it. Same field as `0x4E20.team_seq` and `0x4E22.team_seq`.
+  - id: unknown_0x04
     type: u1
-    doc: "[ELF] -> obj+0x04. Later compared against 7 and against -1 before the UI event, so it is an enum/index with a sentinel, not a boolean. [UNKNOWN]"
-  - id: unknown_07
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_06`] Read at 0xD5A2A8 -> **`team+0x04`**.
+      Struct-offset bijection with the same-position byte in `0x4E20` (0xD5B240), `0x4E21`
+      (0xD5A6D8) and `0x4E22` (0xD5A4C8) — one field shared by all four commands in the block.
+      [UNKNOWN] meaning; no reader sweep attempted, because displacement 4 off an 83-call-site
+      getter is not filterable. Open question, not a stated negative.
+
+      The "enum/index with a sentinel" claim is withdrawn — see the CORRECTION in the top-level doc.
+  - id: slot_status_0
     type: u1
-    doc: "[ELF] Last byte. [UNKNOWN]"
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_07`] **The first of EIGHT per-slot status bytes**, read
+      by the loop at 0xD5A2B8-0xD5A2D8 and applied one per entry to the team record's 8-entry,
+      28-byte-stride match table at `team+0x17C`: non-zero -> `entry+0x15`, zero ->
+      `memset(entry, 0, 28)`.
+
+      **!! THE OTHER SEVEN ARE MISSING FROM THIS SCHEMA — see the WIRE LENGTH flag in the top-level
+      doc.** The packet is 15 bytes, not the 8 this `seq:` describes; supplying the rest is a
+      `repeat` change and is flagged for adjudication rather than made here.
+
+      [UNKNOWN] what the status codes mean. Deliberately **not** equated with the entrant-status
+      column of `0x4A01`/`0x4A20`: that one lives on the Survival event record at
+      +0x0F0 + 52*i + 0x15, a different object at a different stride, and matching on
+      offset-within-record alone is exactly the "same layout, different instance" trap.

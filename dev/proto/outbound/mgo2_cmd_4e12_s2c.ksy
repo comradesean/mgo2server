@@ -1,27 +1,65 @@
 meta:
   id: mgo2_cmd_4e12_s2c
-  title: "MGO2 0x4e12 — 0x4e1x tail subsystem reply, single result code (server -> client) — list-triple END"
+  title: "MGO2 0x4e12 — Survival Match List: end of entrant list, one echoed event id (server -> client)"
   endian: be
 doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven:
   everything here is read out of the client parser.
 
+  **SURVIVAL MATCH LIST.** The 0x4Exx block is the Survival Match List browser; the identification
+  is in mgo2_cmd_4e00_c2s.ksy. `0x4E12` ends the `0x4E10`/`0x4E11`/`0x4E12` triple and is the
+  packet that releases the screen: it closes pending-request slot 90, which the client's own
+  `0x4E00` armed.
+
+  TIER. Post-launch content; no available client build exercises this command, so **everything
+  here is tier 1 and cannot be raised to tier 2.** Not served in v1.
+
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD5A9A0**,
   which re-checks the id (`cmpwi r0,19986` = 0x4e12) before reading anything.
 
-  Whole payload is ONE s4. The parser reads it, closes pending-request slot 90
-  (0xD32E08 state=2) and publishes the value as that request's result (0xD32E70).
+  ## CORRECTION 2026-08-02: the s4 is NOT a result code
+
+  The earlier reading — "start and end carry a single RESULT CODE" by analogy with the
+  0x4601/0x4602/0x4603 and 0x4681/0x4683 social triples — is **refuted by the parser**. The word
+  is an **echo of `0x4E10`'s `event_id`** and it is validated, not published:
+
+  ```
+  d5aa30  bl 0xd5cc64                  ; read u32 -> r1+112
+  d5aa48  lwz r0,0(r27)                ; r27 = 0xD4EA60(session) = event record +0x000
+  d5aa50  lwz r9,112(r1)
+  d5aa54  li r11,-1106
+  d5aa58  cmpw cr7,r9,r0 ; bne -> return -1106
+  ```
+
+  `-1106` (`-0x452`) is the same id-mismatch code `0x4A24` uses for its own echo check
+  (mgo2_cmd_4a24_s2c.ksy, `obj_id`) and that `0x4E20` uses at 0xD5B224. So **a non-zero value here
+  does not mean "error"; a value that is not `0x4E10`'s `event_id` means the packet is dropped and
+  the screen times out at `5521:FFFFFF60`.** There is no error channel in this packet at all — a
+  server that wants to report a failed list has to do it through `0x4E10`'s own fields or by not
+  opening the list.
+
+  The old note that "the s4 on the wire is checked but not published" was half right and is kept:
+  0xD5AA88 passes `r5 = 0` to 0xD32E70, so the request's published result is a literal zero
+  regardless. That is what the screen polls for at 0x930CA0 (`0xD330C4(session, 90)`) before
+  advancing to state 3; a non-zero there raises `5520:<code>`, but nothing in this packet can make
+  it non-zero.
+
+  ## What else it does
+
+  * **Closes the list.** 0xD5AA9C writes `0` to the list magic at event record **+0x0E8**. That is
+    the flag `0xD4EAAC` tests before handing the entrant table to the UI (`if [+0x0E8] == 0 return
+    ptr`, 0xD4EAC0-0xD4EAD0), so **the table is invisible to every renderer until this packet
+    arrives**. `0x4E10` set it to `-1`; `0x4E11` refuses to append unless it is non-zero. The three
+    packets are a strict sequence, not three independent pushes.
+  * **Closes request slot 90** (0xD5AA74, `0xD32E08(session, 90, 2)`) — the counterpart to the
+    `0x4E00` sender's `state = 1` at 0xD5B108. Those two are the only writers of slot 90 in the
+    image.
+  * **Fires UI event 37** (0xD5AAA0) with `arg = the running row count at event record +0x0EC`
+    (`lwz r5,4(r26)`), not with the wire word.
+
   Nothing else is read; a longer payload would simply be ignored, a shorter one would read
   stale receive-buffer bytes (the readers bound-check the 1023-byte buffer, not the payload
   length — see PROTOCOL.md).
-  Also fires UI event 37 via 0xD33CD8, and stores result 0 into the slot regardless of the
-  value read (0xD5AA88 passes r5=0) — the s4 on the wire is checked but not published.
-  List-triple: the item records arrive as 0x4e11; this packet is the paired start/end.
-  Gate word at n/a: n/a — this end packet does not gate, it only fires UI event 37.
-  Same start/items/end shape as the documented 0x4601/0x4602/0x4603 and 0x4681/0x4683
-  social triples (dev/proto/README.md): start and end carry a single RESULT CODE, never a
-  count — the client counts the item records itself. Sending a count in that slot produced
-  the 1032:00000005 error live (OBSERVED.md), so the same rule must hold here.
 
   Read primitives (all confirmed by disassembling the primitive table at 0xD5C844+):
   0xD5CB8C / 0xD5CB54 u1, 0xD5CC14 / 0xD5CBC4 u2, 0xD5CC64 / 0xD5CCD8 u4 (each pair identical
@@ -78,11 +116,19 @@ doc: |
   0xD33CD8 dispatches".
 
 seq:
-  - id: result
+  - id: event_id
     type: s4
     doc: |
-      [ELF] Signed 32-bit result/error code. It is typed s4 because the CALLER reloads it with
-      `lwa`, not because of the primitive: 0xD5CC64 is byte-identical to 0xD5CCD8 and is not a
-      signed accessor (see the CORRECTION in the top-level doc). Negative values are meaningful (this family's errors are in the
-      -0x4xx..-0x5xx range elsewhere in the binary). 0 = success by the convention every other
-      traced reply follows. Meaning of non-zero values here: [UNKNOWN].
+      [ELF 2026-08-02, renamed from `result`] The whole payload. **An echo of `0x4E10`'s
+      `event_id`**, read at 0xD5AA30 and required to equal the u32 at event record +0x000
+      (0xD5AA48-0xD5AA5C); mismatch returns **-1106** and the packet is dropped without closing the
+      list or the request slot. See the CORRECTION in the top-level doc for why the old "signed
+      result/error code" reading is withdrawn — the value is a transaction token, not a status, and
+      the request's published result is a hardcoded 0 either way (0xD5AA88, `r5 = 0`).
+
+      **WIDTH/TYPE FLAGGED, NOT CHANGED.** Declared `s4`; the justification recorded here was
+      "the CALLER reloads it with `lwa`", and that is not what the caller does — 0xD5AA50 reloads
+      it with `lwz` and compares it with `cmpw` against another `lwz`. Every other schema in the
+      family declares this id `u4` (`0x4E10.event_id`, `0x4E20.event_id`, `0x4A24.obj_id`). Same
+      four bytes on the wire; raised for adjudication per dev/proto/README.md rather than changed,
+      because a *server* must simply echo what it sent and the signedness cannot alter that.

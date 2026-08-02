@@ -1,19 +1,53 @@
 meta:
   id: mgo2_cmd_4e20_s2c
-  title: "MGO2 0x4e20 — context update, 53 bytes (server -> client)"
+  title: "MGO2 0x4e20 — Survival match pairing: the two participants and their win counts, 53 bytes (server -> client)"
   endian: be
 doc: |
   Decrypted payload after the 24-byte transport header (dev/docs/CRYPTO.md). NOT capture-proven —
   every field below comes from the client parser only, so tags are [ELF] at best.
 
+  **SURVIVAL MATCH LIST.** The 0x4Exx block is the Survival Match List browser; the identification
+  is in mgo2_cmd_4e00_c2s.ksy. `0x4E20` is a **server push** (no request slot) announcing a
+  Survival match-up: two participants, each with an id, a 16-byte name and a win count.
+
+  TIER. Post-launch content; no available client build exercises this command, so **everything
+  here is tier 1 and cannot be raised to tier 2.** Not served in v1.
+
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser
   **0xD5B134**, which re-checks the id (`cmpwi r0,20000`) before reading anything.
 
-  Opens with the shared header validator **0xD49230** (u4 + u2, both checked against the client's
-  current context object; mismatch = -1018, packet dropped) — the same 6-byte preamble 0x4d00
-  consists of entirely. No request slot; fires **UI event 36** (0xD33CD8) on success.
+  ## Destination: the Survival ladder record, and that is what names the fields
 
-  Wire size: **53 bytes**.
+  The parser holds three objects at once, and it matters which is which:
+
+  | reg | accessor | address | what it is |
+  | --- | --- | --- | --- |
+  | r25 | `0xD491F8(session)` | `session+0xD928` | the player's own **team record** |
+  | r22 | `0xD4EA60(session)` | `session+0xDBD0` | the **Survival event record** (`0x4E10`'s) |
+  | r27 | `0xD3F7B0(session)` | `session+0x11558` | the shared **Survival ladder record** |
+
+  Every payload field lands on `r27` except the header and one byte, and `r27`'s layout is already
+  mapped: mgo2_cmd_43b0_c2s.ksy calls it *"the Survival ladder"* and names
+  `+0x0C`/`+0x10` participant A's / B's **win count**, `+0x14`/`+0x4C` their **ids** and
+  `+0x18`/`+0x50` their **names**; mgo2_cmd_4a13_s2c.ksy independently confirms `+0x14`/`+0x18`/
+  `+0x50` from its own renderer (lobby string 761, *"Next match: vs. %s"*). `0x4E20` writes all six
+  of those slots and nothing else. That is a struct-offset bijection — same accessor `0xD3F7B0`,
+  same six offsets, same six widths — so the names transfer wholesale.
+
+  It also **fills the record's shared 5-field header from client state, not from the wire**
+  (0xD5B318-0xD5B334): `R+0 <- team+664`, `R+4 <- team+604`, `R+8 <- team+608`, `R+9 <- team+609`.
+  Those are the `lobby_id` / `lobby_subtype` / `lobby_subtype_sibling` slots
+  mgo2_cmd_43f0_s2c.ksy maps. A server must not try to send them here; there is no field for them.
+
+  ## No request slot, so it cannot stall anything
+
+  The parser ends at `0xD33CD8(session, 36, *(u8*)(event record + 0x0D4))` — the fire-and-forget UI
+  event helper, carrying the event record's **`phase`** byte (mgo2_cmd_4a24_s2c.ksy names +0x0D4
+  `phase`, valid range 2..10). No `0xD32E08` call anywhere in the function. Not sending `0x4E20`
+  cannot produce `FFFFFF60`; only the unanswered `0x4E00` can.
+
+  Wire size: **53 bytes** = 4 + 2 + 4 + 1 + 4 + 16 + 1 + 4 + 16 + 1, confirmed against the read
+  sequence 0xD5B208-0xD5B2FC.
 
   Read primitives (from the primitive table at 0xD5C844+): 0xD5CB8C u1, 0xD5CC14 u2,
   0xD5CC64 / 0xD5CCD8 u4 (identical twins — see the CORRECTION below), 0xD5D018 fixed byte
@@ -65,37 +99,104 @@ doc: |
   0xD33CD8 dispatches".
 
 seq:
-  - id: context_id
+  - id: team_id
     type: u4
-    doc: "[ELF] Validated against ctx+0x00 by 0xD49230. [UNKNOWN]"
-  - id: context_seq
+    doc: |
+      [ELF 2026-08-02, renamed from `context_id`] Validated by 0xD49230 against **`team+0x00`**,
+      where `team = 0xD491F8(session) = session+0xD928`; mismatch = -1018 and the packet is
+      dropped. mgo2_cmd_491b_c2s.ksy already names `*(0xD491F8(session)+0x00)` **the team id**, so
+      this is the receiving player's own team id, echoed back so the client can reject a push meant
+      for a stale team.
+  - id: team_seq
     type: u2
-    doc: "[ELF] Validated against ctx+0x29C by 0xD49230. [UNKNOWN]"
-  - id: unknown_06
+    doc: |
+      [ELF 2026-08-02, renamed from `context_seq`] Validated by 0xD49230 against the u16 at
+      **`team+0x29C`** (`lhz r0,668(r29)`, 0xD492D4); mismatch = -1018. A generation/sequence
+      counter on the team record — [UNKNOWN] what increments it. Shared with 0x4d00, 0x4e22 and
+      0x4e23, which use the identical 6-byte preamble.
+  - id: event_id
     type: u4
-    doc: "[ELF] Read to a stack slot. [UNKNOWN]"
-  - id: unknown_0a
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_06`; the old "read to a stack slot" was true and
+      unhelpful] Read at 0xD5B210 and **required to equal the u32 at Survival event record +0x000**
+      (0xD5B220-0xD5B230, `li r31,-1106`) — i.e. `0x4E10`'s `event_id`. A mismatch drops the packet
+      silently with -1106.
+
+      Same token, same check and same code as `0x4E12`'s payload and `0x4A24`'s `obj_id`, on the
+      same slot of the same object. So a server pushing `0x4E20` must still be echoing whatever it
+      put in the `0x4E10` that opened the list.
+  - id: unknown_0x04
     type: u1
-    doc: "[ELF] -> obj+0x04. [UNKNOWN]"
-  - id: unknown_0b
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_0a` to name its destination] Read at 0xD5B240 ->
+      **`team+0x04`** — the team record, not the ladder record; the old note "-> obj+0x04" did not
+      say which object and the two are 7048 bytes apart.
+
+      Bijection: `0x4E21`, `0x4E22` and `0x4E23` write this exact slot from the same position in
+      their own payloads (0xD5A6D8, 0xD5A4C8, 0xD5A2A8), so it is one field shared by all four
+      commands in the block. [UNKNOWN] meaning.
+  - id: participant_a_id
     type: u4
-    doc: "[ELF] -> obj+0x14. [UNKNOWN]"
-  - id: name_a
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_0b`] Read at 0xD5B25C -> Survival ladder record
+      **+0x14**. **Participant A's (team's) id.**
+
+      Struct-offset bijection with mgo2_cmd_43b0_c2s.ksy's `rec+0x14` and mgo2_cmd_4a13_s2c.ksy's
+      `group_a.team_id`: same accessor `0xD3F7B0`, same offset, same width. Those files name it
+      from consumers this packet does not have — 0x8CE0AC/0x8CE1B0 compute
+      `n = (rec[0x14] == myId) ? rec[0x0C] : rec[0x10]`, which is what pairs this id with
+      `participant_a_wins` below, and 0x8CDFC0 compares it against the local player's own team id.
+      Same id space as `0x4E11`'s `entrant_id`.
+  - id: participant_a_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] -> obj+0x18, 16 bytes fixed. [UNKNOWN]"
-  - id: unknown_1f
+    doc: |
+      [ELF 2026-08-02, renamed from `name_a`] 16-byte raw read at 0xD5B27C -> Survival ladder record
+      **+0x18**. **Participant A's team name.**
+
+      Bijection with mgo2_cmd_4a13_s2c.ksy `group_a.team_name`, which evidences the string role
+      rather than inferring it from width: 0x8CDFF8/0x8CE01C hand rec+0x18 to the string copier
+      0xAF70F0 and then to lobby string 761, *"Next match: vs. %s"*.
+  - id: participant_a_wins
     type: u1
-    doc: "[ELF] [UNKNOWN]"
-  - id: unknown_20
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_1f`] Read at 0xD5B29C as a **u8** and stored **widened
+      to u32** at 0xD5B2BC (`lbz r0,112(r1)` / `stw r0,12(r27)`) -> Survival ladder record
+      **+0x0C**. **Participant A's win count in the Survival series.**
+
+      Bijection with mgo2_cmd_43b0_c2s.ksy's `side_a_win_count` (`rec+0x0C`), which is named by its
+      consumer, not by position: 0x8CE0AC/0x8CE1B0 select between +0x0C and +0x10 using the
+      `+0x14`/`+0x4C` id pair and render the result into lobby strings 762 (*"Match #%d has
+      ended…"*, as `n+1`) and 763 (*"…winning streak ends at %d wins."*). The same pairing rule is
+      what makes this **A's** counter specifically.
+
+      Source-width note, flagged not changed: 0x4A12 fills the same slot from a u16
+      (mgo2_cmd_43b0_c2s.ksy records this) and this packet fills it from a u8. The wire field here
+      genuinely is one byte (`0xD5CB8C`), so nothing moves — but a server cannot express a streak
+      above 255 through `0x4E20`, and `0x4E11.win_streak` has the same ceiling.
+  - id: participant_b_id
     type: u4
-    doc: "[ELF] -> obj+0x4C. [UNKNOWN]"
-  - id: name_b
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_20`] Read at 0xD5B2C0 -> Survival ladder record
+      **+0x4C**. **Participant B's (team's) id.** Bijection with mgo2_cmd_43b0_c2s.ksy `rec+0x4C`
+      and mgo2_cmd_4a13_s2c.ksy `group_b.team_id`; the "(u4, str16, u1) pattern repeating twice
+      suggests two parallel entities" guess in the old doc is now settled — they are the two sides
+      of one Survival match, and the screen's own header string is lobby 810,
+      *"DEFENDER / CHALLENGER"*.
+  - id: participant_b_name
     size: 16
     type: str
     encoding: ASCII
-    doc: "[ELF] -> obj+0x50, 16 bytes fixed. The (u4, str16, u1) pattern repeating twice suggests two parallel entities. [UNKNOWN]"
-  - id: unknown_34
+    doc: |
+      [ELF 2026-08-02, renamed from `name_b`] 16-byte raw read at 0xD5B2E0 -> Survival ladder record
+      **+0x50**. **Participant B's team name.** Bijection with mgo2_cmd_4a13_s2c.ksy
+      `group_b.team_name` — the renderer prints B's name when A's id is the viewer's own team,
+      which is how "vs. %s" always names the opponent.
+  - id: participant_b_wins
     type: u1
-    doc: "[ELF] Last byte. [UNKNOWN]"
+    doc: |
+      [ELF 2026-08-02, renamed from `unknown_34`] Last byte. Read at 0xD5B2F8 as a u8 and stored
+      widened to u32 at 0xD5B314 (`stw r0,16(r27)`) -> Survival ladder record **+0x10**.
+      **Participant B's win count**, by the same consumer-side pairing that names
+      `participant_a_wins`: mgo2_cmd_43b0_c2s.ksy `side_b_win_count`. Same u8 ceiling.
