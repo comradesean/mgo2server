@@ -17,7 +17,7 @@ doc: |
       (0xD481E8-0xD4820C). **This parser has no echo check at all** — it accepts whatever arrives.
 
   **`0x4909` IS THEREFORE NOT A SUPERSET OF `0x4905`.** The two `.ksy` files differ in field count
-  (60 vs 28, 48 bare vs 24) for a purely editorial reason: this file inlines a mirror of the
+  (60 vs 28) for a purely editorial reason: this file inlines a mirror of the
   shared 204-byte block as `block_204`, and `mgo2_cmd_4905_s2c.ksy` keeps the same 204 bytes
   opaque as `nested_block`. Every one of the 32 "extra" fields here is a field of that block.
   **There is no 0x4909-only wire field.** Read the two files as one map.
@@ -87,9 +87,16 @@ doc: |
   **The canonical model of this block lives in `mgo2_cmd_4313_s2c.ksy`, type `game_settings`.**
   That copy is the best-evidenced one: 0x4313's block is the same 204 bytes read by the same
   function, and its field names are backed by live capture of the `0x4310` push and the `0x4305`
-  reply (OBSERVED.md). `block_204` below is retained only as a byte-accounting mirror; where the
-  two disagree, 0x4313 wins. Whether the game-settings *semantics* apply to a 0x4909 record is
-  [UNKNOWN] — the byte boundaries are not.
+  reply (OBSERVED.md). `block_204` below is retained as a mirror; where the two disagree, 0x4313
+  wins.
+
+  **"Whether the game-settings *semantics* apply to a 0x4909 record is [UNKNOWN]" — SUPERSEDED
+  2026-08-02.** They do, and this record is the one carrier outside the game-details object where
+  that is shown rather than assumed: the RULE DETAIL panel `0x901808` reads `block+0x10..+0x16` as
+  stage ids through `strres(0x654515, map + 74)` and `block+0x6C..+0xA4` as the per-rule
+  time/round/ticket table, both **through this record's own base**, and both land exactly where
+  `game_settings` puts them. See the `block_204` type doc for the full argument, the offset
+  bijection and the reader census.
 
   Note its leading loop is
   **interleaved**: it reads three bytes per iteration for 16 iterations, scattering them into
@@ -373,8 +380,71 @@ types:
       displacement sweep could use the marker offsets 802/818/819/846/847/940/941 to separate that
       object from every other. Here the block sits at `T+0x040` of a 912-byte tournament record,
       so the displacements are different numbers and the sweep does not carry across. **Liveness
-      is a property of the carrier; layout is not.** Where a field below reports a negative, it is
-      reported as the canonical carrier's negative and labelled as such.
+      is a property of the carrier; layout is not.** Where a field below reports the canonical
+      carrier's negative, it says so.
+
+      ## THIS CARRIER'S OWN READER CENSUS — closed by construction, not by sampling (2026-08-02)
+
+      Seven fields below carry a negative that IS this carrier's own. It rests on one experiment,
+      stated once here rather than nine times below.
+
+      **The record is at a fixed session offset, so the set of code that can hold its address is
+      finite and enumerable.** `0xD47478` is the getter: `addis r3,r3,1` / `addi r0,r3,-10856`,
+      i.e. **`session + 0xD598`**. Every route to that address was enumerated:
+
+      - **`bl 0xD47478`** — exactly **two** call sites image-wide: `0x8C31D8` (the
+        "Number of Players Currently Joined" screen) and `0x901858` (the RULE DETAIL panel).
+      - **the same arithmetic inlined** — `addi rX,rY,-10856` occurs at exactly **three**
+        addresses: `0xD47488` (inside the getter itself), `0xD48218` (the `0x4905` parser) and
+        `0xD4873C` (the `0x4909` parser). Both parsers are writers.
+      - **an alias from the neighbouring struct.** The team record at `session+0xD928` begins
+        exactly where this record ends, so a reader could in principle hold that base and use
+        negative displacements `-912..-1`. It cannot: the image contains **zero** load or store
+        instructions with a negative three-digit displacement, for any field, including the ones
+        whose readers are known. The route is unused, so it is not a hiding place.
+      - **an indirect call through the getter's OPD.** `0xD47478`'s descriptor is at `0x1029880`
+        (`{code 0xD47478, toc 0x010353A8}`, one of a run of sibling accessors). For anything to
+        call it indirectly, that descriptor's *address* would have to appear in a data word: it
+        occurs exactly once image-wide, at `0xC27605`, which is **not 4-byte aligned** and is
+        therefore an incidental byte sequence inside other data, not a pointer slot. No
+        registration exists.
+      - **a spilled pointer.** Neither reader stores the base anywhere but its own stack frame, and
+        neither passes it to a callee. The only derived pointer that escapes the panel is
+        `r27 = r31 + 280`, the 64-byte title text at `T+0x118`, handed to widget setters — 280 is
+        past the block, which ends at record offset 267.
+
+      So the four functions above are the complete universe. Within them, the record base lives in
+      `r31` and `r22` in the panel (`r31` is reused as a loop counter from `0x901F58`, after which
+      only `r22` holds it) and in `r9` in the joined-count screen, live for four instructions.
+      **Every access to the record anywhere in the image** is then:
+
+          record +5            the `rule` byte (0x9019C8 / 0x901A14 / 0x901A6C)
+          record +80..+86      block+0x10..+0x16, map[0..6], walked as a pointer
+                               (`addi r26,r22,80` at 0x901F4C, `lbz`/`addi 1`, 7 iterations)
+          record +172..+228    block+0x6C..+0xA4, `words[3..17]`, the per-rule timer table
+                               (0x901ABC-0x901B10, an 8-way jump table on the rule byte)
+          record +274          `max_participants` (0x8C31F0)
+          record +280          the 64-byte title
+
+      **This reproduces, by a different route, the negative already stated in this file's
+      top-level doc** — that sweep worked forward from a displacement range (`[-10856, -9945]`
+      against the session base) and a branch sweep accepting `bl`/`b`/`bc`; this one works
+      backward from the record's own offsets. Two independent derivations, same four functions.
+      The routes each adds to the other are noted above: the earlier sweep closes tail-call
+      branches, this one closes the OPD and the negative alias.
+
+      **Controls, which succeed.** `record+274` is reproduced (`lhz r29,274(r9)` at `0x8C31F0`),
+      and so is the whole timer run at `+172..+228`. A census that failed to find either would be
+      broken. Note also what the method had to survive: `record+80` is read by **pointer walk**,
+      not by a literal displacement, so a displacement-only sweep would have missed it — the `addi`
+      forms are enumerated for exactly that reason.
+
+      **The residue.** Everything in the block outside `+0x10..+0x16` and `+0x6C..+0xA4` has **no
+      reader in this carrier**. That includes fields that ARE named and live elsewhere
+      (`weapon_restrictions`, `max_players`, `host_stance`, `common_ab`, `sneaking_snake_kills`,
+      …) — being unread by the tournament screens says nothing about them in the game-details
+      object, and the reverse holds too. It is stated below only for the seven fields that have no
+      name from any carrier, because for those it is the whole of what is knowable here.
     seq:
       - id: triples
         type: triple
@@ -478,16 +548,39 @@ types:
       - id: unknown_4c
         type: u4
         doc: |
-          [UNKNOWN — meaning] +0x4c (block 76). Width [ELF] u32 reader `0xD5CCD8` at `0xD437AC`.
-          Canonical `unknown_76`; no name to transfer, and **not carried by `0x4310` or `0x4305`
-          at all** — this family, `0x4313` and `0x43F1` are the only ways to set it, so there is
-          no archived capture of it either.
+          [UNKNOWN — meaning] +0x4c (block 76), record offset **140**. Width [ELF] u32 reader
+          `0xD5CCD8` at `0xD437AC`. Canonical `unknown_76`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 140 falls outside
+          every range they touch — the nearest accesses are `record+86` and `record+172`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          **Nor is it carried by `0x4310` or `0x4305` at all**, so this family, `0x4313` and
+          `0x43F1` are the only commands that can set it and no archived capture of it exists.
+          Combined with the canonical carrier's own finding — no consumer of any kind at struct
+          `+828`, not even a getter in the dead accessor bank — this field currently has **no
+          identified reader in any carrier**. That is the strongest statement available and it is
+          still not a meaning: the value is server-authored, stored, and echoed back.
       - id: unknown_50
         type: u2
         doc: |
-          [UNKNOWN — meaning] +0x50 (block 80). Width [ELF] u16 reader `0xD5CC14` at `0xD437C8` —
-          a halfword, not the top half of a u32. Canonical `unknown_80`; no name to transfer.
-          Capture value `0x0000`, 214 of 214.
+          [UNKNOWN — meaning] +0x50 (block 80), record offset **144**. Width [ELF] u16 reader
+          `0xD5CC14` at `0xD437C8` — a halfword, not the top half of a u32. Canonical
+          `unknown_80`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 144 falls outside
+          every range they touch — the nearest accesses are `record+86` and `record+172`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          Beware one false positive the census rejects on base-register grounds rather than on
+          appearance: displacement 144 does occur inside both parsers, at `0xD48138`/`0xD48654`
+          and `0xD48680`/`0xD48B78`, but every one of those is `std`/`ld` with base **`r1`** —
+          callee-save slots in the parser's own stack frame, not this record.
+
+          Capture value `0x0000` in all 214 archived `0x4310` payloads, and the canonical carrier
+          reports no consumer and no accessor-bank getter either.
       - id: unknown_52
         type: u2
         doc: |
@@ -498,19 +591,48 @@ types:
       - id: unknown_54
         type: u4
         doc: |
-          [UNKNOWN — meaning] +0x54 (block 84). Width [ELF] u32 reader `0xD5CCD8` at `0xD43800`.
-          Canonical `unknown_84`; no name to transfer. Capture value `0x00000000`, 214 of 214.
+          [UNKNOWN — meaning] +0x54 (block 84), record offset **148**. Width [ELF] u32 reader
+          `0xD5CCD8` at `0xD43800`. Canonical `unknown_84`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 148 falls outside
+          every range they touch — the nearest accesses are `record+86` and `record+172`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          Capture value `0x00000000` in all 214 archived `0x4310` payloads; the canonical carrier
+          reports no consumer and no accessor-bank getter. No identified reader in any carrier.
       - id: unknown_58
         type: u4
         doc: |
-          [UNKNOWN — meaning] +0x58 (block 88). Width [ELF] twice: u32 reader `0xD5CCD8` at
-          `0xD4381C`, and `lwz r3,840(r3)` in the dead game-details accessor bank at `0x90775C`.
-          Canonical `unknown_88`; no name to transfer. Not carried by `0x4310`/`0x4305`.
+          [UNKNOWN — meaning] +0x58 (block 88), record offset **152**. Width [ELF] **twice**: u32
+          reader `0xD5CCD8` at `0xD4381C`, and an independent compiler-emitted `lwz r3,840(r3)` in
+          the game-details accessor bank at `0x90775C`. That bank is dead code — a dead accessor
+          still declares a width, and only a width. Canonical `unknown_88`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 152 falls outside
+          every range they touch — the nearest accesses are `record+86` and `record+172`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          Same stack-frame false positive as `unknown_50`: displacement 152 appears at `0xD48140`,
+          `0xD4865C`, `0xD48688` and `0xD48B80`, all `std`/`ld` off **`r1`**.
+
+          Not carried by `0x4310` or `0x4305`, so no capture of it exists.
       - id: unknown_5c
         type: u2
         doc: |
-          [UNKNOWN — meaning] +0x5c (block 92). Width [ELF] u16 reader `0xD5CC14` at `0xD43838`.
-          Canonical `unknown_92`; no name to transfer. Capture value `0x0000`, 214 of 214.
+          [UNKNOWN — meaning] +0x5c (block 92), record offset **156**. Width [ELF] u16 reader
+          `0xD5CC14` at `0xD43838`. Canonical `unknown_92`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 156 falls outside
+          every range they touch — the nearest accesses are `record+86` and `record+172`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          It is the last field before `words[0]` (`level_limit_base`, record +160), and the panel's
+          timer jump table starts at `words[3]` = record +172, so nothing in this carrier reads
+          within 16 bytes of it in either direction. Capture value `0x0000`, 214 of 214; the
+          canonical carrier reports no consumer and no accessor-bank getter.
       - id: host_stance
         type: u1
         doc: |
@@ -588,20 +710,40 @@ types:
       - id: unknown_aa
         type: u2
         doc: |
-          [UNKNOWN — meaning] +0xaa (block 170). Width [ELF] twice: u16 reader `0xD5CC14` at
-          `0xD43A9C`, and `lhz r3,922(r3)` in the dead game-details accessor bank at `0x9074B4`.
-          Canonical `unknown_170`; **no name to transfer**.
+          [UNKNOWN — meaning] +0xaa (block 170), record offset **234**. Width [ELF] **twice**: u16
+          reader `0xD5CC14` at `0xD43A9C`, and `lhz r3,922(r3)` in the dead game-details accessor
+          bank at `0x9074B4`. Canonical `unknown_170`; **no name to transfer**.
 
-          Worth one structural note: that accessor is separate from the indexed getter at
-          `0x907174`, which walks `920 + idx` and stops short of 922. So this halfword sits
-          **outside** the `pair_a8` pair rather than being a third element of it. Not carried by
-          `0x4310` or `0x4305`.
+          One structural note that does carry, because it is about the parser rather than about a
+          carrier: that accessor is separate from the indexed getter at `0x907174`, which walks
+          `920 + idx` and stops short of 922. So this halfword sits **outside** the `pair_a8` pair
+          rather than being a third element of it.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 234 falls outside
+          every range they touch — the nearest accesses are `record+228` (the last timer) and `record+274`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          Not carried by `0x4310` or `0x4305`, so no capture of it exists.
       - id: unknown_ac
         type: u4
         doc: |
-          [UNKNOWN — meaning] +0xac (block 172). Width [ELF] twice: u32 reader `0xD5CCD8` at
-          `0xD43AB8`, and `lwz r3,924(r3)` in the dead game-details accessor bank at `0x90748C`.
-          Canonical `unknown_172`; no name to transfer. Not carried by `0x4310` or `0x4305`.
+          [UNKNOWN — meaning] +0xac (block 172), record offset **236**. Width [ELF] **twice**: u32
+          reader `0xD5CCD8` at `0xD43AB8`, and `lwz r3,924(r3)` in the dead game-details accessor
+          bank at `0x90748C`. Canonical `unknown_172`; no name to transfer.
+
+          **No reader in this carrier** [ELF 2026-08-02]. The record's address is reachable only
+          from four functions (census in the type doc above), and record offset 236 falls outside
+          every range they touch — the nearest accesses are `record+228` (the last timer) and `record+274`. Controls
+          `record+274` and the `record+172..+228` timer run both reproduce.
+
+          This is the field the canonical carrier calls its noisiest offset — struct `+924` appears
+          in roughly two dozen unrelated functions there. **None of that noise exists here**, which
+          is the practical advantage of a carrier whose base has an enumerable set of holders: the
+          question is not "which of these clusters is the right object" but "can this function hold
+          the address at all", and for all but four the answer is no.
+
+          Not carried by `0x4310` or `0x4305`, so no capture of it exists.
       - id: common_flags_msb
         type: u1
         doc: |
