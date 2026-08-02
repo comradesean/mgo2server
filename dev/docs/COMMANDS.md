@@ -185,10 +185,21 @@ games. **Rankings are not in the command protocol at all** — the screen POSTs 
 binary body. Implemented in `web/controller/RankingWebController`; the wire format is in
 `OBSERVED.md`, "Rankings — an HTTP feature, not a command". Nothing in this file needs to serve it.
 
-**`0x4e00` is not isolated — it is a forced follow-up [ELF, 2026-07-26].** The server→client
-`0x4e10` *opens* a request (slot 90 → state 1) and the client immediately builds and sends
-`0x4e00` back (`li r4,19968` into the builder at `0xD5B0CC`). Anything that sends `0x4e10` must be
-ready to answer `0x4e00`. `0x2006` likewise has a shape now: empty payload, wait slot `0x0b`,
+**`0x4e00` is the Survival Match List request, and this paragraph had the direction backwards
+until 2026-08-02.** It used to read: *"the server→client `0x4e10` opens a request (slot 90 → state
+1) and the client immediately builds and sends `0x4e00` back … anything that sends `0x4e10` must be
+ready to answer `0x4e00`."* **That is reversed.** `0xD5B0CC` is inside the standalone **sender**
+`0xD5B05C`, not inside a parser, and `0x4e10`'s parser (`0xD5AD5C`–`0xD5B058`) contains no
+`bl 0xD32E08` at all. The real flow is **client → `0x4e00` → server → `0x4e10`/`0x4e11`/`0x4e12`**,
+with the client arming slot 90 itself.
+
+**It is a latent hang, and the trigger is known.** `0x4e00` needs no server packet: the screen sends
+it unconditionally from state 1 of its own state machine, then state 2 counts to 6000 and raises
+**`5521:FFFFFF60`** — the exact stall this project debugs by. A bare ack will not clear it either;
+the screen advances only when slot 90's result is 0, which only `0x4e12` sets. Today it is
+unreachable because the screen is gated on **lobby subtype 4** (Survival) and we serve no such
+lobby — but that is a *deployment* gate, not a client-side impossibility, so it is recorded as
+latent rather than as "cannot happen". `0x2006` likewise has a shape now: empty payload, wait slot `0x0b`,
 sender `0xd36900` — a near-clone of `0x2005`'s sender, so its reply is plausibly the otherwise
 unexplained `0x2007` (single u32, parser `0xd36498`, notify slot 11), which no doc mentions.
 
