@@ -39,7 +39,7 @@
         <surefire.plugin.version>3.5.3</surefire.plugin.version>
         <failsafe.plugin.version>3.5.3</failsafe.plugin.version>
         <shade.plugin.version>3.6.2</shade.plugin.version>
-        <enforcer.plugin.version>3.5.0</enforcer.plugin.version>
+        <enforcer.plugin.version>3.6.3</enforcer.plugin.version>
         <cyclonedx.plugin.version>2.9.2</cyclonedx.plugin.version>
 
         <main.class>mgo2server.Main</main.class>
