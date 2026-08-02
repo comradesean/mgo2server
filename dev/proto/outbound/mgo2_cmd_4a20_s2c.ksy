@@ -19,14 +19,14 @@ doc: |
 
   **STRUCTURAL CORRECTION - `groups` IS NOT REPEATED.** The loop at 0xD51B88-0xD51BC8 runs
   exactly **four** times (`cmpdi cr6,r29,4` at 0xD51BB8) and writes
-  `event record + 6896 + (round << 4) + 4*i - 16`. The u16 that the current schema calls
+  `event record + 6896 + (round << 4) + 4*i - 16`. The u16 the schema used to call
   `group_count` is reloaded inside the loop only to recompute that address: it is the **round
   number**, not a count, and it is stored as such at event record +0x0E0 (0xD51B84), which is
   `halves[5]`, `current round`. So the wire carries **one 16-byte row**, always, and the
   declared `repeat-expr: group_count` overstates the packet by 16 bytes per extra round.
-  Left as declared because widths, sizes and repeats are evidence and this batch may only
-  rename and document; **flagged for a structural correction**. Reading it the current way
-  would make a server emit N rows for round N and desync the blob that follows.
+  **CORRECTED 2026-08-02** after a third independent pass confirmed it; the field is now
+  `round_bitmap`, unrepeated. Reading it the old way would make a server emit N rows for round N
+  and desync the blob that follows.
 
   AFTER THE ROW, the parser does three more things:
     * `memcpy(record+0x1B70, record+0x1AF0, 128)` at 0xD51BCC-0xD51BE4 - the snapshot the
@@ -78,7 +78,7 @@ seq:
   - id: half_0x0de
     type: u2
     doc: "[ELF] read at 0xD51B4C (-> r1+114) and stored at 0xD51B80 to **event record +0x0DE** = `halves[4]`. Read BEFORE the round number. [UNKNOWN] meaning: 0x4A24's sweep found no reader for +0x0DE in either window, with `halves[2]`/`[3]`/`[5]` as the controls that did come back."
-  - id: group_count
+  - id: current_round
     type: u2
     doc: |
       [ELF] read at 0xD51B64 (-> r1+112) and stored at 0xD51B84 to **event record +0x0E0** =
@@ -86,18 +86,36 @@ seq:
       readers: it is the `%d` of lobby string 773, *"Round %d of the tournament is complete."*
       (0x8CDB3C), and it selects which row of the bracket bitmap the renderer reads (0x8CDC8C,
       0x8FB23C).
-      **It is NOT a count.** The name is retained only because renaming a field that another
-      field's `repeat-expr` references would be a structural edit; see the top-level correction.
+      **It is NOT a count**, and it is no longer named as one: renamed `group_count` ->
+      `current_round` on 2026-08-02, when the phantom `repeat-expr` that referenced it was
+      removed.
       Inside the loop it is used solely as `round << 4`, the row's byte offset. The row it
       writes is `round - 1` (`addi r4,r4,-16` at 0xD51BA8), so the first round must be sent as
       1, not 0, and 8 is the ceiling - row 8 would start at +0x1B70, which is the snapshot.
-  - id: groups
+  - id: round_bitmap
     type: group
-    repeat: expr
-    repeat-expr: group_count
     doc: |
       [ELF] loop 0xD51B88-0xD51BC8, four u32 (`cmpdi cr6,r29,4` at 0xD51BB8), written to
-      `event record + 0x1AF0 + 16*(group_count-1)`.
+      `event record + 0x1AF0 + 16*(current_round-1)`.
+
+      **CORRECTED 2026-08-02: this was `repeat: expr` / `repeat-expr: group_count`, and it does
+      not repeat at all.** One 16-byte row, always. Confirmed by a third independent ELF pass
+      after two earlier readings disagreed.
+
+      The trap is specific and worth remembering: the u16 the schema called `group_count` is
+      loaded by `lhz r4,112(r1)` — which **is the branch target**, literally the first
+      instruction of the loop body, reloaded every iteration. That is exactly what a trip count
+      looks like. But it never reaches a compare; it is consumed only by `slwi r4,r4,4` as
+      **address arithmetic**, selecting which bracket row to write. The real bound is
+      `cmpdi cr6,r29,4`, four instructions before the back-edge.
+
+      So the field is the **round number**, not a count — stored to event record +0x0E0, which
+      `mgo2_cmd_4a24_s2c.ksy` names `current round` from two readers.
+
+      Reading it the old way would make a server emit N rows for round N and desync everything
+      after. **The general rule this yields**, since this class cannot be swept mechanically: for
+      every `repeat-expr` in `dev/proto/`, confirm the named field reaches a **compare**, not
+      just address arithmetic.
       **On the wire this occurs exactly ONCE, not `group_count` times** - see the top-level
       correction. One 16-byte row = one round's **128-bit entrant bitmap**, bit `n` = entrant
       `n` of the +0x0F0 table, LSB first; mgo2_cmd_4a24_s2c.ksy's `round_bits` carries the

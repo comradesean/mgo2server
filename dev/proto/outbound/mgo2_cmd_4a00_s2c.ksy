@@ -120,8 +120,32 @@ seq:
       a sweep that cannot be validated against a known-good hit is worthless, so none is
       reported. Meaning unestablished.
   - id: blob
-    size: 128
-    doc: "[ELF] exactly 128 bytes, byte-at-a-time loop 0xD50FD8-0xD51000 (bound base+128). [UNKNOWN] contents."
+    size: 8
+    doc: |
+      [ELF] eight bytes, byte-at-a-time loop 0xD50FD8-0xD51000. [UNKNOWN] contents.
+
+      **CORRECTED 2026-08-02 from 128 to 8**, and this file was *not* among the three the
+      correction batch flagged — a third independent pass found it by sweeping for the cause
+      rather than the symptom, which is the only reason it was caught.
+
+      The cause is one letter: the store is **`stdu`**, not `std` — DS-form with low bits `01`,
+      the update form, which rewrites its base register. `mr r25,r1` then `stdu r0,120(r25)` at
+      0xD50F64-0xD50F70 leaves r25 = **r1+120**, so the loop's exit test `addi r0,r1,128` is an
+      **end ADDRESS, not a byte count**. The cursor runs r1+120..r1+128 exclusive: eight
+      iterations, eight wire bytes. The old note "bound base+128" read that address as a length.
+
+      **This one was the most damaging of the four.** `blob` is immediately followed by the
+      204-byte `block_204`, so a 120-byte overstatement here displaces a sub-record that is
+      genuinely served elsewhere — unlike the sibling commands, where the error only ran off the
+      end of the packet.
+
+      The class is closed rather than merely fixed: sweeping the whole parser block
+      0xD33000-0xD5D000 for `stdu rX,disp(rY)` with `rY != r1` — the only encoding that can
+      silently rebase a scratch buffer — returns exactly four sites: `0x4A00`, `0x4A02`,
+      `0x4A22`, `0x4A29`. The complementary plain-`std` set contains `0x4A27`, whose declared 8
+      was always correct because it forms its cursor explicitly with `addi r29,r1,112`. That
+      contrast is the control, and it is also the diagnosis: the earlier reading was right
+      wherever the base was written out, and wrong wherever an update-form store moved it.
   - id: block
     type: block_204
     doc: |

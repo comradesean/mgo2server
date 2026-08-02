@@ -123,16 +123,23 @@ types:
           all**: `lbz r0,112(r1)` / `rldicl. r9,r0,63,63` / `beq` at 0xD52070-0xD52078 skips
           the second 16-byte read entirely when the bit is clear, and sets 0x40 in the u32 at
           record+0x14 when it is set. The other seven bits are read and discarded.
-          **This makes the record variable-length** - 45 bytes with the bit, 29 without - which
-          the declared layout below does not express. Not changed here because widths, sizes
-          and repeats are evidence and this batch may only rename and document; flagged for a
-          structural correction. A server that clears bit 1 but still sends 16 bytes of name
-          desyncs every following row.
+          **This makes the record variable-length** - 45 bytes with the bit, 29 without.
+          **CORRECTED 2026-08-02**: `name2` below now carries `if: (name2_present & 0x02) != 0`,
+          after a third independent ELF pass confirmed the conditional byte-exactly. Before that
+          the schema declared a flat 45 and a server clearing bit 1 while still sending 16 bytes
+          of name would desync every following row.
+
+          The diagnosis for this class is straight-line reading: the earlier pass followed the
+          instruction stream honouring `bl` sites but walking through forward branches, so it saw
+          the read and missed the `beq` that skips it. `mgo2_cmd_4982_s2c.ksy` already models the
+          same idiom correctly with `if: (flags & 0x20) != 0`, so this was a per-schema oversight
+          rather than a missing convention.
       - id: name2
         size: 16
         type: str
         encoding: ISO-8859-1
         pad-right: 0
+        if: (name2_present & 0x02) != 0
         doc: |
           [ELF] second 16-byte raw read (0xD52098) -> record+0x18, NUL at record+0x28.
           **Conditional** - see `name2_present`. [UNKNOWN] whose name: no reader was found for

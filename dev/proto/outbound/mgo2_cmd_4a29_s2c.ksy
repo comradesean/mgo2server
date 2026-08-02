@@ -16,9 +16,9 @@ doc: |
   **SIZE HAZARD - THE BLOB IS 8 BYTES, NOT 128.** `mr r25,r1` / `stdu r0,120(r25)` at
   0xD50B2C-0xD50B38 leaves r25 = r1+120 and zeroes exactly 8 bytes; the loop exits at r1+128
   (`addi r0,r1,128` / `cmpw cr6` at 0xD50BCC-0xD50BD8). Eight iterations, one byte per member
-  slot. The `size: 128` declared below is wrong by 120 bytes; not corrected here because sizes
-  are evidence and this batch may only rename and document. **Flagged for a structural
-  correction**, together with mgo2_cmd_4a02_s2c.ksy and mgo2_cmd_4a22_s2c.ksy.
+  slot. **The declaration below said 128 and was CORRECTED to 8 on 2026-08-02**, after a third
+  independent ELF pass confirmed this reading. Together with mgo2_cmd_4a02_s2c.ksy,
+  mgo2_cmd_4a22_s2c.ksy and mgo2_cmd_4a00_s2c.ksy, which the third pass found as a fourth.
 
   WHAT 0x4A29 DOES NOT SHARE WITH 0x4A02 is which copy of the id it checks - see `echo_id`.
 
@@ -72,7 +72,7 @@ seq:
     type: u1
     doc: "[UNKNOWN] read at 0xD50BA0 -> **team record +0x004** (`addi r4,r26,4`, r26 = 0xD491F8's object). Position exact, meaning unestablished; no reader traced."
   - id: member_status
-    size: 128
+    size: 8
     doc: |
       [ELF] **8 bytes on the wire, one per team member slot** - see the size hazard in the
       top-level doc; the declared 128 is wrong and is left only because sizes are evidence.
@@ -80,3 +80,27 @@ seq:
       Byte `i` is the status of member slot `i` of the eight 28-byte slots at team+0x17C:
       0 clears the slot, non-zero is stored at slot+0x15. Full semantics in
       mgo2_cmd_4a02_s2c.ksy.
+
+
+      **CORRECTED 2026-08-02 from 128 to 8**, by a third independent ELF pass that adjudicated
+      the disagreement between the two earlier readings. The cause was one letter: the store is
+      **`stdu`**, not `std` -- DS-form with the low two bits `01`, the update form, which rewrites
+      the base register. `mr rX,r1` then `stdu r0,120(rX)` leaves rX = **r1+120**, so the loop's
+      exit test `addi r0,r1,128` is an **end ADDRESS, not a byte count**: the cursor runs
+      r1+120..r1+128 exclusive. Eight iterations, eight wire bytes, one per 28-byte member slot.
+
+      Corroborated independently by the post-read walk (`addi r0,r1,120` / `add r0,r28,r0` /
+      `lbz`, bounded `cmpwi cr7,r28,7`), which puts byte *i* at r1+120+i for i in 0..7.
+
+      **The control that diagnoses the error is `0x4A27`**, whose declared 8 was always right: it
+      uses a plain `std r0,112(r1)` with no update, and forms its cursor explicitly with
+      `addi r29,r1,112`. Where the base was written out, the earlier pass read it correctly. So
+      the failure was not tracking a register mutated by an update-form store, which silently
+      turns an end-address into a length -- and the 120-byte error is exactly the base
+      displacement.
+
+      The class is closed, not merely fixed: a sweep of the whole parser block 0xD33000-0xD5D000
+      for `stdu rX,disp(rY)` with `rY != r1` -- the only encoding that can silently rebase a
+      scratch buffer -- returns exactly four sites, `0x4A00`, `0x4A02`, `0x4A22`, `0x4A29`. The
+      complementary plain-`std` set contains `0x4A27`, so the sweep discriminates. No other
+      schema can carry this error.

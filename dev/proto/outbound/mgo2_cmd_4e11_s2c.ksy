@@ -79,7 +79,13 @@ seq:
     doc: "[ELF] Size-driven; each record self-addresses via its `index` field."
 types:
   record:
-    doc: "47 wire bytes -> 52-byte client struct, placed at list+8+index*52."
+    doc: |
+      **31 or 47 wire bytes** -> 52-byte client struct, placed at list+8+index*52.
+
+      **CORRECTED 2026-08-02 from a flat "47 wire bytes".** `name_2` is conditional. This file
+      was not in the correction batch's list at all -- a third independent ELF pass found it by
+      sweeping for the *cause* of a known error class rather than for its symptoms, which is the
+      only reason it was caught.
     seq:
       - id: index
         type: u2
@@ -98,14 +104,27 @@ types:
       - id: unknown_18
         type: u1
         doc: "[ELF] [UNKNOWN]"
-      - id: unknown_19
+      - id: name_2_present
         type: u1
-        doc: "[ELF] Read into the low end of the element buffer, out of order relative to its neighbours. [UNKNOWN]"
+        doc: |
+          [ELF] Read at 0xD5AC40 into stack scratch and **never stored** -- which is exactly why
+          the old doc noted it was "read into the low end of the element buffer, out of order
+          relative to its neighbours". That oddity was the tell: it is a presence bitmask, not a
+          data field.
+
+          **Bit 0 decides whether `name_2` is on the wire at all**: `lbz r0,112(r1)` /
+          `rldicl. r9,r0,63,63` / `beq 0xd5ac78` at 0xD5AC40-0xD5AC48 skips the 16-byte read at
+          0xD5AC68 when the bit is clear. Renamed from `unknown_19` on 2026-08-02.
       - id: name_2
         size: 16
         type: str
         encoding: ASCII
-        doc: "[ELF] 16 bytes fixed. [UNKNOWN]"
+        if: (name_2_present & 0x01) != 0
+        doc: |
+          [ELF] 16 bytes when present. **Conditional on `name_2_present` bit 0** -- corrected
+          2026-08-02; the schema previously declared it unconditional, making every record read
+          16 bytes too long whenever the bit is clear and desyncing the rest of the packet.
+          [UNKNOWN] whose name.
       - id: unknown_2b
         type: u1
         doc: "[ELF] [UNKNOWN]"

@@ -89,8 +89,12 @@ seq:
       the nine handlers receives it.
       **Bit 0 (value 1) decides whether `text` is on the wire at all**: 0xD503A0-0xD503A8
       (`lbz r0,116(r1)` / `clrldi. r9,r0,63` / `beq`) skips the 256-byte read when the bit is
-      clear. **The packet is therefore 269 bytes or 13**, which the declared layout below does
-      not express - not changed here because sizes are evidence and this batch may only rename
+      clear. **The packet is therefore 269 bytes or 13.**
+      **CORRECTED 2026-08-02**: `text` now carries `if: (notice_flags & 0x01) != 0`, confirmed
+      byte-exactly by a third independent ELF pass. Note the record is memset and memcpy'd at
+      276 bytes - the MEMORY size, which never appears on the wire; the earlier reading got the
+      269 right and simply walked through the `beq`. Superseded note: not changed here because
+      sizes are evidence and this batch may only rename
       and document; flagged for a structural correction. A server that clears bit 0 and still
       sends the text block leaves 256 bytes in the stream.
       The other seven bits are [UNKNOWN].
@@ -105,6 +109,7 @@ seq:
     type: str
     encoding: ISO-8859-1
     pad-right: 0
+    if: (notice_flags & 0x01) != 0
     doc: |
       [ELF] 256-byte raw read (0xD503B8, 0xD5D018 with len 256) into r1+128 = record+0x10, with
       the reader's NUL at record+0x110. Width is certain. **Conditional on `notice_flags` bit

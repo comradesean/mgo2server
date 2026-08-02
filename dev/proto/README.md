@@ -178,3 +178,41 @@ overstating the blanks by five.
 
 Note `0x4112` is the one honest use of an opaque `unknown_body`: exact size (32 bytes), contents
 genuinely unknown, because the client memcpys a struct rather than parsing fields.
+
+## Widths are evidence — and evidence can be re-read
+
+The rule is that `type`, `size`, `repeat`, `encoding`, `enum` and `pad-right` are findings, not
+opinions, so a mapping batch may rename and document but must not change them. That rule stands. It
+exists because speculative width edits are unfalsifiable and this project has shipped wrong bytes
+from confident guesses before.
+
+**What it does not mean is that a declared width can never be wrong.** On 2026-08-02 a batch found
+that eight declarations contradicted the parser, correctly refused to change them, and flagged them
+instead. A **third, independent** pass then adjudicated — given both readings, told which was which,
+and required to derive each length itself. It confirmed all of them and found two more that the
+second pass had missed.
+
+**The procedure that follows: a contested width takes a third reading, and the third reading decides.**
+Not the newer pass, not the more confident one. The adjudicator must be able to return "both are
+wrong", and must diagnose *what the incorrect reading mistook for the length* — because that
+diagnosis is what turns one fix into a closed class.
+
+It did, twice over:
+
+- **`stdu` versus `std`.** The DS-form store with low bits `01` is the **update** form: it rewrites
+  its base register. `mr rX,r1` then `stdu r0,120(rX)` leaves `rX = r1+120`, so a loop bound of
+  `addi r0,r1,128` is an **end address, not a byte count** — 8 bytes, read as 128. `0x4A27` is the
+  control: same 8 bytes, but a plain `std` and an explicit `addi r29,r1,112`, and its declaration was
+  always right. Sweeping the parser block `0xD33000`-`0xD5D000` for `stdu rX,disp(rY)` with
+  `rY != r1` returns **exactly four** sites, all now corrected. **The class is closed** — no other
+  schema can carry it.
+- **Straight-line reading through a forward branch.** Honouring `bl` sites but walking through a
+  `beq` that skips a read yields the maximum length and misses the gate. Sweeping for a flag test
+  followed by a forward branch over a read primitive returns **exactly five** sites; one
+  (`0x4982`) was already modelled correctly with `if:`, so the convention existed and these were
+  per-schema oversights.
+
+The one class that **cannot** be swept mechanically is a repeat count, because the discriminator is
+semantic: `0x4A20`'s "count" was reloaded at the top of every iteration, which is precisely what a
+trip count looks like, but it only fed address arithmetic — the real bound was four instructions
+away. **The standing check: for every `repeat-expr`, confirm the named field reaches a compare.**

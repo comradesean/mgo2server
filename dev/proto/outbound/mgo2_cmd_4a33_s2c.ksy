@@ -116,6 +116,7 @@ types:
         type: str
         encoding: ISO-8859-1
         pad-right: 0
+        if: (name2_present & 0x02) != 0
         doc: "[ELF] second 16-byte raw read (0xD52678) -> record+0x18, NUL at record+0x28. **Conditional** - see `name2_present`. [UNKNOWN] whose name; no reader in either instance."
       - id: unknown_0x28
         type: u1
