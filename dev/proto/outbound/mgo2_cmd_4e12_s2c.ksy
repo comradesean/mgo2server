@@ -17,7 +17,7 @@ doc: |
   Routing: GAME dispatcher 0xD387C8, compare tree at 0xD38804 -> thunk -> parser **0xD5A9A0**,
   which re-checks the id (`cmpwi r0,19986` = 0x4e12) before reading anything.
 
-  ## CORRECTION 2026-08-02: the s4 is NOT a result code
+  ## CORRECTION 2026-08-02: the single word is NOT a result code (and is `u4`, not `s4`)
 
   The earlier reading — "start and end carry a single RESULT CODE" by analogy with the
   0x4601/0x4602/0x4603 and 0x4681/0x4683 social triples — is **refuted by the parser**. The word
@@ -38,7 +38,7 @@ doc: |
   server that wants to report a failed list has to do it through `0x4E10`'s own fields or by not
   opening the list.
 
-  The old note that "the s4 on the wire is checked but not published" was half right and is kept:
+  The old note that "the word on the wire is checked but not published" was half right and is kept:
   0xD5AA88 passes `r5 = 0` to 0xD32E70, so the request's published result is a literal zero
   regardless. That is what the screen polls for at 0x930CA0 (`0xD330C4(session, 90)`) before
   advancing to state 3; a non-zero there raises `5520:<code>`, but nothing in this packet can make
@@ -69,8 +69,9 @@ doc: |
   what makes a list size-driven), 0xD5C844/0xD5C858 begin/end read. An earlier revision added:
   "In each signed/unsigned pair the LOWER address is the signed accessor (proved on the write
   side, where 0xD5C95C uses `sraw` and 0xD5C9BC uses `srw`; and here 0xD5CC64's value is
-  reloaded with `lwa`)." **That claim is SUPERSEDED — see the CORRECTION below.** Only the
-  `lwa` half of it survives, and it is a fact about the caller, not the primitive.
+  reloaded with `lwa`)." **That claim is SUPERSEDED IN BOTH HALVES — see the CORRECTION below,
+  and see `event_id`.** An earlier revision said "only the `lwa` half survives": it does not.
+  There is no `lwa` in this parser at all; the reload at 0xD5AA50 is `lwz`.
 
   CORRECTION (verified 2026-07-26, whole-function compare at every width): that rule is wrong,
   and it is wrong on the READ side at ALL widths, not just at u32. Each "signed/unsigned pair"
@@ -117,7 +118,7 @@ doc: |
 
 seq:
   - id: event_id
-    type: s4
+    type: u4
     doc: |
       [ELF 2026-08-02, renamed from `result`] The whole payload. **An echo of `0x4E10`'s
       `event_id`**, read at 0xD5AA30 and required to equal the u32 at event record +0x000
@@ -126,9 +127,26 @@ seq:
       result/error code" reading is withdrawn — the value is a transaction token, not a status, and
       the request's published result is a hardcoded 0 either way (0xD5AA88, `r5 = 0`).
 
-      **WIDTH/TYPE FLAGGED, NOT CHANGED.** Declared `s4`; the justification recorded here was
-      "the CALLER reloads it with `lwa`", and that is not what the caller does — 0xD5AA50 reloads
-      it with `lwz` and compares it with `cmpw` against another `lwz`. Every other schema in the
-      family declares this id `u4` (`0x4E10.event_id`, `0x4E20.event_id`, `0x4A24.obj_id`). Same
-      four bytes on the wire; raised for adjudication per dev/proto/README.md rather than changed,
-      because a *server* must simply echo what it sent and the signedness cannot alter that.
+      **ADJUDICATED 2026-08-02 (third reading): `s4` -> `u4`.** The recorded justification was
+      "the CALLER reloads it with `lwa`". It does not. The falsifier is clean and was checked
+      directly: at 0xD5AA50 the reload is `lwz r9,112(r1)` (encoding `81210070`), and the whole
+      parser 0xD5A9A0-0xD5AAD8 was swept for the `lwa`/`lwaux`/`lha` family — **no signed load
+      anywhere in it**, at any displacement, off any base. Control in the same sweep: the two
+      `cmpwi` sites that do exist, 0xD5AA04 (`cmpwi cr7,r0,19986`, the id re-check) and 0xD5AA3C
+      (the primitive's return-code test), both came back, so the sweep sees this function.
+
+      The compare at 0xD5AA58 is `cmpw cr7,r9,r0` against another `lwz` (0xD5AA48), consumed by a
+      `bne`. `cmpw` is the signed form, but an equality test is signedness-agnostic, so it evidences
+      nothing either — the packet carries a token to be matched bit-for-bit, and there is no
+      ordering or sign test on it anywhere.
+
+      **What the wrong reading mistook for the answer: the read primitive's address.** The value is
+      read at 0xD5AA30 by 0xD5CC64, the lower half of the supposed signed/unsigned pair. That rule
+      is superseded (see the CORRECTION above; re-verified here — 0xD5CC64 and 0xD5CCD8 are
+      encoding-identical bar two branch displacements), and the "`lwa`" sentence appears to be that
+      dead rule restated as if it were a caller-side observation. It is the same mistake this
+      file's sibling `mgo2_cmd_4e10_s2c.ksy` made on its five `trailing_word` slots.
+
+      Every other schema in the family declares this id `u4` (`0x4E10.event_id`,
+      `0x4E20.event_id`, `0x4A24.obj_id`). Same four bytes on the wire; a server echoes what it
+      sent, and no signedness can alter that.

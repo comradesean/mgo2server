@@ -20,14 +20,25 @@ doc: |
   `team+0x29C` on `team = 0xD491F8(session) = session+0xD928`; mismatch = -1018 and the packet is
   dropped). No request slot.
 
-  ## !! WIRE LENGTH FLAGGED, NOT CHANGED — 15 bytes, not 8 !!
+  ## Wire size: 15 bytes (ADJUDICATED 2026-08-02 — was declared 8)
 
-  Identical to `0x4E22`'s flag, and left unfixed for the same reason (adding it is a `repeat`
-  change). The read sequence is `u4 + u2` via 0xD49230, one u1 at 0xD5A2A8, then an **eight-iteration
-  u1 loop** at 0xD5A2B8-0xD5A2D8 into r1+112..r1+119 (pre-zeroed by the `std r0,112(r1)` at
-  0xD5A288). `4 + 2 + 1 + 8*1 =` **15 bytes**. See mgo2_cmd_4e22_s2c.ksy for the disassembly and
-  for what the eight bytes do (per-slot status on the team record's 8-entry, 28-byte table at
-  `team+0x17C`; non-zero -> `entry+0x15`, **zero deletes the slot**).
+  The read sequence is `u4 + u2` via 0xD49230, one u1 at 0xD5A2A8, then an **eight-iteration u1
+  loop** at 0xD5A2BC-0xD5A2E8 into r1+112..r1+119 (`addi r29,r1,112` at 0xD5A2B8; the single
+  `bl 0xd5cb8c` at 0xD5A2CC is re-executed by the backward `bne cr6,0xd5a2bc` at 0xD5A2E8, and
+  0xD5CB8C advances the payload cursor at `[ctx+1108]` by one on every call). `4 + 2 + 1 + 8*1 =`
+  **15 bytes**.
+
+  The destination bytes are pre-zeroed by a plain **`std r0,112(r1)`** at 0xD5A270 — encoding
+  `F8010070`, DS-form low bits `00`, i.e. **not** the `stdu` update form that made `0x4A02` and its
+  siblings read a loop bound as a byte count. `addi r0,r1,120` at 0xD5A2D4 is an end address, and
+  since the cursor starts at r1+112 the trip count is 8 regardless of how it is read.
+
+  **What the earlier reading mistook for the length:** it counted one `u1` because there is one
+  `bl 0xd5cb8c` in the instruction text, i.e. it counted call *sites* rather than *executions*.
+
+  See mgo2_cmd_4e22_s2c.ksy for the full annotated disassembly and for what the eight bytes do
+  (per-slot status on the team record's 8-entry, 28-byte table at `team+0x17C`; non-zero ->
+  `entry+0x15`, **zero deletes the slot**).
 
   ## The extra step, and it is not small
 
@@ -55,8 +66,9 @@ doc: |
   below is withdrawn.
 
   0x4e21, 0x4e22 and 0x4e23 have byte-identical layouts (parsers 0xD5A600, 0xD5A3F0 and 0xD5A1D0
-  differ only in the id compared, the UI event fired, and the teardown call above). **`0x4E21`
-  (id 20001, parser 0xD5A600, stub 0xD39D10) has no `.ksy` file** — reported, not created here.
+  differ only in the id compared, the UI event fired, and the teardown call above). `0x4E21`
+  (id 20001, parser 0xD5A600, stub 0xD39D10) now has its own `.ksy`; the note that it had none is
+  stale.
 
   Read primitives (from the primitive table at 0xD5C844+): 0xD5CB8C u1, 0xD5CC14 u2,
   0xD5CC64 / 0xD5CCD8 u4 (identical twins — see the CORRECTION below), 0xD5D018 fixed byte
@@ -131,17 +143,22 @@ seq:
       getter is not filterable. Open question, not a stated negative.
 
       The "enum/index with a sentinel" claim is withdrawn — see the CORRECTION in the top-level doc.
-  - id: slot_status_0
+  - id: slot_status
     type: u1
+    repeat: expr
+    repeat-expr: 8
     doc: |
-      [ELF 2026-08-02, renamed from `unknown_07`] **The first of EIGHT per-slot status bytes**, read
-      by the loop at 0xD5A2B8-0xD5A2D8 and applied one per entry to the team record's 8-entry,
-      28-byte-stride match table at `team+0x17C`: non-zero -> `entry+0x15`, zero ->
-      `memset(entry, 0, 28)`.
+      [ELF 2026-08-02, renamed from `unknown_07` -> `slot_status_0` -> `slot_status`] **EIGHT
+      per-slot status bytes**, read by the loop at 0xD5A2BC-0xD5A2E8 and applied one per entry to
+      the team record's 8-entry, 28-byte-stride match table at `team+0x17C`: non-zero ->
+      `entry+0x15`, zero -> `memset(entry, 0, 28)`.
 
-      **!! THE OTHER SEVEN ARE MISSING FROM THIS SCHEMA — see the WIRE LENGTH flag in the top-level
-      doc.** The packet is 15 bytes, not the 8 this `seq:` describes; supplying the rest is a
-      `repeat` change and is flagged for adjudication rather than made here.
+      **ADJUDICATED 2026-08-02 (third reading).** Was a single `u1` named `slot_status_0`, making
+      the packet 8 bytes; it is a fixed 8-element array and the packet is 15. The `_0` is gone
+      because there are eight, not one. Derivation and the `std`-vs-`stdu` check are in the
+      top-level doc; modelled as `repeat: expr` with a literal count, the same way
+      `mgo2_cmd_4a24_s2c.ksy` models `trailing_words`, because the count is compiled in rather than
+      carried on the wire.
 
       [UNKNOWN] what the status codes mean. Deliberately **not** equated with the entrant-status
       column of `0x4A01`/`0x4A20`: that one lives on the Survival event record at

@@ -200,33 +200,43 @@ seq:
       [UNKNOWN] meanings, and **none of the six has a reader** — see the shared evidence note on
       `trailing_word_5`.
   - id: trailing_word_1
-    type: s4
+    type: u4
     doc: |
       [ELF] -> event record +0x1C68. See `trailing_word_0` for the bijection and
       `trailing_word_5` for the negative-result sweep.
 
-      **WIDTH/TYPE FLAGGED, NOT CHANGED (2026-08-02).** Declared `s4` on the strength of "SIGNED
-      accessor 0xD5CC64". That justification is dead: this file's own CORRECTION section proves
-      0xD5CC64 is instruction-for-instruction identical to 0xD5CCD8 and is not a signed accessor at
-      any width, and signedness comes from the caller. There is no caller here — the value is
-      stored and never loaded again anywhere in the image. So nothing evidences `s4`, and the
-      sibling slot in mgo2_cmd_4a24_s2c.ksy is declared `u4`. Same 4 bytes on the wire either way;
-      raised for adjudication per dev/proto/README.md rather than changed. Applies identically to
-      `trailing_word_2` through `trailing_word_5`.
+      **ADJUDICATED 2026-08-02 (third reading): `s4` -> `u4`.** The declaration rested on "SIGNED
+      accessor 0xD5CC64", and that rule is dead. Re-derived rather than taken from this file's own
+      CORRECTION: 0xD5CC64 (0xD5CC64-0xD5CCD4) and 0xD5CCD8 (0xD5CCD8-0xD5CD48) were compared
+      instruction by instruction and are **encoding-identical** — same `lwz r0,1108(r3)`, same
+      `cmpwi 1020` bound, same `mtctr 4` byte-assembly loop with `lbzx`/`extsb`/`and 255`/`slw`/
+      `stw`, same `addi r9,r9,1`/`stw` cursor bump, same `extsw r3,r11` return. The only differing
+      words are the two branch displacements, which differ by exactly the 0x74 function offset. So
+      the accessor's address carries no signedness at any width, and no caller supplies it either:
+      the sweep on `trailing_word_5` was re-run here and found **zero readers** for all six slots.
+
+      **What the wrong reading mistook for the answer: the callee's address.** This file is its own
+      proof — `trailing_word_0` is read at 0xD5AF54 by 0xD5CCD8 and was declared `u4`, while words
+      1-5 are read at 0xD5AF70/8C/A8/C4/E0 by 0xD5CC64 and were declared `s4`. Six adjacent slots
+      on the same object, split purely by which of two identical functions the compiler emitted.
+
+      `u4` also matches the sibling `mgo2_cmd_4a24_s2c.ksy` `trailing_words` (`type: u4`,
+      `repeat-expr: 6`), which writes the same six offsets on the same record. Same four bytes on
+      the wire either way. Applies identically to `trailing_word_2` through `trailing_word_5`.
   - id: trailing_word_2
-    type: s4
-    doc: "[ELF] -> event record +0x1C6C. Same bijection, same sweep, same s4/u4 flag as `trailing_word_1`."
+    type: u4
+    doc: "[ELF] -> event record +0x1C6C. Same bijection and same sweep as `trailing_word_1`; `s4` -> `u4` on the same adjudication (2026-08-02)."
   - id: trailing_word_3
-    type: s4
-    doc: "[ELF] -> event record +0x1C70. Same bijection, same sweep, same s4/u4 flag as `trailing_word_1`."
+    type: u4
+    doc: "[ELF] -> event record +0x1C70. Same bijection and same sweep as `trailing_word_1`; `s4` -> `u4` on the same adjudication (2026-08-02)."
   - id: trailing_word_4
-    type: s4
-    doc: "[ELF] -> event record +0x1C74. Same bijection, same sweep, same s4/u4 flag as `trailing_word_1`."
+    type: u4
+    doc: "[ELF] -> event record +0x1C74. Same bijection and same sweep as `trailing_word_1`; `s4` -> `u4` on the same adjudication (2026-08-02)."
   - id: trailing_word_5
-    type: s4
+    type: u4
     doc: |
-      [ELF] -> event record +0x1C78, last 4 bytes of the packet. Same s4/u4 flag as
-      `trailing_word_1`.
+      [ELF] -> event record +0x1C78, last 4 bytes of the packet. `s4` -> `u4` on the same
+      adjudication as `trailing_word_1` (2026-08-02).
 
       **NONE OF THE SIX HAS A READER.** mgo2_cmd_4a24_s2c.ksy swept 0x8C0000-0x900000 and
       0xD30000-0xD70000 for loads at these six displacements plus the indexed form
@@ -237,6 +247,12 @@ seq:
       sweep returns readers for the two slots that bracket this range, obj+0x1C40 (0x8CC41C,
       0x8CDA30) and obj+0x0DA (0x8CC450, 0x8CDA80, 0x8CDEB8, 0x8FB480), so the sweep works and the
       negatives are real.
+
+      **Re-run independently 2026-08-02 (third reading)** over the cached disassembly, matching any
+      load or `addi` at displacements 7268/7272/7276/7280/7284/7288 off a non-r1 base: exactly three
+      hits per displacement — 0xD5007C, 0xD5091C and 0xD5AF48 (all `addi rX,rY,disp` feeding the
+      read primitive's `r4`, i.e. writers) — plus stack traffic at 0xD89D4C-0xD89D54 off r1. The
+      control at obj+0x1C40 returned its two readers (0x8CC41C, 0x8CDA30). Negatives reproduce.
 
       Withdrawn: "the five consecutive signed words look like a score/counter row". There are six,
       not five, they are not evidenced as signed, and the shape carries no information.

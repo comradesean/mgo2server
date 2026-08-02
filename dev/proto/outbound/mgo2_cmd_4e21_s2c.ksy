@@ -25,28 +25,41 @@ doc: |
   `team+0x29C` on `team = 0xD491F8(session) = session+0xD928`; mismatch = -1018 and the packet is
   dropped).
 
-  ## !! WIRE LENGTH FLAGGED, NOT DECLARED — 15 bytes, not 8 !!
-
-  **The `seq:` below is short by seven bytes and is knowingly left that way**, exactly as in
-  `mgo2_cmd_4e22_s2c.ksy` and `mgo2_cmd_4e23_s2c.ksy`, per the flag-and-adjudicate rule in
-  `dev/proto/README.md`. Do not implement against it until the flag is resolved. **This file was
-  created carrying the flag rather than resolving it**, because creating a file and settling a
-  contested width are two different decisions and the second one takes a third independent reading.
+  ## Wire size: 15 bytes (ADJUDICATED 2026-08-02 — the file was created declaring 8)
 
   The parser reads, in order:
 
   ```
-  0xD5A6C8  bl 0xd49230                     ; u4 + u2  = 6 bytes  (header validator)
+  0xD5A6A0  std r0,112(r1)                  ; pre-zero r1+112..r1+119. Encoding F8010070 —
+                                            ; DS-form low bits 00, plain std, NOT stdu
+  0xD5A6B8  bl 0xd49230                     ; u4 + u2  = 6 bytes  (header validator)
   0xD5A6D8  bl 0xd5cb8c   -> team+0x04      ; u1       = 1 byte
-  0xD5A6E8  addi r29,r1,112                 ; loop cursor
-  0xD5A6F8  bl 0xd5cb8c   -> r29            ; u1
-  0xD5A6F4  addi r29,r29,1
-  0xD5A700  addi r0,r1,120
-  0xD5A708  cmpw cr6,r29,r0 ; bne            ; 8 iterations, r1+112 .. r1+119
+  0xD5A6E8  addi r29,r1,112                 ; loop cursor, r1-relative, never rewritten
+  0xD5A6EC  clrldi r31,r25,32               ; loop top
+  0xD5A6FC  bl 0xd5cb8c   -> r29            ; u1  <-- ONE bl SITE, EIGHT EXECUTIONS
+  0xD5A6F8  addi r29,r29,1
+  0xD5A704  addi r0,r1,120
+  0xD5A710  cmpw cr6,r29,r0
+  0xD5A718  bne cr6,0xd5a6ec                ; 8 iterations, r1+112 .. r1+119
   ```
 
-  `4 + 2 + 1 + 8*1 =` **15 bytes**. `0x4E22` (`0xD5A4DC`-`0xD5A508`) and `0x4E23`
-  (`0xD5A2B8`-`0xD5A2D8`) contain the identical loop, so all three are 15 bytes.
+  `4 + 2 + 1 + 8*1 =` **15 bytes**. The arbiter is the wire cursor, not the destination: 0xD5CB8C
+  reloads `[r3+1108]`, adds 1 and stores it back (0xD5CBB0-0xD5CBB8) on every successful call, and
+  r3 is the same read context on all eight iterations — so eight payload bytes are consumed.
+
+  Deliberately checked against the `0x4A02`/`0x4A22`/`0x4A29`/`0x4A00` failure, which ran the
+  opposite way: there a `stdu` (DS low bits `01`) rewrote its base register, turning
+  `addi r0,r1,128` into an end address that was read as a 128-byte count. Here the store is a plain
+  `std`, the cursor is an explicit `addi r29,r1,112`, and `addi r0,r1,120` is an end address whose
+  distance from the start is 8 — the same 8 either way.
+
+  **What the earlier reading mistook for the length:** one `bl 0xd5cb8c` in the instruction text was
+  counted as one byte. That counts call *sites* rather than *executions*; the backward `bne cr6` at
+  0xD5A718 makes the single site read eight. Where the `stdu` class over-counted a loop, this class
+  under-counts one.
+
+  `0x4E22` (`0xD5A4DC`-`0xD5A508`) and `0x4E23` (`0xD5A2BC`-`0xD5A2E8`) contain the byte-identical
+  loop, so all three are 15 bytes and all three now declare `slot_status` as `repeat-expr: 8`.
 
   ## What the eight bytes are
 
@@ -93,13 +106,19 @@ seq:
       displacement sweep to discriminate — a sweep that cannot be validated against a known-good
       hit is worthless, so none is reported. The same refusal is recorded in
       `mgo2_cmd_4a00_s2c.ksy` for the identical slot.
-  - id: slot_status_0
+  - id: slot_status
     type: u1
+    repeat: expr
+    repeat-expr: 8
     doc: |
-      [ELF 2026-08-02] The **first of eight** per-slot status bytes, one per entry of the
-      8-entry / 28-byte-stride match table at `team+0x17C`. Non-zero is stored to `entry+0x15`;
-      **zero deletes the entry** (`memset(entry, 0, 28)`).
+      [ELF 2026-08-02] **Eight** per-slot status bytes, one per entry of the 8-entry /
+      28-byte-stride match table at `team+0x17C`. Non-zero is stored to `entry+0x15`; **zero
+      deletes the entry** (`memset(entry, 0, 28)`).
 
-      **The other seven are missing from this `seq:` — see the wire-length flag above.** They are
-      on the wire and are read by the same loop; they are absent here only because adding them is a
-      `repeat` change and the length is under adjudication across all three siblings.
+      **ADJUDICATED 2026-08-02 (third reading).** The file was created declaring a single `u1`
+      named `slot_status_0`; it is a fixed 8-element array and the packet is 15 bytes, not 8. The
+      `_0` is gone because there are eight, not one. Modelled as `repeat: expr` with a literal
+      count — the house style for a compiled-in count, as in `mgo2_cmd_4a24_s2c.ksy`'s
+      `trailing_words` — because nothing on the wire carries the length.
+
+      [UNKNOWN] what the status codes mean.
