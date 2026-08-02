@@ -734,6 +734,37 @@ seq:
          clan record `+6956` and `+6960` are the two cooldowns, which that run would trample. The
          only writers of `T+0x1B34` remain the `0x4b21` and `0x4b81` parsers.
 
+
+      ## UNOBSERVABLE — established by live test 2026-08-02
+
+      **This slot cannot be read back from any screen on release-day content, so the value we send
+      is unfalsifiable operator policy and zero is final rather than pending.** A probe sent
+      `12345678` here from **both** `0x4b21` and `0x4b81`; the server logs confirm both packets went
+      out (777 and 217 bytes) and **nothing rendered**.
+
+      The non-zero probe is what makes this conclusive rather than ambiguous — it rules out the
+      obvious alternative, that a zero was simply being suppressed by the renderer.
+
+      Both readers are independently unreachable:
+
+      * **CLAN RECORD / "Clan Stats"** (`0xA8A970` -> `STRING_0_3`) never opens. It refuses with
+        *"The clan's records are currently unavailable. Please wait until an official match is
+        held."* An official match is an **Official Tournament**, lobby subtype 5 — Ver. 1.20
+        content this server deliberately does not serve, so the gate sits upstream of the field and
+        rejects the whole screen.
+      * **The Clan Info popup** (`0xA7D32C` -> `infoC_st-3`) does not draw the element. The renderer
+        sets **thirteen** elements; this build's layout binds **three** — clan name (`infoC_st-1`),
+        leader name (`infoC_st-2`) and member count (`infoC_st-4`). Every other element it sets,
+        `infoC_st-3` and `T+0xC68`'s `infoC_st-5` included, is absent from the layout.
+
+      That second observation is the more useful one, and it generalises: the popup's ten numeric
+      rows are the clan-statistics feature, and this build renders none of them. It is consistent
+      with Clan Stats being gated on tournament data — the whole feature set is post-launch.
+
+      **Consequence for the campaign:** this field can never reach tier 2, for the same reason
+      `host_stance` cannot (see `dev/docs/BACKLOG.md`). Do not re-open it as "needs a live test";
+      the live test was run and its result was that no observation exists.
+
       ## [ELF 2026-08-02] 0x4b21 and 0x4b81 write the SAME field — bijection, not resemblance
 
       Asked as a struct-offset bijection rather than a shape match, because "same layout,

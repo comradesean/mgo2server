@@ -1216,6 +1216,7 @@ public class ClanGameController implements IGameController {
 		buffer.writeByte(onDisplay(clan.id()));    // T+0x378
 		BufferUtil.writeString(buffer, clan.description(), StandardCharsets.ISO_8859_1,
 			DESCRIPTION_LENGTH);                                              // T+0x67A
+		// T+0x1B34: zero, and PROVEN UNOBSERVABLE 2026-08-02 -- see clanProfile for the live test.
 		buffer.writeZero(4);                                                  // T+0x1B34
 		buffer.writeInt(clanService.memberCount(clan.id()));                  // T+0x58
 		buffer.writeZero(CLAN_PROFILE_PART_SIZE - (buffer.writerIndex() - start));
@@ -1471,8 +1472,20 @@ public class ClanGameController implements IGameController {
 		buffer.writeInt((int) clanService.secondsUntilDisbandable(clan.id()));  // T+0x1B2C
 		buffer.writeInt(emblemCooldownRemaining(clan.id()));                   // T+0x1B30
 		// T+0x1B34 is shared with 0x4b81 -- same address, proven by identical `addis rN,session,1`
-		// plus `addi r4,rN,4996` in both parsers (0xD58BE8 and 0xD58DA8), not merely the same
-		// shape. Its meaning is still open, so zero stays until the sentinel experiment names it.
+		// plus `addi r4,rN,4996` in both parsers (0xD58BE8 and 0xD58DA8), not merely the same shape.
+		//
+		// UNOBSERVABLE, established by live test 2026-08-02, so zero is final rather than pending.
+		// A probe sent 12345678 here from BOTH packets; the logs confirm both went out (0x4b21 777
+		// bytes, 0x4b81 217) and nothing rendered. Its two readers are each unreachable on
+		// release-day content:
+		//   * CLAN RECORD / "Clan Stats" (0xA8A970 -> STRING_0_3) refuses to open at all --
+		//     "The clan's records are currently unavailable. Please wait until an official match is
+		//     held." Official Tournament is lobby subtype 5, Ver. 1.20 content we do not serve.
+		//   * the Clan Info popup (0xA7D32C -> infoC_st-3) does not draw the element. The renderer
+		//     sets THIRTEEN elements; this build's layout binds three -- clan name, leader name and
+		//     member count. Everything else it sets, including T+0xC68 at infoC_st-5, is absent.
+		// The non-zero probe is what makes this conclusive rather than ambiguous: it rules out the
+		// obvious alternative that a zero was simply being suppressed.
 		buffer.writeZero(4);                                                  // T+0x1B34
 
 		assert buffer.writerIndex() - start == PROFILE_SIZE
