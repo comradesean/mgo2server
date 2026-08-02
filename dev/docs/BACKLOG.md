@@ -4,70 +4,51 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
-## What HOST_STANCE should an automatch game carry? — findable from video
+## ~~What HOST_STANCE should an automatch game carry?~~ — RESOLVED 2026-08-02: unobservable
 
-**Open question, 2026-08-02.** We send `host_stance = 0` in the automatch settings block
-(`AutomatchSettingsBlock`, block `+94`). Zero is `HOST_STANCE_EASY`, the modal value across 214
-archived `0x4310` captures (156/214), so it is legal and defensible — but every one of those
-captures is a **human host** who picked a stance or accepted the Create Game default. An automatch
-game has no human host, so nothing establishes what the original server put here.
+**Settled by live test, and the answer is that the question has no observable answer.** Two RPCS3
+clients ran a real automatch session against this server. The stance is **not visible anywhere**:
+an automatch game has no lobby view to show a game-list row in, and the in-game menu has no
+Conditions entry either. Both routes are structurally absent, not merely showing an unremarkable
+value.
 
-The client's own developer table at `0xE1BC48`, with the inferred disc labels (set `[40eff4]`,
-ids 172-181):
+That is exactly the outcome the previous revision of this item said to write down if it happened,
+so it is written down: **the field is inert on this deployment, our `0` is unfalsifiable operator
+policy, and nobody should spend more time on it.** No video hunt is needed and no GCX trace is
+needed.
 
-```
-0 HOST_STANCE_EASY                 Casual
-1 HOST_STANCE_REAL                 Serious
-2 HOST_STANCE_BEGINNER             Newbies Welcome
-3 HOST_STANCE_EVERYONE             Everyone Welcome
-4 HOST_STANCE_OTHER                Other
-5 HOST_STANCE_TRAINING             Training
-6 HOST_STANCE_INSTRUCTOR_ENTRY     Accepting Trainees
-7 HOST_STANCE_INSTRUCTOR_STARTED   Closed to New Applicants
-8 (slot left zero)                 Special
-9 HOST_STANCE_NONE                 No Conditions
-```
+**Why the traced consumers predicted this.** Both routes were already doubtful on paper and the test
+confirmed both:
 
-**Two traps recorded before anyone acts on this.** `HOST_STANCE_NONE` is **9, not 8** — slot 8 is an
-unnamed gap in the table, and an earlier suggestion to "send 8 for NONE" would have set *Special*.
-And values **above 4 are gated on a lobby flag** (`0x964470`, mask `0x20020`) — the training-only
-half — so in a normal lobby the +/- cycler at `0xA32700` only offers 0..4. Automatching is subtype
-2, a normal lobby, so sending 9 would put a stance on the wire that no host in that lobby could
-select. That is why the value was left at 0 rather than "improved".
+- `0xD49530` copies `+846` into a game-list entry — but that site is inside the client's *own
+  hosted-game entry synthesiser*, and the automatching lobby has no browser. It builds a row nothing
+  renders.
+- `0x8CA580` publishes it as property-store key 94, feeding the lobby GCX script. Whatever that
+  script does with it, no automatch screen draws it.
 
-**First question is not "what value" but "is it observable at all" — corrected 2026-08-02.** This
-item originally said the stance is visible in-match and a video would settle it. **That premise is
-not established**, and the objection that broke it is that an automatch game has no host in the
-sense the stance describes: nobody opened Create Game and chose a posture.
+**Do not "improve" the value.** Two traps stay recorded, because an inert field is exactly the kind
+that gets changed casually later:
 
-Both traced consumers are doubtful for *this* lobby specifically:
+- `HOST_STANCE_NONE` is **9, not 8**. Slot 8 is an unnamed gap in the client's table at `0xE1BC48`
+  and would render as the inferred disc label *"Special"*. An earlier suggestion to "send 8 for
+  NONE" would have been wrong on its own terms.
+- Values **above 4 are gated on a lobby flag** (`0x964470`, mask `0x20020`) — the training-only
+  half — so the `+/-` cycler at `0xA32700` offers only 0..4 in a normal lobby. Automatching is
+  subtype 2, a normal lobby, so 9 would be a value no host there could select.
 
-- `0xD49530` copies `+846` into the game-list entry's `T+0x24`. But that site sits inside
-  `0xD493CC`, the client's **own hosted-game entry synthesiser** — the row a client builds for a
-  game *it* hosts — and **the automatching lobby has no browser**, which is the same fact that
-  argues against slot-in. A game-list row nothing renders is not an observation.
-- `0x8CA580` publishes `+846` as **property-store key 94**, which feeds the lobby's GCX script. Where
-  that script draws it, or whether it draws it at all for an automatch game, is **not readable from
-  the ELF** — it is in the stage script. That is the same wall the `block_204` mapping hit for
-  `+48`/`+49`: "the remaining route is the script, not the disassembler."
+`0` (`HOST_STANCE_EASY`, disc label *Casual*) is also the modal value across 214 archived `0x4310`
+captures, so it is what a human host most often sends. Leave it.
 
-So the honest state is that **we cannot currently name the observation that would confirm an
-answer**, which by this project's own standard means the question is not yet in a form that can be
-settled. Establish observability first:
+**One limitation, stated rather than buried.** The test ran with our value of `0`. If the in-game
+menu entry were itself conditional on the stance value, a test with `0` could not distinguish "never
+rendered" from "not rendered for this value". The observation as described — a *missing menu entry*
+and a *missing lobby*, rather than a blank field — argues strongly against that reading, and it is
+not worth a second experiment for a field nothing consumes.
 
-1. Trace the GCX consumer of property-store key 94 in the lobby script (`dev/tools/gcx`,
-   `dev/tools/solideye`; method in `ASSETS.md`). Does anything render it, and under what conditions?
-2. Only if something does: look for it in footage of a real automatch game.
-
-**If it turns out to be unobservable, that is a result and should be written down here.** It would
-mean our `0` is unfalsifiable operator policy — which is *fine*, and is a much better place to leave
-it than a value we keep intending to verify. What is not fine is leaving this item claiming a video
-can answer it when nothing has shown the field is ever drawn.
-
-**Protocol-level note, so nobody trips over the phrase "no host":** automatch does elect one at the
-protocol level — `0x43f1` names a host character id, that client creates the game, and P2P requires
-some console to host. What it has no host *for* is the settings screen. The stance is a
-human-authored field with no human to author it, which is the whole reason this question exists.
+**Secondary result, and it is the more useful one.** "An automatch game has no lobby" is independent
+live corroboration of the architecture recorded in `AutomatchPolicy.Mode`: automatching forms a
+brand-new game and drops the group straight into it, with no post-match lobby screen. That was
+operator judgement plus a structural argument; it now has an observation behind it.
 
 ## The instructor recognition prompt is peer-supplied — the server cannot trigger it
 

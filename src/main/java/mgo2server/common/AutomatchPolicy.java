@@ -87,7 +87,9 @@ public record AutomatchPolicy(
 	 * </ul>
 	 *
 	 * <p>There is also no post-match lobby screen to see such a game in: automatch goes from the
-	 * search straight into the formed game.
+	 * search straight into the formed game. <b>Confirmed live 2026-08-02</b> — two clients ran a real
+	 * automatch session and there is no lobby view for the resulting game at all, which is tier-2
+	 * corroboration of what had been a structural argument.
 	 *
 	 * <p>Slot-in stays in this enum as a <b>future</b> possibility rather than being deleted, because
 	 * a later MGO2 version may well have added it and the strings would then be its evidence. It is
