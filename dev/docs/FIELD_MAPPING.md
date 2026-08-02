@@ -1,19 +1,26 @@
-# Field-mapping campaign: every unknown field in every packet we use
+# Field-mapping campaign: every unknown field in every packet
 
 **Goal: total understanding.** Not "enough to work" — every field named, positioned and explained,
 with the evidence in the `.ksy` `doc:` tag so nobody has to re-derive it.
 
-Scope is **packets the server actually uses** — registered handlers and commands we write. The 19
-we have never seen are parked separately in `PACKETS_NOT_OBSERVED.md` and are not part of this.
+**Scope is every packet, not only the ones we serve.** This was originally "packets the server
+actually uses", with the never-observed commands parked in `PACKETS_NOT_OBSERVED.md` and out of
+scope. That is no longer the rule: *map now, build later* — post-launch content is fully in scope
+for mapping today, and only *serving* it waits for v1 to be finished. See `CLAUDE.md`.
 
 ## The number
 
-**22 packets, 109 unknown fields — only 13 genuinely open**, as of 2026-08-01 (batch 4).
-The other 96 carry a stated negative and are terminal from static evidence. Was 44 / 178 at batch 1;
-`0x4302`, `0x4129`, `0x4b12`, `0x4b70`, `0x4682`, `0x4841`, `0x4822`, `0x4800`, `0x4582` and
-`0x4602` have reached zero (their rows stay in the table, marked
-**0**, so the count stays reproducible). Regenerate with the script in this file's
-history; the criterion is a `- id:` whose name starts with `unknown` or `unread`.
+**Regenerate it — do not quote it from memory.** `python3 dev/tools/field_scoreboard.py` derives
+every figure in this document from `dev/proto/` directly, which is why the counts below are
+reproducible and the hand-maintained ones above them are not.
+
+**1,731 fields across 317 schemas: 1,360 named, 189 unnamed but explained, 182 bare** (2026-08-02).
+Bare was **400** at the start of 2026-08-01. Of the 206 ids the server serves, 179 are fully named
+or explained and only 14 carry bare unknowns — 36 fields in total.
+
+The full breakdown, the served-command table and the blocks identified along the way are in
+**"The scoreboard"** further down; the work-list table immediately below is older and its per-row
+counts are hand-maintained, so prefer the scoreboard where they disagree.
 
 ## Method, and the rules that keep it honest
 
@@ -23,6 +30,18 @@ history; the criterion is a `- id:` whose name starts with `unknown` or `unread`
 2. **Positions are already evidence and must not move.** Sizes and offsets in these schemas were
    read from parsers and are load-bearing. Renaming a field and documenting it is the work;
    changing a width is a separate, argued decision.
+
+   **When a batch believes a declared width is wrong, it flags and does not change.** A third,
+   independent reading then adjudicates: it gets both readings, is told which is which, derives the
+   length itself, and must be able to return *"both are wrong"*. **The third reading decides** — not
+   the newer pass, not the more confident one.
+
+   It must also diagnose *what the incorrect reading mistook for the length*. That is not
+   bookkeeping: on 2026-08-02 the diagnosis (`stdu` rewrites its base register, so a loop bound is
+   an end address rather than a count) converted four fixes into a **closed class** via one sweep,
+   and turned up two more wrong schemas in files nobody had flagged. Eight lengths were corrected;
+   the two found by sweeping for the cause included the most damaging of them. Details in
+   `ADDRESSES.md`.
 3. **A precise negative is a result.** "No reader anywhere in the image" is worth recording, and
    several fields have turned out to be exactly that. Say which searches established it.
 4. **Never infer meaning from a neighbour's name or from a reference server.** Six regressions have
@@ -436,59 +455,77 @@ reachable) while `0x4440` sends `(v == 1) ? 2 : 1`, which is 1-based and collaps
 onto `1`. Both widths are correct as written. The trap is that the same admin action — host
 Restart — fires both.
 
-## The scoreboard, as of 2026-08-01
+## The scoreboard, as of 2026-08-02
 
 Regenerate with `python3 dev/tools/field_scoreboard.py` from the repo root, so the number is
-reproducible rather than re-counted by hand. It classifies every `- id:` in `dev/proto/`: named
-vs `unknown_*`, and for unnamed fields whether the `doc:` carries a **stated negative** (a swept
-range, "no reader", "no caller", "dead code", "moot").
+reproducible rather than re-counted by hand. It classifies every `- id:` in `dev/proto/`: named vs
+`unknown_*`, and for unnamed fields whether the `doc:` carries a **stated negative** (a swept range,
+"no reader", "no live consumer", "dead accessor", "no caller", "moot").
 
-**1,731 fields across 317 schemas.** 1,236 named (71.4%); 95 unnamed but explained; 400 bare.
-
-The count that matters is not that one — it is the **204 command ids the server actually serves**,
-because a field in a command nothing can send cannot stall anything:
+**1,731 fields across 317 schemas.** 1,360 named (78.6%); 189 unnamed but explained; **182 bare** —
+down from 400 at the start of 2026-08-01.
 
 | | commands |
 | --- | ---: |
-| Fully named | 164 |
-| Every field named or explained | 9 |
-| Empty payload — nothing to map | 13 |
-| **Still carrying bare unknowns** | **18** |
+| Fully named | 220 |
+| Every field named or explained | 24 |
+| Empty payload — nothing to map | 23 |
+| Still carrying bare unknowns | 48 |
 
-**186 of 204 are clean.** The 18 hold 67 bare fields between them, and they are heavily skewed:
+Of the **206 ids the server actually serves**, 179 are fully named or explained and 13 have empty
+payloads. **Fourteen carry bare unknowns, 36 fields in total:**
 
-| bare | id | note |
-| ---: | --- | --- |
-| 17 | `0x4103` | login/session reply — a quarter of the whole remaining gap, in one packet |
-| 10 | `0x43f1` | automatch host election, incl. the 204-byte settings block |
-| 9 | `0x4b21` | |
-| 7 | `0x4860` | |
-| 6 | `0x4686` | |
-| 3 | `0x4b75` | |
-| 2 | `0x4310`, `0x4305`, `0x4221` | |
-| 1 | `0x4b81`, `0x43f4`, `0x43c8`, `0x43a6`, `0x4313`, `0x4131`, `0x4122`, `0x4107`, `0x3101` | |
+| bare | id |
+| ---: | --- |
+| 9 | `0x4b21` |
+| 7 | `0x4860` |
+| 6 | `0x4686` |
+| 3 | `0x4b75` |
+| 2 | `0x4221` |
+| 1 | `0x4b81`, `0x43f4`, `0x43c8`, `0x43a6`, `0x4310`, `0x4131`, `0x4122`, `0x4107`, `0x3101` |
 
-**333 of the 400 bare fields are in commands we do not currently serve** — overwhelmingly the
-`0x49xx` and `0x4Axx` blocks and the `0x4905`/`0x4909` detail records.
+`0x4103` and `0x43f1`, which between them held 27 of the 67 bare fields this list started with, are
+now clear.
 
-> **This does NOT shrink the campaign, and an earlier revision of this section wrongly said it
-> might.** *Map now, build later* — the two are separate decisions, and only the second is gated on
-> the release-day rule:
->
-> * **Mapping scope is everything.** Post-launch content is fully in scope for the field-mapping
->   campaign, today. The target is **all 1,731 fields**, and the real remaining work is the **400
->   bare** ones, not the 50 that happen to sit in commands we already answer.
-> * **Building scope is v1 only.** We do not implement Team Sneaking, BOMB, Survival, Tournament or
->   the team family yet — not because they are unmappable, but because feature work waits until the
->   v1 server is finished.
->
-> So when a finding below says a family is "Ver. 1.10 / 1.20 content", read it as *do not serve
-> this yet*, never as *do not map this*. Knowing exactly how a mode is gated is what makes a future
-> toggle designable, and a mapped packet costs nothing to leave unserved.
->
-> The one genuine limit is **testing**, not scope: there is no client build that exercises the
-> post-launch commands, so those mappings cannot be confirmed live. They stay tier-1 (read from the
-> binary) and never reach tier-2, and their `.ksy` docs should say so.
+### What "in scope" means here — map now, build later
+
+**Mapping scope is everything**, post-launch content included; that is the current goal. **Build
+scope is v1 only.** The two are separate decisions and only the second is gated on the release-day
+rule — see `CLAUDE.md`. A family being Ver. 1.10 / 1.20 content is a reason not to *serve* it, never
+a reason not to *map* it.
+
+The one real consequence is evidential, not scoping: **no available client build exercises the
+post-launch commands**, so those mappings are tier 1 and cannot reach tier 2. Every schema in the
+`0x49xx` and `0x4Axx` families now says so rather than leaving a reader to assume a capture backs
+them.
+
+**And a current feature served wrongly is a bug, not deferred work.** When a batch names a field the
+server already sends, it checks what we send against what the field now means and states which of
+three it is: right (say so, so it is not rechecked), wrong and live (**fix in the same batch**), or
+wrong but inert (record the hazard *and* the evidence for why it is inert). That rule has fired once
+so far — `0x43F1`'s wire `0x09` had been announcing Deathmatch for every automatch.
+
+### Blocks identified during the campaign
+
+| block | was | is |
+| --- | --- | --- |
+| `0x49xx` | "clan / GHQ / roster" | **team / tournament / survival** — the 680-byte record at `session+0xD928` is a team; a clan is a separate object it references through one flag bit |
+| `0x4Axx` | "a whole unidentified subsystem" | **tournament / survival events** — the 7296-byte record at `session+0xDBD0`, holding a 128-entrant table, per-round bitmaps and standings |
+| `0x4905`/`0x4909` | two commands | **one packet**, the tournament detail card, 867 wire bytes into one 912-byte record |
+
+Three adjacent records, and their arithmetic is worth keeping in one place because it is what stops
+the next cross-struct inference going wrong:
+
+```
+session+0xD598  tournament detail   912 bytes   getter 0xD47478
+session+0xD928  team record         680 bytes   getter 0xD491F8     (0xD598 + 912 = 0xD928)
+session+0xDBD0  event record       7296 bytes   getter 0xD4EA60     (0xD928 + 0x2A8 = 0xDBD0)
+```
+
+Adjacent, disjoint, separately owned. **Check which getter feeds a reader before attributing an
+offset** — reading one instance as a different *kind* of object is what produced this campaign's
+team-vs-clan misidentification, and "same layout, different instance" has now turned up four times
+(`0x4A24`/`0x4A31`, `0x4A11`/`0x4A33`, `0x4985`/`0x49B1`, and the team pair itself).
 
 ### Settled 2026-08-01: `session+0xD928` is the TEAM record
 

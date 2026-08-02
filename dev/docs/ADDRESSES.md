@@ -35,10 +35,67 @@ struct.unpack_from(">12I", data, VA - 0x10000)      # file offset = VA - 0x10000
 
 ---
 
-## Two corrections to the search method — 2026-08-01
+## Corrections to the search method — 2026-08-01 / 2026-08-02
 
-Both came out of the field-mapping campaign, and both invalidate a search that had been treated as
+All came out of the field-mapping campaign, and each invalidates a search that had been treated as
 conclusive. They belong here rather than in a schema because every future search inherits them.
+
+### `stdu` rewrites its base register — read as a length, it is off by the displacement
+
+**The single most expensive misreading of the campaign so far: eight wrong field lengths across
+eight schemas, in two separate passes, from one letter.**
+
+`stdu` is the DS-form store with low bits `01` — the **update** form. It writes memory *and*
+rewrites its base register. So:
+
+```
+d4f000: mr    r23,r1              ; r23 = r1
+d4f00c: stdu  r0,120(r23)         ; mem[r1+120] = 0  AND  r23 = r1+120   <-- the base MOVED
+...
+d4f080: mr    r29,r23             ; cursor starts at r1+120, not r1
+d4f09c: addi  r0,r1,128           ; loop exit: an END ADDRESS
+d4f0a8: cmpw  cr6,r29,r0
+```
+
+The cursor runs `r1+120 .. r1+128` exclusive — **8 bytes**. A reader who treats `stdu` as a plain
+store keeps the base at `r1` and then reads `128` as a byte count. **The error equals the base
+displacement**, which is why it presented as a clean-looking "128" rather than as nonsense.
+
+**The control that diagnoses it** is `0x4A27`: same 8 bytes, but a plain `std r0,112(r1)` with the
+cursor formed explicitly by `addi r29,r1,112`. Its declaration was always right. So the failure is
+narrow and checkable — *the reading was correct wherever the base was written out, and wrong
+wherever an update-form store moved it.*
+
+**This class is closed.** Sweeping the parser block `0xD33000`–`0xD5D000` for `stdu rX,disp(rY)`
+with `rY != r1` — the only encoding that can silently rebase a scratch buffer — returns exactly
+four sites (`0x4A00`, `0x4A02`, `0x4A22`, `0x4A29`), all corrected 2026-08-02. The complementary
+plain-`std` set contains `0x4A27`, so the sweep discriminates.
+
+**Generalise it:** when deriving a length from a loop, confirm whether the bound is a *count* or an
+*end address*, and check every instruction between the base's initialisation and the loop for an
+update-form store.
+
+### A forward branch can skip a read entirely
+
+Reading an instruction stream straight through — honouring `bl` sites but walking past a `beq` —
+yields the **maximum** length and silently drops the gate. Four schemas declared unconditional
+fields their parsers only read conditionally.
+
+Sweeping for a flag test (`rldicl.` / `clrldi.` / `andi.`) immediately followed by a forward branch
+over a call to a read primitive returns exactly five sites. One of them, `0x4982`, was **already**
+modelled correctly with `if:` — so the convention existed and the others were per-schema oversights,
+not a gap in the format.
+
+### A contested width takes a third reading, and the third reading decides
+
+Not the newer pass, and not the more confident one. The adjudicator gets both readings, is told
+which is which, derives the length itself, and **must be able to return "both are wrong"**. It must
+also diagnose *what the incorrect reading mistook for the length* — that diagnosis is what turns one
+fix into a closed class, and it is how `0x4A00` and `0x4E11` were found at all: by sweeping for the
+cause rather than the symptom, in files nobody had flagged.
+
+This does not weaken the rule that widths are evidence. Speculative width edits remain forbidden;
+what is permitted is a *third traced reading* overturning a *first traced reading*.
 
 ### A `bl`-only entry test misses tail calls
 

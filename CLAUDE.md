@@ -78,13 +78,17 @@ not an elimination if the thing varied could not have mattered.
 - `dev/docs/OBSERVED.md` — what was observed and verified against a real client, including hypotheses
   that turned out to be wrong. Read it before re-testing anything.
 - `dev/docs/PROTOCOL.md` — the TCP command protocol, command by command and byte by byte.
-- `dev/docs/FIELD_MAPPING.md` — **the mapping campaign**: the 44 packets we use that still carry
-  unknown fields, 178 of them, with the batching and the rules that keep it tier-1. The end state
-  is every field named and explained in its `.ksy`. Update the status column as batches land.
-- `dev/docs/PACKETS_NOT_OBSERVED.md` — **the parked set**: 19 commands whose byte layout and usage
-  are both unknown, plus the ten that get counted with them and why they should not be. None is
+- `dev/docs/FIELD_MAPPING.md` — **the mapping campaign**: every packet still carrying unknown
+  fields, with the batching and the rules that keep it tier-1. The end state is every field named
+  and explained in its `.ksy`. **Do not quote a coverage number from memory** — run
+  `python3 dev/tools/field_scoreboard.py`, which derives it from `dev/proto/` directly. As of
+  2026-08-02: 1,731 fields, 1,360 named, 189 explained, 182 bare. Also holds the *map now, build
+  later* scoping rule and the procedure for a contested field width.
+- `dev/docs/PACKETS_NOT_OBSERVED.md` — **the parked set**: commands whose byte layout and usage were
+  both unknown, plus the ten that get counted with them and why they should not be. None is
   reachable in ordinary play, so none can stall a client. Read it before re-deriving a coverage
-  number; the counting method is written down so the figure is reproducible.
+  number; the counting method is written down so the figure is reproducible. **Most of the original
+  19 have since been mapped** — the file's per-row descriptions are current, its framing is not.
 - `dev/docs/POST_LAUNCH.md` — **content we deliberately do not serve**, because it was not active
   on release day, plus findings that only make sense as later-version features. Not a to-do list —
   `BACKLOG.md` holds deferred *work*, this holds deferred *content* and the evidence a version
