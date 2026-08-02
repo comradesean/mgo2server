@@ -212,6 +212,49 @@ It did, twice over:
   (`0x4982`) was already modelled correctly with `if:`, so the convention existed and these were
   per-schema oversights.
 
+### One `bl` site, N executions — a loop read as a single field
+
+The mirror image of the `stdu` class: that one **over**-counts a loop, this one **under**-counts it.
+A parser contains one `bl` to a read primitive, so one field gets declared — but a backward branch
+below it makes that single site execute eight times, and eight payload bytes are consumed.
+
+```
+0xD5A6E8  addi r29,r1,112          ; cursor
+0xD5A6FC  bl 0xd5cb8c   -> r29     ; ONE bl SITE...
+0xD5A6F8  addi r29,r29,1
+0xD5A704  addi r0,r1,120
+0xD5A718  bne cr6,0xd5a6ec         ; ...EIGHT EXECUTIONS
+```
+
+**The arbiter is the wire cursor, not the instruction text.** `0xD5CB8C` reloads `[r3+1108]`, adds
+one and stores it back on every successful call, so counting calls is counting bytes. Three schemas
+(`0x4E21`, `0x4E22`, `0x4E23`) declared 8-byte packets that are 15.
+
+**Swept and closed.** Over `0xD33000`–`0xD5D000`, every backward branch whose body calls a read
+primitive: **72 loops**. Discarding the size-driven ones (those calling `0xD5CEB0`) and the shared
+sub-parser `0xD4364C`, the fixed-count remainder spans 25 commands — and every one already models
+its loop with a `repeat` or a `size:` block. The three above were the only live members, missed
+because they were the newest files in the tree.
+
+### A signed type whose only support is the primitive's address
+
+`0xD5CC64` and `0xD5CCD8` are **encoding-identical** — same bound check, same byte-assembly loop,
+same return — differing only in two branch displacements by the function offset. Neither is a signed
+accessor. **Signedness comes from the caller**: a reload with `lwa`, or comparison against
+known-negative constants. Never from which of two byte-identical functions the compiler emitted.
+
+`0x4e10` is its own proof: six adjacent slots on one object, `trailing_word_0` declared `u4` because
+it happens to be read by one twin, and `trailing_word_1..5` declared `s4` because they are read by
+the other.
+
+**Watch for the laundered form.** The same claim restated in caller-side language — *"the caller
+reloads it with `lwa`"* — looks like independent evidence and is not, unless the `lwa` is actually
+there. In `0x4e12` it was not: the reload is `lwz` and the parser contains no `lwa` at all. Check
+the instruction before accepting the justification.
+
+**Not closed.** `mgo2_cmd_4b75_s2c.ksy`'s `unknown_58` is a known live member awaiting its own
+adjudication.
+
 The one class that **cannot** be swept mechanically is a repeat count, because the discriminator is
 semantic: `0x4A20`'s "count" was reloaded at the top of every iteration, which is precisely what a
 trip count looks like, but it only fed address arithmetic — the real bound was four instructions
