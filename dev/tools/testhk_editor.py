@@ -17,13 +17,15 @@ The format, read instruction by instruction out of the loader at ``0x7F94B8``:
               Bits 2-7 and bytes 1-15 are read and never referenced.
               There is NO magic, version, count, length or checksum. The only validation in
               the whole header path is that the read returned exactly 16 bytes.
-    then 12x  <string bytes> 0x00      NUL-terminated, read one byte at a time
+    then 16x  <string bytes> 0x00      NUL-terminated, read one byte at a time
+                                       (12x on the release-day disc build)
               <2 bytes>                BIG-endian port -- used for slots 0 and 1 only,
                                        read and discarded for slots 2-11, but MANDATORY:
                                        omit them and the loader eats the next record's
                                        first two characters as a port.
 
-Minimum file: 16 + 12*3 = 52 bytes. Nothing after the twelfth record is read.
+Minimum file: 16 + 16*3 = 64 bytes for 1.36 (was 16 + 12*3 = 52 on the disc build).
+Nothing after the sixteenth record is read.
 
 **The port endianness is opposite to the disc.** The loader does ``lhz`` on the raw file bytes
 (``0x7F95C0``), so the file is big-endian: 15731 is ``3D 73``. The stage-resource path decodes
@@ -53,7 +55,10 @@ import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-#: What each of the twelve slots feeds, from the consumer trace.
+#: What each slot feeds, from the consumer trace.
+#:
+#: Slots 0-11 are the release-day disc build's table. Slots 12-15 exist ONLY in the 1.36 build,
+#: which reads SIXTEEN records -- see BUILD_1_36_SLOT_COUNT below and dev/docs/BUILD_1_36.md.
 SLOTS = (
 	("Gate server", "host only; port below. Read by the connect at 0x9462C0"),
 	("STUN server", "host only; port below. NAT port check"),
@@ -67,6 +72,11 @@ SLOTS = (
 	("MPT shop URL", "menu link"),
 	("Official site URL", "menu link"),
 	("Info service URL", "region info document"),
+	# --- 1.36 ONLY. The disc build reads twelve records and stops. ---
+	("[1.36] Commerce URL A", "returned raw by a getter at 0xAB35B4 (1.36 addr)"),
+	("[1.36] Commerce query base", "gets /query.html appended (0xEA632C cluster)"),
+	("[1.36] Product URL", "formatted %s?prod=%d (0xAC22CC); stock default http://127.0.0.1/"),
+	("[1.36] PSN update URL", "strncpy 511 then the shared HTTP entry (0x990234)"),
 )
 
 #: The stock tables, read off the disc (strres 28654-28691). Ports are the real values;
@@ -135,7 +145,27 @@ HEADER_BYTES = 16
 #: over it is a buffer overrun rather than a truncation.
 MAX_STRING = 255
 
-SLOT_COUNT = 12
+#: How many records the DISC build reads: `cmpwi cr7,r27,11` at 0x7F955C.
+DISC_SLOT_COUNT = 12
+
+#: How many the 1.36 build reads: `cmpwi cr7,r27,15` at 0x8EF324 (1.36 addresses).
+#: Corroborated structurally -- 1.36's port accessors sit at 4096 (16 * 256) where the disc build
+#: uses 3072 (12 * 256), and all four new indices have live call sites.
+BUILD_1_36_SLOT_COUNT = 16
+
+#: What this tool WRITES. Sixteen, because a 16-record file is correct for BOTH builds: the disc
+#: build reads the first twelve and stops, and never looks at the rest.
+#:
+#: A 12-record file is NOT correct for both. 1.36 consumes through record 11, tries record 12, hits
+#: EOF, and falls back to the string-resource table SILENTLY -- so the client dials the real Konami
+#: hostnames, nothing answers, and it reports 0703:00000000 with a ZERO code and no diagnostic.
+#: That is a whole debugging session; the asymmetry is the reason this default is 16 and not 12.
+SLOT_COUNT = BUILD_1_36_SLOT_COUNT
+
+
+#: Slot 14's own default inside the 1.36 binary (VA 0x00FE8718). Used to pad slots 12-15, for
+#: which no stock value exists on the disc.
+PLACEHOLDER_URL = "http://127.0.0.1/"
 
 
 class TesthkError(Exception):
@@ -144,7 +174,11 @@ class TesthkError(Exception):
 
 @dataclass
 class Table:
-	"""One ``d/testhk`` table: twelve strings, two ports, two header bits."""
+	"""One ``d/testhk`` table: sixteen strings, two ports, two header bits.
+
+	Sixteen because 1.36 reads sixteen; the disc build reads the first twelve and ignores the rest,
+	so one 16-record file serves both. See ``SLOT_COUNT``.
+	"""
 
 	hosts: list[str] = field(default_factory=lambda: [""] * SLOT_COUNT)
 	gate_port: int = 15731
@@ -155,7 +189,18 @@ class Table:
 	@classmethod
 	def stock(cls, region: str = "US") -> "Table":
 		hosts, gate, stun = STOCK[region]
-		return cls(hosts=list(hosts), gate_port=gate, stun_port=stun)
+		hosts = list(hosts)
+		# STOCK holds the twelve slots read off the DISC build's string resources. 1.36 adds four
+		# more (commerce / PS Store / PSN update), and we have no stock values for them because
+		# they live in the 1.36 patch's own scenerio.gcx, not on the disc.
+		#
+		# Pad with the loopback placeholder the binary itself carries as slot 14's default
+		# (VA 0x00FE8718 in 1.36). Loopback is the safe filler: those subsystems are not served
+		# here, and pointing them at the client's own machine makes them fail locally instead of
+		# reaching out to the internet or at us.
+		while len(hosts) < SLOT_COUNT:
+			hosts.append(PLACEHOLDER_URL)
+		return cls(hosts=hosts, gate_port=gate, stun_port=stun)
 
 	def problems(self) -> list[str]:
 		"""Every reason this table would not load, in file order."""
@@ -178,14 +223,27 @@ class Table:
 				found.append(f"{label} {port} is not a u16")
 		return found
 
-	def point_at(self, host: str) -> "Table":
+	def point_at(self, host: str, include_commerce: bool = False) -> "Table":
 		"""Return a copy with every host and every URL authority replaced by ``host``.
 
 		Slots 0 and 1 are bare hostnames. The rest are URLs, so only the authority is
 		swapped and the scheme and path are kept.
+
+		**Slots 12-15 are left on loopback unless ``include_commerce`` is set.** Those four exist
+		only in 1.36 and are the PS Store / PSN-update subsystem, which this server does not
+		implement. Slot 13 in particular is fetched from about ten call sites with ``/query.html``
+		appended, so answering it wrongly is a way to break a session that would otherwise work.
+		Loopback makes them fail on the client's own machine instead.
+
+		Set ``include_commerce=True`` deliberately when the goal is to *observe* what 1.36 asks
+		for -- the requests then land in the probe logs and can be mapped. That is a useful
+		experiment, but it is not the right default while merely getting a client connected.
 		"""
 		swapped = []
 		for index, text in enumerate(self.hosts):
+			if index >= DISC_SLOT_COUNT and not include_commerce:
+				swapped.append(PLACEHOLDER_URL)
+				continue
 			if index < 2 or "://" not in text:
 				swapped.append(host)
 				continue
@@ -357,10 +415,19 @@ def to_local_path(text: str) -> Path:
 def is_disc_usrdir(usrdir: Path) -> bool:
 	"""True if this looks like the DISC tree rather than the HDD install.
 
-	``o/di`` ships on the disc and is absent from the HDD install, so it is the cleanest
-	discriminator. ``PS3_GAME`` in the path is the corroborating hint.
+	**The discriminator is the PATH, not the presence of a file.** An HDD install always lives
+	under ``dev_hdd0/game/<TITLEID>/USRDIR``; the disc tree always lives under ``PS3_GAME/USRDIR``.
+	Those are structural and cannot both be true.
+
+	This used to test for ``o/di`` on the reasoning that it "ships on the disc and is absent from
+	the HDD install". **That is false and it cost a debugging detour on 2026-08-02.** A 1.36 HDD
+	install has ``o/di`` — hardlinked to the disc's copy, same inode, link count 2 — so the check
+	classified the correct target as the disc and refused to write to it. File presence is a
+	guess about how someone installed the game; the path is a fact about which tree you are in.
 	"""
-	return (usrdir / "o" / "di").is_file() or "PS3_GAME" in usrdir.parts
+	if "dev_hdd0" in usrdir.parts:
+		return False
+	return "PS3_GAME" in usrdir.parts or (usrdir / "o" / "di").is_file()
 
 
 def find_usrdir(hint: Path | None = None) -> Path | None:
