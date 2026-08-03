@@ -86,10 +86,23 @@ seq:
         (`0x8842D8`). Peers land that on record key 350 — the 4-bit field CLIENT_STORE.md §3a
         already records, now with its source instruction.
       - **`0x8BA540`**: `lbz r0,13096(r3); cmpwi cr7,r0,3; beq 0x8BA5D8` — **the value 3 is
-        special**, and only 3. That arm checks `0x883F20(...)+660 == 1` and then runs two level
-        walks through `0x6F9260`, one on a list entry's `+44` and one on `0x907D98(session)`,
-        which is `getLocalProfile(session)->[288]` = this packet's `experience`. So it selects a
-        level-comparison display path.
+        special**, and only 3. [CORRECTED 2026-08-03 — the earlier "level-comparison display
+        path" reading had the branch backwards: `0x8BA5D8` is the common *continuation*, and
+        the level walks are one of the gates the value-3 test skips.] The function is
+        `0x8BA1A0` (OPD 0x101B158), the **join-precondition check of the hosted-game browser**
+        (one caller `0x8BB604`, state 10 of the browser machine `0x8BA71C`, the screen that
+        sends `0x4300` and reads `0x4302` entries via `0xD453F8`; strings 299 "There is no
+        comment." / 300 "This game may contain players who are far above your level…"). When
+        this byte is 3 the check skips **three gates**, each with its own error via
+        `0x885A08`: capacity (`player_count >= max_players`, **3604**), the level restriction
+        (commonB bit 4; `base - tolerance <= localLevel <= base + tolerance` in LEVEL units,
+        the walks through `0x6F9260`; **3605**), and the host's block list (`0x4302`
+        `selector_flags` bit 1; **3606**). It does NOT skip the string-300 level-gap advisory
+        in the common tail (`average_experience` vs `localLevel + 2`, gated on
+        `0x883F20(...)+660 == 1`). **So: value 3 exempts the local account from the host's
+        join restrictions.** This is the field's first non-cosmetic consequence, and it is
+        LIVE — this packet is where the client learns the value, and we send 0, which the
+        predicate bank below treats as "no privilege": the right value.
 
       Rejected on provenance: `0x4148C0 stw r0,13096(r9)` is one store in a dense run of `stw`s at
       12944..13100 stride 4 — a u32 array in an engine struct, and incompatible with `+13097` being
@@ -141,6 +154,17 @@ seq:
       different construction, and 0/1 the default. Per CLAUDE.md's elimination rule this is a valid
       experiment precisely because the domain being probed (2 and 3) is the domain the readers
       distinguish; a fingerprint outside 0..15 would take the default arm and prove nothing.
+
+      [2026-08-03] A second, cheaper experiment now exists for value 3, needing no feature bit
+      and no second observer: host a game from client A with a level limit that excludes
+      client B (`0x4310` level-limit base/tolerance), or fill it to `max_players`. With wire
+      `0x028` = 0 on B, the browser join must raise 3605 (or 3604); redeploy with 3 and the
+      error must not appear. Vary ONE gate per run — the three gates share the single bypass,
+      so opening all of them at once cannot tell them apart. The remaining open question is
+      which identity the nibble encodes (the inferential reading — a privilege nibble, 3 =
+      restriction-exempt, 2 = nameplate-only second class — is argued at `0x4221`'s copy of
+      this field); no string in the ELF or the 28,693 disc lobby resources names a
+      GM/Referee/Observer/Instructor nameplate, so the ELF is exhausted short of a name.
   - id: friend_ids
     type: u4
     repeat: expr

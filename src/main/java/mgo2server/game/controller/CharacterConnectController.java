@@ -443,6 +443,10 @@ public class CharacterConnectController implements IGameController {
 			// The client shows the previous login alongside the current one.
 			.writeInt(now - 1)
 			.writeInt(now)
+			// Wire 0x028 is the privilege nibble [ELF 2026-08-03]: 3 exempts this account from
+			// hosts' join restrictions (capacity 3604 / level limit 3605 / block list 3606) and
+			// 2 and 3 select distinct in-game nameplates. Zero means none of that — the checked-
+			// correct default; any other value is operator policy. See mgo2_cmd_4101_s2c.ksy.
 			.writeZero(1);
 
 		// Friend and blocked lists: fixed-width regions of 4-byte ids, filled from the stored

@@ -27,7 +27,7 @@ doc: |
   | --- | --- | --- |
   | `0x905E00` | `T+0x124` | `grade_points`, `"%s (%d)"`, gated on feature bit 2 |
   | `0x905F28` | `T+0x120` | `experience` -> `0x6F9260` -> **LEVEL**, `"%d"`, clamped to 99 |
-  | `0x90606C` | `T+0x484` | a bare `"%d"`, gated on feature bit 2 |
+  | `0x90606C` | `T+0x484` | `total_rewards`, `"%d"` under label string 74 "TOTAL REWARDS", gated on feature bit 2 |
   | `0x9060EC` | `T+0x494` | `play_time_seconds`, `"%.2d:%.2d:%.2d"` |
   | `0x906270` / `0x906320` | `T+0x1EA5` | `worn_title` sprite and title text |
   | `0x9063F4` / `0x906404` | `T+0x1AA0` / `T+0x1AB5` | clan id and membership state |
@@ -40,13 +40,17 @@ doc: |
   struct shape.
 
   FEATURE BIT 2 GATES TWO OF THIS CARD'S SLOTS. `featureBit(ctx, n)` is `0xD382F8`
-  (`ctx[0x117D0 + n/8] >> (n&7) & 1`, and it returns 0 for any n > 5). The card calls it with
-  n = 2 at `0x905E20` (for `grade_points`) and `0x905FEC` (for `unknown_1e`); when the bit is
-  clear both elements are filled with string 3 — a single space — and the icon beside
-  `unknown_1e` gets sprite 3 instead of 74. **We send a zero feature byte in `0x4101`, so
-  neither of those two slots has ever been on screen.** GATES.md §1 previously listed one
-  consumer of bit 2 (the clan-roster column); these are the second and third. Release-day
-  scope: do not open it to see what they say.
+  (`ctx[0x117D0 + n/8] >> (n&7) & 1`, and it returns 0 for any n > 5). [CORRECTED 2026-08-03]
+  The card calls it with n = 2 at **three** sites, not two: `0x905E20` (the GRADE *value*),
+  `0x905EC8` (the GRADE *label*, previously unrecorded) and `0x905FF0` (the TOTAL REWARDS
+  label+value; `0x905FEC` is the argument load `lwz r3,100(r31)`, not the `bl`). When the bit
+  is clear each element is filled with string 3 — a single space. The earlier "sprite 74 /
+  sprite 3" reading was wrong: those are lobby STRING ids resolved by `0x8E0C24` (74 = "TOTAL
+  REWARDS", 58 = "GRADE"), the same resolver as every label on the card. **We send a zero
+  feature byte in `0x4101`, so none of these slots has ever been on screen.** Bit 2 is the
+  **GRADE/REWARDS feature** — 23 call sites image-wide; see `total_rewards` for the decisive
+  ones (the "Reward Shop" menu row and the ranking-help variant). Release-day scope: do not
+  open it to see what they say.
 
   THE LEVEL TABLE IS NOT IN THE ELF. `0x6F9260(exp)` counts entries of a 128-entry u32 array
   that are `<= exp`, stopping at the first zero or the first entry greater than `exp`. The
@@ -120,18 +124,50 @@ seq:
         (`clrlwi r29,r29,28`), OR'd with a bit-5 term derived from `0x9066FC` (settings byte 0,
         bits 4-5), stored to **announce +2** at `0x8842D8`. Peers land that on record key 350,
         the 4-bit field CLIENT_STORE.md §3a records.
-      - `0x8BA540` `lbz r0,13096(r3); cmpwi cr7,r0,3; beq 0x8BA5D8` — **only the value 3 is
-        special**; that arm runs two level walks through `0x6F9260`, so it selects a
-        level-comparison display path.
+      - `0x8BA540` `lbz r0,13096(r3); cmpwi cr7,r0,3; beq 0x8BA5D8` — fully traced 2026-08-03,
+        see below. (The earlier "selects a level-comparison display path" reading was
+        incomplete: 0x8BA5D8 is the common continuation, and the level walks are one of the
+        three gates the test skips.)
       - `0xD3C288` (`0x4101` parser), `0xD3D948` (this parser), `0xD3EB4C` (`0x4103` parser) —
         writers.
       - `0x4148C0 stw r0,13096(r9)` — rejected on provenance: one store inside an uninterrupted
         run of `stw`s at 12944..13100 stride 4, i.e. a u32 array in an unrelated engine struct,
         which is incompatible with 13096 being an independently addressed byte.
 
-      No name is available at tier 1: nothing in the image says what the nibble counts, and the
-      only distinguished value is 3. **The card itself never reads it** — no `(r25)` load at
-      displacement 13096 exists in `0x905BB4`-`0x906670`. We send 0.
+      **[ELF 2026-08-03] What value 3 does: it exempts the LOCAL account from the host's join
+      restrictions.** `0x8BA540` sits in `0x8BA1A0` (entry; OPD 0x101B158), the
+      join-precondition check of the hosted-game browser — one caller, `0x8BB604`, state 10 of
+      the browser state machine `0x8BA71C`; the screen sends `0x4300` from state 1, reads
+      `0x4302` entries via `0xD453F8`/`0xD45450`, and its strings are lobby 299 "There is no
+      comment." and 300 "This game may contain players who are far above your level of
+      strength…". When the byte is 3 the test branches straight past three gates, each of
+      which otherwise raises its own error via `0x885A08`:
+
+      * capacity — `player_count` (entry +0x1F) >= `max_players` (+0x1C), error **3604**;
+      * level restriction — enabled by commonB bit 4, `base - tolerance <= localLevel <=
+        base + tolerance` in LEVEL units (`0x907D98` = local experience, then `0x6F9260`),
+        error **3605**;
+      * the host's block list — `selector_flags` bit 1, error **3606**.
+
+      It does NOT skip the string-300 level-gap advisory, which runs in the common tail off
+      the entry's `average_experience` (threshold `localLevel + 2`).
+
+      **Both identified readers take their base from `0xD3A094`, the LOCAL block** — so on
+      THIS packet the byte is in exactly the position `beginner_flag` is in: inert on the card
+      (no `(r25)` load at displacement 13096 exists in `0x905BB4`-`0x906670`), named by offset
+      bijection from `0x4101`, and what we send here cannot affect our own join gates. The
+      live copy is `0x4101` wire `0x028`; the semantics above apply there, and we send 0 —
+      the right value, since the four predicate thunks distinguish only 2 and 3.
+
+      Still no tier-1 name for the nibble itself: value 2's sampled readers (`0x9D4C2C` in the
+      emblem manager, `0xA2FC94`, `0x9FC6A0`) only select nameplate/HUD element hashes, and no
+      string in the ELF or the 28,693 disc lobby resources labels a nameplate with a
+      GM/Referee/Observer/Instructor status. The coherent-but-inferential reading — a
+      privilege nibble, 3 = exempt from host join restrictions, 2 = a second class with
+      nameplate treatment only — stays out of the field id: naming the field after one value's
+      effect would be the perks-field mistake in the other direction. The open question is
+      which identity the nibble encodes; the deciding experiments (we control the input, via
+      `0x4101` wire `0x028`) are recorded in `mgo2_cmd_4101_s2c.ksy`'s `unknown_028`.
   - id: beginner_flag
     type: u1
     doc: |
@@ -153,10 +189,12 @@ seq:
       gate above reads the local one, so what we send here cannot affect our own lobby entry.
       It is named by the offset, not by a consumer on this screen. See LOBBIES.md §"nothing
       sets profile+13097" for the live half of the story.
-  - id: unknown_1e
+  - id: total_rewards
     type: u4
     doc: |
-      [UNKNOWN — one reader, and it is held closed by a feature bit] Wire 0x1e -> dest T+0x484.
+      [ELF 2026-08-03 — named by its own label element] Wire 0x1e -> dest T+0x484. **The card's
+      "TOTAL REWARDS" figure.** Formerly `unknown_1e`; the identification was blocked by one
+      misreading — "sprite 74" — corrected below.
 
       **Exactly one reader in the whole image.** All 178 instructions in .text
       (`0x10230`-`0xDE9328`) at displacement 1156 were listed and classified in batch 3a — not
@@ -164,45 +202,47 @@ seq:
       is `0x90606C lwz r5,1156(r25)`, in this card's own popup builder, with `r25` from
       `bl 0xD3A0AC` at `0x905BB8`. The `0x87CExx`-`0x87EFxx`, `0x4Axxxx` and `0xC9xxxx`
       clusters are `stw`/`lwz` pairs on unrelated objects, and `0xD3D980` is this packet's own
-      parser write.
+      parser write. That enumeration stands unchanged; what changed is reading the label.
 
-      What that reader does: `0x905FEC` calls `featureBit(session, 2)`. **Bit set** — icon
-      element `0x0059602A` gets sprite 74 and element `0x00426795` gets `sprintf("%d", value)`
-      into an 11-byte buffer. **Bit clear** — sprite 3 and string 3, which is a single space.
-      We send a zero feature byte, so this slot has never been rendered and no live observation
-      of it exists or can exist without opening the bit.
+      **The label: element `0x0059602A` is not an icon and 74 is not a sprite — it is a lobby
+      STRING id**, resolved by `0x8E0C24` against the set `[2f0293] $strres:9789..11033`
+      (AUTOMATCH.md §10's method): 57 "LEVEL", 58 "GRADE", 59 "GRADE POINT", **74 "TOTAL
+      REWARDS"**, 3 " " — the same single-space placeholder this doc already recorded
+      independently, which is one of three cross-checks made before using the mapping (the
+      others: ids 299/300 land exactly where `0x8BA1A0` uses them, and ids 251/260 reproduce
+      PROTOCOL.md's automatching subtype-2 labels).
 
-      CORRECTION — the claim that this is the card's LEVEL is wrong. OBSERVED.md (2026-07-29,
-      "SOLVED: 0x4105 matrix 0 memsets the cell") states *"The card's LEVEL is column 13 of the
-      same row (`T+0x484`)"*. The card's LEVEL is computed from `experience` at `T+0x120`
-      through `0x6F9260` (see that field); `T+0x484` is printed bare, as `"%d"`, and only when
-      feature bit 2 is set. The arithmetic in that note is untouched — `T+0x484` really is
-      `0x4105` matrix index 0, memory row 11, column 13 (`312 + 11*72 + 13*4`), and `0x4105`'s
-      index-0 memset of `T+0x138`+3456 really does clear it — but the identification is not.
-      The server writing the level into that column is mislabelled, not harmful.
+      The card builds three label/value pairs back to back in `0x905E00`-`0x90606C`, each
+      label set in the SAME conditional arm as its value — pairing by construction, not
+      adjacency: `0x00596028` string 58 GRADE / `0x00426794` `grade_points`; `0x00596029`
+      string 57 LEVEL (ungated) / `0x00426793` level-from-experience; **`0x0059602A` string 74
+      TOTAL REWARDS / `0x00426795` this field**, `sprintf("%d")` (format literal `0xE2E3F0`
+      via `*(0xFF0258-32708)`) into an 11-byte buffer.
 
-      No tier-1 name. Both bit-2-gated numeric slots found so far (this one and `0x4b54 +0x30`
-      in the clan roster) are unnamed for the same reason: a quantity that has never been on
-      screen cannot be identified from a renderer that only formats it.
+      **Feature bit 2 is the GRADE/REWARDS feature** [ELF 2026-08-03]. 23 `featureBit(ctx,2)`
+      sites image-wide; the decisive ones: `0x8D8A78` — bit set appends a PERSONAL MENU row
+      built from strings 930 "Reward Shop" and 932 "Exchange Rewards for bonuses." (resource
+      group `mgo2_res_myscore`) — and `0x88F5E4`, which selects `RANKING_HELP` vs
+      `RANKING_HELP2` in the ranking screen; plus the clan-roster column (`0x4b54 +0x30`) and
+      one stats display-list row (`0x91AB74`-`0x91AB8C`: bit clear drops exactly one row). One
+      coherent post-launch feature, and TOTAL REWARDS sits squarely inside it. The bit stays
+      closed on release day (GATES.md §1); we send 0 here, which is right while nothing can
+      render it and we serve no rewards system.
 
-      **[2026-08-01] Re-examined and left as is; recording what would actually decide it, because
-      the negative here is already as good as a static negative gets.** The 178-instruction
-      enumeration is the strongest form of evidence this campaign has produced and there is nothing
-      to add to it: one reader, gated, and the gate is closed. What is missing is not analysis, it
-      is an observation, and only one experiment can produce it — **open feature bit 2 on a test
-      account, then fingerprint `T+0x484` with distinct values across several cards and read the
-      slot that appears beside sprite 74.** Two cautions, both from this batch's rules:
+      CORRECTION kept — the claim that this is the card's LEVEL is wrong. OBSERVED.md
+      (2026-07-29, "SOLVED: 0x4105 matrix 0 memsets the cell") states *"The card's LEVEL is
+      column 13 of the same row (`T+0x484`)"*. The card's LEVEL is computed from `experience`
+      at `T+0x120` through `0x6F9260`; `T+0x484` is this separate, bit-2-gated figure. The
+      arithmetic in that note is untouched — `T+0x484` really is `0x4105` matrix index 0,
+      memory row 11, column 13, and `0x4105`'s index-0 memset really does clear it — but the
+      identification is not.
 
-      * The value is printed bare with `"%d"` into an **11-byte** buffer, so it has no units and no
-        clamp to give it away; the fingerprint must be chosen to be recognisable on its own
-        (something like `123456`, not a plausible statistic).
-      * Feature bit 2 also opens the clan-roster column `0x4b54 +0x30`. Open it for one experiment
-        and both slots change at once, so vary **one** of them per run or the two cannot be told
-        apart — this is exactly the "one process emits both" trap FIELD_MAPPING.md records from
-        batch 1.
-
-      Bit 2 is a release-day gate we deliberately send closed (`GATES.md` §1). Opening it for a
-      test is not a proposal to serve it.
+      Residual open question, now about a *named* quantity: "TOTAL REWARDS" does not say
+      earned-to-date vs current balance ("REWARDS", "RP" and "RWD" exist as separate strings
+      61/62/67). The live experiment recorded on 2026-08-01 still decides that — open bit 2 on
+      a test account, fingerprint this slot with a recognisable value like `123456`, and vary
+      only ONE bit-2 slot per run (the clan-roster column opens with the same bit) — but it is
+      now confirmation of a label rather than a hunt for one.
   - id: play_time_seconds
     type: u4
     doc: |
@@ -359,6 +399,9 @@ seq:
 
       What the quantity IS remains unknown — the 24-entry table holds resource hashes, not
       strings, and the name is inherited from `0x4101` by offset, which is exactly what this
-      file's rule 4 permits and no more. We send 0 here while `0x4129` mirrors `experience`
+      file's rule 4 permits and no more. [ELF 2026-08-03] The inherited name now has a
+      presentation-level confirmation: the slot's own label element `0x00596028`, set in the
+      same conditional arm at `0x905EA4`, renders lobby string 58 = **"GRADE"** (string 59 in
+      the same set is "GRADE POINT"). We send 0 here while `0x4129` mirrors `experience`
       into it; that inconsistency is worth fixing, and it is a server bug rather than a
       protocol fact.

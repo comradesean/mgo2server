@@ -198,13 +198,33 @@ types:
           shows the ranking, not the labels.
       - id: level_limit_tolerance
         type: u1
-        doc: "[CONFIRMED] wire 0x23 -> T+0x26."
+        doc: |
+          [CONFIRMED] wire 0x23 -> T+0x26.
+
+          [ELF 2026-08-03] Units are LEVELS, not experience: the join-precondition check
+          `0x8BA1A0` (browser state 10) enforces `base - tolerance <= localLevel <=
+          base + tolerance` where localLevel = `0x6F9260(localExperience)` (`add` at
+          `0x8BA590`, `subf` at `0x8BA5C0`), raising error 3605 "Level restrictions are not
+          satisfied." The gate is enabled by `common_toggles` commonB bit 4 and is skipped
+          outright when the local privilege nibble (`0x4101` wire `0x028`) is 3.
       - id: level_limit_base
         type: u4
-        doc: "[CONFIRMED] wire 0x24 -> T+0x28. Capture-proven as a u32 in the 0x4310 push (at push offset 0xF8); an earlier u16-at-0x142 reading was a bug (OBSERVED.md)."
+        doc: |
+          [CONFIRMED] wire 0x24 -> T+0x28. Capture-proven as a u32 in the 0x4310 push (at push
+          offset 0xF8); an earlier u16-at-0x142 reading was a bug (OBSERVED.md).
+
+          [ELF 2026-08-03] In LEVEL units — see `level_limit_tolerance` for the `0x8BA1A0`
+          enforcement trace, a second independent reading agreeing with commonB bit 4 =
+          "level limit".
       - id: average_experience
         type: u4
-        doc: "[CONFIRMED] wire 0x28 -> T+0x2c. Average experience across current players."
+        doc: |
+          [CONFIRMED] wire 0x28 -> T+0x2c. Average experience across current players.
+
+          [ELF 2026-08-03] Confirmed as an EXPERIENCE value, not a level: `0x8BA5F0
+          lwa r3,44(r9); bl 0x6F9260` — the join check runs the level walker on it and
+          compares the result against `localLevel + 2` (`addi r3,r3,2` at `0x8BA620`) for the
+          string-300 "far above your level" advisory (confirm dialog `0x893E14`, state 11).
       - id: host_score
         type: u4
         doc: |
@@ -241,6 +261,13 @@ types:
           **Only bit 1 is established.** No other bit of this byte is tested anywhere. This is
           **not** the automatch screen — that is `0x93B4D0`-`0x93E000` and is server-matched
           (AUTOMATCH.md); this is a client-side "best entry" scan.
+
+          [ELF 2026-08-03] **Bit 1 is "the host has blocked you"**, upgrading "disqualifies
+          the entry" from effect to meaning: the join-precondition check `0x8BA1A0` tests the
+          same bit at `0x8BA5CC`-`0x8BA5D4` (`lbz r0,56`; `rldicl. 63,63`) and raises error
+          **3606 "You are on the host's Block List."** The picker's skip at `0x934568` is a
+          consequence of that, not a definition. The gate is skipped when the local privilege
+          nibble (`0x4101` wire `0x028`) is 3.
       - id: selector_tiebreak
         type: u2
         doc: |

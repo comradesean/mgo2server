@@ -388,9 +388,13 @@ public class SocialGameController implements IGameController {
 		// level 0 everywhere, which was the same answer unrecognised: all four were under the first
 		// threshold.
 		buffer.writeInt((int) experience);                        // [CONFIRMED] wire 0x18, experience
-		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x1c
-		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x1d
-		buffer.writeInt(0);                                       // [UNKNOWN] wire 0x1e
+		// Wire 0x1c is the privilege nibble (0x4101 wire 0x028's slot on the viewed player) and
+		// wire 0x1e is total_rewards, the card's bit-2-gated "TOTAL REWARDS" figure. Both are
+		// inert here — 0x1c's readers use the LOCAL block and feature bit 2 is closed — and zero
+		// is the checked-correct value for each. See mgo2_cmd_4221_s2c.ksy [2026-08-03].
+		buffer.writeByte(0);                                      // wire 0x1c, privilege nibble (viewed copy, inert)
+		buffer.writeByte(0);                                      // wire 0x1d, beginner_flag (viewed copy, inert here)
+		buffer.writeInt(0);                                       // wire 0x1e, total_rewards (feature bit 2 closed)
 		buffer.writeInt((int) playSeconds);                       // play time, seconds
 		buffer.writeByte(0);                                      // [UNKNOWN] wire 0x26
 		BufferUtil.writeString(buffer, comment == null ? "" : comment,
