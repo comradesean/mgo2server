@@ -13,10 +13,17 @@ worse than an obviously wrong one, because nothing about it looks wrong.
 **`dev/ref/MGO2 1.36 (decrypted).elf` is not stock 1.36. It was deliberately patched**, per the
 operator, *"with the express intent to bypass connections. They may have hardcoded something."*
 
-Proof, not supposition: the game's own download manifest declares `MGO2.SELF` at exactly
-**19,615,992** bytes with HMAC-MD5 **`70f524ddfad388a2283139a64c43301d`**. This file is exactly that
-size and hashes to **`e46930f921b8dd8509d92d6416604e74`**. Right size, different content — an
-in-place byte patch that preserved length.
+**The patch is now LOCALISED — see "What the patch is" below.** It is a PRX loader injected into
+the CRT startup at VA `0x10494`, and the plugin it loads is **not installed**, so it is inert on this
+machine.
+
+*Superseded reasoning, kept because it shows which argument is the weak one:* the download manifest
+declares `MGO2.SELF` at exactly **19,615,992** bytes with HMAC-MD5
+**`70f524ddfad388a2283139a64c43301d`** while this file hashes differently. That was the original
+evidence, and it is the **weaker** of the two available — all 234 manifest entries verified by
+`dev/tools/parse_dl_manifest.py` carry flag byte `0x00`, and `MGO2.SELF` is the **sole entry with
+flag `0x06`**, so the one entry whose digest semantics are unvalidated is the one that mismatched.
+Cite the instruction stream at `0x10494`, not the hash.
 
 **So every finding in this file carries an unresolved question: is it 1.36, or is it the patch?**
 Findings in code the patcher did not touch are genuine 1.36; findings inside patched code describe
@@ -40,6 +47,89 @@ the least likely of these to be patched: it is corroborated by three independent
 the loop bound, the port-array offset moving 3072 → 4096, and four new indices having live call
 sites — and a patcher bypassing connections has no reason to *widen* a table. The login-path
 findings are the most exposed, because "bypass connections" points directly at them.
+
+## What the patch is: an injected PRX loader in the CRT startup
+
+**1.36 VA `0x10494`–`0x104FC`** — 108 bytes, 27 instructions, sitting in `__start`'s callee between
+the last CRT init call and the call to `main`:
+
+```
+0x10494  lis   r3,256 ; ori r3,r3,29909   -> 0x010074D5 = "/dev_hdd0/game/BLUS30109/plugin.sprx"
+0x104a4  li    r11,480 ; sc                sys_prx_load_module(path, 0, NULL)
+0x104ac  ...                               builds an opt struct: size=40, level=1, entry=-1
+0x104d0  li    r11,481 ; sc                sys_prx_start_module(id, 0, &opt)
+0x104d8  ld    r11,80(r1) ; cmpdi cr7,r11,-1 ; beq   skip if entry is still the sentinel
+0x104e8  lwz r0,0(r9) ; mtctr ; lwz r2,4(r9) ; bctrl   call the PRX entry via its OPD
+0x1050c  bl    0x10e28                      main
+```
+
+**It loads an arbitrary SPRX off the HDD and calls it before `main`.** That is the whole
+mechanism — all behaviour change lives in an external plugin, which is exactly why a string scan
+found no hostnames and why no branch was flipped.
+
+Verified independently by the main session: `3c600100 606374d5` at file `0x494` is
+`lis r3,256; ori r3,r3,29909`, and `0x010074D5` holds `/dev_hdd0/game/BLUS30109/plugin.sprx`.
+
+**Four independent proofs it is hand-applied, not compiler output:**
+
+1. `sc` with `li r11,480` / `li r11,481` occurs **exactly once each in the entire 1.36 image** and
+   **never** in the disc build. Every other PRX operation in either build goes through library stubs.
+2. **Absolute `lis`/`ori` string addressing**, where both builds address strings TOC-relative — the
+   same function uses `lwz r3,-32732(r2)` four instructions earlier. Sweeping both images for
+   `lis`+`ori` pairs resolving into printable strings gives 82 hits in 1.36 and 83 in the disc build
+   (the control); **all 165 land mid-string on numeric constants except one** — this, landing on the
+   NUL-terminated start of the plugin path.
+3. **The string was written over compiler-ident padding and clipped its neighbour.** It abuts an
+   ident reading `" (GNU) 4.1.1 (SDK240, ...)"`. **717 idents in this build begin `GCC: (GNU)`;
+   exactly one is clipped, and it is the one abutting the injected string.**
+4. **Stranded original code.** `0x10530` and `0x10538` have **zero inbound branches** and jump back
+   into the middle of the injection. They are the overwritten original's cold-path blocks. The
+   function's register-restore epilogue, present in the disc build, is gone — space the patcher
+   reclaimed to fit 108 bytes under the size-preserving constraint.
+
+### The plugin is NOT installed, so the patch is inert
+
+There is no `plugin.sprx` anywhere under `dev_hdd0/game/BLUS30109/`. The loader tolerates that —
+`opt.entry` is pre-seeded to `-1` and checked before the `bctrl` — so the game proceeds to `main`
+normally. **The operator is running a plugin-loader build with the plugin absent**, i.e. whatever the
+patch was meant to do is not happening.
+
+**The standing caveat, if that ever changes:** a loaded plugin can hook anything at runtime. If
+`plugin.sprx` is ever installed, **no live observation from this client is trustworthy as "1.36
+behaviour"** — and nothing in the binary would show it.
+
+### Nothing recorded in this file sits in patched code
+
+The patched regions are `.text 0x10494-0x104FC`, rodata `0x10074D5-0x10074F8`, and data
+`0x121E458`. Every address recorded here — `0x8EF324`, `0x289218`, `0xAB35B4`, `0xAC22CC`,
+`0x990234`, `0xFDD7B0`, entry `0x11E7368` — is outside all three. **The 16-record host table, the
+four commerce slots and the 17-entry string-resource block are genuine 1.36.** No re-labelling
+needed.
+
+### The login path is NOT patched
+
+1.36's auth-reply parser at `0xD6ED3C` (found via the `xoris r0,r3,32881` / `cmpwi cr7,r0,2566`
+signature) normalized-diffs against the disc build with **every difference accounted for by register
+allocation**; no instruction added, removed or flipped. Same for `0xD6FCAC` and `0xD708B4`. So the
+login failure below is 1.36's own behaviour, not the patcher's.
+
+## KEEP THE REFERENCE IN SYNC — it drifted once already
+
+`dev/ref/MGO2 1.36 (decrypted).elf` is a **copy**. On 2026-08-02 the operator edited the running
+`MGO2.self` at 20:15, after the copy was taken at 19:58, and analysis briefly ran against a stale
+image. The 27-byte difference was the content-root string in `.data` at VA `0x121E458`:
+`/dev_hdd0/game/BLUS30109/USRDIR/o/` in the copy versus `/dev_bdvd/PS3_GAME/USRDIR/o/` in the
+running file.
+
+**Re-copy and re-check the md5 before trusting any 1.36 analysis.** Current, 2026-08-02:
+
+```
+e2eae0b9858be277e4ff70c55e507c42  dev/ref/MGO2 1.36 (decrypted).elf   (matches the running MGO2.self)
+42dba4a017d3c0bcf681e0bbf874c36a  dev/ref/MGO2 (decrypted).elf        (disc build)
+```
+
+That edit did **not** break the `d/testhk` override — the gate exchange succeeded at 20:25, ten
+minutes after it — so `d/testhk` is not resolved through that content-root string.
 
 ## Why we have it
 
@@ -158,6 +248,59 @@ choice rather than something inferred.
 Nothing in the server has been changed for 1.36 to date. The only 1.36-driven change so far is to
 `dev/tools/testhk_editor.py`, which is a client-side install tool, not the server, and whose output
 is valid for both builds.
+
+## SOLVED: login stops at dialog 0x5012 — a 1.36-only PSN entitlement gate
+
+**The server cannot fix this, because the failing step never reaches the server.**
+
+`FFFFFE03` is **not** a signed −509. It is a **packed pair** built at 1.36 `0xAC350C`:
+`code = (status << 8) | phase`. Low byte `0x03` = phase 3; `status << 8 = 0xFFFFFE00` so
+**status = −2**. (`-509` appears nowhere in the 1.36 image; the disc build has three
+`subfic ...,-509` and 1.36 has zero, which is the control that the sweep works.) Dialog `0x5012` =
+20498 is written by exactly one instruction image-wide, 1.36 `0xAC2F50`, and **does not exist in the
+disc build at all**.
+
+The state machine at 1.36 `0xAC2DA8` spawns a worker thread named **`psnupdatesvr`**
+(`0xEA8B68`) which queries PSN/NP for entitlement to the region's product id —
+`UP0101-BLUS30109_00` for BLUS30109. On RPCS3 with no real entitlement the lookup returns **zero
+entries** (`0xEA9090` / `0xEA9164`), the worker stores **−2** at `0xEA8C7C`, and the poller raises
+the dialog.
+
+The surrounding string block is **entirely absent from the disc build**: `MGOSHOP_TITLE`,
+`BUY_KAKUNIN_DOC`, `NO_BUY_DOC`, `JPY`/`USD`/`EUR`, `psnprodlist`, `/ticket.html`, `/rest.html`,
+`psnid`, and the three PSN product ids. This is **the MGO Shop**, added post-launch.
+
+### The way out is a switch we already had and did not understand
+
+The worker tests one bit before doing any work:
+
+```
+0xEA8BC0  rlwinm r0,r0,0,30,30    extract bit 0x2 of the host-table flag word (0x0187FF9C)
+0xEA8BC4  cmpwi  cr7,r0,0
+0xEA8BC8  beq    cr7,0xEA8FC0     CLEAR -> do the PSN work
+0xEA8BCC  li     r0,0             SET   -> return status 0, skip entirely
+```
+
+and that bit is set by **`d/testhk` header byte 0, bit 1**:
+
+```
+0x8EF358  ori    r0,r0,2
+```
+
+`testhk_editor.py` has carried that bit since it was written, labelled **"effect unknown"**. It is
+now `--skip-psn`, and its effect is documented on the `flag_bit1` field. No effect has been
+established for it on the disc build.
+
+### The lobby-list hypothesis was WRONG, and the control matters
+
+1.36's `0x2003` parser (`0xF02058`) is instruction-for-identical to the disc build's (`0xD362B0`)
+apart from **two immediates**: the list struct offset `1872 -> 1976`, and the entry-count bound
+**`31 -> 99`**, i.e. capacity **32 -> 100**. Record layout, field offsets, the 52-byte stride and the
+`memset` are byte-identical. Our 322 bytes / 7 entries at 46 bytes each is well inside both. The
+gate exchange completes normally and the client's `0x0003` is an ordinary disconnect, not a
+rejection.
+
+**Banked for a version toggle:** lobby-list capacity 32 -> 100, containing struct +104 bytes.
 
 ## Open
 

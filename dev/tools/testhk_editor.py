@@ -183,7 +183,28 @@ class Table:
 	hosts: list[str] = field(default_factory=lambda: [""] * SLOT_COUNT)
 	gate_port: int = 15731
 	stun_port: int = 3478
+	#: Header byte 0, bit 0. Effect not established on either build.
 	flag_bit0: bool = False
+
+	#: Header byte 0, bit 1. **On 1.36 this skips the PSN entitlement check.**
+	#:
+	#: Traced 2026-08-02. The header bit is ORed into the host-table flag word:
+	#:     1.36 0x8EF358:  ori r0,r0,2          <- this bit
+	#: and the PSN/MGO-Shop worker tests exactly that bit before doing any work:
+	#:     1.36 0xEA8BC0:  rlwinm r0,r0,0,30,30 <- extract bit 0x2
+	#:     1.36 0xEA8BC4:  cmpwi  cr7,r0,0
+	#:     1.36 0xEA8BC8:  beq    cr7,0xEA8FC0  <- CLEAR: do the PSN work
+	#:     1.36 0xEA8BCC:  li     r0,0          <- SET: return status 0, skip entirely
+	#:
+	#: Why that matters: on 1.36 the post-gate login runs a PSN/NP entitlement query for
+	#: UP0101-BLUS30109_00 in a worker thread named `psnupdatesvr`. On RPCS3 with no real
+	#: entitlement the query returns zero entries, the worker reports status -2, and the client
+	#: raises dialog 0x5012 with the packed code (status << 8) | phase = 0xFFFFFE03. Nothing the
+	#: SERVER sends can change that -- the query never reaches us. This bit is the game's own
+	#: documented-in-code way out.
+	#:
+	#: The GUI has called this "effect unknown" since the tool was written; that is now answered
+	#: for 1.36. No effect has been established on the disc build.
 	flag_bit1: bool = False
 
 	@classmethod
@@ -649,6 +670,10 @@ def run_cli(args: argparse.Namespace) -> int:
 		table = table.point_at(args.point_at)
 	if args.http:
 		table = table.force_http()
+	if args.skip_psn:
+		table = replace(table, flag_bit1=True)
+	if args.flag_bit0:
+		table = replace(table, flag_bit0=True)
 	if args.gate_port is not None:
 		table = replace(table, gate_port=args.gate_port)
 	if args.stun_port is not None:
@@ -699,6 +724,11 @@ def main(argv: list[str] | None = None) -> int:
 	parser.add_argument("--read", metavar="FILE", help="load a PLAINTEXT testhk instead of stock")
 	parser.add_argument("--point-at", metavar="HOST", help="replace every host/authority")
 	parser.add_argument("--http", action="store_true", help="downgrade every https:// to http://")
+	parser.add_argument("--skip-psn", action="store_true",
+		help="set header bit 1. On 1.36 this SKIPS the PSN/MGO-Shop entitlement check that "
+		     "otherwise blocks login with dialog 0x5012. No known effect on the disc build.")
+	parser.add_argument("--flag-bit0", action="store_true",
+		help="set header bit 0 (effect not established)")
 	parser.add_argument("--gate-port", type=int)
 	parser.add_argument("--stun-port", type=int)
 	parser.add_argument("--plain", metavar="FILE", help="write the plaintext here")
