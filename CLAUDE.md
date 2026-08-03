@@ -9,7 +9,7 @@ expensively. When deciding what the server should do, sources rank:
 
 1. **`MGO2.elf`** — the decrypted game binary (address index: `dev/docs/ADDRESSES.md`), at
    `PS3_GAME/USRDIR/o/MGO2.elf`. The only actual specification. Everything else is somebody's
-   reading of it.
+   reading of it. **But there are now TWO of them — see below, and never mix their addresses.**
 2. **A real client** — bytes observed from `BLUS30109` on RPCS3, or captures of the original
    Konami servers. Authoritative for behaviour, silent on intent.
 3. **Published standards** — RFCs and drafts, where the game implements one (the port check is
@@ -27,6 +27,44 @@ expensively. When deciding what the server should do, sources rank:
    "mgo2-server does X", they mean theirs, not ours. They target different
    client builds, and several of their behaviours are operator policy or outright hacks rather
    than protocol.
+
+### There are two tier-1 binaries, and their addresses are NOT interchangeable
+
+As of 2026-08-02 the project has two decrypted builds, both in `dev/ref/` (gitignored):
+
+| file | size | what it is |
+| --- | ---: | --- |
+| `MGO2 (decrypted).elf` | 17,373,376 | **release-day disc build** |
+| `MGO2 1.36 (decrypted).elf` | 19,615,992 | **1.36 patch build** |
+
+They differ from **byte 29 onward** — about 16 million bytes differ. They are *separate builds*, not
+one patched into the other. The disc build is 17.3 MB; 1.36 is 2.2 MB larger.
+
+**Everything written in this repo before 2026-08-02 describes the DISC build.** Every address in
+`ADDRESSES.md`, every address in every `.ksy`, every trace in `PROTOCOL.md` and `OBSERVED.md`. None
+of it transfers. `d/testhk`, to take one measured example, sits at VA `0xE0B588` in the disc build
+and `0xFDD7B0` in 1.36.
+
+The rules that follow, and they are not negotiable:
+
+- **Never quote an address without knowing which build it came from.** A disc address used against
+  1.36 will land in unrelated code and read as a plausible finding. This is the same failure mode as
+  the reference-server copying that has cost this project six regressions, and it is harder to spot.
+- **1.36 findings go in `dev/docs/BUILD_1_36.md`**, not into the disc-build docs. Keep them
+  quarantined until there is a deliberate decision to merge any of it.
+- **What DOES transfer is structure and method**: both builds use `file offset = VA − 0x10000` for
+  both LOAD segments, the same PPC64/OPD conventions, and — as far as anything has been checked —
+  the same protocol shapes. Treat a disc-build address as a *lead about where to look*, then
+  re-derive it in the target image.
+- **The cached disassembly** at the scratchpad's `mgo2.dis` is the **disc** build. Say which build
+  any new listing is for, in its filename.
+
+**Why 1.36 is worth the trouble.** A large block of this project's mapping is tier-1 only and marked
+*"cannot reach tier 2, because no available client build exercises this"* — the `0x49xx`
+team/tournament family, the `0x4Axx` tournament/survival subsystem, the `0x4Exx` Survival Match List.
+**1.36 is that missing build.** It is the version where the post-launch content is live, so it is the
+only way those mappings ever become live-confirmable. Mapping is not version-scoped even though
+*serving* is; see "Map now, build later".
 
 Tests should assert against tier 1 where a value is readable from the binary, and tier 2 where it
 is not. An assertion whose only authority is tier 4 is a regression guard, not a correctness
@@ -89,6 +127,10 @@ not an elimination if the thing varied could not have mattered.
   reachable in ordinary play, so none can stall a client. Read it before re-deriving a coverage
   number; the counting method is written down so the figure is reproducible. **Most of the original
   19 have since been mapped** — the file's per-row descriptions are current, its framing is not.
+- `dev/docs/BUILD_1_36.md` — **the 1.36 build, quarantined**. Everything known about the second
+  tier-1 binary, kept out of the disc-build docs on purpose so its addresses cannot leak in. Read it
+  before touching `dev/ref/MGO2 1.36 (decrypted).elf`, and put 1.36 findings there rather than in
+  `ADDRESSES.md`.
 - `dev/docs/POST_LAUNCH.md` — **content we deliberately do not serve**, because it was not active
   on release day, plus findings that only make sense as later-version features. Not a to-do list —
   `BACKLOG.md` holds deferred *work*, this holds deferred *content* and the evidence a version

@@ -1,5 +1,21 @@
 # Address index: where the important findings live in `MGO2.elf`
 
+> ## EVERY ADDRESS IN THIS FILE IS FOR THE **RELEASE-DAY DISC BUILD**
+>
+> `dev/ref/MGO2 (decrypted).elf`, 17,373,376 bytes. As of 2026-08-02 there is a second tier-1
+> binary — `dev/ref/MGO2 1.36 (decrypted).elf`, 19,615,992 bytes — and **none of these addresses
+> apply to it.** The two differ from byte 29 onward, ~16 million bytes in total; they are separate
+> builds, not one patched into the other.
+>
+> Using an address from this file against 1.36 lands in unrelated code and reads as a plausible
+> finding, which is worse than an obviously wrong one. 1.36 work belongs in `dev/docs/BUILD_1_36.md`.
+> See `CLAUDE.md`, "There are two tier-1 binaries".
+>
+> What transfers is method, not addresses: both builds use `file offset = VA − 0x10000` for both
+> LOAD segments, and the same PPC64/OPD conventions. Treat anything here as a lead about *where to
+> look* in the other image, then re-derive it there.
+
+
 Every load-bearing conclusion in this project is anchored to an address in the decrypted binary.
 Those anchors are the expensive part — a fact can be re-derived from a capture in an evening, but
 finding the function again costs a full disassembly pass. This page is the index.
