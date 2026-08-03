@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
@@ -45,7 +46,7 @@ public class HubGameControllerIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots)
 					values ('hub', 'x', :session, 3)
 					""")
-				.bind("session", SessionField.stored(TOKEN))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -76,7 +77,7 @@ public class HubGameControllerIT extends BaseGameClientServerIT {
 	private List<GamePacket> requestLobbyInfo() {
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		var replies = new ArrayList<GamePacket>();
 
@@ -161,7 +162,7 @@ public class HubGameControllerIT extends BaseGameClientServerIT {
 		var replies = new ArrayList<GamePacket>();
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		client.run(10, new ChannelInboundHandlerAdapter() {
 			@Override

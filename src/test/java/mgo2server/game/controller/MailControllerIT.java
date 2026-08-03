@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
@@ -78,7 +79,7 @@ public class MailControllerIT extends BaseGameClientServerIT {
 					values (:name, 'x', :session, 3)
 					""")
 				.bind("name", name)
-				.bind("session", SessionField.stored(token))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, token))
 				.executeAndReturnGeneratedKeys("id").mapTo(Long.class).one());
 
 		var id = jdbi.withHandle(handle ->
@@ -107,7 +108,7 @@ public class MailControllerIT extends BaseGameClientServerIT {
 	private List<GamePacket> exchange(long asCharaId, GamePacket... requests) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) asCharaId);
-		login.writeBytes(SessionField.of(tokens.get(asCharaId)));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, tokens.get(asCharaId)));
 
 		var replies = java.util.Collections.synchronizedList(new ArrayList<GamePacket>());
 		var sent = new int[] { 0 };

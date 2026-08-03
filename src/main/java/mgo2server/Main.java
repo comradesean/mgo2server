@@ -87,8 +87,12 @@ public final class Main {
 			}
 		}
 
+		// Both policies passed explicitly rather than letting the factory read the environment again:
+		// Config is the single source, it is the thing logged at startup, and a second read could
+		// disagree with what was logged.
 		GameServerFactory.createGameServer(services, config.gamePort(),
-			lobbyType, config.lobbyId(), config.lobbySubtype()).run();
+			lobbyType, config.lobbyId(), config.lobbySubtype(),
+			mgo2server.common.AutomatchPolicy.from(System::getenv), config.clientVersion()).run();
 	}
 
 	private static void runWeb(Config config, String[] args) {
@@ -98,7 +102,7 @@ public final class Main {
 		Migrations.migrate(database.dataSource());
 
 		var services = ServicesFactory.createServices(database.jdbi());
-		var webServer = WebServerFactory.createWebServer(services, database.dataSource());
+		var webServer = WebServerFactory.createWebServer(services, database.dataSource(), config.clientVersion());
 
 		var server = Server.loadServer(new ServerOptions().setPort(config.webPort()));
 		Jooby.runApp(args, server, app -> {

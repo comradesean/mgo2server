@@ -6,6 +6,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.GameClient;
 import mgo2server.TestDatabase;
 import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.AutomatchPackets;
 import mgo2server.game.BaseGameClientServerIT;
@@ -138,7 +139,7 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots)
 					values ('automatch', 'x', :session, 3)
 					""")
-				.bind("session", SessionField.stored(TOKEN))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -172,7 +173,7 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 
 		var session = Unpooled.buffer();
 		session.writeInt((int) charaId);
-		session.writeBytes(SessionField.of(TOKEN));
+		session.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		client = new GameClient(server.boundPort());
 		client.run(10, new ChannelInboundHandlerAdapter() {
@@ -227,7 +228,7 @@ public class AutomatchGameControllerIT extends BaseGameClientServerIT {
 			BiConsumer<ChannelHandlerContext, GamePacket> onPacket) {
 		var session = Unpooled.buffer();
 		session.writeInt((int) charaId);
-		session.writeBytes(SessionField.of(TOKEN));
+		session.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		client = new GameClient(server.boundPort());
 		client.run(timeoutSeconds, new ChannelInboundHandlerAdapter() {

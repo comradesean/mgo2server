@@ -11,6 +11,7 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.GameError;
 import mgo2server.game.controller.AccountGameController;
@@ -139,7 +140,7 @@ public final class TestClient implements AutoCloseable {
 		this.charaId = charaId;
 		var payload = Unpooled.buffer();
 		payload.writeInt((int) charaId);
-		payload.writeBytes(SessionField.of(token));
+		payload.writeBytes(SessionField.of(ClientVersion.V1_0, token));
 
 		send(new GamePacket(AccountGameController.CHECK_SESSION, payload));
 

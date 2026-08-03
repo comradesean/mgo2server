@@ -1,5 +1,7 @@
 package mgo2server.game.controller;
 
+import mgo2server.common.ClientVersion;
+
 import io.netty.buffer.Unpooled;
 import mgo2server.TestClient;
 import mgo2server.TestDatabase;
@@ -473,7 +475,7 @@ public class AutomatchMatchFormingIT extends BaseGameClientServerIT {
 					values (:username, 'x', :session, 3)
 					""")
 				.bind("username", username)
-				.bind("session", SessionField.stored(token(username)))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, token(username)))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());

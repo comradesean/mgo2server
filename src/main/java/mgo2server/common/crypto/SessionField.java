@@ -1,7 +1,11 @@
 package mgo2server.common.crypto;
 
+import mgo2server.common.ClientVersion;
+
 import java.nio.charset.StandardCharsets;
+import java.util.EnumMap;
 import java.util.HexFormat;
+import java.util.Map;
 
 /**
  * Reproduces the value the client presents in the {@code 0x3003} check-session packet.
@@ -35,14 +39,26 @@ public final class SessionField {
 
 	public static final int FIELD_LENGTH = 16;
 
-	/** First eight bytes of mode 6's derived context. */
-	private static final byte[] IV = {
-		(byte) 0xb0, (byte) 0x78, (byte) 0x1d, (byte) 0x53,
-		(byte) 0x65, (byte) 0xe3, (byte) 0x91, (byte) 0x0e,
-	};
+	/**
+	 * One Blowfish schedule per client version, loaded eagerly.
+	 * <p>
+	 * <b>This class reads no environment.</b> It used to select a key from
+	 * {@code MGO2SERVER_SESSION_KIT} on a {@code static final} field, which froze the choice at
+	 * class load and meant {@code SessionFieldTest}'s capture-proven 1.0 vectors would fail if that
+	 * variable were ever set in Maven's environment. The version now arrives as an argument, so both
+	 * builds can be exercised in one JVM and the 1.0 vectors are pinned regardless of configuration.
+	 * <p>
+	 * Both are small (4,168 bytes each) and loading both is simpler than loading lazily.
+	 */
+	private static final Map<ClientVersion, Blowfish> CIPHERS = ciphers();
 
-	/** The remaining 56 bytes of that context, expanded into a Blowfish schedule. */
-	private static final Blowfish CIPHER = Blowfish.loadResource("crypto/session.key");
+	private static Map<ClientVersion, Blowfish> ciphers() {
+		var map = new EnumMap<ClientVersion, Blowfish>(ClientVersion.class);
+		for (var version : ClientVersion.values()) {
+			map.put(version, Blowfish.loadResource(version.sessionKeyResource()));
+		}
+		return map;
+	}
 
 	private SessionField() {
 	}
@@ -50,24 +66,27 @@ public final class SessionField {
 	/**
 	 * Derives the check-session field for a login token.
 	 *
+	 * @param version which build's key to use; the IV and schedule are two halves of one derived
+	 *     context and are taken together from it
 	 * @param token the sixteen characters handed to the client in the login reply
 	 */
-	public static byte[] of(String token) {
+	public static byte[] of(ClientVersion version, String token) {
 		var plain = token.getBytes(StandardCharsets.ISO_8859_1);
 		if (plain.length != TOKEN_LENGTH) {
 			throw new IllegalArgumentException(
 				"Token must be %d characters, got %d".formatted(TOKEN_LENGTH, plain.length));
 		}
 
+		var cipher = CIPHERS.get(version);
 		var out = new byte[FIELD_LENGTH];
-		var previous = IV.clone();
+		var previous = version.sessionIv();
 
 		for (var offset = 0; offset < plain.length; offset += Blowfish.BLOCK_SIZE) {
 			var block = new byte[Blowfish.BLOCK_SIZE];
 			System.arraycopy(plain, offset, block, 0, Blowfish.BLOCK_SIZE);
 
 			var transformed = block.clone();
-			CIPHER.decrypt(transformed);
+			cipher.decrypt(transformed);
 			for (var i = 0; i < Blowfish.BLOCK_SIZE; i++) {
 				out[offset + i] = (byte) (transformed[i] ^ previous[i]);
 			}
@@ -83,8 +102,8 @@ public final class SessionField {
 	 * The same value as {@link #of(String)} in the form stored on the account, so a check-session
 	 * packet can be matched with a plain lookup instead of a reverse transform.
 	 */
-	public static String stored(String token) {
-		return HexFormat.of().formatHex(of(token));
+	public static String stored(ClientVersion version, String token) {
+		return HexFormat.of().formatHex(of(version, token));
 	}
 
 	/** Renders a field taken off the wire into the form {@link #stored} produces. */

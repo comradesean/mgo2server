@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.CharacterService;
 import mgo2server.game.BaseGameClientServerIT;
@@ -41,7 +42,7 @@ public class BeginnerLobbyIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots)
 					values ('player', 'x', :session, 3)
 					""")
-				.bind("session", SessionField.stored(TOKEN))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -77,7 +78,7 @@ public class BeginnerLobbyIT extends BaseGameClientServerIT {
 	private int checkSession(long charaId) {
 		var payload = Unpooled.buffer();
 		payload.writeInt((int) charaId);
-		payload.writeBytes(SessionField.of(TOKEN));
+		payload.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		var result = new AtomicReference<Integer>();
 

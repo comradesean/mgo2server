@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.game.GameError;
@@ -31,7 +32,7 @@ public class LoginIT extends BaseGameClientServerIT {
 					values (:username, 'x', :session, 3)
 					""")
 				.bind("username", username)
-				.bind("session", SessionField.stored(session))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, session))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -73,7 +74,7 @@ public class LoginIT extends BaseGameClientServerIT {
 	public void acceptsValidSession() {
 		var accountId = createAccount("player", TOKEN);
 
-		var replies = checkSession(accountId, SessionField.of(TOKEN));
+		var replies = checkSession(accountId, SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		assertThat(replies).hasSize(1);
 		assertThat(replies.get(0).getCommand()).isEqualTo(AccountGameController.CHECK_SESSION_RESULT);
@@ -98,7 +99,7 @@ public class LoginIT extends BaseGameClientServerIT {
 				.bind("id", accountId)
 				.execute());
 
-		checkSession(accountId, SessionField.of(TOKEN));
+		checkSession(accountId, SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		var current = TestDatabase.get().jdbi().withHandle(handle ->
 			handle.createQuery("select current_chara_id from account where id=:id")
@@ -113,7 +114,7 @@ public class LoginIT extends BaseGameClientServerIT {
 	public void rejectsUnknownSession() {
 		createAccount("player", TOKEN);
 
-		var replies = checkSession(1, SessionField.of("zzzzzzzzzzzzzzzz"));
+		var replies = checkSession(1, SessionField.of(ClientVersion.V1_0, "zzzzzzzzzzzzzzzz"));
 
 		assertThat(replies).hasSize(1);
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.INVALID_SESSION.result());
@@ -125,7 +126,7 @@ public class LoginIT extends BaseGameClientServerIT {
 		var accountId = createAccount("player", TOKEN);
 		var otherId = createAccount("other", "wxyz9876wxyz9876");
 
-		var replies = checkSession(otherId, SessionField.of(TOKEN));
+		var replies = checkSession(otherId, SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		assertThat(accountId).isNotEqualTo(otherId);
 		assertThat(replies).hasSize(1);
@@ -140,7 +141,7 @@ public class LoginIT extends BaseGameClientServerIT {
 				.mapTo(Long.class)
 				.one());
 
-		var replies = checkSession(accountId, SessionField.of("0000000000000000"));
+		var replies = checkSession(accountId, SessionField.of(ClientVersion.V1_0, "0000000000000000"));
 
 		assertThat(replies).hasSize(1);
 		assertThat(resultOf(replies.get(0))).isEqualTo(GameError.INVALID_SESSION.result());

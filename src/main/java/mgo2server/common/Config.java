@@ -20,7 +20,8 @@ public record Config(
 	int lobbySubtype,
 	String advertiseIp,
 	java.util.List<String> lobbyNames,
-	boolean lobbyBeginnersOnly
+	boolean lobbyBeginnersOnly,
+	ClientVersion clientVersion
 ) {
 	public static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/mgo2server";
 
@@ -52,7 +53,8 @@ public record Config(
 			integer(env, "MGO2SERVER_LOBBY_SUBTYPE", 0),
 			string(env, "MGO2SERVER_ADVERTISE_IP", ""),
 			names(env, "MGO2SERVER_LOBBY_NAMES"),
-			bool(env, "MGO2SERVER_LOBBY_BEGINNERS_ONLY")
+			bool(env, "MGO2SERVER_LOBBY_BEGINNERS_ONLY"),
+			ClientVersion.from(env)
 		);
 	}
 
@@ -93,10 +95,17 @@ public record Config(
 		}
 	}
 
-	/** Redacts the password so a Config can be safely logged. */
+	/**
+	 * Redacts the password so a Config can be safely logged.
+	 * <p>
+	 * {@code clientVersion} is included deliberately: it is logged once at startup by {@code Main},
+	 * which is the only place an operator can see which build this process is serving without
+	 * reading the environment back out of a container.
+	 */
 	@Override
 	public String toString() {
-		return "Config[dbUrl=%s, dbUser=%s, dbPassword=***, dbPoolMaxSize=%d, gamePort=%d, webPort=%d, lobbyType=%d, lobbyId=%d, lobbySubtype=%d]"
-			.formatted(dbUrl, dbUser, dbPoolMaxSize, gamePort, webPort, lobbyType, lobbyId, lobbySubtype);
+		return "Config[dbUrl=%s, dbUser=%s, dbPassword=***, dbPoolMaxSize=%d, gamePort=%d, webPort=%d, lobbyType=%d, lobbyId=%d, lobbySubtype=%d, clientVersion=%s]"
+			.formatted(dbUrl, dbUser, dbPoolMaxSize, gamePort, webPort, lobbyType, lobbyId, lobbySubtype,
+				clientVersion.label());
 	}
 }

@@ -238,16 +238,71 @@ One consequence for the fallback route: 1.36's regional string-resource block is
 `base + 12`). Release-day `scenerio.gcx` would be misread by a 1.36 client, so `HOSTS.md` section 4
 does not apply here unless re-derived against the 1.36 patch's own `scenerio.gcx`.
 
-## Requirement: version separation must be explicit, and it is not built yet
+## Version separation: BUILT 2026-08-02. One toggle, `MGO2SERVER_CLIENT_VERSION`.
 
-**Operator instruction, 2026-08-02: do not roll 1.36 behaviour into the v1 server.** When 1.36
-support is added it must be behind **a clear toggle in the env configuration** (`server.env`,
-alongside the existing `MGO2SERVER_*` settings), so the running version is a deliberate, visible
-choice rather than something inferred.
+```
+MGO2SERVER_CLIENT_VERSION=1.0     release-day disc build. THE DEFAULT, what v1 targets.
+MGO2SERVER_CLIENT_VERSION=1.36    the patch build.
+```
 
-Nothing in the server has been changed for 1.36 to date. The only 1.36-driven change so far is to
-`dev/tools/testhk_editor.py`, which is a client-side install tool, not the server, and whose output
-is valid for both builds.
+Unset or blank means `1.0`, so a deployment that has never heard of the toggle cannot serve a later
+build by accident. Anything else refuses to start, naming both alternatives and echoing the bad
+value. Every process logs its resolved version at startup (`Config[... clientVersion=1.36]`), so
+which build a container serves is visible rather than inferred.
+
+**`src/main/java/mgo2server/common/ClientVersion.java` is the complete list of what differs.** Every
+version-specific value is a column on that enum:
+
+| | `1.0` | `1.36` |
+| --- | --- | --- |
+| login reply, third field | `1000000` — one integer | ten integers, nine underscores |
+| session key resource | `crypto/session.key` | `crypto/session_136.key` |
+| session IV | `b0781d5365e3910e` | `35d5c38ed0110ea8` |
+
+**Adding a divergence means adding a column**, which cannot be done without answering *"what does
+1.0 do?"*. That is the anti-contamination mechanism, not a convention.
+
+### It replaced two ad-hoc variables, and the hazard was real
+
+`MGO2SERVER_LOGIN_PERKS` and `MGO2SERVER_SESSION_KIT` were `System.getenv` reads on `static final`
+fields — frozen at class load, unreachable from a test. `SessionFieldTest` and
+`AuthWebControllerTest` pin capture-proven **1.0** vectors while reading those same statics, and
+`server.env` set both to their 1.36 values. **Those tests would have failed the moment `server.env`
+reached Maven's environment**; they passed only because it is consumed by `compose.yaml` and never
+by `mvn`. Nothing enforced the separation.
+
+There was contamination inside the suite too:
+`AuthWebControllerTest.underscoreJoinedPerksWouldBeRejected()` asserted the underscore form is
+invalid — true for 1.0, and exactly what 1.36 requires.
+
+### The guards
+
+- **Default safety** — an empty environment yields `1.0`.
+- **`ClientVersionTest` pins the `1.0` row literal by literal**, so a change made "for 1.36" that
+  touches 1.0 fails here rather than becoming a wrong byte on the wire weeks later. It also pins the
+  1.36 row, asserts no two versions share a divergent value, and checks both key resources ship.
+- **A source scan** fails if any file under `src/main/java` reads either retired variable again. It
+  matches `getenv("...")` rather than the bare name — the first version matched the name and
+  immediately failed on `SessionField`'s own comment explaining why the variable is gone, which is
+  exactly the note a future reader needs.
+- **`SessionFieldTest` and `AuthWebControllerTest` now name their version explicitly**, so the pins
+  hold regardless of configuration. `SessionFieldTest` gained the 1.36 vector proven today
+  (`f5a0880bc3a40336` -> `8dde80bae7eac2753b7c89139395cb21`) and an assertion that the two builds
+  derive *different* fields from the same token.
+
+**Verified:** `mvn verify` is green at 249 unit / 241 integration, and **green again with
+`MGO2SERVER_CLIENT_VERSION=1.36` plus both retired variables exported** — an environment that would
+have broken the old suite. That run is the contamination check and is worth repeating by hand after
+any 1.36 work.
+
+### What this does not cover
+
+The two divergences still unmapped — "can't create a game" and "lobbies look slightly different" on
+1.36. The toggle is where their fix goes; it does not fix them. Candidate sites already identified:
+`GameDetails.FIXED_SIZE = 372` with its assert, `HostSettingsReply.SIZE = 0x15C`, and
+`AutomatchSettingsBlock.RULE_TIMERS` keyed 0..7 only. Also banked from the ELF: 1.36's lobby-list
+capacity is **32 -> 100** and its containing struct grew 104 bytes, though the server enforces no cap
+today.
 
 ## SOLVED: login stops at dialog 0x5012 — a 1.36-only PSN entitlement gate
 

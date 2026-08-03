@@ -1,6 +1,7 @@
 package mgo2server.game;
 
 import mgo2server.common.AutomatchPolicy;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.Services;
 import mgo2server.common.service.PresenceService;
 import mgo2server.game.ChannelRegistry;
@@ -34,7 +35,14 @@ public class GameServerFactory {
 	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
 			long lobbyId, int lobbySubtype) {
 		return createGameServer(services, port, lobbyType, lobbyId, lobbySubtype,
-			AutomatchPolicy.from(System::getenv));
+			AutomatchPolicy.from(System::getenv), ClientVersion.from(System::getenv));
+	}
+
+	/** Keeps the old five-argument shape working for callers that do not care about the version. */
+	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
+			long lobbyId, int lobbySubtype, AutomatchPolicy automatchPolicy) {
+		return createGameServer(services, port, lobbyType, lobbyId, lobbySubtype, automatchPolicy,
+			ClientVersion.from(System::getenv));
 	}
 
 	/**
@@ -43,7 +51,7 @@ public class GameServerFactory {
 	 * threaded through rather than read from a static the way {@code Policy} is.
 	 */
 	public static GameServer createGameServer(Services services, int port, LobbyType lobbyType,
-			long lobbyId, int lobbySubtype, AutomatchPolicy automatchPolicy) {
+			long lobbyId, int lobbySubtype, AutomatchPolicy automatchPolicy, ClientVersion version) {
 		var controllers = new ArrayList<IGameController>();
 
 		// The queue lives here rather than behind Services: it holds channels and per-lobby state,

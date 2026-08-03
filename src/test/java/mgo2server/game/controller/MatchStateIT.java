@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.CharacterService;
 import mgo2server.game.BaseGameClientServerIT;
@@ -53,7 +54,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 					values (:name, 'x', :session, 3)
 					""")
 				.bind("name", name)
-				.bind("session", SessionField.stored(TOKEN))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -139,7 +140,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 	private List<GamePacket> exchange(GamePacket... requests) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		// Appended from the netty read thread; synchronized so the returned snapshot cannot race
 		// a late read after the run times out (seen once as a ConcurrentModificationException).
@@ -317,7 +318,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		client.run(10, new ChannelInboundHandlerAdapter() {
 			@Override
@@ -684,7 +685,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 		var replies = new ArrayList<GamePacket>();
 
 		client.run(10, new ChannelInboundHandlerAdapter() {
@@ -760,7 +761,7 @@ public class MatchStateIT extends BaseGameClientServerIT {
 
 		var login = Unpooled.buffer();
 		login.writeInt((int) charaId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 		var replies = new ArrayList<GamePacket>();
 
 		client.run(10, new ChannelInboundHandlerAdapter() {

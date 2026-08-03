@@ -1,6 +1,7 @@
 package mgo2server.web.controller;
 
 import io.jooby.Jooby;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.common.service.AccountService;
 import mgo2server.web.IWebController;
@@ -25,7 +26,8 @@ import java.util.HexFormat;
  *   0,&lt;account id&gt;,&lt;perks&gt;,&lt;16 hex session&gt;   success
  *   1,0,0,0000000000000000                        failure
  * </pre>
- * Anything else is rejected as 090B:00000001. See {@link #PERKS}.
+ * Anything else is rejected as 090B:00000001. See {@link ClientVersion#loginPerks()} — the
+ * third field's grammar differs between the two client builds and has no value valid for both.
  * A token is 32 hex characters, of which the first 16 go to the client. The client never sends
  * them back: it derives a sixteen-byte value from them at login and presents that on
  * check-session, so the account stores that derived value. See {@link SessionField}.
@@ -37,32 +39,6 @@ public class AuthWebController implements IWebController {
 
 	private static final String FAILURE = "1,0,0,0000000000000000";
 
-	/**
-	 * The third field of the login reply, which <em>must be a single decimal integer</em>.
-	 * <p>
-	 * mgo2-server calls this perks and sends "1000000" joined ten times by underscores. That is
-	 * wrong for this client, and was the cause of error 090B:00000001. The parser in the game's
-	 * own binary (MGO2.elf, {@code 0xBB16B0}) reads the reply as three {@code strtol} calls each
-	 * followed by a literal comma; at {@code 0xBB172C} it loads the byte after the third integer
-	 * and branches to the failure path unless it is {@code ','}. An underscore-joined list dies on
-	 * the first separator.
-	 * <p>
-	 * The parsed value is then discarded — {@code strtol}'s result is never stored — so only the
-	 * syntax matters. Overridable so values can still be tried without a rebuild, but any
-	 * replacement must remain a bare integer:
-	 *
-	 *   MGO2SERVER_LOGIN_PERKS=2000000000
-	 */
-	private static final String PERKS = perksFromEnv();
-
-	private static String perksFromEnv() {
-		var configured = System.getenv("MGO2SERVER_LOGIN_PERKS");
-		if (configured != null && !configured.isBlank()) {
-			return configured.trim();
-		}
-		return "1000000";
-	}
-
 	/** Characters of the token handed to the client; it derives its session value from these. */
 	private static final int CLIENT_LENGTH = 16;
 
@@ -70,8 +46,16 @@ public class AuthWebController implements IWebController {
 
 	private final AccountService accountService;
 
-	public AuthWebController(AccountService accountService) {
+	/**
+	 * Which build we serve. Decides the perks grammar and the session key — neither of which has a
+	 * value valid for both builds, which is why this is a constructor argument and no longer an
+	 * environment read on a static field.
+	 */
+	private final ClientVersion version;
+
+	public AuthWebController(AccountService accountService, ClientVersion version) {
 		this.accountService = accountService;
+		this.version = version;
 	}
 
 	@Override
@@ -96,10 +80,10 @@ public class AuthWebController implements IWebController {
 			// The client keeps these sixteen characters and derives the value it will present on
 			// check-session from them, so that derived value is what the account stores.
 			var token = newToken().substring(0, CLIENT_LENGTH);
-			accountService.setSession(account.getId(), SessionField.stored(token));
+			accountService.setSession(account.getId(), SessionField.stored(version, token));
 
 			logger.info("Account {} logged in as '{}'.", account.getId(), name);
-			return successReply(account.getId(), token);
+			return successReply(version, account.getId(), token);
 		});
 	}
 
@@ -107,10 +91,10 @@ public class AuthWebController implements IWebController {
 	 * Formats a successful login reply.
 	 * <p>
 	 * Kept separate so the grammar the client enforces can be tested directly. See
-	 * {@link #PERKS} for why the third field cannot be a list.
+	 * {@link ClientVersion#loginPerks()} for why the grammar differs between builds.
 	 */
-	static String successReply(long accountId, String sessionToken) {
-		return "0,%d,%s,%s".formatted(accountId, PERKS, sessionToken);
+	static String successReply(ClientVersion version, long accountId, String sessionToken) {
+		return "0,%d,%s,%s".formatted(accountId, version.loginPerks(), sessionToken);
 	}
 
 	/** 32 hex characters from 16 random bytes. */

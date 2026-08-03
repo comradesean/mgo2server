@@ -5,6 +5,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import mgo2server.TestDatabase;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.crypto.SessionField;
 import mgo2server.game.BaseGameClientServerIT;
 import mgo2server.common.service.ClanService;
@@ -37,7 +38,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 					insert into account (username, password, session, slots)
 					values ('player', 'x', :session, 3)
 					""")
-				.bind("session", SessionField.stored(TOKEN))
+				.bind("session", SessionField.stored(ClientVersion.V1_0, TOKEN))
 				.executeAndReturnGeneratedKeys("id")
 				.mapTo(Long.class)
 				.one());
@@ -89,7 +90,7 @@ public class CharacterGameControllerIT extends BaseGameClientServerIT {
 	private List<GamePacket> loginThenNoAccount(GamePacket request, int untilCommand) {
 		var login = Unpooled.buffer();
 		login.writeInt((int) accountId);
-		login.writeBytes(SessionField.of(TOKEN));
+		login.writeBytes(SessionField.of(ClientVersion.V1_0, TOKEN));
 
 		var replies = new ArrayList<GamePacket>();
 

@@ -1,5 +1,7 @@
 package mgo2server.web;
 
+import mgo2server.common.ClientVersion;
+
 import io.jooby.Jooby;
 import io.jooby.Server;
 import io.jooby.ServerOptions;
@@ -28,7 +30,7 @@ public abstract class BaseWebClientServerIT {
 		services = ServicesFactory.createServices(database.jdbi());
 
 		var jooby = new Jooby();
-		var webServer = WebServerFactory.createWebServer(services, database.dataSource());
+		var webServer = WebServerFactory.createWebServer(services, database.dataSource(), ClientVersion.V1_0);
 		webServer.use(jooby);
 		// Port 0, not a pre-picked free port: jooby's Netty server only blocks for the bind to
 		// finish (Server.start()) when the port is ephemeral. A pre-picked, explicit port binds
