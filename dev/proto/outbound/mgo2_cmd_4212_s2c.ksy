@@ -104,8 +104,8 @@ types:
           NUL terminator — the 16+1 idiom every name field in this protocol uses.
 
           A 16-byte field is a character or lobby name everywhere else in the protocol; that is
-          shape, not evidence, and there is no renderer to check it against (see the closed
-          negative in the doc block).
+          shape, not evidence, and there is no renderer to check it against — no reader anywhere
+          in the image, the same closed provenance as `unknown_00` (see the doc block).
       - id: unknown_14
         type: u4
         doc: |

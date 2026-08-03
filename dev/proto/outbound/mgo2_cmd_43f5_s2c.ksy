@@ -36,5 +36,5 @@ seq:
   - id: unknown_body
     size-eos: true
     doc: |
-      [ELF 0xD5B3B0] Present only to state that nothing is parsed. The parser reads zero bytes
-      of payload — see the top-level doc. Expected length 0.
+      [ELF 0xD5B3B0] Present only to state that nothing is parsed: the body is never read — the
+      parser reads zero bytes of payload — see the top-level doc. Expected length 0.

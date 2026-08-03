@@ -103,8 +103,9 @@ types:
           `0xD3BD88 addi r4,r31,60` that is the only *writer* of it back to us, is in
           `mgo2_cmd_4122_s2c.ksy`.
 
-          Consequence for this packet: the byte is a pure conduit, so whatever we echo here must be
-          whatever `0x4122` sent, or the value is lost on the first appearance change.
+          Consequence for this packet: the byte is a pure conduit with no consumer in the image, so
+          whatever we echo here must be whatever `0x4122` sent, or the value is lost on the first
+          appearance change.
       - id: comment
         size: 128
         type: str

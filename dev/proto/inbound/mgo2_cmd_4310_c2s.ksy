@@ -106,7 +106,8 @@ seq:
       8-byte scratch zeroed at `0x8CA444`-`0x8CA450`, published by
       `0x8CA6E4`-`0x8CA6F0` as `0x27F258(obj, key=86, len=8, src=r1+124)`. Byte 1 of that record is
       this field, byte 5 is `unknown_0d4`. So the value's only destination is the lobby stage
-      script's namespace, which is outside the ELF and outside what disassembly can settle.
+      script's namespace, which is outside the ELF and outside what disassembly can settle — an
+      open question that belongs to the stage script, not the image.
 
       The server stores it in a typed column so the settings round-trip is exact. Two decoys make
       any re-hunt here expensive: a particle loop at `0x644D00` writes a 16x16 byte matrix and

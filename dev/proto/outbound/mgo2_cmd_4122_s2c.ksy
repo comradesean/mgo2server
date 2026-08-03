@@ -137,9 +137,9 @@ seq:
       reads it back** (`0xD3C6AC addi r4,r1,176`, `0xD3C6C0` u8 reader) before memcpying the struct
       over profile+7648. In the 0x4130 request it sits between the skill levels (+35..+39) and the
       128-byte comment (+68); the skill-experience array is not sent, so the client's notion of
-      "the loadout I own" includes this byte. No other reader: nothing uses displacement 7708 off a
-      profile-provenanced base, and nothing uses 26720 (the edit-screen copy's +60), so no UI reads
-      or writes it — the client is a pure conduit. Send 0 (we do), but note the consequence: our
+      "the loadout I own" includes this byte. No other reader and no consumer: nothing uses
+      displacement 7708 off a profile-provenanced base, and nothing uses 26720 (the edit-screen
+      copy's +60), so no UI reads or writes it — the client is a pure conduit. Send 0 (we do), but note the consequence: our
       0x4130 handler must preserve whatever we sent, or it is lost on the first appearance change.
 
       **Negative re-run independently 2026-07-30 and it holds; the near-misses, so nobody re-chases

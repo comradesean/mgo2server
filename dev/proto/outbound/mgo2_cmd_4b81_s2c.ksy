@@ -150,8 +150,9 @@ seq:
 
       ## UNOBSERVABLE — established by live test 2026-08-02
 
-      **This slot cannot be read back from any screen on release-day content, so the value we send
-      is unfalsifiable operator policy and zero is final rather than pending.** A probe sent
+      **This slot cannot be read back from any screen on release-day content — its meaning is
+      unknowable at tier 2 on this build — so the value we send is unfalsifiable operator policy
+      and zero is final rather than pending.** A probe sent
       `12345678` here from **both** `0x4b21` and `0x4b81`; the server logs confirm both packets went
       out (777 and 217 bytes) and **nothing rendered**.
 

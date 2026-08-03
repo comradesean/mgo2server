@@ -54,5 +54,6 @@ seq:
       graduating character id 3 — consistent with a chara id but not evidence for it, since a second
       graduation of a different student sent the same value. Resolved later the same day: a session
       that graduated two students sent `00000003` then `00000002`, matching character ids 3 and 2 in
-      order, so this identifies the **student being graduated** [INFERRED]. A capture with an id
-      above 255 would settle whether it is the id itself or a slot index tracking it.
+      order, so this identifies the **student being graduated** [INFERRED]. One open question
+      remains — whether it is the id itself or a slot index tracking it — and a capture with an
+      id above 255 would settle it.

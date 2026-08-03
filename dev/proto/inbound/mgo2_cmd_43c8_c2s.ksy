@@ -121,4 +121,5 @@ seq:
 
       Deliberately still named `unknown_04`: three samples with one single-variable comparison is
       an inference, not a proof, and the confirming observation — a graduation where the prompt is
-      answered NO — has not been made. Rename when it has.
+      answered NO — has not been made, so the bit's meaning stays an open question. Rename when it
+      has.

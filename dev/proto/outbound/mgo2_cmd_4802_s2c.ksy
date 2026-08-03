@@ -34,4 +34,5 @@ seq:
   - id: unknown_body
     size-eos: true
     doc: |
-      [ELF 0xD54090] Present only to state that nothing is parsed. Expected length 0.
+      [ELF 0xD54090] Present only to state that nothing is parsed: the body is never read — the
+      parser opens no stream reader and calls no read primitive. Expected length 0.

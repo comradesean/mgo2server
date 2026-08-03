@@ -228,7 +228,8 @@ types:
           slot 30 → mem 29. [UNKNOWN] **Provably skipped by the only code that could read it.**
           The Rescue arm reads mem 27, 28 and 30 (offsets 3876, 3880, 3888) at 0x917570 /
           0x917578 / 0x917580 and steps over 3884. So this is not "a Rescue stat we have not
-          identified" — the Rescue page has exactly three extras and this is not one of them.
+          identified" — the Rescue page has exactly three extras and this is not one of them, and
+          the slot is never read.
       - id: fully_defended_matches
         type: u4
         doc: |
