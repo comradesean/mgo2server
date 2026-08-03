@@ -3084,8 +3084,15 @@ grouped by how likely normal play is to hit them, not listed flat.
   `0x43c8` is the likely real trigger. This reads as a two-off transcription slip inherited from
   a reference. Do not blindly repoint — capture a `0x43c8` and confirm its semantics first — but
   it is the strongest lead on the round-lifecycle gap.
-- **`0x3040` has a live builder** (`0xD37B6C`, one u8) — it *can* be sent, correcting the earlier
-  "normal flow never sends it" note. Still unanswered by every reference; reply shape unknown.
+- **`0x3040`'s builder exists but is dead code** [ELF 2026-08-03, reversing the 2026-07-26 note
+  below this one's vintage]. The 2026-07-26 correction said "has a live builder (`0xD37B6C`, one
+  u8) — it *can* be sent"; that conflated *builder exists* with *builder is called*. The entry
+  `0xD37B00` (`0xD37B6C` is the `li r4` inside it) has zero callers, an unreferenced OPD
+  descriptor and no constant formation anywhere in .text, validated against eight live controls
+  in the same OPD bank — so the disc build cannot send it, and it is not a stall candidate. The
+  command is now identified anyway: activate character by slot, reply `0x3041` = `{result;
+  chara_id; name[16]}` into the live profile. See `dev/proto/inbound/mgo2_cmd_3040_c2s.ksy` and
+  `dev/proto/outbound/mgo2_cmd_3041_s2c.ksy`.
 
 **Reachable in ordinary flow (highest priority to resolve):** the in-match/host family we have
 only partly covered — `0x4348`, `0x4394` (large struct), `0x43a4`, `0x43a6`, `0x43b0`, `0x43c4`,
