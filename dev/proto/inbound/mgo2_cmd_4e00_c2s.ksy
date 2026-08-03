@@ -74,7 +74,13 @@ doc: |
   ```
 
   Byte `660` = `+0x294` on the `0x883F20` object is the **lobby subtype**, and `4` = Survival —
-  already established in mgo2_cmd_4a00_s2c.ksy and dev/docs/AUTOMATCH.md §10. Survival lobbies
+  already established in mgo2_cmd_4a00_s2c.ksy and dev/docs/AUTOMATCH.md §10. [2026-08-03] Its
+  two writers are now enumerated: `0x88EDD4`-`0x88EDE8` copies `team+608` (with lobby id from
+  `team+604` and rule from `team+609`), and `0x8F9BF0`-`0x8F9C04` copies the same triple from
+  `0xD3F7B0(session)+0x08/+0x04/+0x09`. Upstream, `team+608` is written only by the shared
+  team-record parser `0xD4AF34` on ids 0x4911/0x4913/0x4987/0x49A1 (read at 0xD4B304) — so
+  **subtype 4 must arrive on one of those four commands or the Survival browser menu entry
+  never appears**. Survival lobbies
   are Ver. 1.10 content and this server serves none, so today the screen is unreachable and the
   silence is harmless. **That is a deployment gate, not a client-side impossibility**: the day a
   subtype-4 lobby appears in the lobby list, an unanswered `0x4E00` is a hard `5521:FFFFFF60`.

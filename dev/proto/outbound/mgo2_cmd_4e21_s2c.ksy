@@ -13,7 +13,13 @@ doc: |
 
   **SURVIVAL MATCH LIST.** The 0x4Exx block is the Survival Match List browser; the identification
   is in `mgo2_cmd_4e00_c2s.ksy`. `0x4E21` is a **server push** (no request slot) that rewrites the
-  status column of the **team record's 8-slot match table** at `team+0x17C`, stride 28.
+  status column of the team record's 8-slot table at `team+0x17C`, stride 28 — which
+  [CORRECTED 2026-08-03] is not a "match table": it is the **team member ROSTER**, 8 x 28-byte
+  member records (`+0x00` u32 character id, 0 = empty slot; `+0x04` 16-byte name; `+0x15` the
+  status byte these commands rewrite). Proof: `0x4918`'s block copy installs exactly that
+  layout from its own wire reads (0xD4D71C/0xD4D720), and the roster consumers at 0x8C309C
+  (occupancy count) and 0x8C3288 (name -> "%s has joined the team." etc., strings 718/719/
+  721/722) read it as members.
 
   TIER. Post-launch content; no available client build exercises this command, so **everything here
   is tier 1 and cannot be raised to tier 2.** Not served in v1.
@@ -95,25 +101,28 @@ seq:
     doc: |
       [ELF 2026-08-02] Validated by `0xD49230` against the u16 at **`team+0x29C`**; mismatch =
       -1018. [UNKNOWN] what increments it. Same field as `0x4E20.team_seq` and `0x4E22.team_seq`.
-  - id: unknown_0x04
+  - id: team_state
     type: u1
     doc: |
-      [ELF 2026-08-02] Read at `0xD5A6D8` -> **`team+0x04`**. Struct-offset bijection with
-      `0x4E20`, `0x4E22` (`0xD5A4C8`) and `0x4E23` (`0xD5A2A8`) — one field shared by all four.
+      [ELF 2026-08-02 -> team+0x04; NAMED 2026-08-03] Read at `0xD5A6D8` -> **`team+0x04`**.
+      Struct-offset bijection with `0x4E20`, `0x4E22` (`0xD5A4C8`) and `0x4E23` (`0xD5A2A8`) —
+      one field shared by all four, renamed in all four.
 
-      **[UNKNOWN], and no negative is claimed.** A reader would appear as a load at displacement 4
-      off whatever register holds the team record, and displacement 4 is far too common for a
-      displacement sweep to discriminate — a sweep that cannot be validated against a known-good
-      hit is worthless, so none is reported. The same refusal is recorded in
-      `mgo2_cmd_4a00_s2c.ksy` for the identical slot.
+      **The team's event-participation state, server-authoritative** — eleven wire writers, no
+      client-side writer, seven readers pinning the enum (<= 2 "Team Standby", > 2 "Cancel
+      Entry", 5 makes the "Join Game" row exist, 9 switches to counted-roster rendering and
+      requires 0x4918 rows to carry status 2). Full evidence and the reader/writer
+      enumerations: `mgo2_cmd_4e20_s2c.ksy`'s `team_state`. The 2026-08-02 refusal to sweep
+      displacement 4 is superseded by the chokepoint method recorded there.
   - id: slot_status
     type: u1
     repeat: expr
     repeat-expr: 8
     doc: |
       [ELF 2026-08-02] **Eight** per-slot status bytes, one per entry of the 8-entry /
-      28-byte-stride match table at `team+0x17C`. Non-zero is stored to `entry+0x15`; **zero
-      deletes the entry** (`memset(entry, 0, 28)`).
+      28-byte-stride member ROSTER at `team+0x17C` (see the corrected header). Non-zero is
+      stored to `entry+0x15` — **`member_state`, the same byte 0x4918/0x4932/0x4943/0x4950/
+      0x49a2 write** — and **zero deletes the member** (`memset(entry, 0, 28)`).
 
       **ADJUDICATED 2026-08-02 (third reading).** The file was created declaring a single `u1`
       named `slot_status_0`; it is a fixed 8-element array and the packet is 15 bytes, not 8. The
@@ -121,4 +130,9 @@ seq:
       count — the house style for a compiled-in count, as in `mgo2_cmd_4a24_s2c.ksy`'s
       `trailing_words` — because nothing on the wire carries the length.
 
-      [UNKNOWN] what the status codes mean.
+      [UNKNOWN] what the codes mean, but narrowed 2026-08-03: `0x4918` installs a roster row
+      only when this byte is **1**, or **2 when `team_state == 9`** (0xD4D6D4-0xD4D6F0), and
+      the member-list painter renders 2 as "OK" and everything else as "NG" (0x8C0EDC, element
+      `MEMBER_STATE`); 2 also selects lobby string 693 "Accept Entry" at 0x8C04C0/0x8C2794,
+      and the 0x4930 toggle sends 0 when the local member's byte is 2, else 1. Writer constants
+      from other commands: 4 (0x4960), 5/6 (0x4961), 1/3/49 (0x4967), 6 (0x4965).

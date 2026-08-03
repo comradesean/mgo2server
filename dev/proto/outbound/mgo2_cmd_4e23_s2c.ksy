@@ -133,14 +133,15 @@ seq:
       [ELF 2026-08-02, renamed from `context_seq`] Validated by 0xD49230 against the u16 at
       **`team+0x29C`** (`lhz r0,668(r29)`, 0xD492D4); mismatch = -1018. [UNKNOWN] what increments
       it. Same field as `0x4E20.team_seq` and `0x4E22.team_seq`.
-  - id: unknown_0x04
+  - id: team_state
     type: u1
     doc: |
-      [ELF 2026-08-02, renamed from `unknown_06`] Read at 0xD5A2A8 -> **`team+0x04`**.
+      [ELF 2026-08-02 -> team+0x04; NAMED 2026-08-03] Read at 0xD5A2A8 -> **`team+0x04`**.
       Struct-offset bijection with the same-position byte in `0x4E20` (0xD5B240), `0x4E21`
-      (0xD5A6D8) and `0x4E22` (0xD5A4C8) — one field shared by all four commands in the block.
-      [UNKNOWN] meaning; no reader sweep attempted, because displacement 4 off an 83-call-site
-      getter is not filterable. Open question, not a stated negative.
+      (0xD5A6D8) and `0x4E22` (0xD5A4C8) — one field shared by all four, renamed in all four.
+      **The team's event-participation state, server-authoritative**; full reader/writer
+      enumerations and the enum in `mgo2_cmd_4e20_s2c.ksy`'s `team_state`, superseding the
+      earlier "not filterable" refusal via the chokepoint method.
 
       The "enum/index with a sentinel" claim is withdrawn — see the CORRECTION in the top-level doc.
   - id: slot_status
@@ -150,7 +151,8 @@ seq:
     doc: |
       [ELF 2026-08-02, renamed from `unknown_07` -> `slot_status_0` -> `slot_status`] **EIGHT
       per-slot status bytes**, read by the loop at 0xD5A2BC-0xD5A2E8 and applied one per entry to
-      the team record's 8-entry, 28-byte-stride match table at `team+0x17C`: non-zero ->
+      the team record's 8-entry, 28-byte-stride member roster at `team+0x17C` (corrected from
+      "match table" — see `mgo2_cmd_4e21_s2c.ksy`'s header): non-zero ->
       `entry+0x15`, zero -> `memset(entry, 0, 28)`.
 
       **ADJUDICATED 2026-08-02 (third reading).** Was a single `u1` named `slot_status_0`, making

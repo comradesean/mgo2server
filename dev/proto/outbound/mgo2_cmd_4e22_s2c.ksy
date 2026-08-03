@@ -8,7 +8,10 @@ doc: |
 
   **SURVIVAL MATCH LIST.** The 0x4Exx block is the Survival Match List browser; the identification
   is in mgo2_cmd_4e00_c2s.ksy. `0x4E22` is a **server push** (no request slot) that rewrites the
-  status column of the **team record's 8-slot match table** at `team+0x17C`, stride 28.
+  status column of the team record's 8-slot table at `team+0x17C`, stride 28 — which
+  [CORRECTED 2026-08-03] is the team member ROSTER (8 x 28-byte member records: `+0x00` u32
+  character id, 0 = empty; `+0x04` name[16]; `+0x15` member_state), not a match table. Evidence
+  in `mgo2_cmd_4e21_s2c.ksy`'s corrected header.
 
   TIER. Post-launch content; no available client build exercises this command, so **everything
   here is tier 1 and cannot be raised to tier 2.** Not served in v1.
@@ -150,15 +153,15 @@ seq:
       [ELF 2026-08-02, renamed from `context_seq`] Validated by 0xD49230 against the u16 at
       **`team+0x29C`** (`lhz r0,668(r29)`, 0xD492D4); mismatch = -1018. [UNKNOWN] what increments
       it. Same field as `0x4E20.team_seq`.
-  - id: unknown_0x04
+  - id: team_state
     type: u1
     doc: |
-      [ELF 2026-08-02, renamed from `unknown_06`] Read at 0xD5A4C8 -> **`team+0x04`**.
-      Struct-offset bijection with `0x4E20.unknown_0x04` and with the same-position byte in
-      `0x4E21` (0xD5A6D8) and `0x4E23` (0xD5A2A8) — one field shared by all four commands in the
-      block, on the team record rather than on the Survival event record. [UNKNOWN] meaning; no
-      reader was looked for, because displacement 4 off a 0x83-site getter is not a filterable
-      sweep. Stated as an open question rather than a negative.
+      [ELF 2026-08-02 -> team+0x04; NAMED 2026-08-03] Read at 0xD5A4C8 -> **`team+0x04`**.
+      Struct-offset bijection with `0x4E20.team_state` and the same-position byte in `0x4E21`
+      (0xD5A6D8) and `0x4E23` (0xD5A2A8) — one field shared by all four, renamed in all four.
+      **The team's event-participation state, server-authoritative**; full reader/writer
+      enumerations and the enum in `mgo2_cmd_4e20_s2c.ksy`'s `team_state`, which also
+      supersedes the earlier "not a filterable sweep" refusal via the chokepoint method.
 
       The old claim that this byte "is later compared against 7 and against -1, so it is an
       enum/index with a sentinel" is **withdrawn** — see the CORRECTION in the top-level doc; the
@@ -170,7 +173,7 @@ seq:
     doc: |
       [ELF 2026-08-02, renamed from `unknown_07` -> `slot_status_0` -> `slot_status`] **EIGHT
       per-slot status bytes**, read by the loop at 0xD5A4DC-0xD5A508 into r1+112..r1+119, then
-      applied one per entry to the 8-entry, 28-byte-stride match table at `team+0x17C`: non-zero ->
+      applied one per entry to the 8-entry, 28-byte-stride member roster at `team+0x17C`: non-zero ->
       `entry+0x15`, zero -> `memset(entry, 0, 28)`.
 
       **ADJUDICATED 2026-08-02 (third reading).** This was declared as a single `u1` named

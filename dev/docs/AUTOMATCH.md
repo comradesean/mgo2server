@@ -1097,7 +1097,10 @@ This also names three lobby subtypes `LOBBIES.md` left unnamed: **3 = Tournament
   **Not sending it is correct, not a gap**, on three independent grounds: the consuming lookup runs
   only when `(*(u32*)(game+3020) & 0x201) == 0x201`, and bit 9 is set at one site that requires
   lobby_subtype in `2..6` *and not 2* — automatching is subtype 2, so the code is unreachable on the
-  lobby we deploy; event 43's jump-table arm is `0x93DE5C`, the handler's own return, i.e. a
+  lobby we deploy ([2026-08-03] that one site is `0x272728`, enclosing function `0x271FB8`, and its
+  single `ori r0,r0,1792` sets bits 8, 9 AND 10 together — so bit 9, `0x43F0`'s gate, and bit 10,
+  `0x43B0`'s gate, are inseparable: there is no configuration where one is set and the other is
+  not; the clear idiom is `rlwinm/rotlwi` at `0x2745E0`/`0x274870`); event 43's jump-table arm is `0x93DE5C`, the handler's own return, i.e. a
   deliberate empty arm rather than a missing one; and it has no result field, no request slot and is
   not polled. A cosmetic zero, never a stall.
 - **Where event 55 (`0x43f5`) is handled.** Not on channel 60, not in this screen.

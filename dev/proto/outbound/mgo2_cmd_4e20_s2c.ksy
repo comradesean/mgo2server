@@ -125,16 +125,35 @@ seq:
       Same token, same check and same code as `0x4E12`'s payload and `0x4A24`'s `obj_id`, on the
       same slot of the same object. So a server pushing `0x4E20` must still be echoing whatever it
       put in the `0x4E10` that opened the list.
-  - id: unknown_0x04
+  - id: team_state
     type: u1
     doc: |
-      [ELF 2026-08-02, renamed from `unknown_0a` to name its destination] Read at 0xD5B240 ->
-      **`team+0x04`** — the team record, not the ladder record; the old note "-> obj+0x04" did not
-      say which object and the two are 7048 bytes apart.
+      [ELF 2026-08-02 -> team+0x04; NAMED 2026-08-03] Read at 0xD5B240 -> **`team+0x04`** —
+      the team record, not the ladder record; the old note "-> obj+0x04" did not say which
+      object and the two are 7048 bytes apart.
 
-      Bijection: `0x4E21`, `0x4E22` and `0x4E23` write this exact slot from the same position in
-      their own payloads (0xD5A6D8, 0xD5A4C8, 0xD5A2A8), so it is one field shared by all four
-      commands in the block. [UNKNOWN] meaning.
+      **The team's event-participation state, and it is server-authoritative.** Eleven
+      commands write it from the wire (0x4A27 0xD4EE0C, 0x4A02 0xD4F064, 0x4A01 0xD5069C,
+      0x4A29 0xD50B94, 0x4A00 0xD50FB8, 0x4A22 0xD514D8, 0x4A20 0xD51B0C, and the four
+      0x4E2x), 0x4960/0x4961's parsers store constants 4/5, and **no client-side writer
+      exists** — chokepoint sweep over all 83 `bl 0xD491F8` sites plus all 24 direct
+      `addi ...,-9944` materialisations, zero `stb ...,4(team)`. Notably the team-info
+      commands (0x4911/0x4913/0x4987/0x49A1) do NOT write it, so it is specifically the
+      event-participation state, not general team state.
+
+      Seven readers pin the enum: **<= 2** -> the menu offers "Team Standby"; **> 2** ->
+      "Cancel Entry" (0x8CBC48 — note it reads through a pointer CACHED at screen+108, a
+      reader an accessor-only sweep cannot see); **5 -> the "Join Game" row exists at all**
+      (0x8CBCA8, which also emits the extra icon); **9** -> the screen renders a counted
+      roster instead of member names (0x8C3080/0x8C3180), two actions are refused outright
+      (0x8D4A54, 0x8D7B6C), and 0x4918 roster rows must then carry member status 2 rather
+      than 1 (0xD4D6D4). Values 4/6/7/8 are accepted and stored but distinguished by nothing.
+
+      Bijection: `0x4E21`, `0x4E22` and `0x4E23` write this exact slot from the same position
+      in their own payloads (0xD5A6D8, 0xD5A4C8, 0xD5A2A8), so it is one field shared by all
+      four commands in the block — renamed in all four. This supersedes 2026-08-02's refusal
+      to sweep displacement 4: the chokepoint method plus the cached-pointer channel is what
+      a bare displacement sweep could not be. Tier-1 only; cannot reach tier 2 on this build.
   - id: participant_a_id
     type: u4
     doc: |

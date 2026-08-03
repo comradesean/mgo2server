@@ -169,13 +169,23 @@ seq:
     type: u1
     doc: |
       [ELF 2026-08-02, renamed from `unknown_07` to match the destination] Read at 0xD5AF1C ->
-      **event record +0x005**. [UNKNOWN] meaning.
+      **event record +0x005** (`event = 0xD4EA60(session) = session+0xDBD0`). [UNKNOWN] meaning.
 
       Cross-packet bijection: mgo2_cmd_4a24_s2c.ksy's field at obj+0x005 (read at 0xD50050) and
       `0x4A00`'s `unknown_last` (0xD51148/0xD51154) write **this exact slot**, so it is one field
-      shared by three commands. That file's sweep for a reader — displacement 5 across
-      0x8C0000-0x900000, 0xD30000-0xD70000 and binary-wide, with obj+0x0D4's reader at 0x8F95D8 as
-      the control — came back empty, and nothing found here changes that.
+      shared by three commands.
+
+      **[ELF 2026-08-03] The negative is now chokepoint-complete, not displacement-only:
+      written by exactly three commands, read by none.** All 21 `bl 0xD4EA60` sites plus all
+      13 direct `addi ...,-9264` materialisations were swept for displacement 5 in load, store
+      and addi-pointer form: the only hits are the three parser writes (0xD5AF10 here,
+      0xD50044 = 0x4A24, 0xD50900 = 0x4A00). Controls in the identical sweep: disp 212
+      (`phase`) finds its readers 0x8F95D8/0xD5B344 and writers, disp 218 (`entrant_count`)
+      finds five UI readers — so the sweep reaches both the UI modules and the parser bank.
+      Escape check: every in-band `lbz rX,5(rY)` outside those functions is in the read
+      primitives at >= 0xD5C1A8 or in modules that never touch the record (a bare
+      displacement-5 sweep has 588 hits image-wide, which is exactly why the chokepoint form
+      is the argument). A server may send anything here.
   - id: settings_block
     size: 204
     doc: |
