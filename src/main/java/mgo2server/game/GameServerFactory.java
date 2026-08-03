@@ -107,7 +107,7 @@ public class GameServerFactory {
 					services.getCharacterService(), lobbyId, lobbySubtype));
 				controllers.add(new ChatGameController(services.getGameService(), channels));
 				controllers.add(new MessageGameController(services.getCharacterService(), services.getClanService()));
-				controllers.add(new HubGameController(services.getLobbyService()));
+				controllers.add(new HubGameController(services.getLobbyService(), version));
 				controllers.add(new AutomatchGameController(automatchPolicy, automatch,
 					services.getCharacterService()));
 				controllers.add(new PersonalInfoController(services.getCharacterService()));

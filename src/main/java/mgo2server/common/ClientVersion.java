@@ -34,14 +34,14 @@ public enum ClientVersion {
 	V1_0("1.0", "1000000", "crypto/session.key", new byte[] {
 		(byte) 0xb0, (byte) 0x78, (byte) 0x1d, (byte) 0x53,
 		(byte) 0x65, (byte) 0xe3, (byte) 0x91, (byte) 0x0e,
-	}),
+	}, 64),
 
 	/** The 1.36 patch build. Not served by default; see {@code dev/docs/BUILD_1_36.md}. */
 	V1_36("1.36", "1000_1000_5000_10000_1000_3000_1000_1000_2000_1000", "crypto/session_136.key",
 		new byte[] {
 			(byte) 0x35, (byte) 0xd5, (byte) 0xc3, (byte) 0x8e,
 			(byte) 0xd0, (byte) 0x11, (byte) 0x0e, (byte) 0xa8,
-		});
+		}, 0);
 
 	/** The env var that selects a version. */
 	public static final String ENV = "MGO2SERVER_CLIENT_VERSION";
@@ -54,11 +54,15 @@ public enum ClientVersion {
 
 	private final byte[] sessionIv;
 
-	ClientVersion(String label, String loginPerks, String sessionKeyResource, byte[] sessionIv) {
+	private final int hubEntryTextLength;
+
+	ClientVersion(String label, String loginPerks, String sessionKeyResource, byte[] sessionIv,
+			int hubEntryTextLength) {
 		this.label = label;
 		this.loginPerks = loginPerks;
 		this.sessionKeyResource = sessionKeyResource;
 		this.sessionIv = sessionIv;
+		this.hubEntryTextLength = hubEntryTextLength;
 	}
 
 	/** How this version is written in configuration: {@code "1.0"} or {@code "1.36"}. */
@@ -123,6 +127,39 @@ public enum ClientVersion {
 	 */
 	public byte[] sessionIv() {
 		return sessionIv.clone();
+	}
+
+	/**
+	 * Bytes of per-lobby text in a {@code 0x4902} hub-list entry, straight after the 16-byte name.
+	 * <p>
+	 * <b>1.0 reads 64 bytes here; 1.36 reads none.</b> The disc parser ({@code 0xD47E18}) has one
+	 * {@code li r5,64} feeding the raw-copy primitive at {@code 0xD48034}-{@code 0xD48038}; 1.36's
+	 * ({@code 0xF15B30}) has <b>zero</b> — its only raw copies are {@code li r5,1} and
+	 * {@code li r5,16}, and the read after the name is already the u32 open time. So the entry is
+	 * <b>99 bytes on 1.0 and 35 on 1.36</b>.
+	 * <p>
+	 * It is coherent rather than arbitrary: the text block had exactly one consumer in the disc
+	 * build, the subtype-5 branch at {@code 0x890504}, and 1.36 deleted the subtype-5 scan entirely.
+	 * The field's only reader went away and the field went with it.
+	 *
+	 * <h2>Sending the wrong length does not error — it silently shifts every later entry</h2>
+	 * The readers bound-check the 1024-byte receive buffer, not the payload length, so a
+	 * misaligned entry is never rejected. Sending 99-byte entries to 1.36 was observed live on
+	 * 2026-08-03: the client read our 495-byte payload at 35-byte stride, believed it had
+	 * <b>15</b> entries, and produced a Lobby Select with Automatching working (entry 0's first 26
+	 * bytes coincide between the layouts), <b>Free Battle present but dead</b> — its phantom entry's
+	 * {@code lobbyId} landed past the payload end, so the gate lookup failed and the sub-list
+	 * bounced — and <b>no Training row at all</b>, because nothing in the misparse had subtype 7
+	 * or 8.
+	 *
+	 * <h2>The reference servers were right, for a build we do not target</h2>
+	 * {@code mgo2_cmd_4902_s2c.ksy} records that "both reference servers write 35" and treats it as
+	 * a bug. They were correct — for 1.36-era clients. This is the second time in one night that an
+	 * "upstream is wrong" note turned out to be "upstream targets a different build"; the login
+	 * perks field was the first. See {@link #loginPerks()}.
+	 */
+	public int hubEntryTextLength() {
+		return hubEntryTextLength;
 	}
 
 	public boolean isDisc() {

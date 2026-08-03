@@ -2,6 +2,7 @@ package mgo2server.game.controller;
 
 import mgo2server.common.BufferUtil;
 import mgo2server.common.model.Lobby;
+import mgo2server.common.ClientVersion;
 import mgo2server.common.service.LobbyService;
 import mgo2server.game.GameControllerContext;
 import mgo2server.game.GameError;
@@ -119,20 +120,28 @@ public class HubGameController implements IGameController {
 	private static final int NAME_LENGTH = 16;
 
 	/**
-	 * A per-lobby text block the client reads straight after the name.
-	 * <p>
-	 * Read from the ELF, not from a reference server: the {@code 0x4902} parser at {@code 0xD47E18}
-	 * pulls 64 bytes into the entry struct at {@code +0x1b}, and the hub menu builder at
-	 * {@code 0x890504} hands that pointer to the string formatter for the one lobby subtype that
-	 * displays it. Every other subtype ignores it, so NULs are fine — but the bytes must be on the
-	 * wire or every entry after the first is parsed from the wrong offset.
+	 * Everything in an entry except the version-dependent text block: index, attributes, id, name,
+	 * open and close times, and the open flag.
 	 */
-	private static final int TEXT_LENGTH = 64;
+	private static final int ENTRY_FIXED = 4 + 4 + 2 + NAME_LENGTH + 4 + 4 + 1;
 
-	/** index, attributes, id, name, text, open and close times, and the open flag. */
-	private static final int ENTRY_SIZE = 4 + 4 + 2 + NAME_LENGTH + TEXT_LENGTH + 4 + 4 + 1;
-
+	/**
+	 * Entries per packet, sized for the LARGER (1.0) entry so one bound serves both builds.
+	 * <p>
+	 * 8 x 99 = 792, inside the 1023-byte payload limit. 1.36's 35-byte entries are smaller, so the
+	 * same count is comfortably valid there; picking a per-version count would buy nothing but a
+	 * second thing to get wrong.
+	 */
 	private static final int ENTRIES_PER_PACKET = 8;
+
+	/**
+	 * Bytes on the wire for one entry, which <b>differs between client builds</b>: 99 on 1.0, 35 on
+	 * 1.36. The difference is entirely {@link ClientVersion#hubEntryTextLength()} — see there for the
+	 * ELF evidence and for what sending the wrong one does to Lobby Select.
+	 */
+	private static int entrySize(ClientVersion version) {
+		return ENTRY_FIXED + version.hubEntryTextLength();
+	}
 
 	/**
 	 * The four 57-byte entry records that follow the two header words of {@code 0x4991}
@@ -183,8 +192,12 @@ public class HubGameController implements IGameController {
 
 	private final LobbyService lobbyService;
 
-	public HubGameController(LobbyService lobbyService) {
+	/** Which build we serve; decides the hub entry's wire size. */
+	private final ClientVersion version;
+
+	public HubGameController(LobbyService lobbyService, ClientVersion version) {
 		this.lobbyService = lobbyService;
+		this.version = version;
 	}
 
 	@Override
@@ -231,10 +244,10 @@ public class HubGameController implements IGameController {
 
 		for (var offset = 0; offset < lobbies.size(); offset += ENTRIES_PER_PACKET) {
 			var batch = lobbies.subList(offset, Math.min(offset + ENTRIES_PER_PACKET, lobbies.size()));
-			var buffer = ctx.buffer(batch.size() * ENTRY_SIZE);
+			var buffer = ctx.buffer(batch.size() * entrySize(version));
 
 			for (var index = 0; index < batch.size(); index++) {
-				writeEntry(buffer, offset + index, batch.get(index));
+				writeEntry(buffer, offset + index, batch.get(index), version);
 			}
 
 			ctx.write(new GamePacket(GAME_LOBBY_INFO_ENTRIES, buffer));
@@ -243,7 +256,8 @@ public class HubGameController implements IGameController {
 		ctx.write(GAME_LOBBY_INFO_END, GameError.NONE);
 	}
 
-	private static void writeEntry(io.netty.buffer.ByteBuf buffer, int index, Lobby lobby) {
+	private static void writeEntry(io.netty.buffer.ByteBuf buffer, int index, Lobby lobby,
+			ClientVersion version) {
 		// Written byte by byte rather than as one u32 with the subtype in its top byte, because
 		// "the rest is unused" was wrong: 0x07 is a flags byte the client expands one bit per struct
 		// field at 0xD47F40, reversed (wire bit 0 becomes its internal 0x80).
@@ -263,7 +277,11 @@ public class HubGameController implements IGameController {
 		BufferUtil.writeString(buffer, lobby.getName(), StandardCharsets.ISO_8859_1, NAME_LENGTH);
 
 		// The text block. Only the survival-host category renders it; the rest read past it.
-		buffer.writeZero(TEXT_LENGTH);
+		// 64 bytes on 1.0, nothing on 1.36. The one consumer in the disc build was the subtype-5
+		// branch at 0x890504, and 1.36 deleted that scan; the field's only reader went away and the
+		// field went with it. Sending it to a 1.36 client does not error -- the readers bound-check
+		// the receive buffer rather than the payload -- it silently shifts every later entry.
+		buffer.writeZero(version.hubEntryTextLength());
 
 		// Open and close times are unset, and the lobby is always open.
 		buffer.writeInt(0).writeInt(0).writeByte(1);

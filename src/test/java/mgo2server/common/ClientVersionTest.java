@@ -65,6 +65,9 @@ class ClientVersionTest {
 		assertThat(HexFormat.of().formatHex(disc.sessionIv()))
 			.as("first eight bytes of the disc kit's derived context")
 			.isEqualTo("b0781d5365e3910e");
+		assertThat(disc.hubEntryTextLength())
+			.as("0x4902 entry carries a 64-byte text block on 1.0, making the entry 99 bytes")
+			.isEqualTo(64);
 		assertThat(disc.isDisc()).isTrue();
 		assertThat(disc.is136()).isFalse();
 	}
@@ -82,6 +85,9 @@ class ClientVersionTest {
 		assertThat(HexFormat.of().formatHex(patch.sessionIv()))
 			.as("first eight bytes of the patch kit's derived context")
 			.isEqualTo("35d5c38ed0110ea8");
+		assertThat(patch.hubEntryTextLength())
+			.as("1.36 deleted the text block with the subtype-5 scan; entry is 35 bytes")
+			.isZero();
 		assertThat(patch.is136()).isTrue();
 	}
 
@@ -96,6 +102,8 @@ class ClientVersionTest {
 			.isNotEqualTo(ClientVersion.V1_36.sessionKeyResource());
 		assertThat(ClientVersion.V1_0.sessionIv())
 			.isNotEqualTo(ClientVersion.V1_36.sessionIv());
+		assertThat(ClientVersion.V1_0.hubEntryTextLength())
+			.isNotEqualTo(ClientVersion.V1_36.hubEntryTextLength());
 	}
 
 	@Test

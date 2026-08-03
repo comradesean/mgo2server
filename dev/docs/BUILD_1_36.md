@@ -357,79 +357,93 @@ rejection.
 
 **Banked for a version toggle:** lobby-list capacity 32 -> 100, containing struct +104 bytes.
 
-## Lobby Select: the hub list is FINE, and two categories are dead by construction
+## SOLVED: the hub-list entry is 35 bytes on 1.36, 99 on 1.0
 
-**The `0x4902` parser is instruction-identical between the builds.** 99-byte entries are correct for
-1.36; the "1.36 wants something wider" pattern does **not** hold here, and that hypothesis is
-refuted rather than unproven. Differences are two immediates and the struct base:
+**Games can be created on 1.36 as of 2026-08-03.** This was the last blocker.
 
-| | disc | 1.36 |
-| --- | --- | --- |
-| `0x4902` parser | `0xD47E18` | `0xF15B30` |
-| entry cap | 64 | **128** |
-| hub array base | `ctx+0xB790` | **`ctx+0x1EA38`** |
-| sub-list cap | 30 | **100** |
-| completion event | 56 | **60** |
-| Lobby Select states | 37 / 38 / 40 | **48 / 49 / 51** |
-| latched-subtype byte | `+0x294` | **`+0x2B4`** |
+### The difference
 
-The entry getter (`0xF17120`), the count (`0xF1716C`), `0x4901` (`0xF15530`) and `0x4903`
-(`0xF15440`) are otherwise identical, including the "refuse while marker nonzero" test.
+1.36's `0x4902` parser does **not** read the 64-byte per-lobby text block that the disc build reads
+straight after the 16-byte name.
 
-### Why a click can do nothing, in BOTH builds
+```
+disc 0xD47E18 : ... u16 lobbyId, raw16 name, raw64 TEXT, u32 open, u32 close, u8   -> 99 bytes
+1.36 0xF15B30 : ... u16 lobbyId, raw16 name,             u32 open, u32 close, u8   -> 35 bytes
+```
 
-The click *is* registered — the input poll (1.36 `0xAA7DB4`, disc `0x94A224`) is byte-identical, so
-the press is seen. Selecting a category latches its subtype, moves to the sub-list builder state
-(1.36 `0x98EFDC`), which filters the hub array by that subtype and resolves each `lobbyId` against
-the gate list. **If that yields zero rows the screen bounces straight back** — 1.36 `0x98FDD0`
-`lwz r0,4(r26); cmpwi 0; beq` → `li r0,49`, disc the same shape at `0x89169C` → `li r0,38`. Silent:
-no screen change, no packet, no sound.
+Verified by instruction count rather than by eye: the disc parser contains exactly **one**
+`li r5,64` (at `0xD48034`, feeding the raw-copy primitive at `0xD48038`); 1.36's parser contains
+**zero** — its only raw copies are `li r5,1` and `li r5,16`, and the read following the name is
+already the u32 open time.
 
-**No validity test rejects our entries.** All 15 call sites of 1.36's entry getter read only `+0`
-index, `+4` subtype, `+5` (sub-list row copy), `+8` lobbyId, `+10` name, `+27` text. **Nothing reads
-open, close or `alwaysOpen`**, so sending zeros there is correct.
+**It is coherent, not arbitrary.** The text block had exactly one consumer in the disc build, the
+subtype-5 branch at `0x890504`. **1.36 deleted the subtype-5 scan entirely.** The field's only
+reader went away and the field went with it.
 
-### The 1.36-only part: two categories are always drawn and we serve neither
+### Why it presented so strangely
 
-1.36 runs **four** scans where the disc build runs six emitters, and it emits **two rows
-unconditionally**:
+Sending the wrong length **does not error**. The readers bound-check the 1024-byte receive buffer,
+not the payload length, so a misaligned entry is never rejected — it silently shifts everything
+after it. With our five 99-byte entries in a 495-byte payload, a 1.36 client read at 35-byte stride
+and believed it had **15** entries. The observed Lobby Select, every row explained:
+
+| observed | cause |
+| --- | --- |
+| Automatching works, shows SNAKE | entry 0's first 26 bytes coincide between the two layouts |
+| **Free Battle present but dead** | a phantom entry's subtype byte landed on a trailing `is_open = 1`, so the row was emitted; its `lobbyId` fell **past the payload end**, the gate lookup failed, and the sub-list bounced silently |
+| **no Training row at all** | nothing in the misparse carried subtype 7 or 8 |
+| Survival, Tournament Registration | 1.36 emits these two **unconditionally**; they latch subtypes 4 and 10, which v1 does not serve |
+
+That last pair is not a bug and needs no fix — see the row table below.
+
+### The fix
+
+`ClientVersion.hubEntryTextLength()`: **64** on 1.0, **0** on 1.36. `HubGameController` derives its
+entry size from it. A value, not a branch — no `if` was needed.
+
+### Two lessons worth more than the fix
+
+**"I diffed them and they are identical" is a claim, not a fact.** The first investigation reported
+these parsers instruction-identical and was wrong; the error was transcribing the disc build's
+64-byte read into the 1.36 column. It was caught only because the operator's screen contradicted the
+model — the missing Training row could not be explained by the accepted theory. A static reading
+that survives only until someone looks at the client is not yet evidence.
+
+**The reference servers were RIGHT.** `mgo2_cmd_4902_s2c.ksy` records that "both reference servers
+write 35 bytes … omits a 64-byte text block" and treats it as their error. They target 1.36-era
+clients, where 35 is correct. This is the **second** case in one session where "upstream is wrong"
+resolved to "upstream targets a different build" — the login perks field was the first.
+`CLAUDE.md`'s warning that faithful copying of an inapplicable source looks exactly like diligence
+now has an inverse: **an inherited value that looks wrong may be right for a build we do not serve.**
+
+### 1.36 Lobby Select, for reference
+
+Four scans where the disc build has six emitters, and **two rows drawn unconditionally**:
 
 | pos | 1.36 emitter | latched subtype | condition |
 | --- | --- | ---: | --- |
 | 1 | `0x98ED38` | 2 Automatching | scan |
 | 2 | `0x98ECC4` | 1 Free Battle | scan |
 | 3 | `0x98EC50` | 7 Training (7/8 grouped) | scan |
-| 4 | `0x98E924` | **4** | **always emitted** |
-| 5 | `0x98E99C` | **10** | **always emitted** |
+| 4 | `0x98E924` | **4 Survival** | **always** |
+| 5 | `0x98E99C` | **10 Tournament Registration** | **always** |
 | 6 | `0x98EBDC` | 3 | scan |
 
-1.36 **deleted the subtype-5 scan entirely** — and with it the only reader of entry byte `+0x06` and
-of the 64-byte text block. Rows 4 and 5 latch subtypes **4** and **10**, which we do not serve, so
-their sub-list is always empty and they **always bounce silently**. They look identical to the
-working rows.
+Rows 4 and 5 render "INFORMATION" against our data because we serve neither subtype. Correct for v1.
+**Subtype 10 does not exist in the disc build at all** — `LOBBIES.md`'s "does not exist in this
+build" is true of the disc and false of 1.36.
 
-**Subtype 10 does not exist in the disc build at all.** `LOBBIES.md` says it "does not exist in this
-build" — true of the disc build, false of 1.36. It has its own action function, help topic 69 and
-name/description strings 266/286.
-
-### The discriminator, if this is ever seen again
-
-Count the rows in Lobby Select and click the **topmost**:
-
-- **five rows, top one works** — the bottom two are the post-launch categories above. Nothing to fix.
-- **five rows, top one also dead** — the hub array is unreadable, which happens only if the marker at
-  `hub+0` is never cleared. `0x4901` sets it to −1, `0x4903` clears it, and the getter returns NULL
-  for every index while it is nonzero. `0x4903` also *requires* it already nonzero (`0xF15488`,
-  else −73), so a missing or out-of-order `0x4901` poisons the whole list.
-- **only two rows** — the hub array is empty; the fault is the `0x4901`/`0x4902`/`0x4903` sequence.
+Other 1.36-only values banked here: hub entry cap **64 → 128**, sub-list cap **30 → 100**, hub array
+base `ctx+0xB790` → **`ctx+0x1EA38`**, completion event **56 → 60**, Lobby Select states
+**37/38/40 → 48/49/51**, latched-subtype byte **`+0x294` → `+0x2B4`**. The `0x2003` gate record is
+**46 bytes with a 52-byte struct stride in both builds** — only its cap differs, 32 → 100.
 
 ### A correction owed to the disc-build docs
 
-`LOBBIES.md` and `HubGameController`'s comment both say no call site reads hub entry offset 7, the
-flags byte. That remains true of the disc build and of the Lobby Select path in both builds, but
-**1.36 `0x97C79C` reads bits `0x10` and `0x08`** of the reversed byte, called from four sites on a
-different screen (`0x9D3770`, `0x9D3894`, `0x9E0ED4`, `0x9E6C1C`). First evidence in either image
-that the byte is read by anything.
+`LOBBIES.md` and `HubGameController` both say no call site reads hub entry offset 7, the flags byte.
+That remains true of the disc build and of the Lobby Select path in both, but **1.36 `0x97C79C`
+reads bits `0x10` and `0x08`** of the reversed byte, from four sites on a different screen. First
+evidence in either image that the byte is read at all.
 
 ## Open
 

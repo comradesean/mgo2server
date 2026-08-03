@@ -3,6 +3,31 @@ meta:
   title: "MGO2 0x4902 — game-lobby list entries (server -> client)"
   endian: be
 doc: |
+  ## !! ENTRY SIZE IS VERSION-DEPENDENT: 99 on 1.0, 35 on 1.36 [2026-08-03] !!
+
+  **This file describes the release-day disc build.** A 1.36 client reads a **35-byte** entry: the
+  64-byte text block below does not exist there. Disc parser `0xD47E18` has one `li r5,64` feeding
+  the raw copy at `0xD48034`; 1.36's parser `0xF15B30` has **zero** — its only raw copies are
+  `li r5,1` and `li r5,16`, and the read after the name is already the u32 open time.
+
+  Coherent rather than arbitrary: the text block's only consumer in the disc build was the
+  subtype-5 branch at `0x890504`, and **1.36 deleted the subtype-5 scan entirely**. The field's only
+  reader went away and the field went with it.
+
+  **The note below calling the reference servers wrong is itself wrong, and stays as a lesson.**
+  They write 35 bytes because they target 1.36-era clients. 35 is correct there and wrong here;
+  99 is correct here and wrong there. This is the second case in one session where "upstream is
+  wrong" turned out to be "upstream targets a different build" — the login perks field was the
+  first. `CLAUDE.md`'s warning about faithful copying of an inapplicable source has an inverse worth
+  remembering: an inherited value that looks wrong may be right for a build we do not serve.
+
+  **Observed live 2026-08-03** — sending 99-byte entries to a 1.36 client does not error, because
+  the readers bound-check the 1024-byte receive buffer rather than the payload. The client read our
+  495-byte payload at 35-byte stride, believed it had **15** entries, and rendered a Lobby Select
+  with Automatching working, **Free Battle present but dead** (its phantom entry's `lobbyId` landed
+  past the payload end, so the gate lookup failed and the sub-list bounced silently), and **no
+  Training row at all**. The server side is `ClientVersion.hubEntryTextLength()`.
+
   The payload of one 0x4902 packet: N fixed-size entries back to back, the reply body to the
   client's empty 0x4900 request. Bracketed by 0x4901 (4-byte result; also resets the client's
   entry count and marks the list in progress) and 0x4903 (4-byte result; fires the completion
