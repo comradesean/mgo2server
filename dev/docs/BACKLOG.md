@@ -4,6 +4,53 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
+## Serve the PSN / MGO Shop subsystem, so 1.36 does not have to be bypassed
+
+**Operator request, 2026-08-02. Not now — recorded so the bypass does not quietly become the
+design.**
+
+1.36 runs a PSN/NP entitlement check after the gate exchange that the release-day disc build never
+performs. A worker thread named `psnupdatesvr` (1.36 `0xEA8B68`) queries for entitlement to the
+region's product id — `UP0101-BLUS30109_00` for BLUS30109 — and on RPCS3 with no real entitlement
+the lookup returns zero entries, the worker reports status **−2**, and the client raises dialog
+`0x5012` with the packed code `(status << 8) | phase` = `0xFFFFFE03`.
+
+**We currently skip it rather than serve it.** `d/testhk` header byte 0 bit 1 sets bit `0x2` of the
+host-table flag word, which the worker tests at `0xEA8BC0` before doing any work; when set it
+returns status 0 immediately. That is now `testhk_editor.py --skip-psn`. It is the game's own switch,
+not a hack — but it is a *bypass*, and it forks behaviour between builds.
+
+**Why serving it properly is worth doing.** The bypass has an observable side effect already: with
+the bit set the client stops sending the **`np`** field (its PSN name) in the `gidauth5.html` auth
+POST. So the skip is not free — it changes what the client tells us about itself, and anything that
+ever depends on `np` would silently see less. A subsystem we emulate is one we can observe; a
+subsystem we switch off is one we can never map.
+
+**What is already known**, all 1.36 addresses, from `dev/docs/BUILD_1_36.md`:
+
+- the state machine at `0xAC2DA8`, 18 states, jump table `0xAC2DF0`; object fields `+112` state,
+  `+124` dialogId, `+128` phase, `+132` status;
+- the worker at `0xEA8B68`, status vocabulary `0 / −1 / −2 / −3 / −4 / −5`, with `−2` written at
+  `0xEA8C7C` from the two zero-result tests at `0xEA9090` and `0xEA9164`;
+- host-table slots **12–15** are this subsystem's URLs — one raw, one with `/query.html` appended
+  (~10 call sites), one formatted `%s?prod=%d`, one PSN update URL;
+- the string block `0xFE8680`–`0xFF56E0`: `MGOSHOP_TITLE`, `MGOSHOP_DOC`, `BUY_KAKUNIN_DOC`,
+  `NO_BUY_DOC`, `JPY`/`USD`/`EUR`, `psnprodlist`, `limitprodlist`, `/query.html`, `/ticket.html`,
+  `/rest.html`, `psnid`, `code=`, `&prod_rest=`, and the three product ids.
+
+**The first experiment, and it is cheap.** `point_at(host, include_commerce=True)` aims slots 12–15
+at our server instead of loopback. The client's requests then land in the probe logs and can be
+mapped — which is the only way to learn what it actually asks for. Do that *before* designing
+anything; the endpoints are `/query.html`, `/ticket.html` and `/rest.html` against a base we control.
+
+**Caution:** slot 13 is fetched from about ten call sites, so answering it wrongly can break a
+session that would otherwise work. Point them at us to *observe* first, and keep `--skip-psn`
+available as the fallback.
+
+**Scope note.** This is 1.36 content and must not be rolled into the v1 server. Per the operator's
+standing instruction it goes behind an explicit toggle in `server.env` when it is built at all. See
+`BUILD_1_36.md`.
+
 ## ~~What HOST_STANCE should an automatch game carry?~~ — RESOLVED 2026-08-02: unobservable
 
 **Settled by live test, and the answer is that the question has no observable answer.** Two RPCS3
