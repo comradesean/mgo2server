@@ -110,10 +110,17 @@ sender — the client has no local echo)*
 
 ### Gaps — sendable, unanswered — **29 as of 2026-07-30**, not the 63 below
 
-> Recounted from the source. The 29 are: `0x2006` `0x3040` `0x4210` `0x4348` `0x4394` `0x43B0`
+> Recounted from the source. The 29 are: ~~`0x2006`~~ ~~`0x3040`~~ `0x4210` `0x4348` `0x4394` `0x43B0`
 > `0x4860` `0x4904` `0x4908` `0x4910` `0x4912` `0x4914` `0x491B` `0x4920` `0x4923` `0x4930`
 > `0x4940` `0x4980` `0x4984` `0x4986` `0x4992` `0x49A0` `0x49B0` `0x49C0` `0x49C2` `0x4A25`
 > `0x4A30` `0x4A40` `0x4E00`.
+>
+> **2026-08-03: `0x3040` and `0x2006` leave the list — 27 remain.** Both builders are dead code:
+> `0x3040`'s entry `0xD37B00` and `0x2006`'s `0xD36900` each have zero callers image-wide, with
+> the scans control-validated against live siblings in the same OPD banks (and, independently,
+> nothing in the image arms `0x3040`'s wait slot 13 or calls `0x2006`'s slot-11 waiter). Neither
+> is sendable by this build, so neither is a gap. Details and the caveats in
+> `dev/proto/inbound/mgo2_cmd_3040_c2s.ksy` and `dev/proto/inbound/mgo2_cmd_2006_c2s.ksy`.
 >
 > **Four of them are reachable in ordinary play and are the live stall candidates:**
 > `0x4210`, `0x4348`, `0x4394`, `0x43B0`. All four have real ELF-derived layouts in `dev/proto/`,
@@ -131,9 +138,11 @@ Potential `FFFFFF60` stalls *if the triggering menu is reached*; grouped by reac
 - `0x43c8` (`0xD40CB4`, `{u32, u8}`) — the client's real "start round"; our handler was bound
   to `0x43ca`, which **has no builder** and is never sent. **Resolved 2026-07-23:** handler
   renumbered to `0x43c8`/`0x43c9`; `game_round` also populates on create/join now (BACKLOG).
-- `0x3040` (`0xD37B6C`, `u8`) — has a live builder after all; still unanswered by any reference.
-  The byte is bounds-checked `<= 7` by the client, the same bound `0x3103`/`0x3105` use on the
-  character-slot index [ELF, 2026-07-26].
+- `0x3040` (`u8`) — the 2026-07-26 "has a live builder after all" reading is itself corrected
+  [ELF 2026-08-03]: the builder body exists at `0xD37B00` but has zero callers, so the disc
+  build cannot send it. The byte's `<= 7` bound and the `0x3103`/`0x3105` kinship stand, and
+  the command is now identified from the reply side: activate character by slot
+  (`dev/proto/inbound/mgo2_cmd_3040_c2s.ksy`).
 
 **Reachable in ordinary flow (priority):** ~~`0x4112`~~, `0x4210`, `0x4220`
 (connect-family write-backs / card) · `0x4348`, `0x4394`, `0x43a6`, `0x43b0`,
@@ -175,7 +184,7 @@ handler exists, because answering it properly needs a broadcast mechanism the se
 | `0x49xx`+ | `0x4904`–`0x49c2` (~18) | game-lobby / roster / GHQ |
 | `0x4axx` | `0x4a25`, `0x4a30`, `0x4a40` | unidentified — **not rankings**, see below |
 | mailbox | `0x4840`, `0x4860` | read / file mail (`0x4800` send and `0x4880` delete are served) |
-| misc | `0x2006`, `0x4e00` | lobby-layer / isolated |
+| misc | ~~`0x2006`~~ (dead code, 2026-08-03), `0x4e00` | lobby-layer / isolated |
 
 **The `0x4Axx` block is not the ranking subsystem [ELF, 2026-07-27].** The id looks inviting and
 the block has three list replies, so it has been guessed at more than once. It is not: the
@@ -200,8 +209,11 @@ the screen advances only when slot 90's result is 0, which only `0x4e12` sets. T
 unreachable because the screen is gated on **lobby subtype 4** (Survival) and we serve no such
 lobby — but that is a *deployment* gate, not a client-side impossibility, so it is recorded as
 latent rather than as "cannot happen". `0x2006` likewise has a shape now: empty payload, wait slot `0x0b`,
-sender `0xd36900` — a near-clone of `0x2005`'s sender, so its reply is plausibly the otherwise
-unexplained `0x2007` (single u32, parser `0xd36498`, notify slot 11), which no doc mentions.
+sender `0xd36900` — and [ELF 2026-08-03] its reply **is** `0x2007` (tier-1: the sender opens wait
+slot 11 and `0x2007`'s parser arm is the unique closer of slot 11), but the pairing is academic on
+this build: the sender, the slot-11 waiter and the reply value's only reader all have zero callers,
+so the exchange is dead code — see `dev/proto/inbound/mgo2_cmd_2006_c2s.ksy` and
+`dev/proto/outbound/mgo2_cmd_2007_s2c.ksy`.
 
 The `0x4bxx` "23" and `0x49xx` "~18" counts both reproduced exactly on re-derivation. Three ids in
 those blocks are **odd-numbered** — `0x491b`, `0x4923`, `0x4b73` — where every other client→server

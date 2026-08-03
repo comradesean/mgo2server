@@ -105,7 +105,15 @@ decoder was separately validated against two known in-function branch targets.
 **All four still have real ELF-derived layouts** in `dev/proto/`, so handlers remain cheap to
 write if a later version toggle ever reaches a sender. None of them is a release-day stall.
 
-### The first two rows removed — 2026-08-01, field-mapping batch 5
+### Two more leave the sendable set — 2026-08-03: `0x3040` and `0x2006` (29 becomes 27)
+
+Same failure mode as `0x4394`/`0x4210`/`0x4348`: a builder body that exists was read as "can be
+sent". Both scans follow the batch-5/6 method and were control-validated in their own OPD banks.
+
+| id | dir | corrected status |
+| --- | --- | --- |
+| `0x3040` | c2s | **dead code — cannot be sent by this build [2026-08-03].** Sender entry `0xD37B00` (not `0xD37B6C`, the `li r4,0x3040` inside it): zero `bl`/`b`/`bc` image-wide, OPD `0x1029008` referenced by no word, no constant formation of either address; eight live controls in the same bank resolve (0x3105 -> 1, 0x3103 -> 1, 0x3048 -> 3, 0x3107 -> 1, 0x3101 -> 1, plus 0xD36FF8 -> 8, 0xD37024 -> 1, 0xD378EC -> 7). Independently, wait slot 13 is armed at exactly one site in the image — inside the dead builder. The command is now identified anyway: **activate character by slot (0..7)**, reply `0x3041` = `{result; chara_id; name[16]}` into the live profile — both reply fields are now tier-1 named. See both `.ksy` files |
+| `0x2006` | c2s | **dead code — cannot be sent by this build [2026-08-03].** Sender `0xD36900` (the unique `li r4,8198` site): zero callers, against exactly one each for its byte-identical siblings `0x2005` (`0xD369D0`, from `0x94633C`) and `0x2008` (`0xD3681C`, from `0x90F044`). The slot-11 waiter `0xD360F4` also has zero callers while its slot-10/12 neighbours have one each, and the reply value's only typed reader `0xD35FDC` is equally dead. Reply pairing is settled tier-1 regardless: `0x2006` opens wait slot 11, `0x2007`'s parser arm is its unique closer |
 
 `0x4394` and `0x43B0` were listed here as reachable. Both were re-derived from the binary and
 neither is:
