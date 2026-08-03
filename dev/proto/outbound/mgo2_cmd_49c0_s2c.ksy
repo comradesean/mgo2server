@@ -11,10 +11,17 @@ doc: |
   parser 0xD4E420.
   SHAPE: a status word, then a COUNT, then count key/value word pairs. The count is a real
   wire field (read at 0xD4E4C0, loop bound at 0xD4E550: `cmpw r26,count; blt -> 0xD4E4D4`), so
-  unlike most list replies in this range it is NOT size-driven. Each pair's key is matched
-  against three fixed client fields (obj+0x84, obj+0xB0, obj+0xDC at 0xD4E504-0xD4E534) and on
-  a hit the value is stored at obj+0x90 / obj+0xBC / obj+0xE8 respectively. Keys that match
-  nothing are silently dropped.
+  unlike most list replies in this range it is NOT size-driven.
+
+  IDENTIFIED 2026-08-03: **this is a per-invitee status list — the reply to the client's
+  0x49C0 invitation send.** The "three fixed client fields (obj+0x84, obj+0xB0, obj+0xDC)"
+  the pair keys are matched against (0xD4E504-0xD4E534, base `addi r29,r9,6136` at 0xD4E484)
+  are not ad-hoc fields: they are **outbox entries 0/1/2's `+0` (entry_id)** in the 6 x
+  44-byte invitation array at `session+0x117F8` (full layout and reader closure in
+  `mgo2_cmd_49c1_s2c.ksy`), and "stored 12 bytes past" is those entries' **`+12` state** —
+  the same field the 0x49C1 notification and 0x49C3 write. Keys that match nothing are
+  silently dropped. Tier-1 only; the sender is uncallable on this build, so no capture can
+  back this. Post-launch, not served in v1.
   Read primitives (naming as in ../mgo2_cmd_4902.ksy): 0xD5CCD8 / 0xD5CC64 u32,
   0xD5CC14 / 0xD5CBC4 u16, 0xD5CB8C u8, 0xD5D018 raw N (writes a NUL at dest+N but consumes
   exactly N on the wire), 0xD5CE34 delimiter-terminated string, 0xD5CEB0 "cursor < payload length"
@@ -44,6 +51,11 @@ seq:
       [ELF] read at 0xD4E498. MUST be 0: any non-zero value branches straight to RD_END
       (0xD4E4AC / 0xD4E4B0 -> 0xD4E564) and the count and pairs are never read. This is the one
       field in this file whose behaviour is established rather than guessed.
+      [2026-08-03] It is a **signed result code**, not a plain u4: `lwa r5,112(r1)` at
+      0xD4E590 feeds `0xD32E70(session, 75, r5)` — the result setter for the wait slot the
+      0x49C0 sender armed — identical to 0x49C3's `result`, which is documented as s4. The
+      u4-vs-s4 divergence flagged there applies here verbatim; the declared width is evidence
+      and stays, per the width-adjudication rule.
   - id: pair_count
     type: u4
     doc: "[ELF] number of pairs that follow, read at 0xD4E4C0. Loop-bound, not a byte length."

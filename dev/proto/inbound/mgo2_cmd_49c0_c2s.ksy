@@ -12,9 +12,33 @@ doc: |
   `.ksy`. The two need reconciling into a naming convention before either is promoted — flagged
   rather than silently resolved.
 
-  Sender: the function containing `0xD4E610`, builder call `0xD4E6D8`, subsystem index `0x4B`
-  (`li r4,75` at `0xD4E7AC` before the status setter `0xD32E08`). Unhandled by our server
-  (COMMANDS.md lists `0x4904`–`0x49C2` as the game-lobby/roster/GHQ gap).
+  Sender: entry `0xD4E5D0` (the function containing `0xD4E610`), builder call `0xD4E6D8`.
+  [CORRECTED 2026-08-03] The `li r4,75` at `0xD4E7AC` is not a "subsystem index" — 75 is the
+  **wait slot** armed via `0xD32E08(session, 75, 1)`, the same slot space as the 76 that
+  `0x49C2` arms; `0x4B` was a coincidence of the decimal value. Slots 59-76 are one contiguous
+  bank occupied exclusively by 0x49xx team commands, and 75/76 are its highest — the
+  last-added commands of the family. Unhandled by our server (COMMANDS.md lists
+  `0x4904`–`0x49C2` as the game-lobby/roster/GHQ gap).
+
+  IDENTIFIED 2026-08-03: **this sends up to three team invitations** (or applications — see
+  the open question in `../outbound/mgo2_cmd_49c1_s2c.ksy`). The ids come from 44-byte
+  invitation records (the same record type the 0x49C1 inbox/outbox array at `session+0x117F8`
+  holds), and the loop mirrors FIVE things into the outbox at `session+0x1187C` per entry —
+  not just the 17 name bytes the note below records: `+0` the id, `+4` `time(NULL)`
+  (`bl 0xDD21F8`, sc 145), `+8` the caller's u16, **`+12` literal 1**, `+24` the 17 bytes.
+  The `+12 = 1` is the load-bearing one — it is what makes a later `0x49C1` with state != 1 a
+  status update to a *pending* request. Two guards this file omitted: a 10-second rate limit
+  on `session+0x11900` (error **-1043**, `0xD4E67C`-`0xD4E688`) and `0xD3844C(session)` ("GAME
+  channel connected") -> **-36**. Notably there is NO team gate here — unlike `0x49C2`'s
+  "must not already be in a team" — which is the strongest evidence for the "application"
+  reading over "leader invites".
+
+  REACHABILITY [ELF 2026-08-03]: the sender `0xD4E5D0` has **zero call sites** image-wide
+  (control: the my-team accessor `0xD491F8` in the same bank has 83), as do the three
+  invitation-table accessors and the slot-75/76 result getters. So no value for any argument
+  is ever produced in this image, the exchange is unreachable in play, and — tier note —
+  everything here is tier-1 only and cannot reach tier 2 on this build. Post-launch, not
+  served in v1.
 
   Read from the send path in `MGO2.elf` (`dev/ref/MGO2 (decrypted).elf`) on 2026-07-26.
   Method: the packet builder `0xD5CF40` (`li r4,<id>` at builder_call-4) memsets a 1024-byte
@@ -53,7 +77,13 @@ seq:
       Kaitai style guide).
   - id: unknown_04
     type: u1
-    doc: "[ELF] `0xD5C8A0` at `0xD4E6F8`, source = sender arg r4. Meaning [UNKNOWN]."
+    doc: |
+      [ELF] `0xD5C8A0` at `0xD4E6F8`, source = sender arg r4, spilled at `0xD4E610` and
+      written straight to the wire. [UNKNOWN — and terminal on this build, 2026-08-03:] it is
+      not validated (the guards check only session, count 1..3, array non-NULL), not mirrored
+      into the outbox, and — decisively — **the sender is uncalled: no caller anywhere in the
+      image, so no value for it is ever produced**. No evidence to name it from exists in this
+      binary; none can.
   - id: ids
     type: u4
     repeat: expr
@@ -61,4 +91,7 @@ seq:
     doc: |
       [ELF] One u32 per input record, from `record+0`. Count comes from the leading `num_ids`
       field, not from the payload length. Never zero (a zero aborts the send).
-      What the ids identify is [UNKNOWN].
+      [2026-08-03] The ids are **invitation entry ids** — `record+0` of the 44-byte invitation
+      record type (see `../outbound/mgo2_cmd_49c1_s2c.ksy` for the full layout); the same key
+      the `0x49C1` notification and `0x49C2`/`0x49C3` answer flow match on, and the key the
+      `0x49C0` reply's per-invitee status pairs come back under.
