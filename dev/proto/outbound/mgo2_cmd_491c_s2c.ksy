@@ -35,8 +35,16 @@ seq:
   - id: unknown_04
     type: u4
     if: result == 0
-    doc: "[UNKNOWN] read into a stack slot and discarded by this function. Position exact."
+    doc: |
+      [UNKNOWN] read into r1+116 and **never loaded again — no consumer, ELF 2026-08-03**:
+      the only stack loads in the whole parser (0xd4d8d4) are `lwz r0,112(r1)` and
+      `lwa r5,112(r1)`, both the result; after the reads the function only calls end-of-read,
+      SetWaitState(69,2) and SetResult(69, result). Context: slot 69 is opened by the 0x491b
+      sender (0xd4d9e4, `li r4,18715` at 0xd4daa8), so this is 0x491b's reply and both words
+      are answer-only and inert. Position exact. Tier-1 only.
   - id: unknown_08
     type: u4
     if: result == 0
-    doc: "[UNKNOWN] as above."
+    doc: |
+      [UNKNOWN] read into r1+120 and never loaded again — **no consumer** [ELF 2026-08-03];
+      same closed function-local enumeration as `unknown_04`.

@@ -87,6 +87,22 @@ seq:
       [ELF 0xd4d664] 16-byte raw block. **Must be NUL-terminated inside 16 bytes** — the
       parser measures it and drops the packet if the length comes back 16 [READ 0xd4d6c4].
       That check is what makes "text" here [ELF] rather than [INFERRED].
-  - id: unknown_1b
+  - id: member_state
     type: u1
-    doc: "[UNKNOWN] last byte; scratch+0x19. Compared against 9, 2 and 1 in the post-processing at 0xd4d6dc."
+    doc: |
+      [ELF 2026-08-03 — named by destination and renderer; was `unknown_1b`, and the old
+      "scratch+0x19" was wrong] Last byte. The read target is `addi r4,r1,137` (0xd4d678)
+      against the scratch base r1+116, i.e. **scratch+0x15**; the 28-byte block copy
+      (lswi/stswi at 0xd4d71c-0xd4d720) lands it at **member+0x15** of the roster row
+      (team+380+28*slot) — `member_state`, the byte the member-list painter renders as "OK"
+      when 2 and "NG" otherwise (0x8C0EDC, dev element name `MEMBER_STATE`/`st_member_state`),
+      that selects lobby string 693 "Accept Entry" (0x8C04C0/0x8C2794), and that the 0x4930
+      toggle flips (0x8C28DC sends 0 if own byte is 2, else 1).
+
+      The old 0xd4d6dc note conflated two operands: the `cmpwi 9` is on **team_state**
+      (`lbz r0,4(r27)` at 0xd4d6d4), and only the `cmpwi 2` / `cmpwi 1` are on this byte —
+      the gate is "if team_state == 9 this byte must be 2, else it must be 1", otherwise
+      -1036. Two further gates this file omitted: `character_id != 0` (0xd4d6a8) and
+      `name[0] != 0` (0xd4d6b4). Side effects of the install: member+0x16 is set to 1
+      (`stb r0,138(r1)`), and because the scratch is memset and block-copied, member+0x14,
+      +0x17 and the u32 at +0x18 are zeroed. Tier-1 only; no client build exercises this.

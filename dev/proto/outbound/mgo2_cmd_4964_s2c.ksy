@@ -73,6 +73,16 @@ seq:
   - id: unknown_06
     type: u4
     doc: |
-      [UNKNOWN] read and consumed; not stored by this parser. Position exact. By analogy with
-      its siblings (0x4960/0x4965/0x4966/0x4967) it is a character id, but that is [INFERRED]
-      from the family, not from this function.
+      [UNKNOWN] Position exact. [CORRECTED 2026-08-03] Not merely "read and consumed": it is
+      passed as the third argument to `0xD33CD8(ctx, 12, value)` at 0xd4c6b4-0xd4c6bc — the
+      UI-event payload — **and that route is dead in this build**: event 12 is unregistered
+      and unpolled — no callback is ever installed for it (all 16 register-API sites enumerated; only selectors 26/50/54
+      land in the 1..55 range) and the poller's twelve sites never poll 12 (control: the same
+      scan finds ids 28 and 41, the events 0xD4EEF8/0xD5A38C raise). So the word reaches
+      nothing.
+
+      The character-id analogy is **withdrawn**: 0x4965 (0xd4c570), 0x4966 (0xd4c44c) and
+      0x4967 (0xd4c2a0) bound the identical single u32 against 7 and use it as a member SLOT
+      INDEX; only 0x4960 matches it against member+0x00. The siblings disagree, so the
+      analogy argues for "index" at least as strongly, and 0x4964 itself does neither.
+      Tier-1 only.

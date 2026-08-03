@@ -73,9 +73,12 @@ seq:
     doc: |
       [ELF 0xd492b0] Must equal the u16 at `team+0x29C` — the serial the team-record replies
       set and `0x49a8` updates. Mismatch -> `-1018`, packet dropped.
-  - id: unknown_06
+  - id: team_state
     type: u1
-    doc: "[UNKNOWN] -> team+0x004 (`unknown_0a` of the shared team record)."
+    doc: |
+      [ELF 2026-08-03 — named by destination; was `unknown_06`] Read straight into
+      team+0x004 (0xd4bc88): `team_state`, the team's event-participation state. Enum and
+      enumerations: `mgo2_cmd_4e20_s2c.ksy`. Tier-1 only.
   - id: members
     type: member
     repeat: expr
@@ -87,8 +90,10 @@ types:
   member:
     doc: |
       21 wire bytes. The same slots as `member` in the shared team record (see
-      `mgo2_cmd_4911.ksy`) except that the trailing u32 at member+0x14 is not sent here and
-      keeps whatever it held.
+      `mgo2_cmd_4911.ksy`) except that [CORRECTED 2026-08-03] the trailing u32 at
+      **member+0x18** (0x4911's `unknown_18`) is not sent here and keeps whatever it held —
+      the old text said +0x14, which is not sent either; and unlike 0x4950 this parser leaves
+      member+0x16 untouched.
     seq:
       - id: character_id
         type: u4
@@ -97,6 +102,10 @@ types:
         type: str
         size: 16
         doc: "[INFERRED] member+0x04, 16-byte raw block. Width is [ELF 0xd4bce4]."
-      - id: unknown_14
+      - id: member_state
         type: u1
-        doc: "[UNKNOWN] member+0x11, the per-member state byte the notifications rewrite."
+        doc: |
+          [ELF 2026-08-03 — named by destination; was `unknown_14`, and the old "member+0x11"
+          was wrong] Cursor `addi r29,r29,-9543` = team+401, +28 per iteration (0xd4bcac,
+          0xd4bd00) -> **member+0x15**: `member_state`, the OK/NG byte (renderer and enum in
+          `mgo2_cmd_4918_s2c.ksy`'s field of the same name).

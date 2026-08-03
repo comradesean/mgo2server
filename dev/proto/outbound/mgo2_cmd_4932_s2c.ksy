@@ -79,8 +79,14 @@ seq:
     doc: |
       [INFERRED] compared against `member.character_id` of the addressed slot; a mismatch
       aborts the mutation [ELF 0xd4d2b8].
-  - id: unknown_0b
+  - id: member_state
     type: u1
     doc: |
-      [UNKNOWN] must be 0 or 1 — `cmplwi 1` / `bgt` aborts the parse for anything larger
-      [ELF 0xd4d29c]. Two-valued; which two states is unestablished.
+      [ELF 2026-08-03 — named by destination; was `unknown_0b`] Stored via `stb r8,17(r9)`,
+      r9 = team+384+28*slot (0xd4d2c0-0xd4d2d8) -> **member+0x15**, `member_state`.
+
+      CORRECTED: the accepted range is **1 or 2, not "0 or 1"** — the check is
+      `addi r0,r8,-1; clrlwi; cmplwi cr7,r0,1; bgt` at 0xd4d290-0xd4d2a0, so 0 wraps to 255
+      and aborts. Event selection: == 2 -> event 5, else event 4 (0xd4d2d0-0xd4d2fc). This is
+      the broadcast of the 0x4930 toggle: 2 renders as "OK"/"Accept Entry" on the member
+      list, anything else as "NG" (0x8C0EDC, 0x8C04C0/0x8C2794). Tier-1 only.

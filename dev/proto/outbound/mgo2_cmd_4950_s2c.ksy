@@ -85,16 +85,22 @@ seq:
     doc: |
       [ELF 0xd492b0] Must equal the u16 at `team+0x29C` — the serial the team-record replies
       set and `0x49a8` updates. Mismatch -> `-1018`, packet dropped.
-  - id: unknown_06
+  - id: team_state
     type: u1
-    doc: "[UNKNOWN] -> team+0x004 (`unknown_0a` of the shared team record)."
+    doc: |
+      [ELF 2026-08-03 — named by destination; was `unknown_06`] Read straight into
+      team+0x004 (0xd4cab0): `team_state`, the team's event-participation state. Enum and
+      enumerations: `mgo2_cmd_4e20_s2c.ksy`. Tier-1 only.
   - id: member_states
     type: u1
     repeat: expr
     repeat-expr: 8
     doc: |
       [ELF 0xd4cad0-0xd4caf8] Eight bytes, positionally one per member slot, exactly as in
-      0x4943. Hardcoded loop bound; no count field.
+      0x4943. Hardcoded loop bound; no count field. [2026-08-03] Corrected offsets: nonzero
+      -> **member+0x15** (`member_state`, `stb` at 0xd4cb94) AND member+0x16 = 1
+      (`stb r0,1(r11)` at 0xd4cb98, r11 = team+401+28*i) — this parser, unlike 0x4943, does
+      write the second byte. Tail: event 9 with the local member's +0x15 (0xd4cc2c).
   - id: block_204
     size: 204
     doc: |
