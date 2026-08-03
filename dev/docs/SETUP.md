@@ -247,7 +247,7 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 
 | symptom | check |
 | --- | --- |
-| Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST; also confirm `dev/runtime/www/us/mgo2/policy/policy.txt` has been swapped for the real EULA text (`policy.txt.original`, gitignored) — the tracked file is a placeholder and real hardware stalls on it |
+| Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST. The policy text is a **red herring on RPCS3** — see the note below this table before swapping it |
 | `0519:8002AA0C` | PSN status is not RPCN |
 | `090B:00000001` after credentials | wrong `MGO2SERVER_CLIENT_VERSION` — the perks grammar differs by build. See "Which client build" |
 | `0910:C0FFEE02` at Start Game | wrong `MGO2SERVER_CLIENT_VERSION` — the session key differs by build; the account log says `no account holds the presented session` |
@@ -256,3 +256,23 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 | `0692:00000003` after the check | client classified symmetric — a Test II reply never arrived. Repeated `change_ip=True` lines in the `probe-stun` log are the tell. See "a second IP for the port check": WSL-only secondary, missing policy route, or the client machine's own firewall |
 | `0693:00000001` on Create Game | same cause as `0692` — the stored NAT verdict forbids hosting |
 | `0910:C0FFEE02` | no account row, or its password hash does not match |
+
+
+### The EULA text is not required on RPCS3
+
+`dev/runtime/www/us/mgo2/policy/policy.txt` is tracked as a **placeholder**; the real Konami EULA is
+kept locally as `policy.txt.original` (gitignored) and is not ours to redistribute.
+
+**You do not need to swap it to get a client through.** Confirmed 2026-08-02: a full login, Lobby
+Select and game creation all worked with the placeholder in place. The fetch returns `200` either
+way, and nothing downstream inspects the body.
+
+This table used to say the swap was required because "real hardware stalls on it". That claim is
+about **real PS3 hardware**, which this project has not tested — it is not disproven, but it does not
+apply to an emulator setup, and reading it as a prerequisite cost a debugging detour: the swap was
+made while chasing a stall whose actual cause was `d/testhk` carrying 12 host records where the
+client wanted 16.
+
+**So: if a client is stuck on the terms screen, look at the swap list, `gidauth5.html`, and
+`d/testhk` first.** Swap the EULA only if you are on real hardware or have eliminated everything
+else.
