@@ -160,9 +160,9 @@ happens to match execution order.
 | 1 | Free Battle (**disc string 245**) | `0x89044C` | `0x890908` | 245 / 261 | 10 | **in use** |
 | 7 | Training (**disc string 249**) | `0x890488` | `0x890894` | 249 / 262 | 11 | **in use** |
 | 8 | Combat Training (observed) | `0x890488` | `0x890894` | 249 / 262 | 11 | **in use** |
-| 5 | *unnamed — tournament/survival family* | `0x8904CC` | inline `0x890504` | 264 + entry text | 12 | present, unused |
-| 3 | *unnamed — tournament/survival family* | `0x890578` | `0x890820` | 246 / 263 | 13 | present, unused |
-| 4 | *unnamed — tournament/survival family* | `0x8905B4` | `0x8907AC` | 248 / 265 | 14 | present, unused |
+| 5 | Official Tournament (**disc strings** — title 636 reads "OFFICIAL CUP LOBBY"; AUTOMATCH.md §10) | `0x8904CC` | inline `0x890504` | 264 + entry text | 12 | present, unused |
+| 3 | Tournament (**disc strings**; AUTOMATCH.md §10) | `0x890578` | `0x890820` | 246 / 263 | 13 | present, unused |
+| 4 | Survival (**disc strings**; AUTOMATCH.md §10) | `0x8905B4` | `0x8907AC` | 248 / 265 | 14 | present, unused |
 | 6 | — in the title resolver's range, but no scan | — | — | — | — | unused |
 | 9, 10 and up | — out of range everywhere | — | — | — | — | **do not exist** |
 
@@ -275,17 +275,22 @@ So a Combat Training lobby seeded as subtype 7 lists correctly and then renders 
 training menu — Solo/Novice only. Observed live 2026-07-25, and the reason the two must be 7 and 8.
 The distinct background assets at `0x8ABAB0` (7) and `0x8ABAD4` (8) point the same way.
 
-**Subtype 3.** *Present, unused.* Menu row `0x890820`, strings 246/263, action 13. Title 634. Own
-background. Member of the 3/4/5 family screen.
+**Subtype 3 — Tournament** (disc strings, AUTOMATCH.md §10; Ver. 1.20 content, POST_LAUNCH.md).
+*Present, unused.* Menu row `0x890820`, strings 246/263, action 13. Title 634. Own background.
+Member of the 3/4/5 family screen.
 
-**Subtype 4.** *Present, unused.* Menu row `0x8907AC`, strings 248/265, action 14. Title 635. Own
-background. Member of the 3/4/5 family screen.
+**Subtype 4 — Survival** (disc strings, AUTOMATCH.md §10; Ver. 1.10 content, POST_LAUNCH.md).
+*Present, unused.* Menu row `0x8907AC`, strings 248/265, action 14. Title 635. Own background.
+Member of the 3/4/5 family screen.
 
-**Subtype 5.** *Present, unused.* The odd one. Its row is emitted **inline** at `0x890504` rather
-than by a shared helper, action 12, string 264 — and it is the only category with a precondition
-(`0x8904F0`: the entry's byte at `0x06` must equal 3) and the only consumer of the entry's 64-byte
-text block, which it passes to the string formatter at `0x94AD8C`. Title 636, own background,
-member of the 3/4/5 family screen.
+**Subtype 5 — Official Tournament** (disc strings, AUTOMATCH.md §10 — the title string reads
+"OFFICIAL CUP LOBBY"; Ver. 1.20 content, POST_LAUNCH.md). *Present, unused.* The odd one. Its row
+is emitted **inline** at `0x890504` rather than by a shared helper, action 12, string 264 — and it
+is the only category with a precondition (`0x8904F0`: the entry's byte at `0x06` must equal 3) and
+the only consumer of the entry's 64-byte text block, which it passes to the string formatter at
+`0x94AD8C`. Title 636, own background, member of the 3/4/5 family screen. The same byte-at-`0x06`
+gate is what `0x4902`'s `subtype5_row_gate` field names — the server decides whether the Official
+Tournament row ever appears.
 
 **Subtype 6.** *Not a lobby subtype.* In the jump table's range but routed to the fallback title,
 and no menu scan. Treat it as unused rather than reserved.

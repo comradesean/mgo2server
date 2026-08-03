@@ -39,9 +39,104 @@ so the boundary itself carries that tier.
 | --- | --- | --- |
 | **Team Sneaking** (rule 7) | 2008-07-04, three weeks after the 2008-06-12 launch, reportedly by server-side maintenance | fully present on the disc; deliberately not served. The feature bit is ours to open — see `GATES.md` |
 | **BOMB Mission** | roughly 2009-01-27 | not served |
-| **Survival** lobbies | Ver. 1.10 | lobby subtype 4 is named in the disc resources (`LOBBIES.md`) |
-| **Tournament** lobbies | Ver. 1.20 | lobby subtypes 3 and 5 — 5 reads "OFFICIAL CUP LOBBY" |
+| **Survival** lobbies | Ver. 1.10 | lobby subtype 4 is named in the disc resources (`LOBBIES.md`); **fully mapped 2026-08-03, enablement checklist below** |
+| **Tournament** lobbies | Ver. 1.20 | lobby subtypes 3 and 5 — 5 reads "OFFICIAL CUP LOBBY"; **fully mapped 2026-08-03, enablement evidence below** |
 | Interval, Stealth DM, Solo Capture, Race | later | not served |
+
+---
+
+## Survival and Tournament: what a toggle actually has to do — mapped 2026-08-03
+
+The `0x49xx` team family, the `0x4Axx` event subsystem and the `0x4Exx` Survival Match List
+are now **fully mapped**: every field named or carrying a control-validated precise negative
+(the per-field evidence lives in `dev/proto/`; run `dev/tools/field_scoreboard.py`). All of it
+is **tier-1 only** — no available client build exercises these commands, so nothing can reach
+tier 2 until a 1.36 client can be driven through them. What follows is the *enablement* map:
+every instruction-level gate between a stock client and each mode, in dependency order. This
+is the evidence a version toggle needs; it is not a proposal to serve anything.
+
+### The structural picture
+
+There is **no version guard and no feature bit** anywhere in these paths. Every screen and
+sender is unconditionally installed; what holds the modes closed is entirely **which lobby
+subtype the server lists and what it sends on the team/event commands**. The three dormant
+subtypes are 3 = Tournament, 4 = Survival, 5 = Official Tournament (disc strings,
+`AUTOMATCH.md` §10; `LOBBIES.md` has the menu scans and title arms). One byte —
+`lobby_subtype`, delivered on the team record at `team+0x260` and republished to the app
+object's `+0x294` — is the switch the whole client dispatches on: subtype 4 routes to the
+Survival screen family (`0x8CB8FC`-`0x8CFF40`, ~20 gates), 3/5 to the in-game round manager
+(`0x6EAC90`/`0x6EBFA8`), and the `0x4Axx` packets themselves are shared, subtype-blind
+carriers (no 0x4Axx parser branches on subtype — the split is all consumer-side; see
+`mgo2_cmd_4a13_s2c.ksy`).
+
+### Survival enablement checklist (each item with its ELF evidence in the named file)
+
+1. **List a subtype-4 lobby** in `0x4902` — the menu row and title exist for it already
+   (`LOBBIES.md`). The Survival browser menu row appears only when the app object's `+0x294`
+   byte is 4 (`0x8BC208`; strings 806/807 "Survival Match List").
+2. **Deliver subtype 4 on the team record** — `team+0x260` is written ONLY by the shared
+   parser `0xD4AF34` on `0x4911`/`0x4913`/`0x4987`/`0x49A1`; without it the browser entry
+   never appears (`mgo2_cmd_4e00_c2s.ksy`).
+3. **Answer `0x4E00` completely and promptly**: `0x4E10` (event record; list magic must be
+   0) → `0x4E11` rows → `0x4E12` carrying **result 0**, the only writer of wait slot 90's
+   result. The screen sends `0x4E00` unconditionally from its state 1 and raises
+   `5521:FFFFFF60` after 6000 ticks; a bare ack does not clear it. This is the one stall in
+   the subsystem — `0x4E20`..`0x4E23` consume no request slot and cannot stall.
+4. **Echo `event_id`** on `0x4E12` and `0x4E20` (compared against event+0x000, silently
+   dropped on mismatch, -1106), and pass the shared `0x4E2x` header validator `0xD49230`
+   (team id + the u16 serial at `team+0x29C`, else -1018; bypass when the context word is
+   0x4960).
+5. **Drive `team_state`** (`team+0x04`) — entirely server-authoritative, no client writer:
+   <= 2 shows "Team Standby", 5 is what makes the "Join Game" row exist, 9 flips the screen
+   to counted-roster mode and hardens the `0x4918` row gate (`mgo2_cmd_4e20_s2c.ksy`).
+6. **Populate the roster before the status columns** — `team+0x17C` is 8 x 28-byte member
+   records ({chara id, name[16], ..., member_state at +0x15}); `0x4918` refuses a row whose
+   status byte isn't 1 (or 2 when team_state is 9).
+7. **In-game, set the ladder record's subtype** so `gameObj+0xBCC` gets bits 8/9/10 — the
+   single setter `0x272728` fires for subtype 3..6-excluding-2 and sets all three in one
+   `ori`; bit 10 is what lets the client send `0x43B0` (the Survival match report), which
+   then needs a 4-byte `0x43B1` result. Subtype reaches that record via `0x43F0`/`0x43F1`
+   or copied from the team record by six parsers (`mgo2_cmd_4e00_c2s.ksy`, `AUTOMATCH.md`
+   §11).
+8. **Serve the match-flow packets**: `0x4A00` opens the event AND seeds the next-match
+   card's identity (its `new_id` lands in ladder+0 — `0x4A13`'s `card_id` must echo it or
+   the card is dropped, -1106); `0x4A13`/`0x4E20` carry the pairing; `0x4E21`..`0x4E23`
+   update the roster column; `0x4E23` tears the event down.
+
+### Tournament (subtypes 3 and 5)
+
+Items 1-2 and 5-8 apply identically with subtype 3; the differences are:
+
+* **Subtype 5 (Official Tournament) has a server-decided row gate**: the hub-list entry's
+  byte at `0x06` must equal 3 or the Lobby Select row is never emitted — that is `0x4902`'s
+  `subtype5_row_gate`, and it is the only lobby category with a precondition. It is also the
+  only category that renders the entry's 64-byte text block.
+* The team flow runs through the **TEAM SELECT** screen (`0x4980` → `0x4981/2/3` team list,
+  `0x4984` team info, `0x4910` Create Team → `0x4911`, `0x4912` join-with-password) — all
+  mapped, with the join gates (capacity 5207, closed 5215, password) on the team-list row
+  fields (`mgo2_cmd_4982_s2c.ksy`, `mgo2_cmd_4910_c2s.ksy`).
+* The round manager reads the ladder's `series_total`/`series_index` as round total/current
+  ("is this the final round"), where Survival's screens read the same two slots as the
+  participants' win counts — **the slot pair is subtype-polymorphic, and a server must not
+  mix the two writers in one session** (`mgo2_cmd_4a13_s2c.ksy`).
+* The `0x49Cx` invitation channel (3-slot inbox/outbox at `session+0x117F8`) is mapped but
+  **dead code on this build** — senders, waiters and table accessors all have zero callers —
+  so a 1.0 toggle cannot use it; it presumably went live in a later build
+  (`mgo2_cmd_49c1_s2c.ksy`).
+* Clan Stats (`0x4b21`'s popup and the CLAN RECORD screen) unlocks only once official-match
+  data exists — the screen refuses until "an official match is held" — which is what ties
+  feature completeness to subtype 5 actually running.
+
+### What this means for the toggle design
+
+The toggle is **operator policy plus data, not a client patch**: list the subtype, serve the
+team/event/list commands, and the client does the rest. The serving surface is sizeable —
+the team subsystem (create/join/roster/notifications), the event flow (`0x4A00` family), and
+for Survival the `0x4E00` triple with its hard stall — so "enable Survival" is a feature
+build, not a flag flip. But every packet it needs is now named, every gate has an address,
+and the two stalls in the whole space are known (`0x4E00` unanswered; `0x43B0` unanswered
+once bit 10 is set). Per the file's rule: dates and version labels above are community
+knowledge; everything else is read from the disc binary.
 
 ---
 

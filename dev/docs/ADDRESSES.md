@@ -51,10 +51,33 @@ struct.unpack_from(">12I", data, VA - 0x10000)      # file offset = VA - 0x10000
 
 ---
 
-## Corrections to the search method — 2026-08-01 / 2026-08-02
+## Corrections to the search method — 2026-08-01 / 2026-08-02 / 2026-08-03
 
 All came out of the field-mapping campaign, and each invalidates a search that had been treated as
 conclusive. They belong here rather than in a schema because every future search inherits them.
+
+### Four more, from the 2026-08-03 Survival/Tournament batch
+
+* **A session-relative displacement sweep cannot see getter-relative readers.** Every false
+  "no reader" overturned in this batch (0x4A13's `rotation_index` with six readers, its two
+  chara-id arrays with the roster team-assigner) failed the same way: the field was swept as
+  `session + big_displacement`, but every real reader calls the struct's getter and uses a
+  *small* displacement off the returned pointer. The correct form is the **getter-alias
+  walk**: enumerate every `bl <getter>` site (and every direct materialisation of the base),
+  then follow the returned register. It also beats the "displacement 4 is unsweepable"
+  refusal — walking 0xD491F8's 83 sites closed team+0x04 (`team_state`) in one pass.
+* **Readers hide behind pointers cached in UI objects.** `0x8CBC48` reads `team+0x04` through
+  a pointer stored at `screen+108`, not through the getter or as a passed argument — a third
+  channel after direct displacement and getter-alias. The team record has exactly 41 such
+  spill sites, all writing `team+0` to a screen object's `+108`; any negative on that struct
+  must sweep the reload-plus-displacement channel too.
+* **Whole-record memcpys carry fields no displacement sweep can see.** The 7296-byte event
+  record has four whole-record copy sites (`0x8FB598`/`0x8FB8A8`/`0x8F20B4`/`0x8F44BC`); a
+  field can be "unread" at its home offset and still consumed out of a copy. Sweep the copy
+  destinations before claiming a negative on anything the record carries.
+* **OPD entries in this image are 4-byte {entry, toc} word pairs, not 8-byte.** A qword-based
+  descriptor-reference scan silently returns nothing for *everything*. Control that catches
+  it: `0x27D5B0` -> descriptor `0x1008ED0` -> referenced once at `0xFB1C20`.
 
 ### `stdu` rewrites its base register — read as a length, it is off by the displacement
 

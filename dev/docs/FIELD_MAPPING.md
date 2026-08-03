@@ -14,13 +14,18 @@ for mapping today, and only *serving* it waits for v1 to be finished. See `CLAUD
 every figure in this document from `dev/proto/` directly, which is why the counts below are
 reproducible and the hand-maintained ones above them are not.
 
-**1,735 fields across 317 schemas: 1,441 named, 233 unnamed but explained, 61 bare** (2026-08-03).
-Bare was **400** at the start of 2026-08-01 and 182 on 2026-08-02. **Of the 206 ids the server
-serves, every one is now fully named or explained — zero bare unknowns in served commands**, a
-first for the campaign (2026-08-03 batch: the five unserved-but-1.0 commands `0x3041`/`0x2007`/
-`0x4212`/`0x43f5`/`0x4802`, the served tail `0x4221`/`0x3101`, and a vocabulary pass over nine
-finished-but-unphrased negatives). The remaining 61 bare fields are all in unserved commands,
-overwhelmingly the post-launch `0x49xx`/`0x4Axx`/`0x4Exx` families plus the dead-code `0x4394`.
+**1,735 fields across 317 schemas: 1,472 named, 254 unnamed but explained, 9 bare** (2026-08-03,
+second batch). Bare was **400** at the start of 2026-08-01, 182 on 2026-08-02, and 61 after the
+morning batch. **Zero bare unknowns in served commands** (since the morning batch), and after the
+Survival/Tournament sweep the post-launch `0x49xx`/`0x4Axx`/`0x4Exx` families are **fully mapped**
+— every field named or carrying a control-validated precise negative. The 9 remaining bare fields
+are all in `0x4394`, which is dead code whose payload aliases `0x4313`'s settings struct; they are
+the campaign's only open items. Headline names from the sweep: `team_state` (team+0x04, the
+server-authoritative event-participation enum), `member_state` (member+0x15, the OK/NG byte),
+0x4910 = Create Team (six fields named from the client's own screens), 0x4982 = the TEAM list
+(six named), the 0x49Cx invitation channel (inbox/outbox model), and 0x4A13's four via the
+shared-ladder bijection. The enablement evidence for the two version toggles is compiled in
+`POST_LAUNCH.md` "Survival and Tournament: what a toggle actually has to do".
 
 The full breakdown, the served-command table and the blocks identified along the way are in
 **"The scoreboard"** further down; the work-list table immediately below is older and its per-row
