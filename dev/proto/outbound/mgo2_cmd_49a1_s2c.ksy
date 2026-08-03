@@ -30,8 +30,17 @@ doc: |
   count-driven [READ 0xd4b254-0xd4b2e4]: 25 wire bytes per member, 28-byte stride in the
   struct. Record the distinction — a leading count is not present.
 
-  Wrapper `0xd4b560`: on a `-1` return from the shared parser it does nothing; otherwise it
-  completes request-status slot **73** with the result via `0xD32E08`/`0xD32E70`.
+  Wrapper `0xd4b560` — **polarity corrected 2026-08-03; the previous statement here was
+  inverted.** `-1` is the parser's SUCCESS return (`li r3,-1` at `0xD4B524`, the
+  fall-through end of a full parse; the failure exits -24 / -71 / 0 leave the slot
+  alone), and ONLY a `-1` return completes request-status slot **73** with the result via `0xD32E08`/`0xD32E70`.
+
+  The screen side reaches this record through exactly ONE channel [2026-08-03]: a team
+  pointer is spilled to non-stack memory at 41 sites, every one writing team+0 into +108
+  of a screen/frame object (0x8BFD38 .. 0x8D0624). Any future negative on this struct
+  must sweep that reload-plus-displacement channel — it is what a naive dataflow misses,
+  and sweeping it recovers real readers (the entry_fee formatter 0x8C2888 reaches the
+  record only this way).
 
   DISPATCHER ADDRESSING (corrected 2026-07-26). The address long cited as "the dispatcher" is
   the head of its **compare tree**, not the function entry. GAME: function 0xD387C8, tree head
@@ -159,8 +168,11 @@ seq:
         instead of the per-member **718 "%s has joined the team."** — i.e. 9 is the automatic
         team-formation screen (strings 681-686 "Auto Join Team", 716 "Forming a team...").
 
-      Writers other than this parser: `0x4961` stores **4** (`0xD4C7DC`) and `0x4960` stores
-      **5** (`0xD4C988`). No other store to team+0x004 exists in the 88 functions that can hold
+      Writers other than this parser [values corrected 2026-08-03 — they were swapped]:
+      `0x4961` stores **5** (`0xD4C7DC`, inside the parser whose id compare is
+      `cmpwi r0,18785` at 0xd4c73c) and `0x4960` stores **4** (`0xD4C988`, id compare
+      `cmpwi r0,18784` at 0xd4c8d4). The addresses were attached to the right ids; the values
+      were reversed. No other store to team+0x004 exists in the 88 functions that can hold
       a team pointer. The full enum is [UNKNOWN] — only 4, 5 and 9 and the `<=2` split are
       pinned.
   - id: team_name
@@ -259,15 +271,31 @@ seq:
       one hit, the parser's own write. (2) The whole text band `0x880000`-`0xD80000` (lower edge
       below the team screens at `0x8C0xxx`, upper edge above the networking module, which ends
       near `0xD64000`) for `lwz/lbz/lhz/stw/stb/sth ...,610(rX)`: 15 hits, all on unrelated
-      objects in `0x00BE`-`0x00C0`. Control: the identical sweep for `+0x2A4` returns its four
+      objects. (2026-08-03: a full-decode image-wide sweep counts 38 hits / 16 in-band — the
+      15 reflects a narrower instruction set, and the old "`0x00BE`-`0x00C0`" was an address
+      range that understated the spread; conclusion unchanged, zero on a team base.) Control: the identical sweep for `+0x2A4` returns its four
       real readers and for `+0x298` its six, so the method does find readers when they exist.
   - id: unknown_264
     type: u2
     doc: |
-      [ELF 0xd4b364 -> team+0x264] [UNKNOWN] [CONFIDENCE: parsed-and-unread is high; meaning is
-      nil] **Stated negative: nothing reads it.** Same two sweeps as `unknown_262`, same edges,
-      same control. Displacement 612 has 16 hits in the band, none on a team base, and one hit
-      in the team-pointer functions — the parser's own write.
+      [ELF 0xd4b364 -> team+0x264] [UNKNOWN] **No reader anywhere in the image — precise
+      negative, re-established 2026-08-03 by three independent enumerations, each validated on
+      live controls in this struct** (the controls recover lobby_id x9, subtype x18, rule x14,
+      clan_id x32, entry_fee's formatter 0x8C2888, and more):
+
+      (1) Image-wide literal-displacement sweep: 293 hits at displacement 612 (97 in the
+      0x880000-0xD80000 band, across 110 functions) — zero in a function that can hold a team
+      pointer, and none at all in 0x8B0000-0x8E0000 (the team screens) or 0xD30000-0xD64000
+      (networking), the only two bands genuine team-record readers inhabit. (The earlier "16
+      hits in the band" was not reproducible — a narrower instruction set; conclusion
+      unchanged, and these counts state the band and decode so they reproduce.)
+      (2) Dataflow from all 81 team-pointer origin functions (121 with callees, three levels
+      deep), modelling stack slots: zero accesses at +612 — the only touch anywhere is the u16
+      read primitive's own store, reached from this parser.
+      (3) The spill channel (see the doc block): every reload-through-screen-object access
+      reaches tail offsets 608, 609, 640, 644 and 676 only — never 610..615.
+
+      Tier-1 only, and it cannot reach tier 2: no available client build exercises this family.
   - id: game_id
     type: u4
     doc: |
@@ -308,14 +336,32 @@ seq:
       `0x8C1450` memsets a 33-byte display buffer and copies from **team+644** into it once
       `clan_id` is non-zero and the `0x40` bit is set. The 0x4925 notification rewrites the
       `{u32, char[16]}` pair on its own, so the two travel together.
+
+      [2026-08-03] The display copy is **32 bytes, not 16**: seven sites (`0x8C143C`,
+      `0x8C3A3C`, `0x8C3F5C`, `0x8C4F14`, `0x8CAEF8`, `0x8CE488`, `0x8CE9F0`) copy
+      `+644..+675` into a 33-byte buffer — a window that physically spans `unknown_296`,
+      `tournament_id`, `serial` and `unknown_2a0`. Inert: the parser's NUL at `+660` always
+      stops the bounded copy there. The wire width of 16 (`li r5,16` at 0xD4B3D8) is
+      unaffected and correct.
   - id: unknown_296
     type: u2
     doc: |
-      [ELF 0xd4b3f8 -> team+0x296] [UNKNOWN] [CONFIDENCE: parsed-and-unread is high; meaning is
-      nil] **Stated negative: nothing reads it.** Note it is preceded by a 2-byte gap — the
-      string at `+0x284` ends at `+0x293` and its NUL lands at `+0x294`. Same two sweeps as
-      `unknown_262`: displacement 662 gives one hit in the team-pointer functions (this write)
-      and 8 in the band, all on unrelated objects in `0x0088`-`0x0095`. Same control.
+      [ELF 0xd4b3f8 -> team+0x296] [UNKNOWN] **No reader anywhere in the image — precise
+      negative, re-established 2026-08-03** by the same three control-validated enumerations as
+      `unknown_264`: displacement 662 has 10 hits image-wide (8 in .text; the two past 0xDE9328
+      are misdisassembled data), all classified — six take their base from `bl 0x883F20`, the
+      screen-object getter (whose own +662 is an unrelated one-shot latch byte, recorded so the
+      collision is not mistaken for a hit later), and two are r1. The dataflow and
+      spill-channel sweeps (see `unknown_264`) never reach +662. It is preceded by a 2-byte
+      gap — the string at `+0x284` ends at `+0x293` and its NUL lands at `+0x294`.
+
+      **Hazard, not bug: this is the parser's only unchecked read.** Of 26 read-primitive
+      calls in 0xD4AF34, 25 are followed by `cmpwi cr7,r3,0; bne -> fail(-71)`; the one at
+      0xD4B3F8 is not (0xD4B3FC is a nop), so a payload that dies exactly on this field is
+      never reported and the parse runs on into `tournament_id`. Nothing served today reaches
+      it, which is the part that can change.
+
+      Tier-1 only, and it cannot reach tier 2: no available client build exercises this family.
   - id: tournament_id
     type: u4
     doc: |
@@ -340,7 +386,10 @@ seq:
       parsed-and-unread is high; meaning is nil] **Stated negative: nothing reads it.** Same two
       sweeps and control as `unknown_262`; displacement 672 has 144 hits in the band and every
       one is either a stack adjustment (`addi r1,r1,672`) or an unrelated object, and in the
-      team-pointer functions only the parser's own write.
+      team-pointer functions only the parser's own write. (2026-08-03: full-decode counts are
+      1254 image-wide / 355 in-band — same narrower-sweep arithmetic as `unknown_262`, same
+      unchanged conclusion; the 2026-08-03 dataflow and spill-channel sweeps also never reach
+      +672.)
 
       **Signedness [UNKNOWN]** — RESOLVED-AS-UNKNOWN 2026-07-26 and unchanged: 0xD5CC64 is
       byte-identical to 0xD5CCD8 and is not a signed accessor, nothing reloads team+0x2A0 with
@@ -400,8 +449,9 @@ types:
           *"Are you sure you want to cancel entry into the tournament/Survival?"*, so **2 means
           "entry submitted"** (cf. **693 "Accept Entry"**, **722 "%s has approved entry."**).
           0x4922 resets every occupied slot to **1** (0xD4D13C) — the "rules changed, everyone
-          must re-confirm" shape; 0x4960 stores **4**; 0x4932 stores small constants
-          (0xD4D2C0). Nine notification parsers forward it straight to `0xD33CD8` as the UI
+          must re-confirm" shape; 0x4960 stores **4**; 0x4932 stores exactly **1 or 2**
+          (0xD4D2C0; the accepted wire range, 2026-08-03 — and its `== 2` selects UI event 5
+          over 4). Nine notification parsers forward it straight to `0xD33CD8` as the UI
           event argument (`lbz r5,17(r11)` at 0xD4BDDC, 0xD4C108, 0xD4CC20, 0xD4EF00, 0xD4F160,
           0xD50C7C, 0xD5136C, 0xD5A394, 0xD5A5A4, 0xD5A7B4). The full enum is [UNKNOWN]; only
           1, 2 and 4 are pinned.
