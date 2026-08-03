@@ -46,10 +46,29 @@ types:
     doc: |
       27 bytes. Named per PROTOCOL.md's `readAppearance`; the ordering is corroborated by
       `0x4130`, which carries the same fields in the same order under names.
+
+      [ELF 2026-08-03] A third, independent confirmation of the whole field order: the
+      client's appearance validator `0x93E008` checks each slot against an item-id range, and
+      the ranges partition exactly as these fields do — face <= 10, upper 11..21, lower
+      22..27, face_paint <= 11, upper/lower_color <= 31, head 28..45, chest 68..85, hands
+      46..56, waist 86..101, feet 57..67, accessory1/2 102..123, gear colours <= 31 except
+      accessory colours <= 34. **Out-of-range values are replaced with the range's base id**,
+      so a bad `chara_gear` row is silently rewritten by the client rather than rejected —
+      a hazard to know when a served appearance seems to "correct itself".
     seq:
       - id: gender
         type: u1
-        doc: "[CONFIRMED] appearance+0."
+        doc: |
+          [CONFIRMED] appearance+0.
+
+          [ELF 2026-08-03] **The create screen never writes its staging slot**
+          (`createScreen+125`): no store lands on it anywhere in the image, and the appearance
+          editor's write set excludes it (its block base is `editorObj+112`, and
+          `stb/lbz ...,112(r31)` appears nowhere in `0x92xxxx`). Gender is edited only by the
+          profile appearance sub-editor `0x93E008`, clamped to 0/1 at `0x93E06C`-`0x93E07C`,
+          which operates on a different object. So at creation this byte, like `unknown_09`,
+          carries whatever the 3.97 MB screen allocation left there — worth logging alongside
+          it on the next live creation.
       - id: face
         type: u1
         doc: "[CONFIRMED] appearance+1."
@@ -73,67 +92,86 @@ types:
         doc: "[CONFIRMED] appearance+6."
       - id: voice
         type: u1
-        doc: "[CONFIRMED] appearance+7."
+        doc: |
+          [CONFIRMED] appearance+7.
+
+          [ELF 2026-08-03] **On the wire this is the menu index + 7** (`0x88DAAC`-`0x88DAC0`
+          adds 7 immediately before the copy-out; `0x888AF8`/`0x88A7A0` subtract it back), and
+          the client's own validator accepts only **7..15**, forcing 7 otherwise
+          (`0x93E150`-`0x93E168`). Consequence for the server: a `0x4122`/`0x4131` echo
+          outside 7..15 is silently rewritten client-side, never rejected.
       - id: pitch
         type: u1
-        doc: "[CONFIRMED] appearance+8."
+        doc: |
+          [CONFIRMED] appearance+8.
+
+          [ELF 2026-08-03] Valid range **0..31, default 15** (validator `0x93E16C`-`0x93E17C`;
+          the create screen's constructor also defaults it to 15 at `0x888280`/`0x88828C`).
       - id: unknown_09
         type: u4
         doc: |
-          [UNKNOWN] appearance+9..+12. **One u32, not four loose bytes** — written by a single
-          `bl 0xd5c9bc` at `0xd37f64` from the 4-aligned source `r31+0x1c`, while every
-          neighbouring field uses the u8 writer. Skipped by our reader; the write path emits
-          four zeros in the corresponding slot of `0x3049`/`0x4122`, so nothing is known to be
-          lost — and nothing confirms that either. Log it on the next character creation: a
-          nonzero value here would immediately be a finding.
-
-          **[ELF 2026-08-01] The buffer is located; the writer is not, and the sweep that failed
-          to find one is not an elimination.** Recorded in full because the negative half is the
-          part that is easy to over-claim.
+          [UNKNOWN value — NO WRITER; the negative is closed, ELF 2026-08-03] appearance+9..+12.
+          **One u32, not four loose bytes** — written by a single `bl 0xd5c9bc` at `0xd37f64`
+          from the 4-aligned source `r31+0x1c`, while every neighbouring field uses the u8
+          writer. Skipped by our reader; the write path emits four zeros in the corresponding
+          slot of `0x3049`/`0x4122`.
 
           The sender `0xd37de4` has exactly one `bl` site, **`0x88DAE0`** (OPD `0x1029020`
           unreferenced, `ET_EXEC`, no `b` tail call). It stages the payload on the stack in two
-          string-move pairs — `lswi/stswi` 32 bytes from `r31+108` to `r1+124` at
-          `0x88DAC4`-`0x88DAC8`, then 16 bytes from `r31+140` to `r1+156` at
-          `0x88DAD4`-`0x88DAD8` — which is one contiguous 48-byte copy split only because `lswi`
-          tops out at 32. **So the payload struct is `createScreen + 108`, 48 bytes, and this u32
-          is `createScreen + 136`.**
+          string-move pairs — `lswi/stswi` 32 bytes from `r31+108` at `0x88DAC4`-`0x88DAC8`,
+          then 16 bytes from `r31+140` at `0x88DAD4`-`0x88DAD8` — one contiguous 48-byte copy
+          split only because `lswi` tops out at 32. So `struct[k] = createScreen[108+k]`, and
+          the C layout is exactly the 16/9/4/14 the sender reads at `r31+0` / `+0x11..0x19` /
+          `+0x1c` / `+0x20..0x2d`: `char name[17]; u8 gender; u8 face..lower_color[6];
+          u8 voice; u8 pitch; /*pad 26,27*/ u32 unknown_09; u8 head..accessory2_color[14];
+          /*pad 46,47*/`. **This u32 is `createScreen+136..139`.**
 
-          The appearance editor is `0x922F0C(obj+224, obj+108, obj+352, obj+362)`, called at
-          `0x88D9EC`; it parks the payload pointer at `newobj+312` (`stw r25,312(r29)` at
-          `0x922FDC`) and every later access goes through `lwz rX,312(rY)`. Enumerating all 25
-          such sites in the `0x92xxxx`/`0x93xxxx` band and collecting the offsets each one then
-          touches gives the editor's complete write set:
+          **[ELF 2026-08-03] Nothing writes it — the write set of the staging struct is now
+          closed.** The 2026-08-01 sweep's false negative on gender/voice/pitch is resolved:
+          the missing writers were never in the editor. voice/pitch are written by the create
+          screen's own state machine **`0x88CD2C`** (the 2026-08-01 note's `0x88CD30` is the
+          `mflr`; 34 states, inline jump table at `0x88CF00`): `0x88D954`/`0x88D958` (state
+          18), `0x88DAC0` (**voice += 7**, state 23, immediately before the copy-out),
+          constructor default pitch=15 at `0x88828C`, back-outs `0x888AF8`/`0x88A7A0`
+          (voice −= 7); state 15 writes face at `0x88D8E4`; and `0x888B28` (state 9) is a
+          third writer of the 20 editor fields. **gender is the correction — see its field.**
 
-              stores: 18 19 20 21 22 23   32 33 34 35 36 37 38 39 40 41 42 43 44 45
-              loads : 18 19 20 32 33 34 35
+          Complete writer enumeration of `createScreen+108..155`: `0x88D330`
+          memset(+108,0,17), `0x88D34C` bounded convert, `0x88D35C` trailing-space trim (the
+          name); `0x88D8E4` (face); the six voice/pitch sites above; `0x888B28`'s block
+          `0x888C5C`-`0x8891B4` and the editor commit `0x929C94`-`0x929D84` (struct 18..23 and
+          32..45). **Struct 17, 26, 27, 28..31, 46, 47 have no writer.** Six scans back this;
+          the three that close the 2026-08-01 aliasing hole: every store image-wide at
+          displacement 124/125/134-139/154/155 (24 hits, zero in `0x88xxxx`, all other-object
+          bases); every store image-wide at displacement 16/17/26-31/46/47 — the same bytes
+          via a `createScreen+108` alias (54 hits; the only two right-shaped are the
+          lookalikes below); and every access to the editor's parked pointer `editorObj+312` —
+          22 dereference sites image-wide, all inside `0x929298` (read) and
+          `0x929C94`-`0x929D84` (commit), write set = read set = {18..23, 32..45}. `0x922F0C`
+          has exactly two callers: `0x88D9EC` (r4 = createScreen+108) and `0x8D9A68` (r4 = 0,
+          the profile path).
 
-          i.e. `appearance+1..+6` and `appearance+15..+28`. **Offsets 28..31 — this field — are
-          not among them.**
-
-          **That is not yet an elimination, and here is the check that says so.** The same sweep
-          also finds no write to offsets **17**, **24** and **25**, which are `gender`, `voice`
-          and `pitch` — three fields that demonstrably do get set. So a second writer path into
-          this buffer exists and has not been found, and until it has, "the editor never writes
-          +28..31" cannot be promoted to "nothing writes +28..31". Per CLAUDE.md, an elimination
-          is only valid if the observation that would have confirmed it was actually produced;
-          this sweep produced a false negative on three known-good fields in the same buffer, so
-          it cannot be trusted on a fourth.
+          So the value on the wire is **whatever the allocation left there**: `createScreen`
+          is one 3,966,048-byte heap block (`bl 0xC2D18` at `0x888224`, constructor
+          `0x8881E4`) — the structural fact that makes this module legible — and the
+          constructor initialises exactly one byte of this struct (pitch). Whether `0xC2D18`
+          zeroes is not statically decidable (it dispatches through vtable slot +20 of an
+          allocator singleton whose pointer is `.bss` `0x131C760`), so this is either a
+          constant zero or four bytes of uninitialised heap. The cheap settling move is
+          unchanged — log it on a real character creation — and a nonzero value is now
+          diagnostic (uninitialised heap) rather than mysterious.
 
           Two traps found while looking, worth leaving behind:
 
           * `0x8841E4`-`0x8842A0` looks exactly like the answer — a long run of `stb` into
-            offsets 16..38 of an `r31`, including `stb r0,28(r31)` at `0x884250` — and is **not**
-            this struct. It copies `profile+7664..7677` then `profile+7648..7656` into an avatar
-            descriptor; the offsets coincide, the struct does not.
-          * `createScreen+108` is also used as a plain 16-byte name buffer by several other
-            screens (`0x88EA7C`, `0x88ED68`, `0x88FB00`, `0x88FDD0` all hand it to the string
-            helpers `0x94BB7C`/`0x949F24`), so hits on that address are not evidence about the
-            appearance payload.
-
-          The cheap settling move is still the one this note already proposed: log the four bytes
-          on a real character creation. What the above adds is that a nonzero value would now have
-          a known home to be traced from — `createScreen+136`.
+            offsets 16..38 of an `r31`, including `stb r0,28(r31)` at `0x884250` — and is
+            **not** this struct (re-verified 2026-08-03: `0x88407C`'s object has fields at
+            0,2,3,4,8,12,16..38 and a 24-byte string at +306 — an avatar/player-card
+            descriptor).
+          * The other `createScreen+108` users flagged 2026-08-01 (`0x88EA7C`, `0x88ED68`,
+            `0x88FB00`, `0x88FDD0`) are now *proved* to belong to a different screen module:
+            they load their object from `lwz r30,-28796(r2)`; the create screen uses
+            `-28800`.
       - id: head
         type: u1
         doc: "[CONFIRMED] appearance+13."
