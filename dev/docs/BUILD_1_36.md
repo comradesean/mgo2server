@@ -357,6 +357,80 @@ rejection.
 
 **Banked for a version toggle:** lobby-list capacity 32 -> 100, containing struct +104 bytes.
 
+## Lobby Select: the hub list is FINE, and two categories are dead by construction
+
+**The `0x4902` parser is instruction-identical between the builds.** 99-byte entries are correct for
+1.36; the "1.36 wants something wider" pattern does **not** hold here, and that hypothesis is
+refuted rather than unproven. Differences are two immediates and the struct base:
+
+| | disc | 1.36 |
+| --- | --- | --- |
+| `0x4902` parser | `0xD47E18` | `0xF15B30` |
+| entry cap | 64 | **128** |
+| hub array base | `ctx+0xB790` | **`ctx+0x1EA38`** |
+| sub-list cap | 30 | **100** |
+| completion event | 56 | **60** |
+| Lobby Select states | 37 / 38 / 40 | **48 / 49 / 51** |
+| latched-subtype byte | `+0x294` | **`+0x2B4`** |
+
+The entry getter (`0xF17120`), the count (`0xF1716C`), `0x4901` (`0xF15530`) and `0x4903`
+(`0xF15440`) are otherwise identical, including the "refuse while marker nonzero" test.
+
+### Why a click can do nothing, in BOTH builds
+
+The click *is* registered — the input poll (1.36 `0xAA7DB4`, disc `0x94A224`) is byte-identical, so
+the press is seen. Selecting a category latches its subtype, moves to the sub-list builder state
+(1.36 `0x98EFDC`), which filters the hub array by that subtype and resolves each `lobbyId` against
+the gate list. **If that yields zero rows the screen bounces straight back** — 1.36 `0x98FDD0`
+`lwz r0,4(r26); cmpwi 0; beq` → `li r0,49`, disc the same shape at `0x89169C` → `li r0,38`. Silent:
+no screen change, no packet, no sound.
+
+**No validity test rejects our entries.** All 15 call sites of 1.36's entry getter read only `+0`
+index, `+4` subtype, `+5` (sub-list row copy), `+8` lobbyId, `+10` name, `+27` text. **Nothing reads
+open, close or `alwaysOpen`**, so sending zeros there is correct.
+
+### The 1.36-only part: two categories are always drawn and we serve neither
+
+1.36 runs **four** scans where the disc build runs six emitters, and it emits **two rows
+unconditionally**:
+
+| pos | 1.36 emitter | latched subtype | condition |
+| --- | --- | ---: | --- |
+| 1 | `0x98ED38` | 2 Automatching | scan |
+| 2 | `0x98ECC4` | 1 Free Battle | scan |
+| 3 | `0x98EC50` | 7 Training (7/8 grouped) | scan |
+| 4 | `0x98E924` | **4** | **always emitted** |
+| 5 | `0x98E99C` | **10** | **always emitted** |
+| 6 | `0x98EBDC` | 3 | scan |
+
+1.36 **deleted the subtype-5 scan entirely** — and with it the only reader of entry byte `+0x06` and
+of the 64-byte text block. Rows 4 and 5 latch subtypes **4** and **10**, which we do not serve, so
+their sub-list is always empty and they **always bounce silently**. They look identical to the
+working rows.
+
+**Subtype 10 does not exist in the disc build at all.** `LOBBIES.md` says it "does not exist in this
+build" — true of the disc build, false of 1.36. It has its own action function, help topic 69 and
+name/description strings 266/286.
+
+### The discriminator, if this is ever seen again
+
+Count the rows in Lobby Select and click the **topmost**:
+
+- **five rows, top one works** — the bottom two are the post-launch categories above. Nothing to fix.
+- **five rows, top one also dead** — the hub array is unreadable, which happens only if the marker at
+  `hub+0` is never cleared. `0x4901` sets it to −1, `0x4903` clears it, and the getter returns NULL
+  for every index while it is nonzero. `0x4903` also *requires* it already nonzero (`0xF15488`,
+  else −73), so a missing or out-of-order `0x4901` poisons the whole list.
+- **only two rows** — the hub array is empty; the fault is the `0x4901`/`0x4902`/`0x4903` sequence.
+
+### A correction owed to the disc-build docs
+
+`LOBBIES.md` and `HubGameController`'s comment both say no call site reads hub entry offset 7, the
+flags byte. That remains true of the disc build and of the Lobby Select path in both builds, but
+**1.36 `0x97C79C` reads bits `0x10` and `0x08`** of the reversed byte, called from four sites on a
+different screen (`0x9D3770`, `0x9D3894`, `0x9E0ED4`, `0x9E6C1C`). First evidence in either image
+that the byte is read by anything.
+
 ## Open
 
 - Whether 1.36 honours the `d/testhk` hostname override at all — the string is present, but presence
