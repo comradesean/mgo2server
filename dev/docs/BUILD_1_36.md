@@ -131,6 +131,56 @@ e2eae0b9858be277e4ff70c55e507c42  dev/ref/MGO2 1.36 (decrypted).elf   (matches t
 That edit did **not** break the `d/testhk` override — the gate exchange succeeded at 20:25, ten
 minutes after it — so `d/testhk` is not resolved through that content-root string.
 
+## PARKED — 2026-08-03
+
+**Operator decision, and the evidence supports it: the divergences are structural, not additive.**
+The working assumption going in was that 1.36 would mean *filling in* packets — new fields, new
+commands, longer records. It is not that. In the five divergences found so far, 1.36 **deletes and
+replaces** as often as it adds:
+
+| divergence | shape |
+| --- | --- |
+| `d/testhk` host table 12 → 16 records | additive |
+| login perks 1 integer → 10 | **replaced grammar**, no value valid for both |
+| session key | **different key file**, from the patch's own `kit` |
+| hub-list entry 99 → 35 bytes | **field deleted** |
+| Lobby Select | subtype-5 scan **removed**, two categories added, states renumbered |
+| PSN / MGO Shop | **whole subsystem added**, gates login until bypassed |
+
+Three of those five are removals or replacements. That is a different and much larger project than
+adding fields, and it is why this is parked rather than pushed through.
+
+**Where it stands.** A 1.36 client currently logs in, reaches Lobby Select and can create games. That
+was reached on 2026-08-03 and is a real milestone; it is not a finished port.
+
+**Nothing is lost by parking.** The mapping in this file is permanent, and `ClientVersion` is where
+any future divergence goes. The server is back on `1.0` — `MGO2SERVER_CLIENT_VERSION` is blank in
+`server.env`, every process logs `clientVersion=1.0`, and `ClientVersionTest` pins the 1.0 row, so
+none of the 1.36 work can affect the disc build.
+
+**To resume:** set `MGO2SERVER_CLIENT_VERSION=1.36`, and redo the two client-side steps that are not
+server config — a **16-record `d/testhk`** (`dev/tools/testhk_editor.py --skip-psn`) and the PSN skip
+bit it sets.
+
+**What a real 1.36 port would still need**, so the cost is on record rather than rediscovered:
+
+1. **The PSN / MGO Shop subsystem served rather than bypassed** — see `BACKLOG.md`. The bypass has a
+   known side effect: the client stops sending `np` in the auth POST.
+2. **Subtypes 4 (Survival) and 10 (Tournament Registration)**, which 1.36 draws unconditionally in
+   Lobby Select and which we serve nothing for.
+3. **A sweep of every fixed-size writer against the 1.36 parsers.** The hub entry was found only
+   because a live client misbehaved. `GameDetails.FIXED_SIZE = 372`, `HostSettingsReply.SIZE =
+   0x15C`, `AutomatchSettingsBlock.RULE_TIMERS` keyed 0..7, and the `0x4902` cap 64 → 128 are the
+   named candidates; there is no reason to think they are the only ones.
+4. **The post-launch command families** — `0x49xx` team/tournament, `0x4Axx` events, `0x4Exx`
+   Survival Match List — which are mapped tier-1 but unserved, and which a 1.36 client can actually
+   reach.
+
+**The one thing worth doing before resuming**, because it is cheap and it invalidates nothing else:
+point host-table slots 12-15 at the server (`point_at(host, include_commerce=true)`) and read the
+probe logs. It is the only way to learn what the MGO Shop actually asks for, and it costs one
+`testhk` rebuild.
+
 ## Why we have it
 
 Opened 2026-08-02. The operator installed 1.36 and it failed to reach the server; investigating that
