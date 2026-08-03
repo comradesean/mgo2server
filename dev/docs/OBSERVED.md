@@ -1448,6 +1448,36 @@ POST https://mgo2auth.konami.com/us/mgo2/kid/gidauth5.html
 
 The double slash in `/us/mgo2//patch/` is the client's, not a typo.
 
+### Auto-patch — driven end to end against a real client [LIVE, 2026-08-03]
+
+The `0x01` branch was exercised for real: a 1.0 client was served an authored 1.0→1.36 round and
+followed it through checkver, relnote, both `.inf`s, both payload downloads, verification, and into
+the install step. Facts established at the client, not inferred:
+
+- **Payload container = `plaintext || HMAC-MD5(K, plaintext)`.** Both served files verified:
+  `r3 = 0` at the `memcmp` (`0xD66588`), computed MAC identical to the trailer we appended
+  (`93df54af…` for the executable, `7e90c973…` for the manifest).
+- **`K` = the 16-byte ASCII string `mgo2server_slot8`**, read out of the key buffer at `0xBBA6EC`
+  (`r22`, i.e. `r1+8168`). This is **not Konami's key** — it is this project's own name, so the
+  `MGO2.SELF` on this HDD is modified and its crypto slot provider stubbed. Everything built under
+  it is specific to that executable. The ptsys key (`0xE26D78`) was tried first and rejected.
+- **An empty scan A silently disables the entire install**, while download and verification
+  succeed and no error state is set. With scan A populated the client opens `dl/p/MGO2.SELF` and
+  `dl/p/.p` — our names, at the `flags & 0x20 == 0` destination. Full account in ADDRESSES.md §12.
+- **`dl/p/.l` left behind ⇒ "data is corrupt" on the next launch**, and it is sticky: one failed
+  install poisons every later attempt until the file is removed. Its reader is `0x2FDE0`.
+- **Devices: 1 = `/dev_hdd1/o/` (per-boot cache, staging), 7 = `/dev_hdd0/…/USRDIR/o/`.** Cleanup
+  removes `o/dl/p/ar/` on both every run, so staging dirs need recreating before each attempt.
+- Still unresolved at time of writing: the extraction produces no bytes. Phase 2 stacks a
+  Blowfish-CBC decrypt filter (`0xBBADE0`) that phase 1 does not, so the archive body is probably
+  expected encrypted; the prefix `memcmp` at `0xBBAE70` has never been observed to fire.
+
+**Method note worth keeping.** Five static analyses of `0xBBA458` produced four wrong claims that
+each cost a round trip — including one, "scan A is display-only", that was *correct about the
+function it was read from* and wrong about the one that mattered. What broke the deadlock every
+time was a breakpoint, not a deeper read. When a static claim and a client disagree, the client is
+right; and a claim true of one caller is not thereby true of another.
+
 ### Auto-patch — `checkver.html` and the update flow [ELF, 2026-07-30]
 
 **Static analysis only — never exercised against a real client.** Our server has always answered
@@ -1535,7 +1565,7 @@ decryption:
   in the ELF at `0xE26DA8`, unconditionally. So "keystore slot 8's full 64 bytes" above is `get()`'s
   output, not the bytes `checkver.html` puts on the wire — a reply that sends the desired key raw
   makes the client's effective key be the *decryption* of it, deterministic garbage. Every reply
-  built before this correction sent the keys raw. `build_checkver_stub.py` now encrypts them.
+  built before this correction sent the keys raw. `build_checkver.py` now encrypts them.
 - Stage 3 (`0xBB8848`) HMAC-MD5-verifies stage 2's plaintext against a **64-byte blob resident in
   the ELF at `0xE20000`** (`93 57 a9 df b8 eb 8d 03 b8 43 cd 02 5f 2a 30 ce` + zero padding). **This
   key is still not server-supplied** — real constraint on hand-authoring an `.inf`. **Settled: this
@@ -1557,8 +1587,10 @@ produced zero entries.** The plaintext holds **two entry scans, not one**, and t
 actually records entries starts *after* the inner HMAC tag, not at header offset 12 as the prior
 pass assumed. Scan A (`0xBB89B0`-`0xBB8AC0`, the "second grammar-shaped pass" below, now resolved —
 not a pre-pass over the same list) reads `<name> 00 <u32 size, BE> <u8 flags>` at stride `NUL+6`,
-starting at offset 12, bounded by `hdr[4]-16`; it's display-only (feeds a KB counter that's copied
-onward but never branched on). At `hdr[4]` the cursor jumps 16 bytes — over the inner HMAC tag —
+starting at offset 12, bounded by `hdr[4]-16`. In *this parser* it is display-only (feeds a KB
+counter that's copied onward but never branched on) — **but see the 2026-08-03 correction in
+ADDRESSES.md §12: the installer reads scan A as its install list, and leaving it empty is why a
+perfectly-verified payload installed nothing.** At `hdr[4]` the cursor jumps 16 bytes — over the inner HMAC tag —
 into scan B (`0xBB8B00`-`0xBB8BC8`), which reads `<name> 00 <u32 size, BE>` at stride `NUL+5`,
 bounded by `total_plaintext-16`, into the array that actually drives the install (**≤31 entries,
 checked**, `obj+1072`). Name is inline in the plaintext, not a string-table pointer. A hand-authored

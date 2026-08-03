@@ -58,7 +58,7 @@ File on disk = ciphertext || outer tag  (outer tag is NOT encrypted, appended ra
 PKCS7 here means: last plaintext byte is the pad count, 1..8 -- a 0 is rejected client-side, so a
 plaintext that's already a multiple of 8 still needs a full padding block.
 
-Keys: slot 7 and slot 8 come from build_checkver_stub.py (the same reply that announces this
+Keys: slot 7 and slot 8 come from build_checkver.py (the same reply that announces this
 .inf must carry the keys used to build it). The third key, for the header/entries HMAC, is
 resident in the ELF at 0xE20000 and is not ours to choose.
 """
@@ -69,7 +69,7 @@ import zlib
 
 from Crypto.Cipher import Blowfish
 
-import build_checkver_stub as checkver
+import build_checkver as checkver
 
 # 0xE20000, MGO2.elf -- 16 significant bytes; HMAC uses the key block as-is, so no padding needed.
 ELF_HMAC_KEY = bytes.fromhex("9357a9dfb8eb8d03b843cd025f2a30ce")
@@ -94,16 +94,61 @@ def build_entries(entries):
 # it or the last entry is never reached.  0xBB8AEC-0xBB8AF8, 0xBB8BB8-0xBB8BC8.
 TRAILING_SLACK = b"\x00" * 16
 
-# hdr[4].  12-byte header + 16-byte inner tag, i.e. scan A is empty and scan B starts at 28.
-HEADER_LEN = 28
+# SCAN A IS THE INSTALL LIST, AND LEAVING IT EMPTY IS WHY NOTHING EVER INSTALLED.
+#
+# The .inf carries TWO tables and they do different jobs:
+#   scan B  (this file's `entries`, at plaintext offset hdr[4])  -- what to DOWNLOAD.
+#   scan A  (at plaintext offset 12, up to hdr[4]-16)            -- what to WRITE OUT of the
+#                                                                   downloaded archive.
+# ADDRESSES.md calls scan A "display-only". That is true of the .inf parser at 0xBB89B0 and false
+# of the installer: 0xBBB0BC-0xBBB0CC computes cursor = blob+12, bound = blob + hdr[4] - 16, and
+# `ble -> 0xBBBA20` skips the ENTIRE per-record install loop when bound <= cursor. With the old
+# HEADER_LEN = 28 the two are equal, so the branch was taken unconditionally for every group and
+# dl/p/ar/t/0/ was never written. Confirmed live: the payload verifies (both HMACs pass, r3 = 0 at
+# 0xD66588), no error state is ever set, and phase 2 simply does not run.
+#
+# Entry layout is scan B's plus a one-byte flags field:  <name> 00 <u32 size BE> <u8 flags>
+# Flags bits, from the finalize/extract paths:
+#   0x0F  ordering-pass index; the 16-pass loop at 0xBBB76C handles only records whose low nibble
+#         equals the pass number
+#   0x10  output stream selector (0xBBB2D8)
+#   0x20  destination: CLEAR = install straight to dl/p/<name> (0xBBB5D0 -> 0xBB5618); SET = write
+#         to dl/p/ar/t/0/<name> and enable the 16-pass finalize (0xBBB164/0xBBB18C)
+# Default 0x00: direct install, no finalize pass -- the shortest path to bytes landing on disk.
+#
+# NOT YET CONFIRMED, and the reason this is a step rather than a fix: the payload archive's
+# decrypted plaintext must BEGIN with these same hdr[4] bytes (header + scan A + tag), because
+# 0xBBAE44-0xBBAEFC reads hdr[4] bytes from the archive and memcmps them against the .inf's. And
+# phase 2 stacks a Blowfish-CBC decrypt filter (0xBBADE0) that phase 1 does not, so the archive
+# may need encrypting too. Neither is settled; see the note in build_patch_round.py.
+DEFAULT_SCAN_A_FLAGS = 0x00
 
 
-def build_inf(entries):
-    body = build_entries(entries)
-    header = (0).to_bytes(4, "big") + HEADER_LEN.to_bytes(4, "big") + (0).to_bytes(4, "big")
+def build_scan_a(records):
+    """records: [(name, size, flags)] -- the files to extract from the archive, in order."""
+    table = bytearray()
+    for name, size, flags in records:
+        table += name.encode("ascii") + b"\x00" + size.to_bytes(4, "big") + bytes([flags])
+    return bytes(table)
+
+
+def build_prefix(scan_a=()):
+    """The hdr[4] bytes: header || scan A || inner tag.
+
+    The payload archive's plaintext must START with exactly these bytes -- 0xBBAE44 reads hdr[4]
+    of them from the archive and 0xBBAE70 memcmps them against the .inf's copy, so the two are
+    generated here once rather than assembled twice.
+    """
+    table = build_scan_a(scan_a)
+    header_len = 12 + len(table) + 16
+    header = (0).to_bytes(4, "big") + header_len.to_bytes(4, "big") + (0).to_bytes(4, "big")
     # Stage 3 verifies plaintext[0 .. hdr[4]-16) against the tag at [hdr[4]-16, hdr[4]).
-    inner_tag = hmac.new(ELF_HMAC_KEY, header, hashlib.md5).digest()
-    inner = header + inner_tag + body + TRAILING_SLACK
+    return header + table + hmac.new(ELF_HMAC_KEY, header + table, hashlib.md5).digest()
+
+
+def build_inf(entries, scan_a=()):
+    body = build_entries(entries)
+    inner = build_prefix(scan_a) + body + TRAILING_SLACK
     plaintext = pkcs7_pad(zlib.compress(inner))
 
     cipher = Blowfish.new(checkver.SLOT7_KEY[8:64], Blowfish.MODE_CBC, checkver.SLOT7_KEY[0:8])
@@ -129,8 +174,8 @@ def main():
     # One entry per .inf, name matching the real Konami directory listing's pattern (a payload
     # file named after the record text itself, no extension) -- see PATCH_INVESTIGATION.md Sec 6.
     records = {
-        f"{checkver.DISC_ID}.{from_s}to{to_s}": f"{checkver.DISC_ID}.{from_s}to{to_s}.inf",
-        f"{from_s}to{to_s}": f"{from_s}to{to_s}.inf",
+        f"{checkver.DISC_ID}.{from_s}to{to_s}": f"{checkver.DISC_ID}.{from_s}to{to_s}inf",
+        f"{from_s}to{to_s}": f"{from_s}to{to_s}inf",
     }
 
     for payload_name, inf_filename in records.items():

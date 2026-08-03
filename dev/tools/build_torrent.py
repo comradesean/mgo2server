@@ -1,4 +1,26 @@
-"""Builds a real, valid BitTorrent .torrent file for the auto-patch P2P path.
+"""Writes the .torrent for the auto-patch P2P path, into the docroot beside the payloads.
+
+    MGO2SERVER_CLIENT_VERSION=1.36 python3 build_torrent.py
+
+RE-RUN IT WHENEVER THE PAYLOADS CHANGE, i.e. after every `build_patch_round.py`. The .torrent
+is a hash of the payload bytes: 116,282 SHA-1 piece digests over the current ~1.9 GB round, so a
+stale one describes files that no longer exist. Nothing warns you -- the client would fetch a
+valid torrent, fail every piece, and the failure looks like a network problem.
+
+The two halves must agree, and `info_hash` is how you check:
+
+    this tool         -> writes <DISC_ID>.<from>to<to>.torrent into the docroot
+    dev/runtime/bt_seed.py -> the tracker + seeding peer (the probe-bt container), which
+                              recomputes the info dict from the SAME payload files
+
+Both import this module so the info dict, info_hash and piece data are computed here once rather
+than duplicated. If the `info_hash` this prints does not match the one `probe-bt` logs at
+startup, they are describing different bytes -- restart probe-bt after rebuilding.
+
+STATUS: the P2P path has never completed a transfer. The client fetches the .torrent, parses it
+correctly (RPCS3's log derives the same info_hash) and connects to the peer, then stalls; the
+HTTP fallback is what actually delivers a round today. Kept working because the stall is a real
+unanswered question, not because anything depends on it.
 
 Confirmed genuine BitTorrent (ADDRESSES.md Sec 12): the client fetches the .torrent raw over
 HTTP, then hands it unmodified to a statically-linked Transmission. Standard BEP3/bencode --
@@ -16,7 +38,7 @@ dict / info_hash / piece data -- computed here once, not duplicated.
 import hashlib
 import pathlib
 
-import build_checkver_stub as checkver
+import build_checkver as checkver
 
 PIECE_LENGTH = 16384  # 16 KiB, a conventional small piece size
 TRACKER_PORT = 6969   # standard BEP3 tracker port

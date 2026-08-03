@@ -135,6 +135,12 @@ not an elimination if the thing varied could not have mattered.
   reachable in ordinary play, so none can stall a client. Read it before re-deriving a coverage
   number; the counting method is written down so the figure is reproducible. **Most of the original
   19 have since been mapped** — the file's per-row descriptions are current, its framing is not.
+- `dev/docs/PATCH_FORMAT.md` — **the auto-patch format as a standalone spec**: the crypto envelope,
+  the `.inf`'s two entry scans, the archive's member layout, the `..N/` name grammar that decides
+  where a file lands, and the checkver reply. Written so someone without this repo could build and
+  extract a patch, and *tested* that way — an implementation written from it alone round-trips and
+  decodes live files. Read it instead of re-deriving any of this from `ADDRESSES.md` §12; that
+  section holds the addresses and the evidence, this one holds the format.
 - `dev/docs/BUILD_1_36.md` — **the 1.36 build, quarantined**. Everything known about the second
   tier-1 binary, kept out of the disc-build docs on purpose so its addresses cannot leak in. Read it
   before touching `dev/ref/MGO2 1.36 (decrypted).elf`, and put 1.36 findings there rather than in

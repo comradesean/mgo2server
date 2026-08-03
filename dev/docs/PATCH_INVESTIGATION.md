@@ -16,7 +16,7 @@ stub. See §0 below for how to run it, or finding 11 (§7) for the live-test log
 release-day scope (`CLAUDE.md`) and, more sharply, blocks ordinary login: the payload is research
 data, not real Konami content, so a client that accepts the offered update starts a download the
 server cannot service and gets stuck. `MGO2SERVER_PATCH_ENABLED` (default `false`) now gates
-`build_checkver_stub.py`'s output between the real stub below and the client's own single `0x00`
+`build_checkver.py`'s output between the real stub below and the client's own single `0x00`
 "no update" byte — see `server.env`. Re-running the quickstart below with the variable unset
 regenerates the safe default; nothing here changed about how the stub itself works.
 
@@ -37,13 +37,13 @@ running by hand.
    export MGO2SERVER_PATCH_TO=1.36.0
    export MGO2SERVER_PATCH_DISC_ID=BLUS30109
    ```
-   `build_inf_stub.py` and `build_torrent_stub.py` both import `build_checkver_stub.py` for these
+   `build_inf_stub.py` and `build_torrent.py` both import `build_checkver.py` for these
    values, so setting them once (`export`, or prefix each command below) keeps every artifact in
    the same version jump — there's no second place a version number can drift out of sync. Real
    jumps seen in the wild (`OBSERVED.md`): `1.10.0`→`1.34.0`, `1.0.0`→`1.36.0`.
 2. **Build the checkver reply and release note**:
    ```
-   cd dev/tools && python3 build_checkver_stub.py
+   cd dev/tools && python3 build_checkver.py
    ```
    Writes `dev/runtime/www/us/mgo2/patch/checkver.html` and
    `.../patch/<to-version>/relnote.txt`. Also prints `SLOT7_KEY`/`SLOT8_KEY` — the keys
@@ -58,7 +58,7 @@ running by hand.
 4. **Build the `.torrent` file** (needs steps 2 and 3 done first — it reads the same stub payload
    bytes back off disk to hash them):
    ```
-   python3 build_torrent_stub.py
+   python3 build_torrent.py
    ```
    Writes the `.torrent` into the same version directory. Prints the `info_hash` — you don't need
    it for anything, `bt_seed.py` (next step) recomputes it the same way and will complain loudly
@@ -93,7 +93,7 @@ running by hand.
 ```python
 import zlib, hmac, hashlib
 from Crypto.Cipher import Blowfish
-import build_checkver_stub as checkver
+import build_checkver as checkver
 
 data = open("../runtime/www/us/mgo2/patch/1.36.0/BLUS30109.1.0.0to1.36.0.inf", "rb").read()
 ciphertext, outer_tag = data[:-16], data[-16:]
@@ -269,7 +269,7 @@ Also corrected: a failed version-gate or a failed literal-`to` check while parsi
 ## 5a. Phase 1, live-tested [tier 2, real client — 2026-07-31]
 
 `checkver.html` (status `0x01`, two records, two chosen keys) and `relnote.txt` were written by
-`dev/tools/build_checkver_stub.py` and served for real. Two harness bugs surfaced and were fixed
+`dev/tools/build_checkver.py` and served for real. Two harness bugs surfaced and were fixed
 before the client actually saw the intended bytes:
 
 - `http_probe.py`'s `do_POST` never checked the docroot for a static file — only `do_GET` did — so
@@ -367,7 +367,7 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
    real archive path is `dl/.p`.
 4. **The keystore-decrypt fix (found 2026-07-31): confirmed correct, twice.** `get()`
    unconditionally Blowfish-CBC-decrypts whatever `set()` stored, under a master key resident in
-   the ELF at `0xE26DA8`; `build_checkver_stub.py` now sends the two key blobs pre-encrypted under
+   the ELF at `0xE26DA8`; `build_checkver.py` now sends the two key blobs pre-encrypted under
    that key so the client's effective key equals `SLOT7_KEY`/`SLOT8_KEY`. This was re-derived
    independently via an *executed* opcode-faithful trace (master key bytes re-dumped from the ELF,
    IV/key split re-confirmed at `0xD645C8`, CBC direction re-confirmed at `0xD64690`) and separately
@@ -463,7 +463,7 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
       parser builds at `0xBB766C`), read by the dialog's `"Ver. %d.%02d"` formatter (`0xBB5150`)
       *and* by a post-dialog state-machine check (`0x95CD7C`) that diverts the screen-state
       advance from `+2` to `+1` on a mismatch against the record's own parsed TO version — not
-      purely cosmetic, though the flow completed anyway with it zeroed. `build_checkver_stub.py`
+      purely cosmetic, though the flow completed anyway with it zeroed. `build_checkver.py`
       now sends the real packed `TO_VERSION`; see `ADDRESSES.md` §12 for the full trace.
     - `relnote.txt`'s content, rendered via the "display update details" triangle prompt, ran off
       the bottom of the screen. The update screen word-wraps and paginates the body (`ADDRESSES.md`
@@ -480,7 +480,7 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
     building the tracker + seeding peer (below) rather than leaving it as a known limitation.
 
     **A real BitTorrent tracker and seeding peer now exist, 2026-07-31**, in `dev/tools/
-    build_torrent_stub.py` (bencode encoder, `.torrent` builder, shared info-dict/info_hash/
+    build_torrent.py` (bencode encoder, `.torrent` builder, shared info-dict/info_hash/
     piece-data computation) and `dev/runtime/bt_seed.py` (a BEP3 HTTP tracker on port 6969 and a
     genuine peer-wire protocol seed on port 6881 — handshake, bitfield, choke/unchoke, piece
     serving — both compose services, `probe-bt`). Not a stub reply: since the client links real
@@ -488,7 +488,7 @@ Phases, in ascending order of risk — **all now live-confirmed working, 2026-07
     simulated client before any live test: tracker announce returns a correct compact peer
     record, and a full handshake→bitfield→interested→unchoke→request→piece exchange returns the
     exact concatenated bytes of both stub payload files. `.torrent` is served over HTTP
-    byte-identical to what `build_torrent_stub.py` wrote. Live re-test with a real client
+    byte-identical to what `build_torrent.py` wrote. Live re-test with a real client
     pending — see the quickstart in §0 for how to run it.
 
     **Live-tested 2026-07-31: the tracker/seed implementation is correct; the remaining blocker

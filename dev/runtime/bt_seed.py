@@ -14,9 +14,9 @@ Two independent servers in one process:
   - Raw TCP BitTorrent peer-wire protocol on PEER_PORT: handshake, bitfield (we have everything),
     unchoke on interest, serve whatever piece/block is requested.
 
-No third-party dependencies: build_torrent_stub.py (imported for the bencode encoder and the
+No third-party dependencies: build_torrent.py (imported for the bencode encoder and the
 info dict/info_hash/piece-data computation, so this seed is provably describing the exact same
-torrent build_torrent_stub.py wrote to disk) needs none, and neither does this.
+torrent build_torrent.py wrote to disk) needs none, and neither does this.
 """
 import pathlib
 import socket
@@ -27,8 +27,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "tools"))
-import build_torrent_stub as torrentlib  # noqa: E402
-import build_checkver_stub as checkver  # noqa: E402
+import build_torrent as torrentlib  # noqa: E402
+import build_checkver as checkver  # noqa: E402
 
 ADVERTISE_IP = checkver.HOST.split("://", 1)[1].split(":")[0]
 

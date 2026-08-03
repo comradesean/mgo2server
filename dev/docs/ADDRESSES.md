@@ -565,10 +565,37 @@ B - 8296   ---- 709 bytes: the letter body + NUL  (0x4841's block, 0x4800's `bod
 ## 12. Auto-patch — `checkver.html` and the update flow (`uupdate.cc`)
 
 Full write-up, including the response grammar and the open questions, is in `OBSERVED.md` under
-"Auto-patch — checkver.html and the update flow". This is static analysis only: our server has
-always answered `checkver.html` with a single `0x00` byte, so none of the `0x01` branch below has
-ever been exercised against a real client. Module TOC base (mini-TOC anchor, `-mminimal-toc`
+"Auto-patch — checkver.html and the update flow". Module TOC base (mini-TOC anchor, `-mminimal-toc`
 build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 0x010353A8`.
+
+**No longer static-only — the `0x01` branch was driven end to end against a real client on
+2026-08-03**, serving a genuine 1.0→1.36 round. What that run established, and what it corrected:
+
+- **The payload container is `plaintext || HMAC-MD5(K, plaintext)`.** Sixteen raw bytes appended;
+  no header, no magic, no length field. The installer streams the staged file through a verifier
+  (built at `0xD652E0`, compare at `0xD66588`) that never hashes or delivers the last 16 — they
+  are the expected MAC. `K` is a 64-byte buffer fetched at `0xBBA6EC` by
+  `singleton->vtable[1](8, buf)` into `r1+8168`; **on this client it holds the 16-byte ASCII
+  string `mgo2server_slot8`** (HMAC zero-pads a short key to its 64-byte block). Both served files
+  verified live, `r3 = 0` at `0xD66588`.
+  **That key is NOT Konami's** — it is this project's own name, so the `MGO2.SELF` this client
+  runs is not stock and its crypto slot provider is stubbed. Anything built under it is specific to
+  that modified executable; a stock client would demand the real slot-8 key, which we do not have.
+  The ptsys manifest key (`0xE26D78`) was tried first and rejected — do not retry it.
+- **Scan A is the install list, not decoration.** See the correction under "The two entry scans".
+- **`dl/p/.l` present at boot ⇒ the client reports the patch data as corrupt.** Created at
+  `0xBBA994` at the top of phase 2, unlinked at `0xBBB930` on success; its reader is `0x2FDE0` in
+  the boot-time patch mounter, which on finding it calls `0x2F818` to record `0x80010000`. A failed
+  install therefore poisons **every subsequent attempt** until the file is deleted. Distinct from
+  `dl/p/ar/.l` (`0xE20080`), which is the inert staging probe described below — do not conflate.
+- Devices, measured: **1 = `/dev_hdd1/o/`** (the cache partition, cleared per boot, where payloads
+  are staged) and **7 = `/dev_hdd0/game/BLUS30109/USRDIR/o/`**. Each run's cleanup removes
+  `o/dl/p/ar/` on both, so the staging directories must be recreated before every attempt.
+- Four static readings of `0xBBA458` were falsified by this run and are recorded here so they are
+  not re-derived: `0xBBA8C8` is a per-**group** state check that merely follows a `bctrl` (a
+  breakpoint there sees the *call's* registers, which is what made it look like the call);
+  `0xBBACB4` and `0xBBB190` are both reachable but were never reached while scan A was empty; and
+  the `dl/p/ar/t/` setup call at `0xBBA988` targets device **7**, not device 1.
 
 | VA | what it is |
 | --- | --- |
@@ -580,7 +607,7 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xBB75A8`/`0xBB76CC` | the gate: client's current version (read at runtime, see below) must be ≥ the record's "from" version. **`from`/`to` live in single fixed fields `obj+988`/`obj+992`, overwritten by each record** — not per-record storage — so the post-loop gate at `0xBB76B8` only ever tests the *last* parsed record |
 | `0xBB7950`/`0xBB7B9C` | install the reply's two trailing 64-byte blobs into keystore slots **7** and **8** via singleton `0xD64498`. **Slot mapping re-confirmed 2026-07-31, instruction by instruction: `0xBB7950` is `set(slot=7, obj+852, 64)` sourced from `T+7`; `0xBB7B9C` is `set(slot=8, obj+916, 64)` sourced from `T+71`** (`addi r6,r28,7` at `0xBB7700` / `addi r9,r28,71` at `0xBB798C`; `li r4,7` at `0xBB7960` / `li r4,8` at `0xBB7BB4`). Slot 7 is stage 2's Blowfish-CBC material, slot 8 is stage 1's HMAC key — the docs were right, not transposed. **The blobs are stored as ciphertext — see "The keystore" below; what you put on the wire is not what the crypto sees.** Reply also carries an opaque u32 at offset 1 (copied to obj+1060, never read back — safe to zero) and, after the terminator, an opaque u16 at `T+1` (obj+1000, read but never branched on in this module). **`T+3` (obj+996) is NOT opaque — corrected 2026-07-31.** It's a packed TO version (`major<<24 \| minor<<16 \| revision`, the same packing the record parser itself builds at `0xBB766C`), consumed two ways: the confirmation dialog's `"Ver. %d.%02d"` text (formatter `0xBB5150`, called from `0x95CCE4`/`0x95CCFC`) reads it, and `0x95CD7C` compares it against the record's own parsed TO version at `obj+992` — a mismatch (e.g. leaving it zero, the original reading) diverts the post-dialog screen-state advance from `+2` to `+1`. Live-tested working either way (a zero value produced "Ver. 0.00" but the flow still completed), so this isn't a hard gate, but it should be sent correctly regardless. Minimum reply length is `T+135` |
 | `0xBB7BF4` | builds `%s/%u.%u.%u/relnote.txt` (string A base) and fetches it into the update object at **offset +2506, 64 KiB cap** (`bzero` at `0xBB7BD8` sizes the object: `2506+65536=68042` of the `0x109D0`-byte allocation). **The body is rendered — corrects the earlier "fetched and not displayed" claim, scoped too narrowly to this TU.** It leaves the module as a `char*` at offset +36 of the 44-byte status struct filled by virtual `getStatus` (`0xBB4C20`, vtable `0xFBB168` slot +4); the owning screen (ctor `0xBB6EC0`, screen ctors `0x95E670`/`0x95F160`, update object at screen+16) polls that getter every frame (`0x9610BC`) and, in flow state 1, sub-state machine `0x95CBCC` sub-states 6/7 word-wrap the body into up to 62 lines and render 5 at a time through UI widgets `0x521FD0`-`0x521FD4` with scroll arrows. Static analysis only — state 1 has never been reached against a real client |
-| `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot**, the record text must supply its own trailing `.` for the on-disk name to read `...to1.34.0inf` |
+| `0xBB7D48`/`0xBB7DB8` | builds `%s/%u.%u.%u/%sinf` — note **no dot** in the format string. **Corrected 2026-08-03: the record text must NOT supply a trailing `.` either.** The real Konami filenames are `BLUS30109.1.0.0to1.36.0inf` and `1.0.0to1.36.0inf` (operator's directory listing, `PATCH_INVESTIGATION.md` §6), i.e. record text `BLUS30109.1.0.0to1.36.0` + `inf`. The `.torrent` in the same listing settles it independently: its name is record text + `.torrent`, so a trailing dot would have produced `...1.36.0..torrent`. The earlier "trailing `.` required" reading contradicted §6's own observed URLs and was carried into `build_checkver.py`, which sent `...1.36.0.` until it was fixed |
 | `0xBB7E7C`-`0xBB7F4C` | `.inf` goes through **HMAC-MD5 verify → Blowfish-CBC decrypt → HMAC-MD5 verify**, not three cipher stages — see "The `.inf` pipeline" below for the full byte layout, the ELF-resident HMAC key, and the entry grammar |
 | `0xBB8E6C`-`0xBB903C` | **the actual disk install**: `open("dl/p/ar/"+name, device 1, O_RDONLY)`, `open(same path, device 7, O_CREAT\|O_WRONLY, flags@0xFF23F8)`, plain `read`/`write` loop (no cipher in this loop), close both, then `unlink` the device-1 copy. A real cross-device copy-then-delete, not a passive overlay. **Confirmed closed**: the copied name is `lwz r4,0(r27)` — entry offset +0, the name pointer read straight out of the `.inf` plaintext, gated on `(entry+12 & 0x13) == 0x12` |
 | `0xBB9150`-`0xBB9170` | the HTTP-fallback writer: same `dl/p/ar/%s` path, device chosen per-entry by flag bit `,27,27` (7 if set, else 1) |
@@ -591,7 +618,7 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 | `0xD5EDE0` region | **corrected 2026-07-31 — not a VFS mount.** `0x2FD50` (containing `0x2FD6C`-`0x2FE40`) constructs a patch-archive service object via factory `0xD5FC28`→`0xD5FB00`, with `r5="dl"` used as a plain **path prefix** (`strdup`'d into the object), not a mount name — there is no mount table anywhere. `r6=1` selects the 88-byte DLT2 subclass (ctor `0xD641E8`); `r6=0` selects a 96-byte DLTB subclass (`0xD60AF8`) that is **never instantiated anywhere in the binary** — dead format, despite `DLTB` being a real, checked magic (see below). The real archive path the client opens is **`dl/.p`** (`"dl"+"/"+".p"`, built at `0xD6372C`-`0xD63778`), not `dl/p/.p` — matches the user's real 1.36 artifact exactly. `dl/p/.l`, opened once at `0x2FDEC` on the `FSStart` thread, is a **dead read**: its only effect is `0x2F818(1,0)`, and the two getters for that state (`0x2F790`/`0x2F7B8`) have zero call sites anywhere — its absence changes nothing. The archive object's own load thread is named `patchsys:load` (created inside `0xD5FA14`), and prints `ptsys:%s not found` and returns cleanly (no error, no flag, no `O_CREAT` retry) if `dl/.p` is missing. **Nothing in `MGO2.elf` can create `dl/.p`** — `"DLT2"`/`"DLTB"` are each `memcmp`'d exactly once and never written; the archive must be seeded externally (a real install, likely written by `EBOOT.BIN`, not this file) |
 | `0xE26D78` | 16-byte key used by the DLT2 archive's own digest check (`0xD640C4`-`0xD6410C`, `memcmp` on mismatch → `ptsys:digest errror`, archive discarded) — **the same 16 bytes** that head the `.inf` stage-3 HMAC key block at `0xE20000`. New lead on `PATCH_INVESTIGATION.md` §2's unidentified `.p`-digest algorithm: same key reused across two checks: crypto-service vtables `0xFBBD00`/`0xFBBD20`, strings `ptsys:invalid keylength` / `ptsys:cbcblowfish length err` / `ptsys:invalid key type %d` nearby |
 | `0x214E0` / `0xFB1474` | `deviceRoot(dev)` and its table. **Device 7 (the auto-patch install's write target) has zero archive involvement** — devices 1/2/3/6/7 all resolve through the same handler (`0x28880`) straight to `cellFsOpen`; only device 2's root is populated (`/dev_bdvd/PS3_GAME/USRDIR/o/`), devices 1/6/7 are empty-string roots (so a device-7 path resolves relative to the process's `USRDIR` cwd). **All 17 callers of this table only read it — nothing in `MGO2.elf` ever writes a device root**, so this table is entirely load-time/external, not client-managed |
-| — | **Superseded 2026-07-31 — the missing-`mkdir` theory below was never actually tested, because the install loop it targets is never reached this early.** Kept for the accurate parts (the `mkdir` fact itself, and the loop's real shape) but see "The real post-`.inf` control flow" below for what supersedes the "blocker" framing. The install loop (`0xBB8E6C`-`0xBB903C`) is `sprintf path → open(dev 1, RD) → open(dev 7, O_CREAT\|O_WRONLY) → read → write → close ×2 → unlink`; `O_CREAT` creates the file, not missing parent directories, and the client never calls `mkdir` anywhere in the binary — both still true. Creating `USRDIR/dl/p/ar/t/0/` was harmless but did not fix a live rejection, because that loop lives inside the **state-3 downloader**, a function only reached after a player confirms a dialog the client never got to raise |
+| — | **Superseded 2026-07-31 — the missing-`mkdir` theory below was never actually tested, because the install loop it targets is never reached this early.** Kept for the accurate parts (the `mkdir` fact itself, and the loop's real shape) but see "The real post-`.inf` control flow" below for what supersedes the "blocker" framing. The install loop (`0xBB8E6C`-`0xBB903C`) is `sprintf path → open(dev 1, RD) → open(dev 7, O_CREAT\|O_WRONLY) → read → write → close ×2 → unlink`; `O_CREAT` creates the file, not missing parent directories. **The other half of that sentence — "the client never calls `mkdir` anywhere in the binary" — is FALSE, corrected 2026-08-03.** `cellFsMkdir` is imported (`sys_fs` NID `BA901FE6`, stub `0xDEB0CC`) and has **13 `bl` call sites**, all in `0x27594`-`0x27ED0`. The claim was presumably made by searching for the string `cellFsMkdir`, which finds nothing because this ABI imports by NID — the same method applied to `cellFsOpen` (`718BF5F8`, stub `0xDEAFEC`, 9 sites in `0x28xxx`) and `cellFsUnlink` (`2796FDF3`, 1 site at `0x266B0`) reproduces facts already established elsewhere in this section, which is what validates it. **And the write path reaches it: the installer creates missing subdirectories.** See "`mkdir -p` is inside the open wrapper" below. Creating `USRDIR/dl/p/ar/t/0/` was harmless but did not fix a live rejection, because that loop lives inside the **state-3 downloader**, a function only reached after a player confirms a dialog the client never got to raise |
 | — | **The real post-`.inf` control flow, traced 2026-07-31.** Scan B's loop footer (`0xBB8BCC`-`0xBB8BF0`) falls through to the post-record-loop tail at `0xBB7FA4` once every accepted record has been processed. That tail does **not** decide `.torrent` vs HTTP-fallback (that split — `0xBB9B8C`/`0xBB9BC0`/`0xBB90B0` — lives in a *different* function, the state-3 downloader, gated on `state == 3`) and does **not** touch `dl/p/ar/.l` meaningfully — that `open`/`close` at `0xBB7FE8`-`0xBB8008` is a discarded existence probe, same code either branch, file contents never read. The tail does run a free-space check (`0x11340` → `cellHddGameCheck("TEST99999")`, PRX NID `0xC9645C41`) against a KB figure computed from the `.inf`'s declared entry sizes — for a single 32-byte entry this resolves to **1 KB**, checked against RPCS3's ~40 GB stub free size, so it cannot fail here; ruled out explicitly, not assumed. **On success the tail sets `obj+1008 = -1` and state `1`, then returns** — state 1 is "waiting for the player to confirm the download," rendered via dialog raiser `0x8BE974` from the screen's per-frame pump (`0x9610BC` → `0x961220` → `0x95CBCC` sub-state 1). The download-worker thread (two call sites, `0xBBBC74`/`0xBBCE30`) polls `obj+1008` every 200ms and only proceeds to state 3 (the actual downloader, and the install loop above) once the player answers. **So "no further network request after the `.inf`" is the *correct* behaviour of a successfully-accepted `.inf`, not evidence of failure** — a rejected `.inf` produces the generic error dialog *before* this tail, at one of: the checkver status byte check (`0xBB735C`), the stage-1 outer-HMAC read failure (`0xBB7F5C`), the stage-3 inner-HMAC read failure (`0xBB88C8`/`0xBB8910`), or a record-parse/version-gate failure (`0xBB76xx`) — and since a correctly-built `.inf` request URL was observed live, the record parse is the least likely of these. Discriminator for a live test, if `obj+1976` is visible: the space-check failure path is the only writer of that field (`0xBB8564`, sets it to `1`), and the state-10 screen handler (`0x961A4C`) shows a different, dialog-less path when it's `1` versus the two error-message ids otherwise — so a generic error dialog with a message body means `obj+1976 == 0`, i.e. **not** the space check, consistent with it being ruled out above |
 | `0xBB5150` | version→string formatter (`%d.%02d.%d`, `%d.%02d`) called from the title/network-start screen (`0x95CCF0` etc.) next to a `"popup"` object, and also from the update screen's dialog raise (see below) |
 | `0xBB4BF8` | update vtable slot **+0**, a real **download progress percentage**: `obj[1048]*100/obj[1040]` (bytes-done / bytes-total, both 64-bit), 0 if total is 0. **Corrects "no progress/percentage argument … in this module"** |
@@ -602,7 +629,7 @@ build) is `r30 = 0xFFA350`, loaded via `lwz r30,-27468(r2)` with real TOC `r2 = 
 **Live-confirmed 2026-07-31**, on top of the ELF resolution below: a real client, run under
 RPCS3's debugger against a checkver reply carrying the keys pre-encrypted per this section, showed
 the literal ASCII string `"mgo2server_slot7"` sitting in registers mid-`.inf`-verification — i.e.
-the client really does end up holding the plaintext key `build_checkver_stub.py` intended, not
+the client really does end up holding the plaintext key `build_checkver.py` intended, not
 `Decrypt(intended key)`. This closes the loop opened below; treat the master-key address, IV/key
 split and CBC direction as settled unless a new observation specifically contradicts them.
 
@@ -738,7 +765,39 @@ entry list at offset 12, so a file that passed all three crypto stages still pro
 | `0xBB8B00`-`0xBB8BC8` | **B** | `base+28` (i.e. `L`) | `base + total_plaintext - 16` | NUL**+5** | `<name> 00 <u32 size BE>` |
 
 They cannot be the same list: a byte stream parsed correctly at stride 6 desyncs at stride 5 and
-vice versa. Scan A is **display-only** — for each entry it `strncpy`s the name into scratch, and
+vice versa.
+
+> **CORRECTION, 2026-08-03 — "scan A is display-only" is true of the PARSER and false of the
+> INSTALLER, and reading it as a blanket statement cost this project the entire apply step.**
+>
+> Scan B says what to **download**. Scan A says what to **write out of the downloaded archive**.
+> The installer at `0xBBA458` walks scan A, not scan B: `0xBBB0BC`-`0xBBB0CC` computes
+> `cursor = blob+12`, `bound = blob + hdr[4] - 16`, and `ble cr7,0xbbba20` **skips the entire
+> per-record install loop** when `bound <= cursor`. With the `hdr[4] = 28` recommended below, the
+> two are equal, so the branch was taken unconditionally for every group and nothing was ever
+> extracted — while phase 1 verified the payload perfectly and no error state was set. That is why
+> the failure looked like a crypto problem for so long: the transport was flawless and the install
+> list was empty.
+>
+> Confirmed live: with a populated scan A the client opens `dl/p/MGO2.SELF` and `dl/p/.p` — the
+> exact names we listed. **Attribute those opens to the PARSER, not the installer**: they are
+> `0xBB8BF4`-`0xBB8C3C`, the `flags & 0x20 == 0` branch that stats `"dl/p/" + name` for the
+> `obj+1012` KB counter, and they appear in the trace *before* the payload downloads. They prove
+> scan A is parsed and non-empty; they do **not** prove the installer walks it. As of 2026-08-03
+> the installer's own prefix compare (`0xBBAE70`) has never been observed to fire, so phase 2's
+> per-group body is still not being entered — the blocker is somewhere between `0xBBA9B0` and
+> `0xBBACCC`, upstream of everything the archive body could affect.
+>
+> The same `hdr[4]` bound governs two other walks that were also silently empty: `0xBBA5C8`
+> (progress accounting) and `0xBBB710` (the 16-pass finalize loop).
+>
+> Flags byte, so far as the extraction paths read it: `0x0F` = ordering-pass index for the
+> 16-pass finalize loop (`0xBBB76C`); `0x10` = output stream selector (`0xBBB2D8`); `0x20` =
+> destination — **clear** installs straight to `dl/p/<name>`, **set** writes to
+> `dl/p/ar/t/0/<name>` and enables the finalize loop (`0xBBB164`/`0xBBB18C`). `0x00` is the
+> shortest path to bytes on disk.
+
+For each scan-A entry the *parser* `strncpy`s the name into scratch, and
 if bit `0x20` of the flags byte is *clear* it `strcat`s the name onto `"dl/p/"`
 (TOC `-32736` → `0xE20068`, six bytes with the NUL), `open`s it, `lseek(SEEK_END)`s to get how much
 is already on disk (`0xBB8BF4`-`0xBB8C3C`), and accumulates remaining KB into `obj+1012`. That
@@ -747,17 +806,25 @@ that fills the entry array at `obj+1072` and drives the download and install.
 
 Consequences for a hand-authored `.inf`:
 
-- Set `hdr[4] = 28`. Scan A then exits on its first bound test (`base+12 <= base+12`) with the
-  cursor **untouched**, so the `+= 16` at `0xBB8AF0` lands scan B exactly on `base+28`.
+- **`hdr[4] = 12 + len(scan A) + 16`, and scan A must be NON-EMPTY if you want anything installed.**
+  (Superseded 2026-08-03. The old advice was "set `hdr[4] = 28`", i.e. an empty scan A, which
+  parses cleanly and downloads correctly and then installs nothing — see the correction above.)
+  Scan A occupies `[12, hdr[4]-16)`; the `+= 16` at `0xBB8AF0` steps over the inner tag and lands
+  scan B on `hdr[4]`, whatever that is.
 - Put the inner HMAC tag at `[12, 28)` — stage 3 verifies `plaintext[0, hdr[4]-16)`, so with
   `hdr[4] = 28` the MAC covers **only the 12-byte header**. Cryptographically pointless, but it is
   what the code does, and stage 1's HMAC covers the whole file anyway.
 - Append **≥16 bytes of anything** after the last entry. Scan B's bound is
   `total_plaintext - 16` (`0xBB8AEC`-`0xBB8AF8` and `0xBB8BB8`-`0xBB8BC8`), so without the slack
   the final entry falls outside the bound and is silently dropped. Nothing reads those bytes.
-- A populated scan A is optional. A real Konami `.inf` almost certainly carries one (that is the
-  only way `obj+1012` is ever non-zero), which would mean the entry list appears **twice** — once
-  with flags bytes, once without. Unverified; we serve an empty scan A.
+- **A populated scan A is mandatory, and the entry list does appear twice** — once in scan A with
+  a flags byte, once in scan B without. That was flagged here as "unverified" and is now confirmed
+  by construction: `build_inf_stub.build_inf(entries, scan_a)` emits both, and the client acts on
+  both. (It is also the only way `obj+1012` is ever non-zero, which was the original hint.)
+- **The archive's decrypted plaintext must BEGIN with the same `hdr[4]` bytes as the `.inf`'s**
+  (header + scan A + inner tag). `0xBBAE44` reads `hdr[4]` bytes from the archive and `0xBBAE70`
+  `memcmp`s them against the `.inf`'s copy; mismatch sets state 10. `build_inf_stub.build_prefix()`
+  generates that region once so the two cannot drift apart.
 
 The three crypto stages were **re-verified byte-by-byte on 2026-07-31 and are correct as
 documented** — standard HMAC-MD5 (`xori 54`/`xori 92` over 64-byte pads at `0xD65FEC`-`0xD65FF0`,
@@ -787,9 +854,11 @@ was entirely the plaintext layout above.
   every entry in a batch (selects device 7 vs 1), `0x4` tested backwards from the last entry (set ⇒
   skip), `0x2` tested for resume-vs-fresh (`Range:` request vs plain fetch, HTTP 206 accepted).
 
-**Resolved 2026-07-31** — the NUL+6 loop at `0xBB89B0`-`0xBB8AC0` is scan A, a separate
-display-only entry list ahead of the inner HMAC tag. See "The two entry scans" above; it is not a
-pre-pass over the same bytes, and the stride difference is what proves that.
+**Resolved 2026-07-31** — the NUL+6 loop at `0xBB89B0`-`0xBB8AC0` is scan A, a separate entry list
+ahead of the inner HMAC tag. See "The two entry scans" above; it is not a pre-pass over the same
+bytes, and the stride difference is what proves that. **The "display-only" half of that resolution
+was wrong** and was corrected 2026-08-03: display-only describes this parser, but the *installer*
+(`0xBBA458`) reads scan A as its install list. See the correction block above.
 
 In-memory entry (16 bytes, array `obj+1072`, count `obj+1584`):
 
@@ -803,6 +872,148 @@ In-memory entry (16 bytes, array `obj+1072`, count `obj+1584`):
 Relevant TOC strings (`r30 = 0xFFA350`): `/patch/checkver.html`, `%d,%s,%u`,
 `%s/%u.%u.%u/relnote.txt`, `%s/%u.%u.%u/%sinf`, `%s/%u.%u.%u/%s`, `dl/p/ar/%s`, `Range`,
 `bytes=%d-`, `dl/p/`, `dl/p/ar/`, `dl/p/ar/.l`, `dl/p/ar/t/0/`, module name `uupdate.cc`.
+
+### A scan-A name can escape `dl/p/` — the `..N/` grammar at `0xBB5678`
+
+**Found 2026-08-03, after a full 660-file round installed perfectly and the client still booted
+1.0.** Every member landed under `dl/p/`, including the two that must not: the loader reads
+`o/MGO2.SELF` and the archive reader opens `o/dl/.p` (see `0xD6372C`-`0xD63778`). Nothing about
+the flags byte fixes that. **The destination is chosen by the NAME.**
+
+`0xBB5510` builds the output path, and its first act (`0xBB552C`) is to compare the name's first
+byte with `'.'`. The branch that guards, at `0xBB5678`, accepts exactly one shape:
+
+```
+".." <digit N> "/" <rest>          name[0]='.' name[1]='.' name[2]=N name[3]='/'
+```
+
+with all three byte tests required — `0xBB5680` and `0xBB568C` fall back to the plain path if
+either fails — and `N <= 3` checked at `0xBB56B0`. On a match it builds `<device root> + "dl/p/"`,
+then walks backwards from the end erasing bytes until it has consumed **N slashes**
+(`0xBB5728`-`0xBB5754`), and `strcat`s `name+4`. So N means *go up N directory levels from
+`dl/p/`*. Measured against the observed base of `USRDIR/o/dl/p/`:
+
+| scan-A name | lands at |
+| --- | --- |
+| `MGO2.SELF` | `o/dl/p/MGO2.SELF` — what a plain name does, and what booted 1.0 |
+| `..1/.p` | `o/dl/.p` |
+| `..2/MGO2.SELF` | `o/MGO2.SELF` |
+
+**A name that merely begins with a dot is NOT special**, and this is worth stating because it is
+the trap: `.p` reaches the `'.'` test and then fails `name[1] == '.'`, so it falls straight through
+to `"dl/p/" + name`. That is exactly where the first full round put it, which is what makes the
+reading above testable rather than decorative.
+
+Two consequences. The `<device root>` prefix is a runtime buffer (`0xFF236C` → `0x01096768`, empty
+in the static image, filled at boot by `0x27338`), so N is only ever safe relative to a *populated*
+root — which is also why `N <= 3` is checked. And the `0x20` flag is a separate axis entirely: it
+selects `dl/p/ar/t/0/` as the base and enables the finalize loop, and the `..N/` branch has its own
+`r6 != 0` handling at `0xBB579C` that has not been traced.
+
+### `mkdir -p` is inside the open wrapper, and the patch module arms it on every create
+
+**Traced 2026-08-03, and confirmed live the same day** — a real client running a 660-file round
+created `dl/p/bgm/` and `dl/p/sdpack/` itself and extracted into them, so this is tier-2, not just
+a reading. It corrects the "the client never calls `mkdir`" claim in section 8's table. The 13 `cellFsMkdir` sites decompose into five functions, which exactly accounts for all
+13 — an independent scan for `bl` to stub `0xDEB0CC` finds the same set:
+
+| function | sites | what it is |
+| --- | --- | --- |
+| `0x27338` | 3 | device-root bootstrap, run at boot; creates the roots `0x214E0`'s table points at |
+| `0x27C08` | 3 | standalone `mkdir -p(path, device << 32)`; 8 of its 15 callers are in the patch module |
+| **`0x280F0`** | 3 | **the generic open wrapper, with `mkdir -p` inlined** — 114 callers, and the one that matters |
+| `0x29050` | 3 | same code, device passed separately in `r5` — **zero callers**, dead variant |
+| `0xD8FEE0` | 1 | a 48-byte `mkdir(path, 0700)` shim in unrelated middleware |
+
+`0x280F0(path, device << 32 | flags)` tries `cellFsOpen` first; on failure it tests **flag bit
+`0x40`** (`rlwinm r19,r29,0,25,25` at `0x282C8` — verified, that mask is exactly `0x40`) and, if
+set, truncates the path at its last `/` and walks the components, `cellFsMkdir(…, 0700)` on each,
+tolerating `EEXIST` (`0x80010014`), then reopens. So it is a *fallback*: the first open of a fresh
+subdirectory always fails internally before succeeding.
+
+**The patch module sets that bit on every create-mode open.** Two 64-bit constants carry it —
+`0xFF2380` = `0x0000000100000241` (device 1) and `0xFF23F8` = `0x0000000700000241` (device 7),
+both verified byte-for-byte — where `0x241` is `O_WRONLY 0x1 | mkdir-p 0x40 | O_CREAT 0x200`.
+Every create open in `0xBB4000`-`0xBBE000` uses `0x241`: `0xBB58E4` (`dl/p/ar/.l`), `0xBB5A60`,
+`0xBB8F34` (the old install loop's device-7 destination), `0xBB9170`, `0xBB95AC`, `0xBBA994`
+(`dl/p/.l`). Read-only opens pass flags `0`.
+
+The installer's per-entry write reaches it through `0xBBB2FC`-`0xBBB31C`, a vtable slot-0 call
+with `r5 = 1` ("create") on the file object behind the buffered writer: vtable `0xFBB1F8[0]` =
+`0xBBD8C0` forwards to the sink, whose `0xFBB1D8[0]` = `0xBBDA58` loads `0x0000000100000241` and
+calls `0x280F0`. **`0xBBDEA0` is not the opener** — it is the buffered-writer constructor
+`(this, sink, bufsize)`; it never touches `cellFsOpen`. And `0xBB5510` does not sanitise the name:
+it `strcat`s it onto `"dl/p/"` verbatim, so a scan-A entry named `bgm/foo.bgm` produces the
+literal path `dl/p/bgm/foo.bgm`.
+
+Two limits worth knowing before authoring deep paths: the **parent path is truncated to 127
+bytes** (`strncpy(r1+248, parent, 127)` at `0x2838C`), and only the *parent* is created — a name
+ending in `/` leaves its leaf directory uncreated. Also note `0x40` is this binary's private bit,
+not a documented `CELL_FS_*` flag, and it is passed to `cellFsOpen` unmasked.
+
+Not established: the vtable of the alternate installer object selected when `r28 & 0x10` is set at
+`0xBBB2D8`. That branch's sink is the same file object, and no create-mode open in the module was
+found without `0x241`, so it does not change the conclusion.
+
+### The payload's own read chain — there are FOUR filters, and the fourth is zlib
+
+**Traced 2026-08-03, and it is the answer to "why does `0xBBAE70` never fire".** The installer's
+per-group body (`0xBBACCC`-`0xBBAE3C`) does not read the staged payload directly. It stacks the
+same three-layer chain the `.inf` uses, plus a fourth stage that was missed because it is built
+**inline, with no constructor call** — two `stw`s of a vptr and a source pointer onto the stack:
+
+```
+staged file  →  0xD652E0 HMAC-MD5 filter  →  0xD66CF0 Blowfish-CBC  →  zlib inflate  →  read
+   0xBBADA8            0xBBADC0                  0xBBADE0            0xBBADF4-0xBBAE08
+```
+
+`0xBBADF4` loads `r7 = *(r30-32620) = 0xFB1D80` and stores it at `r1+1816`, with the Blowfish
+stream at `r1+1820`. That two-word stack object is a **zlib inflate stream**: vtable `0xFB1D80`
+slot `+0` = `0x288778` (`open`, which forwards the name down the chain and calls `inflateInit_`
+`0xD2D0FC` → `inflateInit2_` with `windowBits = 15`, i.e. **RFC1950 zlib, not raw deflate**), slot
+`+8` = `0x2884F8` (`read`, driving zlib 1.2.3's `inflate()` at `0xD2DB04`).
+
+**The failure is silent by construction, which is why it cost a session.** `inflate()` returning
+anything but `Z_STREAM_END`/`Z_OK` makes `0x288764` return **-1**; back in the installer,
+`0xBBAEEC`/`0xBBAEFC` only branches to the compare when the read returned **> 0**, so a payload
+with no zlib layer downloads, passes phase 1's MAC, enters phase 2, constructs every filter — and
+then falls out of the compare loop having extracted nothing.
+
+So a served payload file must be, and as of 2026-08-03 `build_patch_round.py` builds:
+
+```
+BlowfishCBC( zlib.compress( hdr[4] prefix || file bytes ), PKCS#7 to 8 )  ||  HMAC-MD5(K, ciphertext)
+```
+
+Two further facts from the same window, both of which change how earlier observations read:
+
+- **The HMAC filter in this chain strips the trailer but does not verify it.** `0xBBADB8`/
+  `0xBBADBC` pass `key = NULL` and `flag = 1`; a NULL key makes the constructor `memset` a 64-byte
+  zero key (`0xD65528`), and the flag lands at `this+321`. **The 16-byte holdback is
+  unconditional** — the lookahead buffer at `this+300` is maintained at `0xD661C8`-`0xD66218`,
+  ahead of any read of the flag — and the flag only selects, at `0xD66354`/`0xD66378`, whether
+  those bytes are hashed and compared or merely counted. Phase 1 already verified the trailer.
+  This matters for the container: Blowfish sees exactly the ciphertext, never the MAC, so the
+  PKCS#7 padding is genuinely the last thing in its stream.
+- **`0xBBAF00` is the failure handler, not housekeeping.** The fall-through when the compare loop
+  ends without a match sets state `10` and error `2` (`obj+1976`), then calls `0xBB6230` twice with
+  `dl/p/ar/` — device 1 and device 7 — to delete the staging tree. The "cleanup deletes
+  `o/dl/p/ar/` on both every run" note in `PATCH_HANDOFF.md` was this firing, every run.
+- **The archive open touches no device.** `open`'s name argument is `0xE20090 = "dl/p/ar/"`, a
+  path *prefix*; the bottom source (`0xBB5108`) stores it and returns a constant 1, and the real
+  per-file `open` happens lazily inside `read` (`0xBB5028`), `snprintf("%s%s", prefix, entry->name)`
+  over the 16-byte entry array at `[r17+36]`/`[r17+40]`, device per entry from `entry[12] & 0x10`.
+  There is no size check anywhere in the window — nothing rejects a 17 MB file.
+
+Only one branch can leave `0xBBACCC`..`0xBBAE44` early: `0xBBAE0C`, `bne` to `0xBBB020` when
+`obj+1008 != 0`, and that path is not an error — it re-opens under
+`dl/p/ar/%s/%s.%u.%u.%uto%u.%u.%u/` (`0xE20188`) and rejoins at `0xBBAE44`.
+
+**Status: tier-1 only.** The chain is read from the binary; the *fix* built on it has not yet been
+put in front of a client. The one-run discriminator, if it fails again, is a breakpoint at
+`0x28875C` reading `r3` — the `inflate()` return: `-3` (`Z_DATA_ERROR`) means the bytes are not
+zlib, `-5` (`Z_BUF_ERROR`) means the source delivered nothing, which is a staging problem and not
+a format one.
 
 Open question, stated precisely because it is the one thing static reading cannot settle: whether a
 newly-installed file under `dl/p/ar/` is visible to the archive driver immediately (device 7 is

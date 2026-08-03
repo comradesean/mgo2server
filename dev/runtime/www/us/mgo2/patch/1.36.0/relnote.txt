@@ -1,4 +1,9 @@
-mgo2server test patch
-1.0.0 -> 1.36.0
-Stub data only.
-Not real Konami content.
+Update Information: MGO patch Ver. 1.36
+
+The MGO client will be further updated to Version 1.36 
+as of today's maintenance. 
+For full details on the patch, please visit our official website.
+
+"METAL GEAR ONLINE SCENE EXPANSION" now available!! 
+Get your's at the MGO Shop and add a whole new dimension
+to your ONLINE experience!!

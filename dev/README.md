@@ -22,15 +22,20 @@ depends on, some is documentation, and some is a tool you run once and forget.
 | --- | --- |
 | `http_probe.py` | Serves the HTTP and HTTPS endpoints (`probe-http`, `probe-https`), terminates TLS and proxies to the web service. Holds the TLS-1.0 and `SECLEVEL=0` settings the console needs. |
 | `turnserver.conf` | coturn config for the `probe-stun` service — the STUN responder that answers the port check. |
-| `www/` | Static documents only — the document root the probes copy in and serve. |
+| `www/` | Static documents only — the document root the probes mount read-only and serve. Changes are live without a restart; large files (the ~1.9 GB patch archives) are streamed, not read whole. |
 | `tls/` | The certificate chain and its private keys. Deliberately **not** under `www/`: that directory is served, and keys have no business in a document root. Mounted separately at `/tls`. |
 
-## Run once
+## Tools
+
+`tools/` is everything you run by hand — nothing in it is mounted by the running stack.
+**`tools/README.md`** is its guide, and documents in full the two that do real work against a
+console: `build_patch_round.py` (builds the in-game 1.0 → 1.36 patch) and `testhk_editor.py`
+(points the game at your server). Two entries below are the ones you need before a first run.
 
 | path | role |
 | --- | --- |
-| `seed.sql` | Inserts the lobby rows, a test account and a news item. **Required** — an empty `lobby` table is a silent dead end. |
-| `extract_keys.py` | Pulls the crypto constants out of your own copy of `MGO2.elf`, with offsets. |
+| `tools/seed.sql` | Inserts the lobby rows, a test account and a news item. **Required** — an empty `lobby` table is a silent dead end. Run once. |
+| `tools/extract_keys.py` | Pulls the crypto constants out of your own copy of `MGO2.elf`, with offsets. Run once. |
 
 ## Diagnostics
 

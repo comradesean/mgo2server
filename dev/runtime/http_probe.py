@@ -100,15 +100,77 @@ def default_body(path):
     return TERMS
 
 
-def from_docroot(path):
-    """Serves a real file if one exists for this path, else None."""
+# THE CLIENT DOES NOT CHECK WHETHER IT IS ALREADY UP TO DATE. THE SERVER HAS TO.
+#
+# uupdate.cc's version gate (0xBB75A8/0xBB76CC) tests only that the client's current version is
+# **at least** the record's FROM version. Nothing anywhere compares it against the TO version. So a
+# 1.36 client handed a "1.0.0 -> 1.36.0" reply passes the gate and is offered the upgrade it
+# already has -- observed live 2026-08-03, an endless re-patch loop.
+#
+# The real server obviously answered this from the POSTed version, and so must we. The client
+# sends `%d,%s,%u` (format at 0xE200C8) = packed version, disc id, nonce, where packed is
+# `major<<24 | minor<<16 | revision` -- the same packing the staging directory name uses via
+# `%x_%x` (0xE20110), which is why that directory is called `1000000_1240000` for 1.0.0 -> 1.36.0.
+#
+# The TO version is read back out of the reply we are about to send (its own T+3 field, see
+# dev/docs/PATCH_FORMAT.md Sec 8) rather than configured separately, so the gate cannot drift out
+# of step with what the reply actually offers.
+
+def parse_reply_to_version(reply):
+    """The packed TO version out of a checkver reply, or None if it is not an offer."""
+    if len(reply) < 6 or reply[0] != 0x01:
+        return None                       # 0x00 = "no update"; nothing to compare against
+    try:
+        index = 5                         # status byte + the opaque u32
+        for _ in range(2):                # string A, string B
+            index = reply.index(b"\x00", index) + 1
+        while True:                        # records, terminated by an empty one
+            end = reply.index(b"\x00", index)
+            if end == index:
+                index = end + 1
+                break
+            index = end + 1
+        index += 2                        # the opaque u16
+        return int.from_bytes(reply[index:index + 4], "big")
+    except (ValueError, IndexError):
+        return None
+
+
+def parse_client_version(body):
+    """The packed version the client POSTed, or None. First integer in `%d,%s,%u`."""
+    digits = b""
+    for ch in body:
+        if 0x30 <= ch <= 0x39:
+            digits += bytes([ch])
+        elif digits:
+            break
+    return int(digits) if digits else None
+
+
+def version_text(packed):
+    return f"{packed >> 24}.{(packed >> 16) & 0xFF}.{packed & 0xFFFF}"
+
+
+def docroot_file(path):
+    """The real file backing this request path, or None. Does NOT read it."""
     clean = path.split("?")[0].replace("//", "/").lstrip("/")
     candidate = (DOCROOT / clean).resolve()
     try:
         candidate.relative_to(DOCROOT.resolve())
     except ValueError:
         return None  # refuse traversal outside the docroot
-    return candidate.read_bytes() if candidate.is_file() else None
+    return candidate if candidate.is_file() else None
+
+
+def from_docroot(path):
+    """Serves a real file if one exists for this path, else None.
+
+    Whole-file read, so it is only for the small documents (checkver.html, help pages, the
+    .infs). Auto-patch PAYLOADS go through Probe._serve_file instead -- the generic 1.36 archive
+    is ~1.9 GB and reading that into a python:alpine container would take the probe down.
+    """
+    candidate = docroot_file(path)
+    return candidate.read_bytes() if candidate is not None else None
 
 class Probe(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -116,19 +178,107 @@ class Probe(BaseHTTPRequestHandler):
     def _log(self):
         host = self.headers.get("Host", "?")
         print(f"  {self.command} http://{host}{self.path}", flush=True)
-        for k in ("User-Agent", "Accept"):
+        for k in ("User-Agent", "Accept", "Range"):
             if self.headers.get(k):
                 print(f"      {k}: {self.headers[k]}", flush=True)
+
+    # Bodies are written in chunks and the delivered byte count is logged, so that "the client
+    # fetched it" and "the client took only the headers and hung up" stop looking identical in
+    # this log. Added 2026-08-03: a live run showed both auto-patch payloads requested and
+    # nothing whatsoever written to the client's staging directory, and the old single
+    # wfile.write() could not distinguish a completed 19.6 MB transfer from an abandoned one.
+    # Same class of blind spot as the do_HEAD gap below and the 462-byte fallback body -- each
+    # cost an investigation round because the server side looked fine.
+    CHUNK = 64 * 1024
 
     def _respond(self, body, content_type="text/html"):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        sent = 0
+        try:
+            for offset in range(0, len(body), self.CHUNK):
+                self.wfile.write(body[offset:offset + self.CHUNK])
+                sent += len(body[offset:offset + self.CHUNK])
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            print(f"      !! client disconnected after {sent:,} of {len(body):,} bytes "
+                  f"({type(exc).__name__})", flush=True)
+            return
+        if len(body) >= self.CHUNK:
+            print(f"      delivered {sent:,} of {len(body):,} bytes", flush=True)
+
+    # THE AUTO-PATCH PAYLOADS ARE TOO BIG TO HOLD, AND THE CLIENT ASKS FOR RANGES.
+    #
+    # Two separate reasons this cannot go through _respond. (1) Size: the generic 1.36 archive is
+    # ~1.9 GB, and `candidate.read_bytes()` in a python:3.12-alpine container is not survivable.
+    # (2) Resume: MGO2.elf's downloader sends `Range: bytes=%d-` (TOC string, format at 0xBB90B0)
+    # and accepts 206, gated by the flag bits at obj+1036. The old code LOGGED the Range header
+    # and then ignored it, answering 200 with the whole body -- so a resumed download would
+    # silently receive the file from byte 0 and write it at the resume offset, corrupting the
+    # staged archive in a way that only shows up as a failed MAC much later.
+    def _serve_file(self, candidate):
+        size = candidate.stat().st_size
+        start, end = 0, size - 1
+        header = self.headers.get("Range")
+        partial = False
+        if header and header.strip().lower().startswith("bytes="):
+            spec = header.split("=", 1)[1].strip()
+            first, _, last = spec.partition("-")
+            try:
+                if first:
+                    start, partial = int(first), True
+                    if last:
+                        end = min(int(last), end)
+                elif last:                      # suffix form: the final N bytes
+                    start, partial = max(0, size - int(last)), True
+            except ValueError:
+                partial = False                 # unparseable -- fall back to the whole file
+            if start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                print(f"      !! range {header} unsatisfiable for {size:,} bytes", flush=True)
+                return
+        length = end - start + 1
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(length))
+        self.end_headers()
+        sent = 0
+        try:
+            with open(candidate, "rb") as handle:
+                handle.seek(start)
+                while sent < length:
+                    block = handle.read(min(self.CHUNK, length - sent))
+                    if not block:
+                        break
+                    self.wfile.write(block)
+                    sent += len(block)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            print(f"      !! client disconnected after {sent:,} of {length:,} bytes "
+                  f"({type(exc).__name__})", flush=True)
+            return
+        print(f"      delivered {sent:,} of {length:,} bytes"
+              + (f" (range {start}-{end} of {size:,})" if partial else f" of {size:,}"), flush=True)
+
+    # Anything at or above this is streamed off disk rather than read whole. Well under the
+    # smallest auto-patch payload and well above every static document in the docroot.
+    STREAM_ABOVE = 1 << 20
 
     def do_GET(self):
         self._log()
+        candidate = docroot_file(self.path)
+        if candidate is not None and (candidate.stat().st_size >= self.STREAM_ABOVE
+                                      or self.headers.get("Range")):
+            self._serve_file(candidate)
+            return
         # Endpoints the MGO1 emulator documents expect a bare "0" as success.
         body = from_docroot(self.path)
         if body is not None:
@@ -146,9 +296,16 @@ class Probe(BaseHTTPRequestHandler):
         # any non-200 status as failure (0xBB7E2C), so an invisible HEAD 501 fits the symptom
         # exactly. Answered the same as GET, just without a body, per HTTP semantics.
         self._log()
-        body = from_docroot(self.path)
-        if body is None:
-            body = default_body(self.path)
+        candidate = docroot_file(self.path)
+        if candidate is not None:
+            # Size without reading -- a HEAD of the 1.9 GB archive must not allocate it.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(candidate.stat().st_size))
+            self.end_headers()
+            return
+        body = default_body(self.path)
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(body)))
@@ -176,6 +333,30 @@ class Probe(BaseHTTPRequestHandler):
 
         # checkver.html is POSTed, not GETted (the client sends its version in the body), but
         # it's still a static reply out of the docroot -- do_GET already knows how to serve one.
+        # The one thing it cannot do statically is decide whether THIS client needs the update.
+        if self.path.endswith("checkver.html"):
+            served = from_docroot(self.path)
+            if served is not None:
+                # Logged in full, unlike other POST bodies: this one carries a version, a disc id
+                # and a nonce -- no credentials -- and not being able to see it cost an
+                # investigation round.
+                print(f"      checkver body: {body!r}", flush=True)
+                client = parse_client_version(body)
+                target = parse_reply_to_version(served)
+                if client is not None and target is not None and client >= target:
+                    print(f"      client is {version_text(client)}, offer is "
+                          f"{version_text(target)} -- answering 0x00, already up to date",
+                          flush=True)
+                    self._respond(b"\x00")
+                    return
+                if client is not None and target is not None:
+                    print(f"      client is {version_text(client)}, offering "
+                          f"{version_text(target)}", flush=True)
+                elif client is None:
+                    print("      !! could not parse a version from the body -- serving the "
+                          "reply unconditionally", flush=True)
+                self._respond(served)
+                return
         # Without this, a hand-authored checkver.html sits on disk and is never actually served,
         # because every .html POST used to fall straight through to the "up to date" stub below.
         served = from_docroot(self.path)

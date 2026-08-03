@@ -310,12 +310,18 @@ services:
   # resolver stub do not collide with these.
   probe-http:
     image: python:3.12-alpine
-    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 80'
+    # The docroot is MOUNTED, not copied. It used to be `cp -a /wwwsrc/. /www/` at startup, which
+    # meant every static change needed a container restart to take effect -- a documented footgun.
+    # The auto-patch payloads settled it: the generic 1.36 archive is ~1.9 GB, and copying that
+    # into two containers' writable layers wanted 3.8 GB of a 7.2 GB-free docker disk, twice, on
+    # every restart. http_probe.py streams large files off disk rather than reading them whole,
+    # so serving straight from the mount costs nothing.
+    command: sh -c 'python /probe.py 80'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
-      - ./dev/runtime/www:/wwwsrc:ro
+      - ./dev/runtime/www:/www:ro
     ports:
       - "${MGO2SERVER_PROBE_HTTP:-192.168.1.200:80}:80"
     depends_on:
@@ -325,7 +331,8 @@ services:
 
   probe-https:
     image: python:3.12-alpine
-    command: sh -c 'mkdir -p /www && cp -a /wwwsrc/. /www/ && python /probe.py 443 tls'
+    # Docroot mounted rather than copied -- see the note on probe-http above.
+    command: sh -c 'python /probe.py 443 tls'
     environment:
       MGO2SERVER_WEB_URL: http://web:8080
       # cert-expired.pem swaps in a chain whose only defect is its validity window, which the
@@ -334,9 +341,8 @@ services:
       MGO2SERVER_TLS_DIR: /tls
     volumes:
       - ./dev/runtime/http_probe.py:/probe.py:ro
-      - ./dev/runtime/www:/wwwsrc:ro
-      # Mounted separately from the document root: /wwwsrc is copied into /www and served, and the
-      # private keys must not be inside it.
+      - ./dev/runtime/www:/www:ro
+      # Mounted outside the document root on purpose: the private keys must not be servable.
       - ./dev/runtime/tls:/tls:ro
     ports:
       - "${MGO2SERVER_PROBE_HTTPS:-192.168.1.200:443}:443"
@@ -372,14 +378,18 @@ services:
   # BitTorrent tracker + seeding peer for the auto-patch P2P download path
   # (dev/docs/PATCH_INVESTIGATION.md Sec 0). The client statically links real Transmission for
   # this, so it speaks genuine BEP3 tracker + peer-wire protocol -- not a canned stub reply. See
-  # dev/runtime/bt_seed.py and dev/tools/build_torrent_stub.py.
+  # dev/runtime/bt_seed.py and dev/tools/build_torrent.py.
   probe-bt:
     image: python:3.12-alpine
-    # bt_seed.py locates build_torrent_stub.py (../tools, relative to its own path) and that
-    # module locates the docroot (../runtime/www) the same way build_checkver_stub.py does on
+    # bt_seed.py locates build_torrent.py (../tools, relative to its own path) and that
+    # module locates the docroot (../runtime/www) the same way build_checkver.py does on
     # the host -- so the mounts below must preserve the repo's real dev/tools + dev/runtime/www
     # relative layout, not flatten it.
     command: python /app/dev/runtime/bt_seed.py
+    # Needs the same version toggle every other service reads. Without it bt_seed resolves the TO
+    # version to the default 1.0.0 and dies on a payload path that has never existed -- latent
+    # since the single-toggle change, and invisible until the container was restarted.
+    env_file: *server-env-file
     volumes:
       - ./dev/tools:/app/dev/tools:ro
       - ./dev/runtime/bt_seed.py:/app/dev/runtime/bt_seed.py:ro
