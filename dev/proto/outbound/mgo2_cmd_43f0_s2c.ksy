@@ -57,7 +57,10 @@ doc: |
   and a player in neither keeps the default `stb r18,1(r28)` with `r18 = -1`, i.e. **255**. Eight
   entries each, matching the game's 16-player maximum split two ways.
 
-  **Exactly one writer, exactly one reader.** `R+44..R+75` and `R+100..R+131` are written only by
+  **~~Exactly one writer, exactly one reader~~ — CORRECTED 2026-08-03: `0x4A13`'s parser also
+  writes both arrays** (`0xD450A4`-`0xD450D4`, `0xD45118`-`0xD45148`), so the arrays have two
+  wire writers, and the original claim below overstated. Original text, kept for the reader
+  census it carries: `R+44..R+75` and `R+100..R+131` are written only by
   this parser (every other `0xD3F7B0` caller in the image was enumerated) and read only at
   `0x270CDC`-`0x270D94`.
 
@@ -240,4 +243,7 @@ seq:
       nothing in the image reconciles the two).
 
       The 28-byte gap between the two arrays in the record (`R+76`..`R+99`) is not filled from this
-      packet, and is not touched by any other `0xD3F7B0` caller either.
+      packet — but [CORRECTED 2026-08-03] "not touched by any other `0xD3F7B0` caller" was
+      false: that window is **team_block[1]'s id and name**, written by `0x4A13`'s parser at
+      `0xD450E4`/`0xD45104`. The record is two 56-byte blocks at `R+0x14` and `R+0x4C`, each
+      {id, name[16], 4 unused, ids[8]}; this packet fills only the id arrays.

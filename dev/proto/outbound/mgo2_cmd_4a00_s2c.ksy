@@ -45,8 +45,15 @@ doc: |
       subtype, team+0x261 rule id.
     * 0x4A24 writes **session+0xDBD0** (getter 0xD4EA60), a separate 7296-byte record.
     * 0x4A31 writes **`*(u32*)(session+0x11904) + 0x1A840`**, a third, heap-side instance of the
-      same 7296-byte layout.
+      same 7296-byte layout (its own getter is 0xD4EA7C, two call sites [2026-08-03]).
   So 0x4A00 does NOT share a destination struct with 0x4A24/0x4A31.
+
+  [ELF 2026-08-03] The tail has a SECOND destination this file omitted: after the event-record
+  population, 0xD51280 **clears the 356-byte ladder record** (session+0x11558, the record
+  0x4A13/0x43F0/0x43F1/0x4E20 share) and 0xD5129C-0xD512CC **seeds it** — R+0 from team+664
+  (0x4A00's `new_id`, which is why 0x4A13's `card_id` must echo it), R+4/8/9 from
+  team+604/608/609 (the lobby id/subtype/rule triple), zeroing R+12/16/136/140. So serving
+  0x4A00 both opens the event AND stamps the next-match card's identity.
 
   BUT THE PARSER TAIL DOES, and that is proved to the 0x4905/0x4909 standard - by an identical
   base computation, not by resemblance. 0x4A00's tail computes
@@ -110,15 +117,20 @@ seq:
       detail record at session+0xDBD0+0x000 (0xD51190), i.e. into 0x4A24's `obj_id` slot.
       So it is the key that ties the whole exchange together, and a server must reuse it
       verbatim in every follow-up. Not itself validated here.
-  - id: unknown_0x0a
+  - id: team_state
     type: u1
     doc: |
-      [UNKNOWN] read at 0xD50FC4 -> team+0x004, i.e. into the team record at session+0xD928 that
-      0xD491F8 returns, not into the detail record. **No negative is claimed for this one.** A
-      reader would appear as a load at displacement 4 off whatever register holds the team
-      record, and displacement 4 is far too common for a displacement sweep to discriminate;
-      a sweep that cannot be validated against a known-good hit is worthless, so none is
-      reported. Meaning unestablished.
+      [ELF 2026-08-03 — named; was unknown_0x0a] Read at 0xD50FC4 -> **team+0x004**, the team
+      record at session+0xD928, not the detail record. `team_state`, the team's
+      event-participation state — one field with 0x4A01's same-named byte and the four
+      0x4E2x's. The 2026-08-02 "displacement 4 is unsweepable" refusal is superseded by the
+      getter-alias walk over all 83 `bl 0xD491F8` sites (plus the cached-pointer channel at
+      screen+108): **eleven writers, all from the wire; five readers, all comparing one
+      literal** — ==9 at 0x8C3084/0x8C3184 (counted-roster rendering) and 0x8D4A58/0x8D7B70
+      (action suppressed), ==5 at 0x8CBCAC (enables the row ending in lobby string 741 —
+      "Join Game" per the block-counted labels, see `mgo2_cmd_4e20_s2c.ksy`). Full enum and
+      enumerations there. Entirely server-chosen; what 5 and 9 MEAN beyond these behaviours
+      still rests on disc strings 718/741.
   - id: blob
     size: 8
     doc: |

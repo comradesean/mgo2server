@@ -68,9 +68,13 @@ seq:
   - id: event_id
     type: u4
     doc: "[ELF] read at 0xD5066C, compared at 0xD50694 against **event record +0x000** (`lwz r0,0(r23)`, r23 = session+0xDBD0); mismatch aborts with -1106 and nothing further is read. Same id as 0x4A24's `obj_id`, i.e. what 0x4A00 stamped. Not a result code: it is compared against stored state, never sign-extended into 0xD32E70, and this command consumes no request slot."
-  - id: unknown_0x0a
+  - id: team_state
     type: u1
-    doc: "[UNKNOWN] read at 0xD506A8 -> the currently open object's +0x004 (0xD491F8's object, i.e. the TEAM record, not the event record - the two are adjacent, session+0xD928 and session+0xDBD0, so keep them apart). No reader traced."
+    doc: |
+      [ELF 2026-08-03 — named; was unknown_0x0a] Read at 0xD506A8 -> team+0x004 (0xD491F8's
+      object, the TEAM record, not the event record — the two are adjacent, session+0xD928
+      and session+0xDBD0, so keep them apart). `team_state` — one field with 0x4A00's and the
+      0x4E2x's; enum and reader/writer enumerations in `mgo2_cmd_4e20_s2c.ksy`.
   - id: phase
     type: u1
     doc: |
@@ -97,7 +101,19 @@ seq:
       **[2] is what bounds this packet's own `blob`**, but from the stored value, not this one.
   - id: unknown_0x1c
     type: u4
-    doc: "[UNKNOWN] read at 0xD507BC and widened to 64 bits at event record +0x1BF0 - the same slot and the same widening as 0x4A24's `unknown_0x19` (0xD4FE24) and 0x4A00's `unknown_after_block` (0xD5127C). Three commands write it and **nothing reads it**; 0x4A24 carries the sweep and its control."
+    doc: |
+      [UNKNOWN] read at 0xD507BC (own store **0xD507D4**) and widened to 64 bits at event
+      record +0x1BF0 — the same slot and widening as 0x4A24's `unknown_0x19` (read 0xD4FE24,
+      **store 0xD4FE44** — the old citation pointed at the read) and 0x4A00's
+      `unknown_after_block` (0xD5127C). Three commands write it and **nothing reads it**;
+      0x4A24 carries the sweep and its control. [ELF 2026-08-03] The negative is
+      strengthened: the store is a `std` of a zero-extended `lwz`, so the u32 sits at
+      **+0x1BF4** and a u32 reader would use displacement 7156 — also zero hits; the
+      getter-alias walk over all 21 `bl 0xD4EA60` sites finds nothing at either; and the
+      record has FOUR whole-record carriers (7296-byte memcpys at 0x8FB598/0x8FB8A8 ->
+      this+792 and 0x8F20B4/0x8F44BC -> this+2387328) that no displacement sweep can see —
+      both swept clean against controls. The heap instance's getter is **0xD4EA7C** (two call
+      sites). The time_t guess stays a guess.
   - id: entrant_status
     size: blob_len
     doc: |

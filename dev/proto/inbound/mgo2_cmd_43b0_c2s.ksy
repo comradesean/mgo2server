@@ -31,7 +31,7 @@ doc: |
   ```
   rec+0x00 u32   read first from the wire and REQUIRED TO MATCH (else -0x452 = -1106) 0xD44F9C
   rec+0x04 u32                                                                        0xD45050
-  rec+0x08 u8    join kind                                                            0xD45058
+  rec+0x08 u8    lobby_subtype (was "join kind"; corrected 2026-08-03 — the 0x272704 chain and 0x8CA164 -> 0x4310 wire 0xA2 trace it, as 0x43F0 already says)   0xD45058
   rec+0x09 u8                                                                         0xD4505C
   rec+0x0C u32   participant A's win count      \                                     0xD45060
   rec+0x10 u32   participant B's win count      |                                     0xD45064
