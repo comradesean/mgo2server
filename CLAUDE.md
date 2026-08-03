@@ -52,6 +52,14 @@ The rules that follow, and they are not negotiable:
   the reference-server copying that has cost this project six regressions, and it is harder to spot.
 - **1.36 findings go in `dev/docs/BUILD_1_36.md`**, not into the disc-build docs. Keep them
   quarantined until there is a deliberate decision to merge any of it.
+- **Which build the server serves is `MGO2SERVER_CLIENT_VERSION`, taking `1.0` or `1.36` only.**
+  Unset means `1.0`. Every version-specific value is a column on
+  `src/main/java/mgo2server/common/ClientVersion.java`, which is *the complete list of what differs*
+  — there is no `if` on version anywhere in the codebase, and there should not be one unless a
+  divergence is structural rather than a value. Adding a divergence means adding a column, which
+  cannot be done without answering "what does 1.0 do?", and `ClientVersionTest` pins the `1.0` row
+  literal by literal. **Never reintroduce a per-divergence env var**; a test fails if any source
+  file reads one.
 - **What DOES transfer is structure and method**: both builds use `file offset = VA − 0x10000` for
   both LOAD segments, the same PPC64/OPD conventions, and — as far as anything has been checked —
   the same protocol shapes. Treat a disc-build address as a *lead about where to look*, then

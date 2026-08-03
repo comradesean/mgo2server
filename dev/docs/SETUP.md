@@ -19,6 +19,33 @@ docker compose up -d
 Brings up postgres, the migrations, the three lobby servers (gate, account, game), the web service,
 and the HTTP/HTTPS/STUN probes.
 
+### Which client build — `MGO2SERVER_CLIENT_VERSION`
+
+**One deployment serves one build.** The variable takes `1.0` or `1.36` and nothing else; unset
+means `1.0`, and anything else refuses to start naming both alternatives.
+
+| value | build | notes |
+| --- | --- | --- |
+| `1.0` *(default)* | release-day disc | what v1 targets; leave the variable out entirely |
+| `1.36` | the 1.36 patch | see `BUILD_1_36.md`; also needs a 16-record `d/testhk` |
+
+Every process logs the value it resolved at startup —
+`Config[... clientVersion=1.36]` — so *which build a container is serving is visible in the log*
+rather than something you have to infer from the environment.
+
+**Two things differ today**, and neither has a value valid for both builds, which is why this is a
+toggle and not a default:
+
+- the login reply's third field — `1.0` wants one integer, `1.36` wants ten separated by nine
+  underscores. Wrong one gives **`090B:00000001`**, "Unable to connect to server";
+- the check-session key — the game reads a file named `kit`, and the patch ships one that shadows
+  the disc's. Wrong one gives **`0910:C0FFEE02`** and `Check session: no account holds the presented
+  session` in the account log.
+
+Both live on `ClientVersion`; there is no separate variable for either, and reintroducing one fails
+a test. If you are running 1.36, see `BUILD_1_36.md` for the other two things it needs — a
+16-record `testhk` and the PSN skip bit.
+
 ### Seed the lobbies — required
 
 **The migrations create no lobby rows, and an empty `lobby` table is a silent dead end.** The gate
@@ -222,6 +249,8 @@ more — mode 6's blob is zeroed on disc, so it requires a memory dump from a ru
 | --- | --- |
 | Stuck on the terms/network screen | swap list; `probe-https` logs should show a `gidauth5.html` POST; also confirm `dev/runtime/www/us/mgo2/policy/policy.txt` has been swapped for the real EULA text (`policy.txt.original`, gitignored) — the tracked file is a placeholder and real hardware stalls on it |
 | `0519:8002AA0C` | PSN status is not RPCN |
+| `090B:00000001` after credentials | wrong `MGO2SERVER_CLIENT_VERSION` — the perks grammar differs by build. See "Which client build" |
+| `0910:C0FFEE02` at Start Game | wrong `MGO2SERVER_CLIENT_VERSION` — the session key differs by build; the account log says `no account holds the presented session` |
 | Login screen rejects, `090B` | certificate not installed, or wrong slot |
 | Stuck on "Adjusting port settings" | `probe-stun` running? `python3 dev/tools/stun_selftest.py` should pass every check it runs (13 under WSL, where the change-request leg skips; 17 from a separate host) |
 | `0692:00000003` after the check | client classified symmetric — a Test II reply never arrived. Repeated `change_ip=True` lines in the `probe-stun` log are the tell. See "a second IP for the port check": WSL-only secondary, missing policy route, or the client machine's own firewall |
