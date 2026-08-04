@@ -373,6 +373,24 @@ seq:
         (604, 605) — which the disc independently predicts, because auto-balance is the one row
         with two help texts (balance Ratings, balance Levels).
 
+      **[CONFIRMED AGAINST THE DISC, 2026-08-04.]** The alignment above was originally an
+      *ordinal* argument — row order matched disc order, pinned by five anchors. It is now read
+      directly: the lobby's extracted string resources carry the whole label run as consecutive
+      records at file indices **13515-13633**, and walking them reproduces ids 585..607 in exactly
+      the published order — 585 `ホスト専用`/**Dedicated Host Settings**, 586 **Unique
+      Characters**, 587 **A Team Unique Characters**, 588 **B Team Unique Characters**, 589 **Max
+      Number of Characters**, 590 **Briefing Time**, 591 **Friendly Fire**, 592 **Headshots**,
+      593 **Lock On (AUTO AIM)**, 594 **Enemy Nametag Display**, 595 **Silent Mode**, 596 **Auto
+      Assign Teams**, 597 **Teams Switch Positions**, 598 **Ghost Pranks**, 599 **Allow
+      Quick-Join**, 600 **Level Limit**, 601 **Voice Chat**, 602 **Team Kill Kick**, 603 **Idle
+      Kick**, 604/605 **Auto Balance Teams**, 606 **Weapon Restriction Settings**, 607 **Skills**.
+
+      Two records in that run are shorter than six files because most or all of their language
+      variants are deduplicated to earlier records (591 keeps only the French *"Tir allié"*, 601
+      keeps none) — which is precisely the packing that makes disc id -> file index non-linear,
+      and precisely the two rows the ordinal argument had to reason around. Both land where the
+      anchors put them.
+
       **What a player sees**, for the rows worth spelling out: Silent Mode hides the Information
       Log (help: *"When enabled, the Information Log is not displayed."*); Friendly Fire is
       *"player's attacks can harm their teammates"*; Level Limit restricts the room to players
