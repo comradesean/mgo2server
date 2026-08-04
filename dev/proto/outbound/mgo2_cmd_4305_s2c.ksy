@@ -311,16 +311,37 @@ seq:
       [ELF] wire 0x148, block +180. u16. **Was served as a single low byte until 2026-07-26** —
       `HostSettingsReply` copied one byte into this field's low half and left the high half zero,
       the third instance of the same truncation (see `../inbound/mgo2_cmd_4310_c2s.ksy` and
-      `GameService`). Correct for values <= 255, silently wrong above. Name tier 4.
+      `GameService`). Correct for values <= 255, silently wrong above.
 
       [ELF 2026-07-30] The **unit is minutes**: `0x8CA424` loads struct `+932` and `0x8CA458`
-      multiplies it by 60 before publishing it as property-store key 76 (`0x8CA63C`). That is
-      evidence about the quantity, not about "idle" — the name stays tier 4.
+      multiplies it by 60 before publishing it as property-store key 76 (`0x8CA63C`).
+
+      **[NAME CONFIRMED 2026-08-04 — no longer tier 4.]** Create-game row `0x8A5CB0`-`0x8A5D30`
+      adjusts this u16 with a clamp of **[0, 99]** and renders it with unit string **574**. The
+      ELF's own developer table names it `"IDLE KICK"` (`0x105AE38`), the disc row label is
+      **"Idle Kick"** (*Ejection pour inactivite* / *Kick bei Untaetigkeit*), and the consequence
+      text exists too: *"You have been ejected for inactivity. Leaving the game."*
+
+      So: minutes of no controller input before the game boots you, 0 disabling it — and the
+      client zeroes the field itself when `commonA` bit 0 (the Idle Kick **enable**) is clear,
+      confirmed 214/214 in OBSERVED.md. The wire is minutes; the client hands the stage script
+      seconds.
   - id: team_kill_kick
     type: u2
     doc: |
       [ELF] wire 0x14a, block +182, struct **+934**. u16, same low-byte truncation as `idle_kick`,
-      fixed the same day. Name tier 4.
+      fixed the same day.
+
+      **[NAME CONFIRMED 2026-08-04 — no longer tier 4, and it is a COUNT not a timer.]**
+      Create-game row `0x8A5F08`-`0x8A5F88`, clamp **[0, 99]**, rendered with unit string
+      **573** — the *count* suffix, where `idle_kick` uses **574**, the *time* suffix. That single
+      difference separates the two inside the binary, and it is corroborated by the missing
+      `mulli ...,60` on this one's publish path. Developer table `0x105AE30` = `"TEAMMATE KILLER
+      KICK"`; disc row label **"Team Kill Kick"**.
+
+      **What the player sees:** the number of teammates you may kill before being ejected, with a
+      HUD warning counting down the remainder — the ELF carries the literal format string
+      `"TEAM KILL : LEFT 1"` at `0xE0DF78`.
 
       [ELF 2026-07-30] Published as property-store key 69 at `0x8CA534`/`0x8CA608`, and note the
       client does it **as a single byte** (`stb r0,273(r1)` after an `lhz`) — so the client's own
@@ -381,13 +402,26 @@ types:
         doc: |
           [CONFIRMED] Game rule (mode) id for this rotation slot -> block+0x00+i. Capture-proven
           as a rotation entry via the 0x4310 push, whose copy of this block starts at wire 0xA3
-          and whose 16 triples occupy 0xA3..0xD2 (OBSERVED.md / PROTOCOL.md 0x4310). The
-          rule-id-to-mode mapping itself is [INFERRED], tier 4.
+          and whose 16 triples occupy 0xA3..0xD2 (OBSERVED.md / PROTOCOL.md 0x4310).
+
+          **[SUPERSEDED 2026-08-04 — the mapping is TIER 1, and was already so in the sibling.]**
+          The "rule-id-to-mode mapping is [INFERRED], tier 4" line predates the 2026-08-02 result
+          written into `mgo2_cmd_4313_s2c.ksy`, which was never carried back here. Re-derived:
+          `0x9019C8` does `lbz r3,5(r31); addi r3,r3,22; bl 0x8E0BF0` — the mode name is
+          **`strres(rule + 22)`** — and the client bounds the id itself at `0x901A70`
+          (`cmplwi 7 / bgt`). Same 48 bytes, same three arrays; **defer to
+          `mgo2_cmd_4313_s2c.ksy` for this field**.
       - id: map
         type: u1
         doc: |
-          [CONFIRMED] Map id for this rotation slot -> block+0x10+i. Position and role as above;
-          the id-to-map-name table is [INFERRED], tier 4.
+          [CONFIRMED] Map id for this rotation slot -> block+0x10+i. Position and role as above.
+
+          **[SUPERSEDED 2026-08-04 — TIER 1, same reason as `rule`.]** `0x902010` does
+          `addi r29,r29,74` -> **`strres(map + 74)`**, with the long forms at `map + 59`. The disc
+          list confirms the arithmetic is self-consistent: long map names occupy files 573-587
+          (*Jungle ... Shopping Mall*) and the short forms 588-602 (*JNGL A.A. U.U. G.G. B.TOWN
+          L.D B.B. UNDER CLOCK N.SILO M.DEPO M.M. SANO S.A SHOP*) — the same base for both
+          offsets. **Map ids are 1..15, with 0 = empty.** Defer to `mgo2_cmd_4313_s2c.ksy`.
       - id: flags
         type: u1
         doc: |
