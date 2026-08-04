@@ -79,6 +79,33 @@ seq:
 
       **The server must send it.** PROTOCOL.md's "2 bytes zero" is wrong: zero here tells the
       browser the game has no password.
+
+      **[CONFIRMED 2026-08-04 from the create-game side, and the server was fixed the same day.]**
+      The identification no longer rests on struct-offset identity alone. `0x4305`'s neighbourhood
+      supplies the mechanism: the `0x4310` request builder's **pre-flight validator** at
+      `0xD4476C` reads `lbz r0,150(r29)`, and when it is 1 demands the 16-byte string at `+151` be
+      **3..16 characters** and pass the charset validator `0xD32DD0` (the same one the game name
+      at `+4` gets), returning **-24 with nothing sent** otherwise. So `+150` is the flag that
+      makes the password field mandatory.
+
+      **What the player sees.** On Create Game, switching the password row on makes the 16-char
+      password field required; fail it and the client **refuses to send `0x4310` at all** — a
+      local refusal, no round trip, so it presents as "these settings will not save" rather than a
+      server error. On the reply side, the flag exists so re-opening Create Game pre-fills the
+      password you used last time instead of making you retype it.
+
+      Note the deliberate asymmetry with `0x4305`: **this reply carries the flag and NOT the
+      sixteen password bytes** (the parser goes `+150` -> `+167` -> `+168` with no read between).
+      The public game-details reply tells every browser that a game is locked without telling them
+      the password. That is the design, not an oversight — and it is why `0x4305`, which *does*
+      carry the password, is the only Blowfish-encrypted outbound payload we send.
+
+      **Server: was wrong, fixed 2026-08-04.** `GameDetails` wrote `writeZero(2)` over this and
+      `dedicated`, carrying forward PROTOCOL.md's error. No screen in this build reads them back
+      off the *details* object — the sweep for `+150`/`+167` finds only the create-game readers
+      (which read the host's own object) and the dead accessor bank, with the control passing — so
+      the wrong value was inert rather than visibly broken. It is still wrong, and "inert" is a
+      property of this build that a later one can revoke.
   - id: dedicated
     type: u1
     doc: |
@@ -89,6 +116,31 @@ seq:
       synthesiser, copies `obj+150` to game-list entry T+0x15 and `obj+167` to T+0x16
       (`0xD494E8`/`0xD494F0`) — the two bits `0x4302`'s `host_options` expands as "password set"
       and "dedicated".
+
+      **[CAVEAT ADDED 2026-08-04 — that synthesiser is not fed by this packet.]** `0xD493CC`
+      fetches the details object via `0xD3F71C`, **memsets all 968 bytes** at `0xD49440`, and
+      refills it from the *team record* (`lwz r9,616(r29)` game id, `lbz r0,608(r29)` subtype,
+      `memcpy(details+752, team+176, 204)`). It never restores `+150`/`+167`. So that path is the
+      host describing its own game, not a viewer reading ours, and it cannot be cited as a live
+      reader of this field.
+
+      **[CONFIRMED 2026-08-04 — what `dedicated` does.]** The Create Game toggle is
+      `0x8A5B90`-`0x8A5BF8`: a strict 0<->1 flip on `+167`, drawn with value labels 571/572 =
+      **Enable / Disable**. The disc names the row **"Dedicated Host Settings"** with the help
+      text *"When enabled, the host can create games without joining them."* Its visible arithmetic
+      consequence is at `0x8A51A8` (and its read-only twin `0x8A8A20`):
+
+      ```
+      lbz  r5,818(r9)      ; max_players
+      lbz  r0,167(r9)      ; dedicated
+      ... r0 = (dedicated != 0)
+      subf r0,r0,r5        ; displayed = max_players - dedicated
+      ```
+
+      So turning it on hosts a game you are not playing in, and the **Max Number of Characters row
+      immediately renders one lower** — because the host still occupies a connection even though
+      they take no playing slot. The ELF's own developer table calls it `"HOST ONLY"`
+      (`0x105ADE0`).
   - id: lobby_subtype
     type: u1
     doc: "[CONFIRMED] wire 0x09a. Lobby subtype — the same byte the game-lobby 0x3003 appends as its trailing flag (LOBBIES.md / PROTOCOL.md 0x4902)."

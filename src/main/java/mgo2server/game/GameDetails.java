@@ -64,7 +64,19 @@ public final class GameDetails {
 		BufferUtil.writeString(buffer, game.getComment(), StandardCharsets.ISO_8859_1,
 			COMMENT_LENGTH);
 
-		buffer.writeZero(2)
+		// Not padding. The parser at 0xD444D4/0xD444F0 writes these two into the same object fields
+		// 0x4305 fills at +150 and +167 — password_enabled and dedicated — and both are proven from
+		// the create-game side: the 0x4310 builder's validator at 0xD4476C demands a 3..16-character
+		// password when +150 is 1, and the Dedicated Host Settings toggle at 0x8A5B90 flips +167,
+		// which makes the Max Number of Characters row render one lower (0x8A51A8) because the host
+		// keeps a connection without taking a playing slot. PROTOCOL.md's "0x098-0x099 fold into two
+		// zero bytes" was wrong, and the schema has said so since 2026-08-02.
+		//
+		// No screen in this build reads them back off the details object — the sweep for +150/+167
+		// finds only the create-game readers and the dead accessor bank — so sending zero was inert
+		// rather than visibly broken. It is still wrong, and "inert" is a property of this build.
+		buffer.writeByte(game.getPassword() != null && !game.getPassword().isEmpty() ? 1 : 0)
+			.writeByte(game.isDedicated() ? 1 : 0)
 			.writeByte(lobbySubtype)
 			.writeInt(averageExperience)
 			.writeInt(game.getHostScore())
