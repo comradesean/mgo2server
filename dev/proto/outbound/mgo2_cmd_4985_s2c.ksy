@@ -147,55 +147,191 @@ seq:
     type: u4
     doc: |
       [ELF 0xd4b0a8 / 0xd4b128] [CONFIDENCE: high] Stored at team+0x000. The client's identity
-      for the team: `0xD4908C` returns -1 when it is zero (error -1007 -> dialog 5170 *"You have
-      already left the team."*), and every team-event notification's header word is compared
-      against it (helper `0xD49230`). For 0x4985/0x49b1 it is additionally checked against a
-      context value and a mismatch aborts the whole reply.
+      for the team, and the word its "am I on a team?" gate reads.
+
+      **[CORRECTED 2026-08-04 — the polarity here was inverted, and the error code was on the
+      wrong branch.]** `0xD4908C` returns **-1 when this word is NON-zero** and **0 when it is
+      zero**:
+
+      ```
+      d490a0  lwz    r0,-9944(r9)    ; session+0xD928+0 = team_id
+      d490a4  cmpwi  cr7,r0,0
+      d490a8  bne    cr7,0xd490b0    ; NON-zero -> keep the -1 loaded at 0xd49094
+      d490ac  li     r11,0           ; zero     -> 0
+      ```
+
+      So it is a boolean *"am I on a team?"*: **-1 = yes, 0 = no**. Its 23 call sites split
+      cleanly by polarity, and they use **two different error codes**:
+
+      - commands that **require membership** test `== 0` and fail **-1007** (`0xD4A394`,
+        `0xD4BAFC`, `0xD4BEA0`, `0xD4C748`, `0xD4C8E0`, `0xD4D5C4`). A received -1007 raises
+        dialog **5170** *"You have already left the team.\nUnable to leave team."* (`0x8C24AC`;
+        `0x8D0020` maps it to 5168 instead).
+      - commands that **require NON-membership** — Create Team, and the entry commands — test
+        `== -1` and fail **-1004** (`0xD4A278`, `0xD4A978`, `0xD4AB00`, `0xD4AD44`).
+
+      The old sentence said "-1 when it is zero" and hung -1007 on that branch; both halves were
+      backwards. The dialog link itself was right.
+
+      What the player experiences: this is why "Create Team" is refused while you are already in
+      one, and why every team menu action is refused once you have left — two different refusals
+      with two different sentences, decided by whether this word is zero.
+
+      Every team-event notification's header word is also compared against it (helper
+      `0xD49230`). For 0x4985/0x49b1 it is additionally checked against a context value and a
+      mismatch aborts the whole reply.
   - id: team_serial
     type: u2
     doc: |
-      [ELF 0xd4b148] [CONFIDENCE: medium — role clear, semantics not] Stored at team+0x29C —
-      read SECOND on the wire but living far down the struct. `0xD492D4` loads it with `lhz`
-      and compares it against the u16 in every team-notification header, and `0x49a8` is the
-      only other writer (`sth r0,668(r28)` at 0xD4BF10). It behaves as a record version that
-      notifications must quote; the numbering rule is [UNKNOWN].
+      [ELF 0xd4b148] [CONFIDENCE: high — 2026-08-04] Stored at team+0x29C — read SECOND on the
+      wire but living far down the struct. `0xD492D4` loads it with `lhz` and compares it
+      against the u16 in every team-notification header, and `0x49a8` is the only other writer
+      (`sth r0,668(r28)` at 0xD4BF10).
+
+      **What it is: a record epoch, and it is load-bearing.** `0xD49230(session, team, reader)`
+      is the header validator that **every team notification runs first — 30 call sites**. It
+      reads a u32 and a u16 off the wire and compares them against `team+0x000` and this field;
+      **either mismatch returns -1018 and the whole notification is discarded** (`0xD492F8`).
+      Both compares are skipped only when the reader's command id is `0x4960`.
+
+      `0x49A8` is the pure bump: validate the header, read one u16, store it here, raise UI
+      event 18 with the new value (`0xD4BF00`-`0xD4BF14`). Nothing else.
+
+      **Why the game needs it.** The client caches one 680-byte team record and then receives a
+      stream of deltas — 30 different notification ids, most of them carrying a member index and
+      a state byte rather than a whole record. Applying a delta to a stale copy would silently
+      desync the roster on screen: a row for someone who already left, a state that never
+      un-ticks. So the server stamps the record with a serial, every delta quotes it, and the
+      client throws away anything that does not match. `0x49A8` exists so the server can
+      invalidate the client's copy without resending 680 bytes. **A player never sees this
+      number; what they see is the absence of a phantom roster row.**
+
+      **Server hazard for a future Team implementation, and it is the sharpest one in this
+      record:** with 30 notifications gated on it, the server must increment this on every
+      mutation *and* re-send it. Get that wrong and the second delta after any change is dropped
+      with -1018 — the roster freezes with no error and no visible cause.
+
+      The numbering rule itself is still [UNKNOWN]: nothing in the client constrains it beyond
+      "must match".
   - id: team_state
     type: u1
     doc: |
       [ELF 0xd4b164 -> team+0x004] [CONFIDENCE: medium] A phase byte for the team, set by the
       server and pushed by two notifications. Readers, all with the value in hand:
 
-      - `0x8CBC48`: `<= 2` labels the standby menu item **739 "Cancel Entry"**, `> 2` labels it
-        **740 "Leave Team"** — so 0-2 is "entry can still be withdrawn" and 3+ is not.
+      - `0x8C7D84`-`0x8C7D94` — **the Select Team list**, and the clearest one. Each 56-byte
+        list entry is fetched through a third getter `0xD4915C`, and `entry+4 == 1` prints
+        string **646**, anything else prints **647**. That is the team's status column:
+        **"Open" vs "Deployed"** — i.e. whether a player browsing the team list can join this
+        row at all.
+      - `0x8CBC48`: `<= 2` vs `> 2` selects which **"please wait" line** the Team Standby screen
+        shows. **[CORRECTED 2026-08-04 — the old reading of this branch is refuted.]** It was
+        documented as choosing between menu labels **739 "Cancel Entry"** and **740 "Leave
+        Team"**, and therefore as meaning "0-2 is withdrawable, 3+ is not". Those words are not
+        ids 739/740. The Cancel-Entry / Accept-Entry pair is **693/694**, proven at `0x8C04AC`
+        where `member_state == 2` selects 694 and otherwise 693, with 695 = "Leave Team". Ids
+        739/740 are the two *status sentences* **"Your team has been formed. Please wait until
+        the tournament starts."** and **"...until an opposing team is found."** So this branch
+        picks a status line, not a menu label, and **no conclusion about withdrawability follows
+        from it**.
       - `0x8CBCA8`: `== 5` selects a different standby panel.
-      - `0x8C3080` / `0x8C3180` / `0x8D4A54`: `== 9` makes the join event render **string 731
-        "Number of Players Currently Joined: %d / %d"** over a count of non-zero roster slots,
-        instead of the per-member **718 "%s has joined the team."** — i.e. 9 is the automatic
-        team-formation screen (strings 681-686 "Auto Join Team", 716 "Forming a team...").
+      - `0x8C3080` / `0x8C3180` / `0x8D4A54` / `0x8D7B6C`: `== 9` makes the join event render
+        **string 731 "Number of Players Currently Joined: %d / %d"** over a count of non-zero
+        roster slots, instead of the per-member **718 "%s has joined the team."** — i.e. 9 is
+        automatic team formation (strings 681-686 "Auto Join Team", 716 "Forming a team...",
+        717 "Team formation complete."). `0x4918` makes the same case explicit from the other
+        side: `0xD4D6D4` requires an incoming member's state byte to be **2** when `team_state`
+        is 9 and **1** otherwise, rejecting with **-1036** — auto-formed teams arrive
+        pre-approved.
+
+      **What the field is for.** `team_state` is the team's position in the *entry pipeline*, and
+      it drives three things a player sees: whether other players can find and join you (the
+      Open/Deployed column in the Select Team list), what the Team Standby screen tells you you
+      are waiting for, and whether team events are narrated per-person or as a headcount. It is
+      on the wire rather than computed because only the server knows the state of the tournament
+      or Survival queue the team is sitting in.
 
       Writers other than this parser [values corrected 2026-08-03 — they were swapped]:
       `0x4961` stores **5** (`0xD4C7DC`, inside the parser whose id compare is
       `cmpwi r0,18785` at 0xd4c73c) and `0x4960` stores **4** (`0xD4C988`, id compare
       `cmpwi r0,18784` at 0xd4c8d4). The addresses were attached to the right ids; the values
-      were reversed. No other store to team+0x004 exists in the 88 functions that can hold
-      a team pointer. The full enum is [UNKNOWN] — only 4, 5 and 9 and the `<=2` split are
-      pinned.
+      were reversed.
+
+      **[CORRECTED 2026-08-04 — "no other store to team+0x004 exists" was wrong, and the reason
+      it was wrong is a method lesson.]** There are **fifteen** further wire writers. An
+      `stb`-only sweep cannot see them, because the parsers do not store the byte themselves —
+      they hand `team+4` to the u8 read primitive as an argument. Found by re-running the sweep
+      on the **argument channel** as well as the memory channel: `0xD4B164` (the shared six),
+      `0xD4BC88` (0x49A2), `0xD4C004` (0x4943), `0xD4CAB0` (0x4950), `0xD4EE18` (0x4A27),
+      `0xD4F070` (0x4A02), `0xD506A8` (0x4A01), `0xD50BA0` (0x4A29), `0xD50FC4` (0x4A00),
+      `0xD514E4` (0x4A22), `0xD51B18` (0x4A20), `0xD5A2A8` (0x4E23), `0xD5A4C8` (0x4E22),
+      `0xD5A6D8` (0x4E21), `0xD5B240` (0x4E20).
+
+      Eleven of them share **one wire shape**: `u8 team_state` followed by **eight u8 member
+      states**, where a zero byte wipes the slot (`memset(slot, 0, 28)` via `0xDD36F8`) and a
+      non-zero one stores at `slot+0x15`. Canonical instance `0x4E23` at `0xD5A29C`-`0xD5A368`.
+      Each ends by raising a UI event carrying **the local player's own member_state**.
+
+      Values pinned: **1** (Open, in the list column), **4** (`0x4960`, a member approved),
+      **5** (`0x4961`, entry closed and a game assigned), **9** (auto-formation), plus the
+      `<= 2` / `> 2` split on the standby status line. **0, 2, 3, 6, 7 and 8 are unobserved** —
+      no site in the image discriminates them.
   - id: team_name
     type: str
     size: 16
     doc: |
-      [ELF 0xd4b184 width; INFERRED role] [CONFIDENCE: high] team+0x005, 16-byte raw block,
-      NUL at +0x015. The Create Team screen's own field label is **string 664/672 "Team Name"**
-      and the rule text is **668** *"Enter a team name. The following symbols can also be
-      used: ..."*.
+      [ELF 0xd4b184 width; role CONFIRMED 2026-08-04] [CONFIDENCE: high] team+0x005, 16-byte
+      raw block, NUL at +0x015. The Create Team screen's own field label is **string 664/672
+      "Team Name"** and the rule text is **668** *"Enter a team name. The following symbols can
+      also be used: ..."*.
+
+      **The role is no longer inferred — there are two readers**, both on the `screen+108` spill
+      channel:
+
+      ```
+      8c3d84  lwz  r4,108(r22)   ; team pointer out of the screen object
+      8c3d88  addi r4,r4,5       ; team+0x005
+      8c3d90  li   r5,32
+      8c3da0  bl   0xAF70F0      ; bounded copy into a 33-byte buffer
+      ```
+
+      identically at `0x8CE82C`-`0x8CE840`; the buffer then goes to the text widget (`0x244340`).
+      So this is the heading rendered across the team screens — what a player reads at the top
+      of the panel, and what identifies the team in the browser to people who are not in it.
+      That is why it is server-supplied rather than local: every viewer needs it, not just
+      members.
+
+      Note the display copy is **32 bytes, not 16** — the same over-wide read as `clan_name`, and
+      inert for the same reason: `0xD5D018` writes the NUL at `team+0x015` (`stb r0,0(r9)` with
+      `r9 = r4+r5`, `0xD5D07C`), so the bounded copy stops there. The wire width of 16
+      (`li r5,16` at `0xD4B180`) is unaffected and correct.
   - id: comment
     type: str
     size: 128
     doc: |
-      [ELF 0xd4b1a4 width; INFERRED role] [CONFIDENCE: high] team+0x016, 128 bytes, NUL at
-      +0x096. The Create Team screen labels it **string 666/674 "Comment"**, described by
-      **670** *"This comment is displayed when players select this team."*, with **656 "No
-      comment."** as the empty placeholder. Same width as the player comment in 0x4221.
+      [ELF 0xd4b1a4 width; role CONFIRMED 2026-08-04] [CONFIDENCE: high] team+0x016, 128 bytes,
+      NUL at +0x096. The Create Team screen labels it **string 666/674 "Comment"**, described by
+      **670** *"This comment is displayed when players select this team."*, with **"No
+      comment."** as the empty placeholder.
+
+      **The role is no longer inferred — two readers, both in the browse screens**, both reached
+      through the *viewed-team* getter `0xD491C8` rather than the my-team one:
+
+      ```
+      8c6d9c  bl   0xD491C8
+      8c6da4  addi r29,r3,22      ; team+0x016
+      8c6db8  lbz  r0,0(r29)      ; first byte
+      8c6dc0  beq  -> 0x8c6df4    ; empty -> li r3,299 ; bl 0x8E0C24 (placeholder)
+      8c6dd4  bl   0xDCC4F0(...)  ; otherwise render the comment itself
+      ```
+
+      identically at `0x8C76B8`. So this is the blurb a team leader writes and **the thing a
+      player reads in the team-details panel before deciding whether to join** — which is
+      exactly where both readers live. The empty case substitutes a placeholder rather than
+      leaving a blank panel; the id fetched at these two sites is **299**, not the 656 the Create
+      Team screen uses, and both can be true because they are different screens.
+
+      Same width as the player comment in 0x4221. Same width as the player comment in 0x4221.
       **Its last two bytes and its terminator sit inside the flag word at +0x094** — see the
       overrun analysis in the file header; the result is inert, not a bug.
   - id: flags
@@ -321,9 +457,22 @@ seq:
       `0xD4908C` says the player is in a team, memsets 17 bytes at **team+620** and copies the
       **same 16-byte buffer it just put on the wire as 0x4310's `name`** into it
       (`r24`, 0xD44888 and 0xD44CC4). So the client mirrors the hosted game's name here.
-      No reader was traced — the sweep for displacement 620 over `0x880000`-`0xD80000` finds
-      only this write on a team base — so the field is written locally and echoed by the server;
-      what renders it is [UNKNOWN].
+      **No reader exists, and the negative is now exhaustive** (2026-08-04): a forward-dataflow
+      sweep from 250 team-pointer origins — every `bl 0xD491F8` (83 sites), every `bl 0xD491C8`
+      (15), every `addi rX,rY,-9944` / `-23144`, and every `lwz rX,108(rY)` in the screen range —
+      following **both** the memory channel and the call-argument channel, finds exactly two
+      accesses at +620 image-wide, and both are the write path above. Control: the same sweep
+      reproduces every reader list already documented in this file (`lobby_id` x9,
+      `lobby_subtype` x15, `rule` x14, `clan_id` x26, the flag word's 17 maskers) at their known
+      addresses.
+
+      **Game purpose: the binary does not support one, and this is stated rather than guessed.**
+      The field is written locally when *you* host a game while on a team, and the server echoes
+      it back in this record, but nothing in the disc build renders `team+0x26C`. The plausible
+      reading — a *"...is playing &lt;game name&gt;"* line on a team screen — is **labelled
+      speculation** and is not claimed. What would settle it: a live capture of the team-details
+      panel for a team whose `game_id` is non-zero, or locating the reader in the 1.36 image
+      (re-derive it there; **do not** carry an address across builds).
   - id: clan_id
     type: u4
     doc: |
@@ -416,9 +565,19 @@ seq:
         removed.
 
       Tournament vs Survival comes from a different byte (`lbz r0,660(r3)` on the `0x883F20`
-      screen object, the lobby subtype being entered), not from this field. `0x8C2888` then
-      passes the value itself as a formatting argument (`lwz r5,676(r9)` -> `0x954F18`), and
-      `0x8C46BC` reloads it with `lwa`. Also written by the 0x4922 notification (0xD4D108).
+      screen object, the lobby subtype being entered), not from this field.
+
+      **[CORRECTED 2026-08-04 — the "formatting argument" sentence overstated what the player
+      sees.]** `0x8C2888` does pass the value to `0x954F18` (`lwz r5,676(r9)`), but **none of
+      strings 703-710 contains a conversion specifier** — checked in all six languages. On the
+      confirmation screen the number is never printed; the fee's only visible effect there is
+      choosing the variant that carries the *"* Metal Gear Points are required"* line. The fee
+      **is** printed elsewhere: `0x8C46BC` reloads it with `lwa` and passes it to `0xDD0688`
+      against a format string from the TOC (`lwz r4,-32528(r30)`) — a numeric entry-fee field.
+
+      So what the player experiences is: a price shown on the entry screen, and a warning line
+      added to the confirmation dialog when the price is non-zero. Zero means free and removes
+      the warning entirely. Also written by the 0x4922 notification (0xD4D108).
       Signedness [UNKNOWN] for the same reason as `unknown_2a0`; the `lwa` at 0x8C46BC is
       caller-side and was not treated as decisive because the parser twin is unsigned.
 types:
@@ -458,8 +617,31 @@ types:
           (0xD4D2C0; the accepted wire range, 2026-08-03 — and its `== 2` selects UI event 5
           over 4). Nine notification parsers forward it straight to `0xD33CD8` as the UI
           event argument (`lbz r5,17(r11)` at 0xD4BDDC, 0xD4C108, 0xD4CC20, 0xD4EF00, 0xD4F160,
-          0xD50C7C, 0xD5136C, 0xD5A394, 0xD5A5A4, 0xD5A7B4). The full enum is [UNKNOWN]; only
-          1, 2 and 4 are pinned.
+          0xD50C7C, 0xD5136C, 0xD5A394, 0xD5A5A4, 0xD5A7B4).
+
+          **[EXTENDED 2026-08-04 — the enum is now mostly pinned, and two more writers found.]**
+          `0x4925` also sweeps every non-zero slot to **1** (`0xD4CFA0`, guarded by the read at
+          `0xD4CF94` so empty slots stay empty), and `0x4961` promotes state **4 to 6** and
+          everything else non-zero to **5** (`0xD4C7DC`-`0xD4C80C`). `0x4918` requires **2** when
+          `team_state == 9` and **1** otherwise, rejecting with -1036 (`0xD4D720`).
+
+          | value | what it means | pinned by |
+          | --- | --- | --- |
+          | 0 | empty slot — a 0 in any bulk update **removes this member** | the `memset(slot,0,28)` on every bulk parser |
+          | 1 | on the team, entry not yet approved | `0x4922`/`0x4925` reset; `0x4918` normal join |
+          | 2 | entry approved/submitted | `0x8C04AC`, `0x8C27A4` |
+          | 4 | this member just approved | `0x4960` (`0xD4C944`) |
+          | 5 / 6 | entry closed: 4 becomes **6**, everyone else **5** | `0x4961` (`0xD4C7DC`) |
+
+          **3, 7 and above are unobserved** — no site discriminates them.
+
+          **What the player sees.** This is the badge on each roster row, and it decides what
+          your own options menu offers: with your byte at 1 the menu reads **693 "Accept
+          Entry"**; at 2 it flips to **694 "Cancel Entry"** and the confirm dialog changes to
+          **711/712** *"Are you sure you want to cancel entry into the tournament/Survival?"*
+          (`0x8C04AC`, `0x8C27A4`). It is also the mechanism behind "the leader changed the
+          rules, so everyone has to agree again" — `0x4922` and `0x4925` sweep every occupied
+          slot back to 1, which visibly un-ticks the whole roster at once.
 
           OFFSET CORRECTION 2026-07-26, unchanged and re-verified 2026-08-01; wire widths never
           changed. The slot loop sets `addi r28,r31,384` (0xD4B258) and `addi r27,r31,368`
