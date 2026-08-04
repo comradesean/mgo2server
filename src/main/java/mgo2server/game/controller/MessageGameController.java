@@ -255,10 +255,27 @@ public class MessageGameController implements IGameController {
 	 * ignores 1 and 2. And {@code 0x8E520C} counts category 3's unread first and, if non-zero,
 	 * <b>force-selects tab 3</b> — so 3 is the box that grabs the player when it has mail.
 	 *
-	 * <p>Which of 0 and 3 is the Inbox and which the announcement box cannot be read from the
-	 * ELF, because the tab labels are disc string resources (group {@code 0x6B01B5}, entries
-	 * {@code text00}..{@code text03}), not ELF strings. Extracting
-	 * {@code o/stage/lobby/scenerio.gcx} per ASSETS.md settles it.
+	 * <p><b>SETTLED 2026-08-04 from the disc, and 3 is correct.</b> The lobby's extracted string
+	 * resources carry the mailbox menu's four labels as consecutive records at file indices
+	 * 17981-18010, in menu order: <b>Inbox</b> ({@code 受信BOX}), <b>Create New Mail</b>
+	 * ({@code 新規メール作成}), <b>Sent</b> ({@code 送信済みBOX}), <b>Announcements</b>
+	 * ({@code 重要なお知らせ}). Their help texts follow in the same order at 18154-18177 —
+	 * <i>"View mail you have received. Up to 16 messages can be stored."</i>, <i>"Send mail to up
+	 * to 8 players simultaneously."</i>, <i>"View mail you have sent. Up to 5 messages can be
+	 * stored."</i>, and <i>"Notices from the administrative team will appear here. Be sure to read
+	 * these whenever you receive one."</i> A fifth label, Drafts, exists but has no help text in
+	 * that run and is not one of the four.
+	 *
+	 * <p>Menu item 0 is therefore Inbox and item 3 is Announcements — and those are exactly the
+	 * two items the client appends an unread count to, from the category-0 and category-3 unread
+	 * tallies. So <b>category 0 = Inbox and category 3 = Announcements</b>, which is what this
+	 * server has been sending. It also explains the shape of the rest: item 1 is a compose action
+	 * rather than a box, and item 2 (Sent) is category <b>1</b>, which is why the Sent screen
+	 * hardcodes its category at {@code 0x8E7EF0} instead of reaching it through the current-box
+	 * selector — every one of that selector's eleven writers stores 0 or 3.
+	 *
+	 * <p>Note the disc also states the 16-message Inbox cap this class enforces, and a <b>5</b>
+	 * message cap on Sent that we do not.
 	 */
 	private static final int CATEGORY_ANNOUNCEMENT =
 		category("MGO2SERVER_MAIL_CATEGORY_ANNOUNCEMENT", 3);

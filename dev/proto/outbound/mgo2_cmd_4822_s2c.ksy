@@ -123,6 +123,43 @@ seq:
       selector 0x0F here wrote 280 bytes 26,816 past the end of the client's mail arena and
       coincided with a tab vanishing from the screen. This is NOT the mailbox selector; the
       tier-4 name "mtype" and Nomad's constant 0 both describe the wrong thing. See the header.
+
+      **[CATEGORY 2 IS A HOLE — 2026-08-04.]** Every function that hands out a category's record
+      list (`0xD54134` base, `0xD5410C` count, `0xD5415C`, `0xD542A8`) was enumerated at every
+      call site and the argument read at each: the literal categories appearing anywhere in the
+      image are **0, 1, 3 and 4 — never 2**. Control: the same scan finds `li r4,1` at
+      `0x8E7F00`, `li r4,3` at `0x8E5240`, `li r4,0` at `0x8F05E4` and `li r4,4` at `0xAD1D14`,
+      so it demonstrably finds category constants. Separately, the screen's current-box word is
+      written at **eleven** sites and every one stores 0 or 3. An entry filed under 2 would be
+      invisible and uncounted, so 2 is not a spare tab — it is a hole. (An earlier note in the
+      server proposed trying `=2` as an experiment; it must not be run.)
+
+      **[THE FOUR TABS, READ FROM THE DISC — 2026-08-04.]** The menu is built from disc string
+      resources `text00`..`text03` (`0x8E3D84`), and **only items 0 and 3 get an unread count
+      appended** via `%s(%d)`, from the category-0 and category-3 tallies at `+0x35A0`/`+0x35A4`.
+      The lobby's extracted resources carry the four labels as consecutive records at file
+      indices **17981-18010**, in menu order:
+
+      | item | label | help text |
+      | --- | --- | --- |
+      | 0 | 受信BOX / **Inbox** | *"View mail you have received. Up to 16 messages can be stored."* |
+      | 1 | 新規メール作成 / **Create New Mail** | *"Send mail to up to 8 players simultaneously."* |
+      | 2 | 送信済みBOX / **Sent** | *"View mail you have sent. Up to 5 messages can be stored."* |
+      | 3 | 重要なお知らせ / **Announcements** | *"Notices from the administrative team will appear here. Be sure to read these whenever you receive one."* |
+
+      (A fifth label, 編集途中BOX / **Drafts**, exists at 18005-18010 but has no help text in that
+      run and is not one of the four.)
+
+      So **category 0 = Inbox and category 3 = Announcements** — the two counted received boxes,
+      matching the two the client sums for its "new mail" badge (`0x8F05A4`) and the one it
+      force-selects when it has unread (`0x8E520C` -> `li r0,3`). The rest of the shape follows:
+      item 1 is a compose action rather than a box, and item 2 (Sent) is category **1**, which is
+      why the Sent screen hardcodes its category at `0x8E7EF0` rather than reaching it through the
+      current-box selector.
+
+      **What the player sees:** this byte is the filing clerk. It decides which tab a letter lands
+      under and is never itself displayed. Wrong-but-valid puts the letter in the wrong list;
+      out-of-range corrupts the heap, which is what the `0x0F` incident was.
   - id: index
     type: u1
     doc: |
