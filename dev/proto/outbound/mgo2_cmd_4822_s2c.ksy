@@ -142,11 +142,29 @@ seq:
       `0x4800` builder sends as `recipient_count` (`0xd53fa0`, from `base-8575`), written by the
       compose screen at `0x8eedd8` (`stb r0,1(r24)`) from its recipient-table loop bound.
 
-      Its one reader is the OPENmail painter at **`0x8e8b94`**: `lbz r0,1(r24); cmplwi cr7,r0,1;
-      ble` — at most 1, the To/From element is the plain 16-byte string at `+2`; above 1, the
-      screen `sprintf`s `"%s ....."` (module TOC `-32372`, string `0xE12120`) with that same first
-      slot, i.e. **"<first name> ....."** standing in for the rest of the list. Nothing renders
-      slots 1..7 individually.
+      **Two readers, not one** (the second added 2026-08-04), and they render *different*
+      ellipses:
+
+      - **OPENmail painter `0x8e8b94`**: `lbz r0,1(r24); cmplwi cr7,r0,1; ble` — at most 1, the
+        To/From element is the plain 16-byte string at `+2`; above 1, the screen `sprintf`s
+        `"%s ....."` (module TOC `-32372`, string `0xE12120`) with that same first slot, i.e.
+        **"<first name> ....."** standing in for the rest of the list.
+      - **List-row painter `0x8E3A1C`**: the same `<= 1` test, but above 1 it calls
+        `0xDCCC28(buf, rec+2, 14)` — truncating slot 0 to **14 characters** — and appends
+        **`" ..."`**, a different string (TOC `-32544`, `0xE11EE0`, three dots not five).
+
+      Nothing renders slots 1..7 individually.
+
+      **What it is for.** MGO2 lets one letter be addressed to up to eight people. This byte is
+      how the client decides between printing the recipient plainly and printing "the first one,
+      and others" — on a mailbox row (eight rows to a page, so space is tight) you get
+      `Snake ...`, and on the opened letter's To/From line you get `Snake .....`. It is on the
+      wire because the list is server-side; the client is shown one name and a count, never the
+      other seven names.
+
+      **Server:** we send the constant 1, which takes the plain path in both readers and is
+      correct for our one-recipient model. The constant was inherited unexplained and has been
+      right all along.
 
       Sending 0 with a populated slot 0 is therefore safe and is what makes the single-name path
       run; sending >1 appends the ellipsis whether or not further slots hold anything.
@@ -191,6 +209,28 @@ seq:
     doc: |
       [ELF 0xD537BC] -> record+272 (not +392; the destination offsets in the trace above are from
       the parser's own base). **A type discriminator, not padding.**
+
+      **[1 AND 2 ARE CLAN MAIL, AND THE BRANCH IS VISIBLE — 2026-08-04.]** `0x8E81DC`:
+      `lbz r9,0x110(r9); addi r9,r9,-1; clrlwi r9,r9,24; cmplwi cr7,r9,1; bgt 0x8e8244` — so
+      values **1 and 2** take one path and everything else takes the other. On the 1/2 path the
+      mailbox list's **preview line does not show the letter's own subject**: the code hashes the
+      element/resource name **`CLAN_SUBJECT`** (module TOC `-32380`, string `0xE120E8`) and pulls
+      a canned sentence from string group `0x6B01B5`. On every other value (`0x8E8244`) it renders
+      `rec+131`, the letter's own subject. A second fork at `0x8E837C` gives the 1/2 path a
+      different open sound (SE 91 vs SE 93) and leaves screen flag bit 16 clear.
+
+      **Nothing anywhere distinguishes 1 from 2** — both readers test the pair `(v-1) <= 1`. That
+      is a genuine remaining unknown, not a coin flip to be resolved by picking one.
+
+      **Server hazard, recorded rather than fixed.** Clan applications (mailbox selector `0x10`)
+      are sent with `message_type = 0` and an **empty** `comment`/subject, so `0x8E81DC` takes the
+      else-branch and renders 128 zero bytes — the preview line under a selected clan application
+      is **blank**. With 1 or 2 the client would supply its own clan line instead. The fix is not
+      applied here because it requires choosing between 1 and 2 with no evidence, and a wrong
+      guess would be undetectable; filling the subject field server-side achieves the same visible
+      result without asserting an enum value. There is an adjacent issue worth its own look:
+      applications are filed under **category 0**, the same array as the Inbox, while `0x4840`
+      resolves `{category, index}` against personal received mail.
 
       **3 = GAME MASTER, evidenced 2026-07-31 (batch 3c).** The doc used to read "what 3 selects is
       [UNKNOWN] — a system or GM letter is the obvious guess and is NOT evidenced". It is now
@@ -237,6 +277,66 @@ seq:
          verified `0x5C86D9` = **`ST6_ON`** this painter applies to every name/date/time element.
          The three above resolve against a disc resource, not the ELF, so the state *names* are
          not recovered — but a placeholder-free three-way split is proof the byte is displayed.
+
+         **[MECHANISM SETTLED 2026-08-04.] The element being switched is the row's ICON, and the
+         real rule is that this byte keeps the icon lit after the letter has been read.**
+
+         The element family was recovered by name. The row painter binds a fourth element per row
+         from a 16-entry hash table at `0xE11848`, holding two runs of eight *consecutive*
+         hashes — `0x8847CF..0x8847D6` and `0xC8C546..0xC8C54D`. Consecutive-by-one is the
+         signature of an `_01`..`_08` family, which fixes the suffix and leaves only the middle
+         token; because the rotate-5-add step is invertible, a meet-in-the-middle requiring
+         **both** families to match simultaneously returns exactly one answer:
+
+         ```
+         h("NULL_jyusin_ICON_01")           = 0x8847CF
+         h("NULL_tochu-sousinzumi_ICON_01") = 0xC8C546
+         ```
+
+         Independently confirmed outside the ELF: `0x8847CF` occurs exactly once in the decrypted
+         lobby UI package `cache.dar.dec` (offset `0x248BDC`) and `0xC8C546` once at `0x249ED8` —
+         the elements exist in the shipped layout under those names.
+
+         So the table above is a **show/hide plus state** decision on that icon. `0x245000` and
+         `0x245028` are the show/hide pair (`r0 &= ~0x30` and `r0 |= 0x30` on `node[176]+16`); the
+         last row of the table **hides** the icon, and `container+320` is **not** a second element
+         array — it is a parallel array holding each row's *previously applied* state hash, which
+         `0x8E3D64` cancels with `0x995D20` before hiding. Corroboration that this is show/hide:
+         rows past the end of the list bind the same ICON element and take the identical hide path
+         at `0x8E3624`-`0x8E3690` — empty rows have no icon, which is what one would see.
+
+         Net rule: **the icon appears when the letter is unread, OR when this byte is non-zero**,
+         and a non-zero value picks a distinct graphic. It never affects the Sent tab — the
+         送信済み layout path (`0x8E3A10`-`0x8E3C74`) contains no icon block at all, and the
+         sousinzumi hashes copied alongside are never read.
+
+         **No other reader, with a control.** A sweep of `.text` for `lbz`/`stb` at displacement
+         `0x111` returns 9 and 11 sites; the control found the three known ones (`0x8E3934`,
+         `0xD347B0`, `0xD34288`), and every remainder is in a range that can never hold a mail
+         record, because the mail arena is only ever handed out by `0xD54134`/`0xD5410C`/
+         `0xD5415C`/`0xD542A8`/`0xD347E4`/`0xD34728`, whose complete caller sets contain no
+         address in those ranges. **The row icon is this byte's only effect anywhere in the
+         game.**
+
+         **What the player sees.** Every row in a received-mail list carries a small marker.
+         Normally it is the "you have not read this yet" marker and it disappears the moment you
+         open the letter. This byte is the server's switch to **keep a marker on a letter you have
+         already read**, in its own distinct graphic. It is entirely server-authoritative: nothing
+         in the client ever writes `+273` except the wholesale record copy and the clear-to-zero,
+         so a player cannot flag their own mail. That is the shape of a server-side "this one
+         matters" flag — which is what the inherited name *important* claims.
+
+         **Verdict: the behaviour is proven; the word "important" remains an interpretation of the
+         behaviour.** The three state names stay unrecovered — they are real entries in
+         `cache.dar`'s 56-state directory but stored as hashes on both sides, and both a short-name
+         exhaustive search and a ~10^7 structured-vocabulary search came back empty (the same
+         machinery recovered `ICON`, so the method works). The behaviour is fully determined
+         without them.
+
+         **Server:** we send 0 for every entry, so a read letter shows no icon and an unread one
+         shows the standard marker — normal behaviour, nothing broken. Recorded as operator
+         policy: the announcement letter in category 3 is the natural candidate for 1 if we ever
+         want its marker to persist after reading. That is a product decision, not a bug.
       2. "It IS echoed back to the server in the 0x4800 send (struct+0x110)" — right in substance,
          **wrong by one byte**: `0x110` is 272, which is `message_type`/`destination`. This field
          is `0x111` = 273, and it is echoed at `0x4800` wire offset `0x3c6` (see that file's

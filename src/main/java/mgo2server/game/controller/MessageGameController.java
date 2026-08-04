@@ -186,11 +186,20 @@ public class MessageGameController implements IGameController {
 	private static final int MAILBOX_MAX = 16;
 
 	/**
-	 * The 0x4822 byte at wire 0x02. Nomad sends the constant 1 and its meaning is [UNKNOWN]; we
-	 * send 1 for want of anything evidenced. Unlike the 0x4582 gate at wire 0x14, no filter on
-	 * this byte was found, so it is not known to matter.
+	 * The 0x4822 byte at wire 0x02: <b>how many of the entry's eight 16-byte name slots are
+	 * filled</b>. MGO2 lets one letter be addressed to up to eight people, and this tells the
+	 * client whether to print the name plainly or as "first name, and others".
+	 *
+	 * <p>Two readers, both testing {@code <= 1}: the list-row painter {@code 0x8E3A1C} truncates
+	 * slot 0 to 14 characters and appends {@code " ..."} when the count is above 1, and the
+	 * opened-letter painter {@code 0x8E8B94} appends {@code " ....."} instead. Nothing ever
+	 * renders slots 1..7.
+	 *
+	 * <p>1 is correct for our one-recipient model — it takes the plain path in both painters.
+	 * The value was inherited as an unexplained constant and has been right all along; the
+	 * meaning was read out of the client on 2026-08-04.
 	 */
-	private static final int ENTRY_UNKNOWN_02 = 1;
+	private static final int ENTRY_NAME_COUNT = 1;
 
 	/**
 	 * The 0x4822 <em>category</em> byte at wire 0x00 — the entry's first field, which the parser
@@ -227,11 +236,29 @@ public class MessageGameController implements IGameController {
 	 * The tab a system letter goes to — the Announcements tab the original's GameMaster mail
 	 * arrives in.
 	 * <p>
-	 * A guess, and flagged as one: 0 and 1 are Inbox and Sent, leaving 2 and 3, and neither has
-	 * been identified. The graduation announcement went out as category 0 and duly appeared in the
-	 * Inbox (live, 2026-07-26), which at least confirms the category byte decides the tab. If 3 is
-	 * wrong, {@code MGO2SERVER_MAIL_CATEGORY_ANNOUNCEMENT=2} tries the other candidate in one
-	 * restart, and whichever lands settles the remaining tab labels for good.
+	 * Still not pinned to a label, but the candidate set collapsed on 2026-08-04 and <b>the
+	 * suggested experiment must not be run</b>.
+	 *
+	 * <p><b>Category 2 is dead on this build.</b> Every function that hands out a category's
+	 * record list ({@code 0xD54134}, {@code 0xD5410C}, {@code 0xD5415C}, {@code 0xD542A8}) was
+	 * enumerated at every call site: the literal categories appearing anywhere in the image are
+	 * <b>0, 1, 3 and 4</b>, never 2. Control: the same scan finds {@code li r4,1} at
+	 * {@code 0x8E7F00}, {@code li r4,3} at {@code 0x8E5240}, {@code li r4,0} at {@code 0x8F05E4}
+	 * and {@code li r4,4} at {@code 0xAD1D14}, so it demonstrably finds category constants. An
+	 * entry filed under 2 would be invisible and uncounted — so {@code =2} is not "the other
+	 * candidate", it is a hole.
+	 *
+	 * <p>What the client does say: there are exactly <b>two badge-bearing received boxes, 0 and
+	 * 3</b>. The mailbox menu has four items built from disc strings {@code text00}..{@code
+	 * text03} ({@code 0x8E3D84}), and only items 0 and 3 get an unread count appended via
+	 * {@code %s(%d)}. The "new mail" total {@code 0x8F05A4} sums unread(0) + unread(3) and
+	 * ignores 1 and 2. And {@code 0x8E520C} counts category 3's unread first and, if non-zero,
+	 * <b>force-selects tab 3</b> — so 3 is the box that grabs the player when it has mail.
+	 *
+	 * <p>Which of 0 and 3 is the Inbox and which the announcement box cannot be read from the
+	 * ELF, because the tab labels are disc string resources (group {@code 0x6B01B5}, entries
+	 * {@code text00}..{@code text03}), not ELF strings. Extracting
+	 * {@code o/stage/lobby/scenerio.gcx} per ASSETS.md settles it.
 	 */
 	private static final int CATEGORY_ANNOUNCEMENT =
 		category("MGO2SERVER_MAIL_CATEGORY_ANNOUNCEMENT", 3);
@@ -477,7 +504,7 @@ public class MessageGameController implements IGameController {
 					var applicant = applications.get(i);
 					buffer.writeByte(0);
 					buffer.writeByte(i);
-					buffer.writeByte(ENTRY_UNKNOWN_02);
+					buffer.writeByte(ENTRY_NAME_COUNT);
 					BufferUtil.writeString(buffer, applicant.name(), StandardCharsets.ISO_8859_1,
 						SUBJECT_LENGTH);
 					BufferUtil.writeString(buffer, "", StandardCharsets.ISO_8859_1, SUBJECT_LENGTH);
@@ -499,7 +526,7 @@ public class MessageGameController implements IGameController {
 				var letter = entry.letter();
 				buffer.writeByte(entry.category());
 				buffer.writeByte(letter.index());
-				buffer.writeByte(ENTRY_UNKNOWN_02);
+				buffer.writeByte(ENTRY_NAME_COUNT);
 				BufferUtil.writeString(buffer, letter.counterparty(), StandardCharsets.ISO_8859_1,
 					SUBJECT_LENGTH);
 				BufferUtil.writeString(buffer, letter.subject(), StandardCharsets.ISO_8859_1,
