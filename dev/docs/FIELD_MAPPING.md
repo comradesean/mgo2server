@@ -56,7 +56,14 @@ counts are hand-maintained, so prefer the scoreboard where they disagree.
 4. **Never infer meaning from a neighbour's name or from a reference server.** Six regressions have
    come from that. Where a value is inherited and unexplained, say so in the `doc:` rather than
    inventing a label.
-5. **Disc resources are fair game** — `dev/tools/gcx` and `dev/tools/solideye`, disc at
+5. **A name and an address are not an explanation.** Every field's `doc:` owes a second half: what
+   the field is *for*, in the game's terms — which screen or moment it touches, what a player sees
+   change, why it is on the wire at all. Quote the string resource on the branch; give the error
+   code and check it against `ERRORS.md`. Where the image supports no such account, write *"no
+   game-level meaning is readable from this image"* and say what would establish it; never invent
+   one. The full rule, and why it is what makes a finding falsifiable, is in `dev/proto/README.md`
+   under "A field is not explained until it is explained in the game's terms" (2026-08-04).
+6. **Disc resources are fair game** — `dev/tools/gcx` and `dev/tools/solideye`, disc at
    `D:\rpcs3-v0.0.41-19598-357b7d44_win64_msvc\games\METAL GEAR SOLID 4 GUNS OF THE PATRIOTS
    [BLUS30109]` (WSL: `/mnt/d/...`). `AUTOMATCH.md` section 10 documents the string-resource method
    that has already resolved skill names, gear names and colour names.

@@ -147,6 +147,43 @@ accident, and it must not be made without checking both sides.
 - Record the evidence addresses in the top-level `doc:`: builder call site for client→server,
   parser address for server→client, and the dispatcher that routes it.
 - Do not copy field names or layouts from any other server implementation. See `CLAUDE.md`.
+- **Every field's `doc:` must say what the field is _for_, in the game's terms** — see below.
+
+## A field is not explained until it is explained in the game's terms
+
+Adopted 2026-08-04, and it is a change to what `[CONFIRMED]` is allowed to mean.
+
+An address chain is evidence, not an explanation. A `doc:` that reads *"parsed at `0xD5A6E8`, stored
+at `T+0x1C`, read at `0xD44120` and compared against 3"* has established where the field lives and
+proved nothing about why anyone put it on the wire. It is unreviewable by anyone who has not opened
+a disassembler, and — worse — it is indistinguishable from a correct-looking misreading. Most of the
+wrong findings this project has had to unwind were *precise*; what they lacked was a claim about the
+game that would have looked obviously false.
+
+So every field carries both halves:
+
+1. **The evidence chain.** Parse site, store destination, every reader, what each read decides.
+   Addresses, as always, tier 1, disc build.
+2. **The purpose, in playable terms.** Which screen or moment this touches; what a player sees or
+   experiences differently when the value changes; and why the field exists on the wire at all
+   instead of being computed client-side. Where a branch reaches a string resource, quote the
+   sentence the player reads; where it reaches an error, give the code and cross-check
+   `dev/docs/ERRORS.md`.
+
+The second half is what makes the first half falsifiable. "This byte gates whether the JOIN button
+on a lobby row is refusable, and refusing prints 5215" is a claim that a capture can kill in one
+round. "Compared against 3 at `0xD44120`" is not.
+
+**Where the binary does not support a purpose, say that in those words** — *"no game-level meaning
+is readable from this image; what would establish it is X"* — and leave it unexplained. An invented
+purpose is far more expensive than an admitted gap, because it reads as settled and stops anyone
+looking. Speculation is allowed when it is labelled as speculation in the same sentence.
+
+This applies to negatives too, and it is where the rule earns its keep: *"no reader"* is a fact about
+the image, and the useful sentence is what that means for a player — the feature is unreachable in
+play, or the value is accepted and discarded, or the screen that would have read it is never built.
+The precise-negative vocabulary (`no reader`, `dead code`, `swept`, `inert`, …) records the finding;
+the purpose sentence records the consequence.
 
 ## Sources, in order
 
