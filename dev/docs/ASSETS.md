@@ -90,6 +90,54 @@ The Personal Stats labels live in `lobby/scenerio.gcx`, string-resource group
 in order, each with FR/DE/IT/ES and often JP, each with a stable 24-bit resource hash. The hash is
 a rotate-5-add over the resource name, computed at `0xD25D0` in the ELF.
 
+## Reading `scenerio_strres/` — two things that will otherwise cost you a pass
+
+**1. Build a flat index first. Never glob-grep the directory.** The lobby dump is 28,693 separate
+`<n>.bin` files, and a `grep -l "..." *.bin` over them takes minutes and will time out before it
+finishes. One pass to a single TSV makes every later question instant:
+
+```python
+import os
+with open('/tmp/<scratchpad>/lobby_strres.tsv','w') as out:
+    for i in range(28693):
+        p = '%d.bin' % i
+        if not os.path.exists(p): continue
+        d = open(p,'rb').read().replace(b'\x00', b'')
+        try: t = d.decode('utf-8')
+        except UnicodeDecodeError: t = d.decode('latin-1')
+        out.write('%d\t%s\n' % (i, t.replace('\n','\\n').replace('\t',' ')))
+```
+
+**2. The file index is NOT the string id, and the packing is variable.** Consecutive files are the
+language variants of one record — JP, EN, FR, DE, IT, ES — so a record is normally six files and
+`id ≈ file/6`. But **when languages share identical text the record is shorter**, and some records
+are a single file. Two real examples from the Common Settings run (files 13515-13633, ids 585-607):
+*Friendly Fire* (591) keeps only its French `Tir allié` and *Voice Chat* (601) keeps nothing at
+all, both having been deduplicated against earlier records. So an id derived by dividing by six
+drifts, and it drifts by a different amount in every region.
+
+That is why several passes reported "the id→file mapping is not linear" and stopped. The reliable
+route is to **anchor on a code-proven id and walk records outward**, checking the walk against a
+second anchor at the other end of the run — the same discipline as a disassembly sweep needing a
+control. `scenerio.gcl` line 2330 onward declares the groups as `[hash] $strres:START $strres:END`,
+which are **file-index** ranges and bound the walk.
+
+Anchors established 2026-08-04 and worth reusing:
+
+| ids | files | what |
+| --- | --- | --- |
+| 585-607 | 13515-13633 | Common Settings row labels, in Create Game menu order |
+| — | 17981-18010 | mailbox menu labels (Inbox, Create New Mail, Sent, Announcements, Drafts) |
+| — | 18154-18177 | the same four tabs' help text, in the same order |
+| — | 20344-20524 | ONLINE GAME OPTIONS per-row help, in row order |
+| — | 20101-20342 / 20530-20646 | that screen's row labels / value labels |
+
+**A group registered by one stage can hold another stage's text.** The Common Settings strings live
+in the *lobby* dump but fall outside every range `scenerio.gcl` declares, because the screen belongs
+to a different stage. `r_onlinelobby`'s own `scenerio.gcx` is a 101-byte stub, so there is no second
+script to extract — look in the lobby set for text you expect elsewhere before concluding it is
+missing.
+
 ## `.dlz` — SEGS, not supported by Solideye
 
 After decryption a `.dlz` is a concatenation of **SEGS** streams on `0x20000` boundaries.
