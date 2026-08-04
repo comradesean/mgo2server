@@ -1085,14 +1085,21 @@ public class GameService {
 				.bind("levelLimitEnabled", (commonB & 0b10000) != 0)
 				.bind("friendlyFire", (commonA & 0b1000) != 0)
 				.bind("ghosts", (commonA & 0b10000) != 0)
-				// Oddity, pinned 2026-07-22: bit 5 (Nomad: auto-aim) is set in EVERY capture from
-				// this client, all-disabled baselines included, and no aim setting exists anywhere
-				// in this build's Create screens — later-patch content or fed from player settings.
-				// Decoded as transcribed; on this client the column simply always reads true.
+				// CORRECTED 2026-08-04: the decode was right, the justification was wrong. This
+				// build DOES have the row — label 593 "Lock On (AUTO AIM)", edit handler
+				// 0x8A6AE0, summary row 0x8A8D40, help text "Set whether to turn Lock-On (Auto
+				// Aim) targeting on or off". The earlier note said no aim setting existed on any
+				// Create screen; it does. What remains true is the observation that the bit was
+				// set in every capture, including all-disabled baselines — so the column reads
+				// true on this client, and why every host leaves it on is a separate question.
 				.bind("autoAim", (commonA & 0b100000) != 0)
-				// Uniques (bit 7, selectors 0x140/0x141) are the one commonA field the capture
-				// sweep could NOT verify: the setting is absent from this build's Create screens
-				// (expansion-era content). Reference-only — see BACKLOG, "Unique characters".
+				// SPECULATIVE, and previously written as though settled. Bit 7 is real — it is
+				// published in-game at 0x8CA330 — but it has NO rendered row anywhere in this
+				// image, so nothing pins it to "uniques". The complete bit map (2026-08-04, in
+				// mgo2_cmd_4310_c2s.ksy) leaves exactly four unassigned bits {17, 18, 22, 23} and
+				// exactly four unrendered rows {Unique Characters, Headshots, Auto Balance
+				// Ratings, Auto Balance Levels}; which pairs with which is not decidable here.
+				// The column name is a guess kept for continuity, not a finding.
 				.bind("uniques", (commonA & 0b10000000) != 0)
 				.bind("teamsSwitch", (commonB & 0b1) != 0)
 				.bind("autoAssign", (commonB & 0b10) != 0)

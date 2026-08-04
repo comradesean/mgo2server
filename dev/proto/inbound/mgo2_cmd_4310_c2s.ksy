@@ -326,6 +326,66 @@ seq:
       game-list entry. Written as one 2-byte blob from src+929, so note the source gap: bytes
       src+922..928 exist in the client's struct and are **not** transmitted.
       Capture-proven: flipping only friendly fire moved exactly `0x142` bit 3.
+
+      **[COMPLETE BIT MAP, 2026-08-04.]** Every bit is now named from the client's own Create
+      Game code rather than transcribed. The route: the **Common Settings summary renderer**
+      `0x8A8A2C`-`0x8A93C4` walks the rows in menu order and, for each, fetches a label id via
+      `0x8E0C24` and either reads a struct field or bit-tests the flags word at src+928; its
+      sibling is the **edit handler bank** `0x8A4F4C`-`0x8A6EAC` (twenty functions, OPDs
+      `0x101AEC0`-`0x101AF68`). Label ids run **585..607**, one per disc row, in disc order.
+
+      Bit numbering below is LSB = bit 0 of the big-endian u32 at src+928, so `common_a` is
+      bits 16-23 and `common_b` is bits 8-15.
+
+      | LSB bit | byte | row | edit handler | summary site |
+      | --- | --- | --- | --- | --- |
+      | 8 | commonB 0 | **Teams Switch Positions** | `0x8A6720` | `0x8A8EC0` |
+      | 9 | commonB 1 | **Auto Assign Teams** | `0x8A6810` | `0x8A8E60` |
+      | 10 | commonB 2 | **Silent Mode** (Information Log hidden) | `0x8A6900` | `0x8A8E00` |
+      | 11 | commonB 3 | **Enemy Nametag Display** | `0x8A69F0` | `0x8A8DA0` |
+      | 12 | commonB 4 | **Level Limit enable** | `0x8A6234` | `0x8A9000` |
+      | 13 | commonB 5 | **Allow Quick-Join** | `0x8A64D0` | `0x8A8FA0` |
+      | 14 | commonB 6 | **Voice Chat allowed** | `0x8A6110` | `0x8A9114` |
+      | 15 | commonB 7 | **Team Kill Kick enable** | `0x8A5EB8` | `0x8A9178` |
+      | 16 | commonA 0 | **Idle Kick enable** | `0x8A5C60` | `0x8A9258` |
+      | 17 | commonA 1 | *no row rendered anywhere* | — | — |
+      | 18 | commonA 2 | *no row rendered anywhere* | — | — |
+      | 19 | commonA 3 | **Friendly Fire** | `0x8A6BD0` | `0x8A8CC0` |
+      | 20 | commonA 4 | **Ghost Pranks** | `0x8A65FC` | `0x8A8F20` |
+      | 21 | commonA 5 | **Lock On (AUTO AIM)** | `0x8A6AE0` | `0x8A8D40` |
+      | 22 | commonA 6 | **touched by no instruction in the image** | — | — |
+      | 23 | commonA 7 | *no row rendered anywhere* | — | — |
+
+      **The row-to-bit alignment is forced by five anchors, each landing on a different row**, so
+      it is not an ordinal guess:
+
+      - **591 = Friendly Fire** — `0x8A8CC0` bit-tests LSB **19 = commonA bit 3**, which is
+        exactly the capture-proven 2026-07-22 result above. That is a **tier-2** anchor.
+      - **599 = Allow Quick-Join** — the only row drawing value labels 582/583 instead of the
+        571/572 Enable/Disable pair, and the disc's only Allow/Disallow pair.
+      - **600 = Level Limit** — `0x8A9058 li r3,584` (the `%d ± %d` format) then
+        `0x8A9090 lbz r6,847(r9)`; the edit handler `0x8A6234` uses the same 584.
+      - **602/603 = Team Kill Kick / Idle Kick** — `0x8A91A4 lhz r5,934` with unit string **573**,
+        `0x8A9284 lhz r5,932` with unit **574**; the disc help text says team-kill-kick counts
+        *teammates* while idle-kick counts *time*, so 573 is the count unit and 574 the time one.
+      - **606 = Weapon Restriction Settings** — `0x8A9344 lbz r0,802(r9)` / `clrldi. r9,r0,63`.
+        This is the closing anchor: it only lands on 606 if **Auto Balance consumed two ids**
+        (604, 605) — which the disc independently predicts, because auto-balance is the one row
+        with two help texts (balance Ratings, balance Levels).
+
+      **What a player sees**, for the rows worth spelling out: Silent Mode hides the Information
+      Log (help: *"When enabled, the Information Log is not displayed."*); Friendly Fire is
+      *"player's attacks can harm their teammates"*; Level Limit restricts the room to players
+      within a level band, and the band itself is the `±` pair at src+847/848; Allow Quick-Join
+      decides whether the room accepts automatched joiners; Team Kill Kick and Idle Kick are the
+      **enables** for the two counters at src+934 and src+932, so clearing either bit makes the
+      client zero the matching number.
+
+      **Four bits have no rendered row: 17, 18, 22 and 23.** The unrendered rows are exactly four
+      as well — 586 Unique Characters, 592 Headshots, 604 Auto Balance (Ratings), 605 Auto Balance
+      (Levels). Four bits, four rows — but **which goes where is not decidable from this image**,
+      and any pairing is speculation. Bit 22 is the strongest of the four negatives: no
+      instruction anywhere touches it.
   - id: common_flags_lsb
     type: u1
     doc: |
@@ -342,6 +402,19 @@ seq:
       32-bit flags word at src+928** — and that settles it: 117 sites do `lwz rX,928(rB)` and
       bit-test the result, and **every tested bit lies in bits 8-23**, i.e. in src+929/930 only.
       Nothing tests bits 0-7. The constant `0x20` sets bit 5, which no site consumes.
+
+      **[RE-CONFIRMED 2026-08-04, with the last loose end closed.]** The sweep was re-run as
+      "every `lwz rX,928(rY)` in .text (141 sites) followed within 8 instructions by a single-bit
+      test on rX". Exactly one site tests bit 0 — `0x2A9FD4` — and it is **disqualified**: its
+      base `r31` takes `stfs f13,740(r31)` / `stfs f0,744(r31)` / `stfs f0,764(r31)` two
+      instructions away, so it is a float object, not this struct.
+
+      The negative also has a *reason* now rather than an absence. With the complete bit map
+      above, **15 of the 16 bits at 8-23 are named rows and bit 22 is untouched by any
+      instruction** — so there is genuinely no leftover Common Settings label that bits 0-7 could
+      be carrying. The "second bank of toggles" idea is neither strengthened nor weakened by
+      that; it stays a hypothesis with no evidence either way. Our `0x20` remains **inert, with
+      evidence**.
 
       The only load of src+931 is the accessor `0x9072AC`, which returns the byte raw and is **dead
       code** — its sole appearance is its OPD descriptor at `0x101C118`, there is no `bl` to it, and
