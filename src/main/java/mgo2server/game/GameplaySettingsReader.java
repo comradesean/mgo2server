@@ -65,7 +65,7 @@ public final class GameplaySettingsReader {
 		var firstView = payload.getUnsignedByte(base + 3);
 		settings.setFirstViewVerticalInvert((firstView & 0b1) != 0);
 		settings.setFirstViewHorizontalInvert((firstView & 0b10) != 0);
-		settings.setFirstViewPlayerDirection((firstView & 0b100) != 0);
+		settings.setFirstViewCameraDirection((firstView & 0b100) != 0);
 		settings.setFirstViewSpeed(speed(firstView >> 4));
 
 		settings.setViewChangeSpeed(speed(payload.getUnsignedByte(base + 4)));
@@ -75,7 +75,12 @@ public final class GameplaySettingsReader {
 		settings.setWeaponSwitchMode(switchModes & 0b1111);
 		settings.setItemSwitchMode((switchModes >> 4) & 0b1111);
 
+		// Three fields share this byte, and until 2026-08-04 only the top one was read back — so the
+		// two audio-output-device choices were discarded on every write-back and reset on the next
+		// login. See GameplaySettingsWriter#voiceChatA.
 		var voiceChatA = payload.getUnsignedByte(base + 13);
+		settings.setVoiceChatOutputDevice(voiceChatA & 0b11);
+		settings.setCodecOutputDevice((voiceChatA >> 2) & 0b11);
 		settings.setVoiceChatRecognitionLevel((voiceChatA >> 4) & 0b1111);
 
 		var voiceChatB = payload.getUnsignedByte(base + 14);
@@ -86,13 +91,19 @@ public final class GameplaySettingsReader {
 		settings.setWeaponSwitchA(weaponSwitchAB & 0b1111);
 		settings.setWeaponSwitchB((weaponSwitchAB >> 4) & 0b1111);
 
-		settings.setWeaponSwitchC(payload.getUnsignedByte(base + 16) & 0b1111);
+		// The quick-change dispatcher at 0x9C9070 reads three values in Cycle Mode, two in Recall
+		// Mode and one in Toggle Mode — so +16 high is Recall's "Now" (read at 0x9C9E74) and +17
+		// high is Toggle's single weapon (read at 0x9C9094). Both were mishandled until 2026-08-04.
+		var cycleC = payload.getUnsignedByte(base + 16);
+		settings.setWeaponSwitchC(cycleC & 0b1111);
+		settings.setWeaponSwitchNow((cycleC >> 4) & 0b1111);
 
 		var recall = payload.getUnsignedByte(base + 17);
 		settings.setWeaponSwitchBefore(recall & 0b1111);
-		settings.setWeaponSwitchNow((recall >> 4) & 0b1111);
+		settings.setWeaponSwitchToggle((recall >> 4) & 0b1111);
 
-		settings.setFirstViewMemory((payload.getUnsignedByte(base + 18) & 0b10) != 0);
+		// Low nibble compared against 1, not bit 1: 0 Enabled, 1 Disabled.
+		settings.setFirstViewMemoryDisabled((payload.getUnsignedByte(base + 18) & 0b1111) != 0);
 
 		var privacyB = payload.getUnsignedByte(base + 19);
 		settings.setReceiveNotices((privacyB & 0b1) != 0);

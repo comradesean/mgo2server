@@ -26,6 +26,8 @@ public class CharaSettings {
 
 	private int weaponSwitchC;
 
+	private int weaponSwitchToggle;
+
 	private int weaponSwitchNow;
 
 	private int weaponSwitchBefore;
@@ -64,6 +66,10 @@ public class CharaSettings {
 
 	private int codec4d;
 
+	private int voiceChatOutputDevice;
+
+	private int codecOutputDevice;
+
 	private int voiceChatRecognitionLevel;
 
 	private int voiceChatVolume;
@@ -90,9 +96,9 @@ public class CharaSettings {
 
 	private boolean firstViewHorizontalInvert;
 
-	private boolean firstViewPlayerDirection = true;
+	private boolean firstViewCameraDirection = true;
 
-	private boolean firstViewMemory;
+	private boolean firstViewMemoryDisabled;
 
 	private boolean radarLockNorth;
 
@@ -198,6 +204,18 @@ public class CharaSettings {
 		this.weaponSwitchC = weaponSwitchC;
 	}
 
+	public int getWeaponSwitchToggle() {
+		return weaponSwitchToggle;
+	}
+
+	public void setWeaponSwitchToggle(int weaponSwitchToggle) {
+		this.weaponSwitchToggle = weaponSwitchToggle;
+	}
+
+	/**
+	 * The weapon category <b>Recall Mode</b> swaps to — the "Now" row of ONLINE GAME OPTIONS, one of
+	 * the two categories a tap of R2 alternates between. Same five-value scale as the cycle slots.
+	 */
 	public int getWeaponSwitchNow() {
 		return weaponSwitchNow;
 	}
@@ -350,6 +368,24 @@ public class CharaSettings {
 		this.codec4d = codec4d;
 	}
 
+	/** Where other players' voice chat comes out: 0 Standard Device, 1 USB/Bluetooth Device. */
+	public int getVoiceChatOutputDevice() {
+		return voiceChatOutputDevice;
+	}
+
+	public void setVoiceChatOutputDevice(int voiceChatOutputDevice) {
+		this.voiceChatOutputDevice = voiceChatOutputDevice;
+	}
+
+	/** Where the preset Codec messages come out. Same two values as the voice-chat device. */
+	public int getCodecOutputDevice() {
+		return codecOutputDevice;
+	}
+
+	public void setCodecOutputDevice(int codecOutputDevice) {
+		this.codecOutputDevice = codecOutputDevice;
+	}
+
 	public int getVoiceChatRecognitionLevel() {
 		return voiceChatRecognitionLevel;
 	}
@@ -454,20 +490,20 @@ public class CharaSettings {
 		this.firstViewHorizontalInvert = firstViewHorizontalInvert;
 	}
 
-	public boolean isFirstViewPlayerDirection() {
-		return firstViewPlayerDirection;
+	public boolean isFirstViewCameraDirection() {
+		return firstViewCameraDirection;
 	}
 
-	public void setFirstViewPlayerDirection(boolean firstViewPlayerDirection) {
-		this.firstViewPlayerDirection = firstViewPlayerDirection;
+	public void setFirstViewCameraDirection(boolean firstViewCameraDirection) {
+		this.firstViewCameraDirection = firstViewCameraDirection;
 	}
 
-	public boolean isFirstViewMemory() {
-		return firstViewMemory;
+	public boolean isFirstViewMemoryDisabled() {
+		return firstViewMemoryDisabled;
 	}
 
-	public void setFirstViewMemory(boolean firstViewMemory) {
-		this.firstViewMemory = firstViewMemory;
+	public void setFirstViewMemoryDisabled(boolean firstViewMemoryDisabled) {
+		this.firstViewMemoryDisabled = firstViewMemoryDisabled;
 	}
 
 	public boolean isRadarLockNorth() {

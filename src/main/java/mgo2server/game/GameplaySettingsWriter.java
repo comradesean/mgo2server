@@ -118,17 +118,41 @@ public final class GameplaySettingsWriter {
 		return value;
 	}
 
+	/**
+	 * Bit 2 is <b>Direction After View Change</b>, and <b>set means "Camera direction"</b> — the
+	 * option deciding where you are looking when you drop into over-the-shoulder or first person.
+	 * The client's own default is {@code 4}, i.e. the bit set ({@code 0x947388}), which is why the
+	 * column defaults to true. The field used to be called {@code firstViewPlayerDirection}, which
+	 * named the wrong pole of a correctly-encoded value.
+	 */
 	public static int firstView(CharaSettings s) {
 		var value = 0;
 		value |= s.isFirstViewVerticalInvert() ? 0b1 : 0;
 		value |= s.isFirstViewHorizontalInvert() ? 0b10 : 0;
-		value |= s.isFirstViewPlayerDirection() ? 0b100 : 0;
+		value |= s.isFirstViewCameraDirection() ? 0b100 : 0;
 		value |= speed(s.getFirstViewSpeed()) << 4;
 		return value;
 	}
 
+	/**
+	 * <b>First Person View Memory</b>, in the low nibble: {@code 0} Enabled, {@code 1} Disabled.
+	 * With it enabled, dropping out of first-person aim leaves the camera where you were looking
+	 * instead of snapping back, so it changes what happens every time the player releases aim.
+	 *
+	 * <p><b>This wrote bit 1 until 2026-08-04, and the setting had never worked.</b> The client
+	 * reads the whole low nibble ({@code 0x906864}) and its validator rewrites anything above 1 to
+	 * 1 ({@code 0x947AF8}), so a stored "true" arrived as <i>Disabled</i>; and because the
+	 * write-back read the same absent bit, the player's choice was discarded every session. The
+	 * column is named for the wire's polarity now — the value it carries is the one the client
+	 * stores.
+	 *
+	 * <p>The high nibble is a second two-state field with the same clamp ({@code 0x906870},
+	 * {@code 0x947B20}) and a client default of <b>1</b>, which we send as 0. It has no row in the
+	 * 88-arm options switch and no reader outside the defaults run, so it is inert on this build —
+	 * recorded because its neighbour in the same byte is not.
+	 */
 	public static int firstViewMemory(CharaSettings s) {
-		return s.isFirstViewMemory() ? 0b10 : 0;
+		return s.isFirstViewMemoryDisabled() ? 1 : 0;
 	}
 
 	public static int radar(CharaSettings s) {
@@ -155,22 +179,71 @@ public final class GameplaySettingsWriter {
 		return (s.getWeaponSwitchA() & 0b1111) | ((s.getWeaponSwitchB() & 0b1111) << 4);
 	}
 
+	/**
+	 * Slot C of the Cycle-Mode rotation, plus <b>"Now"</b> — the first of the two categories Recall
+	 * Mode alternates between — in the high nibble.
+	 *
+	 * <p><b>The high nibble was sent as zero until 2026-08-04.</b> It has a real accessor
+	 * ({@code 0x90681C}) read by the Recall-Mode branch at {@code 0x9C9E74}, so a player who set
+	 * "Now" to anything but Primary lost it at logout and was forced back to Primary on the next
+	 * login. Worse, the client's validator requires "Now" and "Before" to differ and resets
+	 * <i>both</i> to Primary/Secondary when they collide ({@code 0x94792C}-{@code 0x9479AC}) — so
+	 * losing one silently reset the other.
+	 */
 	public static int weaponSwitchC(CharaSettings s) {
-		return s.getWeaponSwitchC() & 0b1111;
+		return (s.getWeaponSwitchC() & 0b1111) | ((s.getWeaponSwitchNow() & 0b1111) << 4);
 	}
 
+	/**
+	 * <b>"Before"</b> — Recall Mode's second category — plus, in the high nibble, the single weapon
+	 * <b>Toggle Mode</b> equips and unequips.
+	 *
+	 * <p>The high nibble was called "Now" until 2026-08-04 and is not: the quick-change dispatcher
+	 * at {@code 0x9C9070} branches three ways on the mode word and reads <b>three</b> values for
+	 * Cycle (slots A/B/C), <b>two</b> for Recall ("Now"/"Before"), and <b>this one</b> on the
+	 * Toggle fall-through at {@code 0x9C9094}. Three modes, 3/2/1 values. The stored data was
+	 * always the toggle weapon, so the column was renamed rather than reset.
+	 */
 	public static int weaponSwitchRecall(CharaSettings s) {
-		return (s.getWeaponSwitchBefore() & 0b1111) | ((s.getWeaponSwitchNow() & 0b1111) << 4);
+		return (s.getWeaponSwitchBefore() & 0b1111) | ((s.getWeaponSwitchToggle() & 0b1111) << 4);
 	}
 
 	public static int switchModes(CharaSettings s) {
 		return (s.getWeaponSwitchMode() & 0b1111) | ((s.getItemSwitchMode() & 0b1111) << 4);
 	}
 
+	/**
+	 * Three fields, one byte: <b>Voice Chat Audio Output Device</b> (bits 0-1), <b>Codec Audio
+	 * Output Device</b> (bits 2-3) and <b>Voice Chat Recognition Level</b> (bits 4-7). The two
+	 * device fields decide whether the player hears other people's voice chat and the preset Codec
+	 * lines through the TV or through a headset — {@code 0} Standard Device, {@code 1}
+	 * USB/Bluetooth Device.
+	 *
+	 * <p><b>Bits 0-1 were hardcoded to 1 until 2026-08-04</b>, which is the old "bit 0 always 1
+	 * (unknown why)". The reason is now known: it is a real setting, and pinning it forced every
+	 * player onto USB/Bluetooth output at every login. Neither device field was read back either,
+	 * so both choices were discarded on write-back. The client's own defaults are 0 and 0
+	 * ({@code 0x9474B8}, {@code 0x9474D0}).
+	 *
+	 * <p>Recognition level is the threshold at which a headset treats input as speech, shown 1-10
+	 * with no offset — the client coerces 0 to 5 as well as clamping above 10 ({@code 0x947A64}).
+	 */
 	public static int voiceChatA(CharaSettings s) {
-		return 1 | ((s.getVoiceChatRecognitionLevel() & 0b1111) << 4);
+		var value = s.getVoiceChatOutputDevice() & 0b11;
+		value |= (s.getCodecOutputDevice() & 0b11) << 2;
+		value |= (s.getVoiceChatRecognitionLevel() & 0b1111) << 4;
+		return value;
 	}
 
+	/**
+	 * Two volume sliders: <b>Voice Chat Playback Volume</b> (low) and the <b>USB/Bluetooth device
+	 * output volume</b> (high, the column's {@code headsetVolume} being the colloquial name for it).
+	 *
+	 * <p>These two are the only sliders the client does not coerce away from zero — it clamps them
+	 * with "above 10 → 5" alone ({@code 0x947AB4}, {@code 0x947ADC}) where the recognition level
+	 * also gets "== 0 → 5". Zero is therefore a legal state meaning silence, which is why nothing
+	 * here or in the schema rejects it.
+	 */
 	public static int voiceChatB(CharaSettings s) {
 		return (s.getVoiceChatVolume() & 0b1111) | ((s.getHeadsetVolume() & 0b1111) << 4);
 	}

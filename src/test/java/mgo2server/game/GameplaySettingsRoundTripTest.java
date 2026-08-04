@@ -32,6 +32,9 @@ public class GameplaySettingsRoundTripTest {
 		s.setWeaponSwitchB(4);
 		s.setWeaponSwitchC(5);
 		s.setWeaponSwitchNow(6);
+		s.setWeaponSwitchToggle(4);
+		s.setVoiceChatOutputDevice(1);
+		s.setCodecOutputDevice(1);
 		s.setWeaponSwitchBefore(7);
 		s.setVoiceChatRecognitionLevel(9);
 		s.setVoiceChatVolume(10);
@@ -46,8 +49,8 @@ public class GameplaySettingsRoundTripTest {
 		s.setShoulderViewHorizontalInvert(false);
 		s.setFirstViewVerticalInvert(false);
 		s.setFirstViewHorizontalInvert(true);
-		s.setFirstViewPlayerDirection(true);
-		s.setFirstViewMemory(true);
+		s.setFirstViewCameraDirection(true);
+		s.setFirstViewMemoryDisabled(true);
 		s.setRadarLockNorth(true);
 		s.setRadarFloorHide(true);
 		s.setHudHideNameTags(true);
@@ -89,6 +92,9 @@ public class GameplaySettingsRoundTripTest {
 		assertThat(read.getWeaponSwitchB()).isEqualTo(original.getWeaponSwitchB());
 		assertThat(read.getWeaponSwitchC()).isEqualTo(original.getWeaponSwitchC());
 		assertThat(read.getWeaponSwitchNow()).isEqualTo(original.getWeaponSwitchNow());
+		assertThat(read.getWeaponSwitchToggle()).isEqualTo(original.getWeaponSwitchToggle());
+		assertThat(read.getVoiceChatOutputDevice()).isEqualTo(original.getVoiceChatOutputDevice());
+		assertThat(read.getCodecOutputDevice()).isEqualTo(original.getCodecOutputDevice());
 		assertThat(read.getWeaponSwitchBefore()).isEqualTo(original.getWeaponSwitchBefore());
 		assertThat(read.getVoiceChatRecognitionLevel())
 			.isEqualTo(original.getVoiceChatRecognitionLevel());
@@ -107,9 +113,9 @@ public class GameplaySettingsRoundTripTest {
 		assertThat(read.isFirstViewVerticalInvert()).isEqualTo(original.isFirstViewVerticalInvert());
 		assertThat(read.isFirstViewHorizontalInvert())
 			.isEqualTo(original.isFirstViewHorizontalInvert());
-		assertThat(read.isFirstViewPlayerDirection())
-			.isEqualTo(original.isFirstViewPlayerDirection());
-		assertThat(read.isFirstViewMemory()).isEqualTo(original.isFirstViewMemory());
+		assertThat(read.isFirstViewCameraDirection())
+			.isEqualTo(original.isFirstViewCameraDirection());
+		assertThat(read.isFirstViewMemoryDisabled()).isEqualTo(original.isFirstViewMemoryDisabled());
 		assertThat(read.isRadarLockNorth()).isEqualTo(original.isRadarLockNorth());
 		assertThat(read.isRadarFloorHide()).isEqualTo(original.isRadarFloorHide());
 		assertThat(read.isHudHideNameTags()).isEqualTo(original.isHudHideNameTags());

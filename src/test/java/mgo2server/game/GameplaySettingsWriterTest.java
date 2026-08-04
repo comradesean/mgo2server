@@ -23,7 +23,7 @@ public class GameplaySettingsWriterTest {
 		s.setViewChangeSpeed(5);
 		s.setReceiveNotices(true);
 		s.setReceiveInvites(true);
-		s.setFirstViewPlayerDirection(true);
+		s.setFirstViewCameraDirection(true);
 		s.setWeaponSwitchMode(2);
 		s.setWeaponSwitchB(1);
 		s.setWeaponSwitchC(2);
@@ -99,14 +99,18 @@ public class GameplaySettingsWriterTest {
 		assertThat(GameplaySettingsWriter.normalView(s) & 0b11).isEqualTo(0b11);
 	}
 
-	/** First-person view carries an extra flag the other views do not. */
+	/**
+	 * First-person view carries an extra flag the other views do not: bit 2 set means the camera
+	 * keeps ITS direction through a view change, not the player's. Tier 1 — the client's own
+	 * default for this nibble is 4 (0x947388), i.e. the bit set.
+	 */
 	@Test
-	public void firstViewCarriesPlayerDirection() {
+	public void firstViewCarriesCameraDirection() {
 		var s = defaults();
-		s.setFirstViewPlayerDirection(true);
+		s.setFirstViewCameraDirection(true);
 		assertThat(GameplaySettingsWriter.firstView(s) & 0b100).isEqualTo(0b100);
 
-		s.setFirstViewPlayerDirection(false);
+		s.setFirstViewCameraDirection(false);
 		assertThat(GameplaySettingsWriter.firstView(s) & 0b100).isZero();
 	}
 
@@ -130,16 +134,26 @@ public class GameplaySettingsWriterTest {
 		s.setWeaponSwitchC(3);
 
 		assertThat(GameplaySettingsWriter.weaponSwitchAB(s)).isEqualTo(0x21);
-		assertThat(GameplaySettingsWriter.weaponSwitchC(s)).isEqualTo(3);
+		assertThat(GameplaySettingsWriter.weaponSwitchC(s) & 0b1111).isEqualTo(3);
 	}
 
+	/**
+	 * The three quick-change modes read three, two and one weapon category respectively, and the
+	 * dispatcher at 0x9C9070 branches to a different reader for each — so Cycle's slot C shares a
+	 * byte with Recall's "Now" (0x90681C, read at 0x9C9E74), and Recall's "Before" shares one with
+	 * the single weapon Toggle Mode swaps (0x906834, read at 0x9C9094). Sending the toggle weapon
+	 * where "Now" belongs is what this pins against: both nibbles must reach the wire.
+	 */
 	@Test
-	public void recallPacksBeforeInTheLowNibble() {
+	public void recallAndToggleWeaponsTakeTheHighNibbles() {
 		var s = defaults();
-		s.setWeaponSwitchBefore(1);
+		s.setWeaponSwitchC(3);
 		s.setWeaponSwitchNow(2);
+		s.setWeaponSwitchBefore(1);
+		s.setWeaponSwitchToggle(4);
 
-		assertThat(GameplaySettingsWriter.weaponSwitchRecall(s)).isEqualTo(0x21);
+		assertThat(GameplaySettingsWriter.weaponSwitchC(s)).isEqualTo(0x23);
+		assertThat(GameplaySettingsWriter.weaponSwitchRecall(s)).isEqualTo(0x41);
 	}
 
 	@Test
@@ -158,19 +172,39 @@ public class GameplaySettingsWriterTest {
 		s.setVoiceChatVolume(5);
 		s.setHeadsetVolume(6);
 
-		assertThat(GameplaySettingsWriter.voiceChatA(s) & 0b1).isEqualTo(1);
 		assertThat(GameplaySettingsWriter.voiceChatA(s) >>> 4).isEqualTo(4);
 		assertThat(GameplaySettingsWriter.voiceChatB(s) & 0b1111).isEqualTo(5);
 		assertThat(GameplaySettingsWriter.voiceChatB(s) >>> 4).isEqualTo(6);
 	}
 
+	/**
+	 * Both audio-output devices live in the low half of the voice-chat byte, and the client's own
+	 * defaults are 0 and 0 (0x9474B8, 0x9474D0). Bits 0-1 were hardcoded to 1 until 2026-08-04,
+	 * which forced every player onto USB/Bluetooth output at every login.
+	 */
 	@Test
-	public void firstViewMemoryIsItsOwnByte() {
+	public void voiceChatByteCarriesBothOutputDevices() {
+		var s = defaults();
+		assertThat(GameplaySettingsWriter.voiceChatA(s) & 0b1111).isZero();
+
+		s.setVoiceChatOutputDevice(1);
+		s.setCodecOutputDevice(1);
+		assertThat(GameplaySettingsWriter.voiceChatA(s) & 0b11).isEqualTo(1);
+		assertThat((GameplaySettingsWriter.voiceChatA(s) >>> 2) & 0b11).isEqualTo(1);
+	}
+
+	/**
+	 * First Person View Memory is the LOW NIBBLE compared against 1, not bit 1 — the client reads
+	 * the whole nibble at 0x906864 and its validator rewrites anything above 1 to 1 (0x947AF8), so
+	 * the old 0b10 arrived as Disabled no matter what the player chose.
+	 */
+	@Test
+	public void firstViewMemoryIsTheLowNibbleNotBitOne() {
 		var s = defaults();
 		assertThat(GameplaySettingsWriter.firstViewMemory(s)).isZero();
 
-		s.setFirstViewMemory(true);
-		assertThat(GameplaySettingsWriter.firstViewMemory(s)).isEqualTo(0b10);
+		s.setFirstViewMemoryDisabled(true);
+		assertThat(GameplaySettingsWriter.firstViewMemory(s)).isEqualTo(1);
 	}
 
 	@Test
