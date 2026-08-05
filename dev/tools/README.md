@@ -152,6 +152,24 @@ then gets the `0x00` "no update" byte and the version-check screen advances as u
 
 ---
 
+## `strres.py` — disc string ids to text, in six languages
+
+Resolves an MGO2 string-resource id to the sentence a player actually reads. Needs the lobby dump
+produced by `gcx.exe -res` (see `dev/docs/ASSETS.md`); point `MGO2_STRRES` at it if it is not in
+the default location.
+
+    python3 dev/tools/strres.py 10337              # by index file
+    python3 dev/tools/strres.py --id 2f0293 554    # by gcl group + id  -> "Friendly Fire"
+    python3 dev/tools/strres.py --name CLAN_SUBJECT # by ELF resource name
+
+The third form is the useful one when working from the binary: resource names in the ELF hash
+(rot-5-add 24-bit, `0xD25D0`) straight to a record, so you never need to know the id.
+
+**Why a tool rather than counting files.** The dump is index records plus a string pool, not a flat
+list, and languages that share text share a pool entry — so walking records drifts. That drift
+produced a run of ids uniformly wrong by 37 before the index format was decoded. `ASSETS.md` has
+the format.
+
 ## `testhk_editor.py` — point the game at your server
 
 MGO2's twelve server hostnames and two ports are **not** in `MGO2.SELF`. They are string resources

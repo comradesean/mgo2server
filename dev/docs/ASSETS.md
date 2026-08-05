@@ -90,7 +90,7 @@ The Personal Stats labels live in `lobby/scenerio.gcx`, string-resource group
 in order, each with FR/DE/IT/ES and often JP, each with a stable 24-bit resource hash. The hash is
 a rotate-5-add over the resource name, computed at `0xD25D0` in the ELF.
 
-## Reading `scenerio_strres/` — two things that will otherwise cost you a pass
+## Reading `scenerio_strres/` — the index table, and the trap of counting
 
 **1. Build a flat index first. Never glob-grep the directory.** The lobby dump is 28,693 separate
 `<n>.bin` files, and a `grep -l "..." *.bin` over them takes minutes and will time out before it
@@ -108,35 +108,74 @@ with open('/tmp/<scratchpad>/lobby_strres.tsv','w') as out:
         out.write('%d\t%s\n' % (i, t.replace('\n','\\n').replace('\t',' ')))
 ```
 
-**2. The file index is NOT the string id, and the packing is variable.** Consecutive files are the
-language variants of one record — JP, EN, FR, DE, IT, ES — so a record is normally six files and
-`id ≈ file/6`. But **when languages share identical text the record is shorter**, and some records
-are a single file. Two real examples from the Common Settings run (files 13515-13633, ids 585-607):
-*Friendly Fire* (591) keeps only its French `Tir allié` and *Voice Chat* (601) keeps nothing at
-all, both having been deduplicated against earlier records. So an id derived by dividing by six
-drifts, and it drifts by a different amount in every region.
+**2. The file index is NOT the string id — and there IS an index table, so do not count records.**
 
-That is why several passes reported "the id→file mapping is not linear" and stopped. The reliable
-route is to **anchor on a code-proven id and walk records outward**, checking the walk against a
-second anchor at the other end of the run — the same discipline as a disassembly sweep needing a
-control. `scenerio.gcl` line 2330 onward declares the groups as `[hash] $strres:START $strres:END`,
-which are **file-index** ranges and bound the walk.
+`scenerio_strres/<n>.bin` is **two things concatenated, thirteen times over**. Each
+`[hash] $strres:START $strres:END` line in `scenerio.gcl` (line 2330 onward) gives that group's
+**index-record range**; the group's **string pool** is the files between that range's end and the
+next group's start.
 
-Anchors established 2026-08-04 and worth reusing:
-
-| ids | files | what |
+| group | index files | pool files |
 | --- | --- | --- |
-| 585-607 | 13515-13633 | Common Settings row labels, in Create Game menu order |
-| — | 17981-18010 | mailbox menu labels (Inbox, Create New Mail, Sent, Announcements, Drafts) |
-| — | 18154-18177 | the same four tabs' help text, in the same order |
-| — | 20344-20524 | ONLINE GAME OPTIONS per-row help, in row order |
-| — | 20101-20342 / 20530-20646 | that screen's row labels / value labels |
+| `[40eff4]` | 0-341 | 342-1526 |
+| `[7a133b]` | 1527-3389 | 3390-9788 |
+| `[2f0293]` | 9789-11033 | 11034-16523 |
+| `[642318]` | 16524-16738 | 16739-17778 |
+| `[e60831]` | 17779-17942 | 17943-18865 |
+| `[d97d38]` | 18866-18926 | 18927-19155 |
+| `[1c4a02]` | 19156-19229 | 19230-19567 |
+| `[b0e35e]` | 19568-19606 | 19607-19716 |
+| `[4f1c53]` | 19717-19743 | 19744-19813 |
+| `[d2c5a4]` | 19814-20082 | 20083-21054 |
+| `[6acf0d]` | 21055-21115 | 21116-21367 |
+| `[03d915]` | 21368-21898 | 21899-24953 |
+| `[f0d736]` | 24954-25816 | 25817-28692 |
 
-**A group registered by one stage can hold another stage's text.** The Common Settings strings live
-in the *lobby* dump but fall outside every range `scenerio.gcl` declares, because the screen belongs
-to a different stage. `r_onlinelobby`'s own `scenerio.gcx` is a 101-byte stub, so there is no second
-script to extract — look in the lobby set for text you expect elsewhere before concluding it is
-missing.
+**`id = index_file_number − group_index_start`.** Index record layout, all little-endian:
+
+```
+06 <u24 group_tag>  <tag> <u24 name_hash>  [flag]  <6 varints>  00
+tag 0x06 -> no flag byte;  tag 0x0d -> one 0x01 flag byte follows
+varint:  b >= 0xC1  -> value = b - 0xC1      (0..62)
+         b == 0x02  -> value = next byte     (0..255)
+         b == 0x01  -> value = next 2 bytes LE
+value 0 = "no string";  otherwise pool_file = (pool_start - 1) + value
+```
+
+The six values are **JP, EN, FR, DE, IT, ES**, and deduplication is simply two languages pointing
+at the same pool file — which is why *counting* records drifts and *reading* them does not.
+
+**Control for the decoder:** all **5,728** index records across all thirteen groups decode with
+exactly six values each, and **zero** values land outside their own group's pool. A wrong
+group→pool assignment or a mis-read varint blows up both counts immediately. A working decoder
+is at `dev/tools/strres.py` (`resolve(index_file)`, `h24(name)`, `GROUPS`, `POOL`).
+
+**The `name_hash` is the same rot-5-add 24-bit hash the ELF uses** (`h = ((h<<5 | h>>19) + c) &
+0xFFFFFF`, implemented at `0xD25D0`). So a resource name in the binary — `CLAN_SUBJECT`,
+`HOST_STANCE_EASY`, `MESSAGE_8` — resolves straight to its record without knowing its id.
+
+**Two different group identifiers, and mixing them wastes a pass.** The `[hash]` in `scenerio.gcl`
+names the *set*; the record's own `group_tag` field is what the **ELF** passes as the resolver's
+first argument, and they are not equal. `gcl [2f0293]` records carry tag **`0x00F914BF`** — the
+constant loaded at `0x8E0C24`, i.e. the lobby and Create Game text — and `gcl [e60831]` records
+carry **`0x6B01B5`**, the mailbox text. Match on the tag when you are starting from the binary, on
+the gcl hash when starting from the script.
+
+**Superseded, and worth saying why:** an earlier version of this section advised anchoring on a
+code-proven id and *walking records outward*, because the packing looked variable and unreadable.
+That works, but it is guesswork with a control bolted on, and it drifts — it produced a run of
+Common Settings ids that were uniformly wrong by 37 (they were the *help* ids; help sits at
+`label + 37`) and an "anchor" that did not exist. **Read the index table instead.** The general
+lesson is the project's own: when a structure looks like it has to be inferred, check whether the
+format simply carries the answer.
+
+**A group registered by one stage can hold another stage's text.** The Common Settings strings are
+in the *lobby* dump even though the screen belongs to a different stage. They looked at first like
+they fell outside every range `scenerio.gcl` declares — file 13515 is in none of them — but that
+was the index/pool confusion above: 13515 sits in `[2f0293]`'s **pool** (11034-16523), reached from
+index file 10337 = id 548. `r_onlinelobby`'s own `scenerio.gcx` is a 101-byte stub, so there is no
+second script to extract; look in the lobby set for text you expect elsewhere before concluding it
+is missing.
 
 ## `.dlz` — SEGS, not supported by Solideye
 
