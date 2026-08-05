@@ -135,16 +135,20 @@ public final class GameplaySettingsWriter {
 	}
 
 	/**
-	 * <b>First Person View Memory</b>, in the low nibble: {@code 0} Enabled, {@code 1} Disabled.
-	 * With it enabled, dropping out of first-person aim leaves the camera where you were looking
-	 * instead of snapping back, so it changes what happens every time the player releases aim.
+	 * <b>First Person View Memory</b>, in the low nibble: {@code 0} <b>Disabled</b>, {@code 1}
+	 * <b>Enabled</b>. With it enabled, dropping out of first-person aim leaves the camera where you
+	 * were looking instead of snapping back, so it changes what happens every time the player
+	 * releases aim. The client's own default is 0 ({@code 0x947514}) — the feature ships off.
 	 *
 	 * <p><b>This wrote bit 1 until 2026-08-04, and the setting had never worked.</b> The client
 	 * reads the whole low nibble ({@code 0x906864}) and its validator rewrites anything above 1 to
-	 * 1 ({@code 0x947AF8}), so a stored "true" arrived as <i>Disabled</i>; and because the
-	 * write-back read the same absent bit, the player's choice was discarded every session. The
-	 * column is named for the wire's polarity now — the value it carries is the one the client
-	 * stores.
+	 * 1 ({@code 0x947AF8}), so a stored "true" arrived as the wrong state; and because the
+	 * write-back read the same absent bit, the player's choice was discarded every session.
+	 *
+	 * <p><b>The polarity is read, not counted.</b> The first fix inverted it by assuming the value
+	 * order matched the order the two label strings sit in the disc pool. The row descriptor at
+	 * {@code 0x105E1D4} gives it directly: {@code +36 = 87} is value 0 and id 87 is 無効
+	 * "Disabled"; {@code +40 = 86} is value 1 and id 86 is 有効 "Enabled".
 	 *
 	 * <p>The high nibble is a second two-state field with the same clamp ({@code 0x906870},
 	 * {@code 0x947B20}) and a client default of <b>1</b>, which we send as 0. It has no row in the
@@ -152,7 +156,7 @@ public final class GameplaySettingsWriter {
 	 * recorded because its neighbour in the same byte is not.
 	 */
 	public static int firstViewMemory(CharaSettings s) {
-		return s.isFirstViewMemoryDisabled() ? 1 : 0;
+		return s.isFirstViewMemory() ? 1 : 0;
 	}
 
 	public static int radar(CharaSettings s) {

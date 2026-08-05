@@ -993,7 +993,7 @@ public class CharacterService {
 						first_view_vertical_invert = :firstViewVerticalInvert,
 						first_view_horizontal_invert = :firstViewHorizontalInvert,
 						first_view_camera_direction = :firstViewCameraDirection,
-						first_view_memory_disabled = :firstViewMemoryDisabled,
+						first_view_memory = :firstViewMemory,
 						radar_lock_north = :radarLockNorth,
 						radar_floor_hide = :radarFloorHide,
 						hud_hide_name_tags = :hudHideNameTags,

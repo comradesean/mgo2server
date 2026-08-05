@@ -1,0 +1,28 @@
+-- V73 fixed First Person View Memory onto the right nibble and then inverted its polarity. This
+-- puts the polarity back and restores the original column name, which was right all along.
+--
+-- V73 reasoned from the ORDER OF THE VALUE-LABEL STRINGS in the disc pool: "Enabled" sits at pool
+-- file 20577 and "Disabled" at 20583, so Enabled looked like value 0. That is an ordinal guess of
+-- exactly the kind this project keeps paying for.
+--
+-- The row-descriptor table settles it by reading, not counting. The ONLINE GAME OPTIONS screen
+-- drives each row from a 192-byte descriptor at 0x105BC54; the descriptor for this row is at
+-- 0x105E1D4, and it holds:
+--
+--     +0  = 15        the jump-table arm  (0x9AD0F4 + table[15] = 0x9ADA88, which calls
+--                     0x906864 = "lbz r3,18(r3); clrldi r3,r3,60" -- wire byte 0x12 low nibble)
+--     +8  = 31        label      -> "First Person View Memory"
+--     +32 = 2         value count
+--     +36 = 87        value 0    -> id 87 = JP 無効 = "Disabled"
+--     +40 = 86        value 1    -> id 86 = JP 有効 = "Enabled"
+--     +60 = 61        help       -> "Set memory function for First Person View..."
+--
+-- So value 0 is Disabled and value 1 is Enabled -- the opposite of what V73 assumed. The client's
+-- own default for this nibble is 0 (li r4,0 at 0x947514), i.e. the feature ships DISABLED.
+--
+-- Practical effect of the inversion, had it shipped: a player enabling the option would have been
+-- sent 0 and seen it Disabled, and vice versa. The default row was unaffected (false -> 0 ->
+-- Disabled, which is the client default either way), so it would have looked fine until someone
+-- touched the setting -- the same shape as the bug V73 was written to fix.
+
+ALTER TABLE public.chara_settings RENAME COLUMN first_view_memory_disabled TO first_view_memory;

@@ -102,8 +102,10 @@ public final class GameplaySettingsReader {
 		settings.setWeaponSwitchBefore(recall & 0b1111);
 		settings.setWeaponSwitchToggle((recall >> 4) & 0b1111);
 
-		// Low nibble compared against 1, not bit 1: 0 Enabled, 1 Disabled.
-		settings.setFirstViewMemoryDisabled((payload.getUnsignedByte(base + 18) & 0b1111) != 0);
+		// Low nibble compared against 1, not bit 1 — and 0 is Disabled, 1 is Enabled, per the row
+		// descriptor at 0x105E1D4 (+36 = id 87 "Disabled" for value 0, +40 = id 86 "Enabled" for
+		// value 1). See GameplaySettingsWriter#firstViewMemory.
+		settings.setFirstViewMemory((payload.getUnsignedByte(base + 18) & 0b1111) != 0);
 
 		var privacyB = payload.getUnsignedByte(base + 19);
 		settings.setReceiveNotices((privacyB & 0b1) != 0);

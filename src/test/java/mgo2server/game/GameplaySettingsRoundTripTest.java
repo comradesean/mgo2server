@@ -50,7 +50,7 @@ public class GameplaySettingsRoundTripTest {
 		s.setFirstViewVerticalInvert(false);
 		s.setFirstViewHorizontalInvert(true);
 		s.setFirstViewCameraDirection(true);
-		s.setFirstViewMemoryDisabled(true);
+		s.setFirstViewMemory(true);
 		s.setRadarLockNorth(true);
 		s.setRadarFloorHide(true);
 		s.setHudHideNameTags(true);
@@ -115,7 +115,7 @@ public class GameplaySettingsRoundTripTest {
 			.isEqualTo(original.isFirstViewHorizontalInvert());
 		assertThat(read.isFirstViewCameraDirection())
 			.isEqualTo(original.isFirstViewCameraDirection());
-		assertThat(read.isFirstViewMemoryDisabled()).isEqualTo(original.isFirstViewMemoryDisabled());
+		assertThat(read.isFirstViewMemory()).isEqualTo(original.isFirstViewMemory());
 		assertThat(read.isRadarLockNorth()).isEqualTo(original.isRadarLockNorth());
 		assertThat(read.isRadarFloorHide()).isEqualTo(original.isRadarFloorHide());
 		assertThat(read.isHudHideNameTags()).isEqualTo(original.isHudHideNameTags());

@@ -203,7 +203,7 @@ public class GameplaySettingsWriterTest {
 		var s = defaults();
 		assertThat(GameplaySettingsWriter.firstViewMemory(s)).isZero();
 
-		s.setFirstViewMemoryDisabled(true);
+		s.setFirstViewMemory(true);
 		assertThat(GameplaySettingsWriter.firstViewMemory(s)).isEqualTo(1);
 	}
 

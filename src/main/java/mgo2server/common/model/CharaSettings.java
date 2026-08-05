@@ -98,7 +98,7 @@ public class CharaSettings {
 
 	private boolean firstViewCameraDirection = true;
 
-	private boolean firstViewMemoryDisabled;
+	private boolean firstViewMemory;
 
 	private boolean radarLockNorth;
 
@@ -498,12 +498,12 @@ public class CharaSettings {
 		this.firstViewCameraDirection = firstViewCameraDirection;
 	}
 
-	public boolean isFirstViewMemoryDisabled() {
-		return firstViewMemoryDisabled;
+	public boolean isFirstViewMemory() {
+		return firstViewMemory;
 	}
 
-	public void setFirstViewMemoryDisabled(boolean firstViewMemoryDisabled) {
-		this.firstViewMemoryDisabled = firstViewMemoryDisabled;
+	public void setFirstViewMemory(boolean firstViewMemory) {
+		this.firstViewMemory = firstViewMemory;
 	}
 
 	public boolean isRadarLockNorth() {
