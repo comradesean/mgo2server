@@ -503,42 +503,46 @@ types:
       - id: lockon_and_bgm
         type: u1
         doc: |
-          [CORRECTED 2026-08-04 — BOTH HALVES OF THE OLD READING ARE REFUTED] 0x14 -> block byte 20.
+          [CORRECTED TWICE, 2026-08-04] 0x14 -> block byte 20.
 
-          **High nibble: no accessor exists. "BGM volume" is refuted.** The nibble-accessor bank ends at
-          `0x906894` (`lbz r3,20(r3); clrldi r3,r3,60` — byte 20's *low* nibble), and the next function
-          `0x9068A0` is the indexed macro helper. Control that the enumeration works: displacement 20 is
-          found, and displacements 18 and 19 are each found twice, so the sweep detects present members.
-          Combined with the earlier direct-load sweep over `profile+4941..4983`, **bits 4-7 have no
-          reader on this build**. The server's `bgm_volume` column cannot mean anything here.
+          **High nibble: no accessor exists. "BGM volume" is refuted.** The nibble-accessor bank
+          ends at `0x906894` (`lbz r3,20(r3); clrldi r3,r3,60` — byte 20's *low* nibble), and the
+          next function `0x9068A0` is the indexed macro helper. Control that the enumeration works:
+          displacement 20 is found, and 18 and 19 are each found twice. `0x906870` (byte 18 high) is
+          called only from the defaults/clamp run, never from a switch arm. So bits 4-7 have **no
+          reader on this build** and the server's `bgm_volume` column cannot mean anything here.
 
-          **Low nibble: a real, displayed row — but it is not lock-on.** `b20.lo4` stores to
-          `rowRecord+16` exactly like every other value row (unlike ids 25-38, whose arms jump straight
-          to the loop-continue at `0x9AD280`), so row 16 is drawn. It is two-state: clamp "above 1 -> 1"
-          (`0x9477E0`), default 0 (`0x9473C4`), persisted at record byte +38, and it has **no reader
-          outside the options screen**.
+          **Low nibble: `lock_on_enabled` was right all along.** A first pass refuted it on the
+          grounds that Lock-On is a host game rule rather than a player option. That reasoning was
+          sound and the conclusion was still wrong — **both exist**, and they are different
+          questions. The host's Common Setting (label id 556 *"Lock On (AUTO AIM)"*) is the room's
+          permission; this row is the player's own opt-out inside a room that allows it.
 
-          It cannot be Lock-On, because **Lock-On is a host game rule, not a player option**: strres
-          21044 *"Lock-On Settings"* / 21050 *"Set whether to turn Lock-On (Auto Aim) targeting on or
-          off"* sit in the game-creation block, and 12626/12632/12638 are the host-list filter strings
-          *"Only display games where 'Lock On' is enabled/disabled"*. A per-player toggle would make no
-          sense for a property of the room — which is exactly why it is filterable.
+          The binding is read from the screen's **row-descriptor table**, not inferred:
 
-          **What row 16 actually is remains unsettled.** Rows 0-15 consume the contiguous help block
-          20344-20434 sixteen for sixteen and row 17 takes 20440, so row 16 has no help string in that
-          run, and no matching label was found anywhere in `strres`. *Explicitly labelled speculation:*
-          the stale developer table at `0xE0DAC0`/`0xE0DBE0`/`0xE0DBF0` lists a two-valued `USB KEYBOARD
-          TYPE` (`101 ENGLISH` / `102 FRENCH`) with no home among the identified rows — but `strres`
-          contains no keyboard-layout string at all, so that table is describing an earlier build of this
-          screen and the claim is not made. What would settle it: a live capture with this nibble varied,
-          or the row-descriptor array (192-byte stride, element id at `+0`) traced to its constructor.
+          ```
+          descriptor 51 @ 0x105E294
+            +0  = 16     jump-table arm; 0x9AD0F4+table[16] = 0x9ADA50, which calls
+                         0x906894 = "lbz r3,20(r3); clrldi r3,r3,60"  <- THIS nibble
+            +8  = 265    label -> ロックオンの設定 / "Lock-On Settings"
+            +32 = 2      value count
+            +36 = 87     value 0 -> 無効 "Disabled"
+            +40 = 86     value 1 -> 有効 "Enabled"
+            +60 = 266    help  -> "Set whether to turn Lock-On (Auto Aim) targeting on or off."
+          ```
 
-          **Server status:** we send `lock_on_enabled ? 1 : 0` in the low nibble (default false = 0 =
-          the client's own default) and `(bgm_volume + 1) << 4` in the high nibble, which nothing reads.
-          Nothing is broken on the wire, and the round trip is faithful — but `lock_on_enabled` and
-          `bgm_volume` are two columns that do not mean what they say, and `bgm_volume` cannot mean
-          anything on this build. Recorded as a hazard rather than renamed, because row 16's real name is
-          still unknown and inventing a second wrong label would not be an improvement.
+          So **0 = Disabled, 1 = Enabled**, client default 0 (`0x9473C4`), clamp "above 1 -> 1"
+          (`0x9477E0`), persisted at record byte +38.
+
+          **Why the first pass missed it, which is the transferable part.** It reasoned from string
+          *position*: ids 265/266 sit past the contiguous help block `20344`-`20434`, appended at
+          the end of the set, so they looked like they belonged to the game-creation screen. They
+          are in fact the last entry of the Gameplay Options set — the row was added after the help
+          block was laid out. Position within a string set is not evidence of which screen owns a
+          string; the descriptor table is.
+
+          **Server status: RIGHT.** We send `lock_on_enabled ? 1 : 0`, the polarity matches, and the
+          column default false = 0 = the client's own default. Nothing to fix.
       - id: radar
         type: u1
         doc: |
