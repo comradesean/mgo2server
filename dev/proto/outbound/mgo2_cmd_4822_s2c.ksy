@@ -266,6 +266,26 @@ seq:
       `rec+131`, the letter's own subject. A second fork at `0x8E837C` gives the 1/2 path a
       different open sound (SE 91 vs SE 93) and leaves screen flag bit 16 clear.
 
+      **[THE CANNED SENTENCE, READ 2026-08-04.]** `CLAN_SUBJECT` (`0xE120E8`) hashes to
+      `0xB74CDA`, which is **id 31 of group `[e60831]`** (index file 17810, pool 18112-18117):
+
+      > JP クラン参加申請メール · **EN "Clan Join Mail"** · FR *"Mail d'adhésion au clan"* ·
+      > DE *"Post von Clan-Bewerber"* · IT *"Oggetto ingresso clan"* · ES *"Mensaje Unión Clan"*
+
+      So a clan join request has no author-written subject, and the client supplies one: the row is
+      headed **"Clan Join Mail"** regardless of what the server put in the subject field. That is
+      what makes the blank-preview hazard below cosmetic rather than fatal — the *row* is labelled
+      even when the preview line is not.
+
+      Its neighbours in the same pointer table (`0xFE7B90`-`0xFE7BA8`) are the mailbox screen's
+      description strips, and two of them are now read as well: **`MESSAGE_5B`** (id 38) is
+      *" View mail you have received.\r\n Up to 16 messages can be stored."* — the **Inbox** strip —
+      and **`MESSAGE_8`** (id 41) is *" Notices from the administrative team will appear here.\r\n
+      Be sure to read these whenever they arrive."* — the **Announcements** strip. The family also
+      holds id 36 *"You can only send mail to a maximum of 8 recipients at once"*, 37 *"Your inbox
+      is full…"*, 39 the Create-New-Mail help and 40 *"View mail you have sent. Up to 5 messages can
+      be stored."*
+
       **Nothing anywhere distinguishes 1 from 2** — both readers test the pair `(v-1) <= 1`. That
       is a genuine remaining unknown, not a coin flip to be resolved by picking one.
 

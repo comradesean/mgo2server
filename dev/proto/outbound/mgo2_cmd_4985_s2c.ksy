@@ -285,6 +285,29 @@ seq:
       "Team Name"** and the rule text is **668** *"Enter a team name. The following symbols can
       also be used: ..."*.
 
+      **[BAND CONFIRMED 2026-08-04.]** These ids were re-read from group `[2f0293]`'s own index
+      records rather than counted, and the earlier alignment holds with **no drift**:
+      **646 募集中 "Open"** / **647 出場中 "Deployed"** (the browser's status column),
+      **654 / 665 / 673 "Password Lock"**, **656 "No comment."**, **664 / 672 "Team Name"**,
+      **666 / 674 "Comment"**, **668** *"Enter a team name.\nThe following symbols can also be
+      used:\n !#$()*+,-./:;=?@[]^_｛｝"*, **670** *"This comment is displayed when\nplayers select
+      this team."*, **681-684 "Auto Join Team"** (four screen variants), **685** *"Automatically
+      form a team together with other characters who have selected the 'Auto Join Team' option."*,
+      **686** the same for *'Quick-Join Team'*. Context either side also resolved: 640 TEAM SELECT,
+      644/648 Join Team, 649 Members, 655 *"There are currently no teams open to join."*, 657
+      STATUS, 658-663 the CREATE TEAM family, 675 *"Good Luck."* (the default comment), 676 TEAM
+      CREATION, 677 AUTO TEAM CREATION, 687 *"Enter With This Team"*, 688 *"Change Rules"*, 689/690
+      the clan-affiliation pair.
+
+      One id from that band had been an open anomaly and is now resolved: **742** takes two format
+      arguments at `0x8CC474` and `0x8CDA8C`, which the previous alignment could not explain because
+      the string it landed on had no conversion specifiers. Read from the index table it is
+      *"The championship match has ended.\nWinning team: %s\nYour reward: %d"* — exactly the `%s`
+      then `%d` its callers pass (`r5` = the team-name buffer, `r6` = `lwa` of the reward). So the
+      formatter was not tolerating unused arguments; the alignment was simply off. It is the
+      end-of-tournament results banner: after the final match every participant sees the winning
+      team and their own Metal Gear Point reward on one dialogue.
+
       **The role is no longer inferred — there are two readers**, both on the `screen+108` spill
       channel:
 
