@@ -319,8 +319,14 @@ seq:
       **[NAME CONFIRMED 2026-08-04 — no longer tier 4.]** Create-game row `0x8A5CB0`-`0x8A5D30`
       adjusts this u16 with a clamp of **[0, 99]** and renders it with unit string **574**. The
       ELF's own developer table names it `"IDLE KICK"` (`0x105AE38`), the disc row label is
-      **"Idle Kick"** (*Ejection pour inactivite* / *Kick bei Untaetigkeit*), and the consequence
-      text exists too: *"You have been ejected for inactivity. Leaving the game."*
+      **"Idle Kick"** (label id 566, *Ejection pour inactivite* / *Kick bei Untaetigkeit*), and the
+      consequence text exists too: *"You have been ejected for inactivity. Leaving the game."*
+
+      **[UNIT CONFIRMED 2026-08-04 — the suffix string is literally "min."]** Id **574** resolves to
+      JP 分 and **`min.`** in English, French, Italian and Spanish (`Min.` in German). So the row
+      renders as `3 min.` / `3分`, the wire is **minutes**, and the `mulli r11,r11,60` on the
+      publish path is a minutes-to-seconds conversion for the stage script rather than any kind of
+      scaling fudge. Nothing here needs to hedge on the unit any more.
 
       So: minutes of no controller input before the game boots you, 0 disabling it — and the
       client zeroes the field itself when `commonA` bit 0 (the Idle Kick **enable**) is clear,
@@ -337,7 +343,14 @@ seq:
       **573** — the *count* suffix, where `idle_kick` uses **574**, the *time* suffix. That single
       difference separates the two inside the binary, and it is corroborated by the missing
       `mulli ...,60` on this one's publish path. Developer table `0x105AE30` = `"TEAMMATE KILLER
-      KICK"`; disc row label **"Team Kill Kick"**.
+      KICK"`; disc row label **"Team Kill Kick"** (label id 565).
+
+      **[SUFFIX RESOLVED 2026-08-04, and it is a good joke on the translators.]** Id **573** is JP
+      人 ("people") — and in **English, French, German, Italian and Spanish it is a single space**,
+      all five sharing one pool entry. Konami localised the *time* suffix and did not localise the
+      *count* one, so a Japanese player reads `16人` and everyone else reads `16` with a trailing
+      space. That is why the two suffix families were distinguishable from the ELF long before
+      anyone could read them: 574 carries a word, 573 carries nothing.
 
       **What the player sees:** the number of teammates you may kill before being ejected, with a
       HUD warning counting down the remainder — the ELF carries the literal format string
