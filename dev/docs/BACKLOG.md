@@ -262,6 +262,14 @@ per frame), from the conversion constants at `0xFBE4F8`/`0xFBE540`/`0xFBE548` in
 
 **Instructor machinery, located but not cracked:** `InstructorMan` constructor at `0x6D9670`
 (sibling `0x6D9728`), vtable `0xFB4F00`, module base `r30 = *(r2 − 29656) = 0xFE5B68`. The
+**[REFUTED 2026-08-04 — see `dev/proto/inbound/mgo2_cmd_4310_c2s.ksy`.]** The claim below that the
+`HOST_STANCE_*` names are a debug table is wrong: they are **string-resource keys**. Each hashes
+(rot-5-add 24-bit, `0xD25D0`) to an index record in disc set `[40eff4]`, and `0xA31194`-`0xA312CC`
+builds a 10-entry dispatch table of those hashes which `0xA31B68` resolves and pushes to the text
+widget. The player reads *Casual / Serious / Newbies Welcome / …* off it. The paragraph is left in
+place because its *other* conclusion — that slot 8 is an unwritten gap — was right, and because the
+"debug table" reading is exactly the kind of plausible-but-wrong inference worth keeping visible.
+
 `HOST_STANCE_*` names are a **debug enum→name table**, read only at `0xA311E4`–`0xA31204` inside a
 status dump; the stance itself is a u8 at `+165` with ten legal values. The ENTRY → STARTED
 transition was not found, and the instructor module contains **no writes to any skill record** — a

@@ -229,16 +229,60 @@ seq:
       0 HOST_STANCE_EASY                 5 HOST_STANCE_TRAINING
       1 HOST_STANCE_REAL                 6 HOST_STANCE_INSTRUCTOR_ENTRY
       2 HOST_STANCE_BEGINNER             7 HOST_STANCE_INSTRUCTOR_STARTED
-      3 HOST_STANCE_EVERYONE             8 (slot left zero)
+      3 HOST_STANCE_EVERYONE             8 (slot left zero -- NOT "Special", see below)
       4 HOST_STANCE_OTHER                9 HOST_STANCE_NONE
       ```
 
       Range-gated `cmplwi 9 / bgt` at `0xA31230`; the +/- cycler clamps 0..9 at `0xA32700`, with
       values above 4 additionally gated on a lobby flag (`0x964470`, mask `0x20020`) — the
-      training-only half. [INFERRED] the disc labels (set `[40eff4]`, ids 172-181) map on in order:
-      Casual, Serious, Newbies Welcome, Everyone Welcome, Other, Training, Accepting Trainees,
-      Closed to New Applicants, Special, No Conditions. Corroborated by the Create Game default at
-      `0x89B508` picking 6 in training lobbies, which lands on "Accepting Trainees".
+      training-only half.
+
+      **[CONFIRMED 2026-08-04, and the `[INFERRED]` label list was wrong in one slot.]** The
+      `HOST_STANCE_*` strings are **not** a debug enum→name table — they are **string-resource
+      keys**. Each hashes (rot-5-add 24-bit, `0xD25D0`) to an index record in disc set `[40eff4]`,
+      so the mapping is read rather than assumed. The dispatch table is built on the stack at
+      `0xA31194`-`0xA312CC`: nine `bl 0xD25D0` calls hash the nine pointers at `0xFEB694`-`0xFEB6B4`
+      into r19…r27, which are stored into a **10-entry, 8-byte-stride table** at `r1+152` after a
+      `memset(r1+152, 0, 80)` (`0xA31248`). Lookup is `r5 = r18 + (stance << 3) & 0x7F8`, then
+      `lwz r3,40(r5)`, resolved and pushed to the text widget at `0xA31B68`.
+
+      | value | store site | key | strres id | JP | EN |
+      | --- | --- | --- | --- | --- | --- |
+      | 0 | `stw r19,152` | `HOST_STANCE_EASY` | 173 | 気楽 | **Casual** |
+      | 1 | `stw r20,160` | `HOST_STANCE_REAL` | 174 | 真剣 | **Serious** |
+      | 2 | `stw r21,168` | `HOST_STANCE_BEGINNER` | 175 | 初心者歓迎 | **Newbies Welcome** |
+      | 3 | `stw r22,176` | `HOST_STANCE_EVERYONE` | 176 | 誰でも歓迎 | **Everyone Welcome** |
+      | 4 | `stw r23,184` | `HOST_STANCE_OTHER` | 178 | その他 | **Other** |
+      | 5 | `stw r24,192` | `HOST_STANCE_TRAINING` | 179 | 訓練 | **Training** |
+      | 6 | `stw r25,200` | `HOST_STANCE_INSTRUCTOR_ENTRY` | 180 | 生徒受付中 | **Accepting Trainees** |
+      | 7 | `stw r26,208` | `HOST_STANCE_INSTRUCTOR_STARTED` | 181 | 生徒締切 | **Closed to New Applicants** |
+      | **8** | *(nothing — offset 216 is never written)* | — | — | — | **no label at all** |
+      | 9 | `stw r27,224` | `HOST_STANCE_NONE` | 172 | スタンスなし | **No Conditions** |
+
+      **The correction: slot 8 is not "Special".** The old inferred list mapped ids 172-181 onto
+      values 0-9 in order and so handed id 177 (特殊 / "Special") to slot 8. `entry[8]` is left zero
+      by the `memset` and never stored, and `cmpwi r3,0 / bne` at `0xA312D4` sends it down the
+      *no-stance* path — identical to an out-of-range value. Id **177 is not a stance label**: its
+      hash `0xB0514A` matches no string in the ELF and it appears nowhere in the dispatch table; it
+      merely sits between EVERYONE and OTHER in the set, which is exactly what made the in-order
+      mapping look right. Note the real order is not sequential either — `HOST_STANCE_NONE` is id
+      **172**, the *lowest* id, bound to the *highest* value.
+
+      Control for that negative: the same hash search does find all nine `HOST_STANCE_*` names plus
+      488 other name↔record matches, so it finds strings when they exist.
+
+      **Cycler detail**, refining the note above: the ± cycler only ever *produces* 0-4. Down from 0
+      wraps to 4; down from anything above 5 lands on 4 via the `cmplwi 4 / ble … li 4` clamp; up
+      from 9 wraps to 0; up past 4 is either forced to 0 or reverted to 4 depending on the
+      `0x964470` lobby-flag query. So **5-7 are server- or training-assigned states the host cannot
+      reach by hand**, and 9 is enterable but not cyclable-to. Corroborated by the Create Game
+      default at `0x89B508` picking 6 in training lobbies, which lands on "Accepting Trainees".
+
+      **What the player sees.** This is the "Conditions" line on Create Game and the room's header
+      in the lobby browser — the host's advertised etiquette. Someone scanning the list reads
+      *Casual* against *Serious* against *Newbies Welcome* to judge whether they are wanted there.
+      The training values are the tutorial lobby's own state machine, shown while an instructor is
+      recruiting or has closed applications.
 
       **The in-game edit `0x43c0` carries this field at ITS OWN wire `0xA1`**, not here. That packet
       is a strict subset of the same struct — name, comment, password flag, password, stance — and
