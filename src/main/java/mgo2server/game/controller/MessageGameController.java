@@ -274,8 +274,14 @@ public class MessageGameController implements IGameController {
 	 * hardcodes its category at {@code 0x8E7EF0} instead of reaching it through the current-box
 	 * selector — every one of that selector's eleven writers stores 0 or 3.
 	 *
-	 * <p>Note the disc also states the 16-message Inbox cap this class enforces, and a <b>5</b>
-	 * message cap on Sent that we do not.
+	 * <p>The Inbox help text states the same 16-message cap this class enforces. The Sent help
+	 * text says <b>5</b>, and that number is <b>not a client rule</b>: the router at
+	 * {@code 0xD34800} loads {@code li r10,16} as the limit for <i>every</i> category and raises
+	 * it only for category 4, so the client's Sent array holds 16 exactly like the Inbox. Nor is
+	 * it a send-side rule — the only refusal is {@link #RECIPIENT_MAILBOX_FULL}, which is about
+	 * the <i>recipient's</i> inbox. So the 5 describes what Konami's server chose to retain, and
+	 * that sentence is the only evidence it existed. We show the newest 16 and delete nothing;
+	 * matching the 5 would be operator policy with nothing to gain.
 	 */
 	private static final int CATEGORY_ANNOUNCEMENT =
 		category("MGO2SERVER_MAIL_CATEGORY_ANNOUNCEMENT", 3);

@@ -157,6 +157,16 @@ seq:
       why the Sent screen hardcodes its category at `0x8E7EF0` rather than reaching it through the
       current-box selector.
 
+      Two caps appear in that help text and only one of them is a rule. The Inbox's **16** is
+      enforced by the client: `0xD34858` compares the category counter against the limit and
+      `bge`-skips the record, so a 17th entry is silently dropped on arrival — it does not evict
+      an existing one. The Sent box's **5** is *not* a client rule at all; the router loads
+      `li r10,16` as the limit for every category and only raises it to 64 for category 4, so the
+      Sent array holds 16 like every other. The 5 describes the original server's retention
+      policy, and the sentence is the only evidence of it — there is no counter, no eviction and
+      no error code behind it. Note also that both caps count **undeleted** entries, not unread
+      ones; unread is the separate byte at `+274`.
+
       **What the player sees:** this byte is the filing clerk. It decides which tab a letter lands
       under and is never itself displayed. Wrong-but-valid puts the letter in the wrong list;
       out-of-range corrupts the heap, which is what the `0x0F` incident was.
