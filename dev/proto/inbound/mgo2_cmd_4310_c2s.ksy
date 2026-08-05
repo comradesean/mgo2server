@@ -327,83 +327,87 @@ seq:
       src+922..928 exist in the client's struct and are **not** transmitted.
       Capture-proven: flipping only friendly fire moved exactly `0x142` bit 3.
 
-      **[COMPLETE BIT MAP, 2026-08-04.]** Every bit is now named from the client's own Create
-      Game code rather than transcribed. The route: the **Common Settings summary renderer**
-      `0x8A8A2C`-`0x8A93C4` walks the rows in menu order and, for each, fetches a label id via
-      `0x8E0C24` and either reads a struct field or bit-tests the flags word at src+928; its
-      sibling is the **edit handler bank** `0x8A4F4C`-`0x8A6EAC` (twenty functions, OPDs
-      `0x101AEC0`-`0x101AF68`). Label ids run **585..607**, one per disc row, in disc order.
+      **[COMPLETE BIT MAP — read directly, 2026-08-04.]** Every bit is bound to a named row by
+      the client's own Create Game code. **This is not an ordinal argument.** The Common Settings
+      **summary renderer** `0x8A8A2C`-`0x8A93C4` emits, per row, a `lwz rX,928(rY)` followed by a
+      single-bit test and then a `li r3,<help id>` for that same row — so each bit and its row name
+      come out of the same straight-line block. The bit falls out of the `rldicl.` shift with no
+      interpretation, and the row name falls out of the id.
 
-      Bit numbering below is LSB = bit 0 of the big-endian u32 at src+928, so `common_a` is
-      bits 16-23 and `common_b` is bits 8-15.
+      Bit numbering is LSB = bit 0 of the big-endian u32 at src+928, so `common_a` is bits 16-23
+      and `common_b` is bits 8-15.
 
-      | LSB bit | byte | row | edit handler | summary site |
-      | --- | --- | --- | --- | --- |
-      | 8 | commonB 0 | **Teams Switch Positions** | `0x8A6720` | `0x8A8EC0` |
-      | 9 | commonB 1 | **Auto Assign Teams** | `0x8A6810` | `0x8A8E60` |
-      | 10 | commonB 2 | **Silent Mode** (Information Log hidden) | `0x8A6900` | `0x8A8E00` |
-      | 11 | commonB 3 | **Enemy Nametag Display** | `0x8A69F0` | `0x8A8DA0` |
-      | 12 | commonB 4 | **Level Limit enable** | `0x8A6234` | `0x8A9000` |
-      | 13 | commonB 5 | **Allow Quick-Join** | `0x8A64D0` | `0x8A8FA0` |
-      | 14 | commonB 6 | **Voice Chat allowed** | `0x8A6110` | `0x8A9114` |
-      | 15 | commonB 7 | **Team Kill Kick enable** | `0x8A5EB8` | `0x8A9178` |
-      | 16 | commonA 0 | **Idle Kick enable** | `0x8A5C60` | `0x8A9258` |
-      | 17 | commonA 1 | *no row rendered anywhere* | — | — |
-      | 18 | commonA 2 | *no row rendered anywhere* | — | — |
-      | 19 | commonA 3 | **Friendly Fire** | `0x8A6BD0` | `0x8A8CC0` |
-      | 20 | commonA 4 | **Ghost Pranks** | `0x8A65FC` | `0x8A8F20` |
-      | 21 | commonA 5 | **Lock On (AUTO AIM)** | `0x8A6AE0` | `0x8A8D40` |
-      | 22 | commonA 6 | **touched by no instruction in the image** | — | — |
-      | 23 | commonA 7 | *no row rendered anywhere* | — | — |
+      | LSB bit | byte | summary site | label id | row | edit handler |
+      | --- | --- | --- | --- | --- | --- |
+      | 8 | commonB 0 | `0x8A8EC0` | 560 | **Teams Switch Positions** | `0x8A6720` |
+      | 9 | commonB 1 | `0x8A8E60` | 559 | **Auto Assign Teams** | `0x8A6810` |
+      | 10 | commonB 2 | `0x8A8E00` | 558 | **Silent Mode** | `0x8A6900` |
+      | 11 | commonB 3 | `0x8A8DA0` | 557 | **Enemy Nametag Display** | `0x8A69F0` |
+      | 12 | commonB 4 | `0x8A9000` | 563 | **Level Limit** (enable) | `0x8A6234` |
+      | 13 | commonB 5 | `0x8A8FA0` | 562 | **Allow Quick-Join** | `0x8A64D0` |
+      | 14 | commonB 6 | `0x8A9114` | 564 | **Voice Chat** allowed | `0x8A6110` |
+      | 15 | commonB 7 | `0x8A9178` | 565 | **Team Kill Kick** (enable) | `0x8A5EB8` |
+      | 16 | commonA 0 | `0x8A9258` | 566 | **Idle Kick** (enable) | `0x8A5C60` |
+      | 17 | commonA 1 | — | — | *no row rendered anywhere* | — |
+      | 18 | commonA 2 | — | — | *no row rendered anywhere* | — |
+      | 19 | commonA 3 | `0x8A8CC0` | 554 | **Friendly Fire** | `0x8A6BD0` |
+      | 20 | commonA 4 | `0x8A8F20` | 561 | **Ghost Pranks** | `0x8A65FC` |
+      | 21 | commonA 5 | `0x8A8D40` | 556 | **Lock On (AUTO AIM)** | `0x8A6AE0` |
+      | 22 | commonA 6 | — | — | **touched by no instruction in the image** | — |
+      | 23 | commonA 7 | — | — | *no row rendered anywhere* | — |
 
-      **The row-to-bit alignment is forced by five anchors, each landing on a different row**, so
-      it is not an ordinal guess:
+      The one **tier-2** cross-check: bit 19 is Friendly Fire, which is exactly the capture-proven
+      2026-07-22 result (flipping only friendly fire moved `0x142` bit 3 = LSB 19).
 
-      - **591 = Friendly Fire** — `0x8A8CC0` bit-tests LSB **19 = commonA bit 3**, which is
-        exactly the capture-proven 2026-07-22 result above. That is a **tier-2** anchor.
-      - **599 = Allow Quick-Join** — the only row drawing value labels 582/583 instead of the
-        571/572 Enable/Disable pair, and the disc's only Allow/Disallow pair.
-      - **600 = Level Limit** — `0x8A9058 li r3,584` (the `%d ± %d` format) then
-        `0x8A9090 lbz r6,847(r9)`; the edit handler `0x8A6234` uses the same 584.
-      - **602/603 = Team Kill Kick / Idle Kick** — `0x8A91A4 lhz r5,934` with unit string **573**,
-        `0x8A9284 lhz r5,932` with unit **574**; the disc help text says team-kill-kick counts
-        *teammates* while idle-kick counts *time*, so 573 is the count unit and 574 the time one.
-      - **606 = Weapon Restriction Settings** — `0x8A9344 lbz r0,802(r9)` / `clrldi. r9,r0,63`.
-        This is the closing anchor: it only lands on 606 if **Auto Balance consumed two ids**
-        (604, 605) — which the disc independently predicts, because auto-balance is the one row
-        with two help texts (balance Ratings, balance Levels).
+      **[CORRECTION, later the same day — the ids in this table were wrong by 37.]** They were
+      first published as 585..607 and described as label ids. **585..607 are the HELP ids.** The
+      row **labels** are **548..570**, and the relation is exact: *every row's help text is at
+      `label + 37`*. The mistake was harmless to the bit map — the summary renderer loads the help
+      id, so the binding above is unaffected — but it made a run of ids wrong wherever they were
+      quoted, and it invented an anchor that does not exist. That claimed anchor was: *"Weapon
+      Restriction Settings only lands on 606 if Auto Balance consumed two ids (604, 605), which the
+      disc predicts because auto-balance is the one row with two help texts."* Reading the group's
+      index table gives a single **567 Auto Balance Teams**, with **568 Weapon Restrictions** and
+      **569 Weapon Restriction Settings** adjacent — an enable plus its sub-screen. The
+      two-help-text observation was real; the inference drawn from it was not, and it is retracted.
 
-      **[CONFIRMED AGAINST THE DISC, 2026-08-04.]** The alignment above was originally an
-      *ordinal* argument — row order matched disc order, pinned by five anchors. It is now read
-      directly: the lobby's extracted string resources carry the whole label run as consecutive
-      records at file indices **13515-13633**, and walking them reproduces ids 585..607 in exactly
-      the published order — 585 `ホスト専用`/**Dedicated Host Settings**, 586 **Unique
-      Characters**, 587 **A Team Unique Characters**, 588 **B Team Unique Characters**, 589 **Max
-      Number of Characters**, 590 **Briefing Time**, 591 **Friendly Fire**, 592 **Headshots**,
-      593 **Lock On (AUTO AIM)**, 594 **Enemy Nametag Display**, 595 **Silent Mode**, 596 **Auto
-      Assign Teams**, 597 **Teams Switch Positions**, 598 **Ghost Pranks**, 599 **Allow
-      Quick-Join**, 600 **Level Limit**, 601 **Voice Chat**, 602 **Team Kill Kick**, 603 **Idle
-      Kick**, 604/605 **Auto Balance Teams**, 606 **Weapon Restriction Settings**, 607 **Skills**.
+      The full label run, read from the group's index records rather than counted:
 
-      Two records in that run are shorter than six files because most or all of their language
-      variants are deduplicated to earlier records (591 keeps only the French *"Tir allié"*, 601
-      keeps none) — which is precisely the packing that makes disc id -> file index non-linear,
-      and precisely the two rows the ordinal argument had to reason around. Both land where the
-      anchors put them.
+      ```
+      548 Dedicated Host Settings      560 Teams Switch Positions
+      549 Unique Characters            561 Ghost Pranks
+      550 A Team Unique Characters     562 Allow Quick-Join
+      551 B Team Unique Characters     563 Level Limit
+      552 Max Number of Characters     564 Voice Chat
+      553 Briefing Time                565 Team Kill Kick
+      554 Friendly Fire                566 Idle Kick
+      555 Headshots                    567 Auto Balance Teams
+      556 Lock On (AUTO AIM)           568 Weapon Restrictions
+      557 Enemy Nametag Display        569 Weapon Restriction Settings
+      558 Silent Mode                  570 Skills
+      559 Auto Assign Teams
+      ```
 
-      **What a player sees**, for the rows worth spelling out: Silent Mode hides the Information
-      Log (help: *"When enabled, the Information Log is not displayed."*); Friendly Fire is
-      *"player's attacks can harm their teammates"*; Level Limit restricts the room to players
-      within a level band, and the band itself is the `±` pair at src+847/848; Allow Quick-Join
-      decides whether the room accepts automatched joiners; Team Kill Kick and Idle Kick are the
-      **enables** for the two counters at src+934 and src+932, so clearing either bit makes the
-      client zero the matching number.
+      followed contiguously by the shared value labels **571 Enable / 572 Disable**, the unit
+      suffixes **573** (JP 人, blank in every western language) and **574** (`min.`), a second
+      **575/576 Enable/Disable** pair, the unique-character names **577-581** (Johnny (Akiba),
+      Meryl, Liquid Ocelot, Mei Ling, Raiden), **582 Allow / 583 Disallow**, the level-limit format
+      **584 `%d ± %d`**, and then the 23 help texts at 585-607.
 
-      **Four bits have no rendered row: 17, 18, 22 and 23.** The unrendered rows are exactly four
-      as well — 586 Unique Characters, 592 Headshots, 604 Auto Balance (Ratings), 605 Auto Balance
-      (Levels). Four bits, four rows — but **which goes where is not decidable from this image**,
-      and any pairing is speculation. Bit 22 is the strongest of the four negatives: no
-      instruction anywhere touches it.
+      **What a player sees**, for the rows worth spelling out: Silent Mode hides the Information Log
+      (*"When enabled, the Information Log is not displayed."*); Friendly Fire is *"player's attacks
+      can harm their teammates"*; Level Limit restricts the room to a level band, and the band is
+      the `±` pair at src+847/848 rendered through format 584; Allow Quick-Join decides whether the
+      room accepts automatched joiners; Team Kill Kick and Idle Kick are the **enables** for the two
+      counters at src+934 and src+932, so clearing either bit makes the client zero the matching
+      number.
+
+      **Four bits have no rendered row: 17, 18, 22 and 23.** Four rows are unrendered too — 549
+      Unique Characters, 555 Headshots, and the two Auto Balance variants behind 567. Four and
+      four, but **which goes where is not decidable from this image**, and any pairing is
+      speculation. Bit 22 is the strongest of the four negatives: no instruction anywhere touches
+      it.
+
   - id: common_flags_lsb
     type: u1
     doc: |
