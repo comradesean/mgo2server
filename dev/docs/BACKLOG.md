@@ -4,6 +4,52 @@ Deliberately deferred work. Each entry records why it is deferred and what the f
 like, so picking it up later does not mean re-deriving it. Entries move to the ordinary docs when
 done.
 
+## Sent-mail retention: Konami kept 5, the client allows 16, and we keep everything
+
+**Recorded 2026-08-04. Not a bug, and deliberately not acted on — the point is that the decision
+is ours and has never been made.**
+
+The disc's own help text for the Sent tab reads *"View mail you have sent. **Up to 5 messages can
+be stored.**"* (files 18166-18171), against the Inbox's *"...Up to 16 messages can be stored."*
+(18154-18159).
+
+**The 16 is a real client rule. The 5 is not a rule at all.** The mail router at `0xD34800` loads
+`li r10,16` as the per-category limit for *every* category and raises it only for category 4 (the
+flat view, 64); `0xD34858` then compares the category counter against that limit and `bge`-skips
+the arriving record. So:
+
+- the client's Sent array holds **16**, exactly like the Inbox;
+- nothing evicts — an over-limit entry is dropped **on arrival**, it does not displace an existing
+  one;
+- both counters are over **undeleted** entries, not unread ones (unread is the separate byte at
+  `+274`, which only drives the row icon);
+- there is no send-side rule either. The only refusal is **-802** *"Receiver's mailbox is full."*,
+  and it is about the **recipient's inbox**, not your own sent box.
+
+So the 5 is a **historical fact about the original operator**: Konami's server retained five sent
+letters per player, and this sentence is the only evidence that policy ever existed. There is no
+counter, no eviction and no error code anywhere in the client that would produce it.
+
+**What we do today:** `MessageGameController` asks for the newest 16 (`sentMail(charaId,
+MAILBOX_MAX)`, `order by sent_at desc limit 16`) and never deletes a row. Rows accumulate
+indefinitely in `mail`; only the newest 16 are ever shown.
+
+**The open question, and why it is worth a look rather than a shrug.** Three options, and we have
+picked the middle one by inheritance rather than by decision:
+
+1. **Match Konami — retain 5.** Faithful to the original, and the only reading under which the
+   disc's own help text is true for a player of this server. Costs nothing but throws away history
+   the client would happily display.
+2. **Keep 16 (today).** Fills the client's array, and the help text quietly lies by 11.
+3. **Keep 16 for display but prune storage.** The reason this is on the backlog at all: nothing
+   currently bounds the `mail` table on the sender side. `sender_deleted` is only set by the
+   player, and a row is not removed until *both* sides delete it — so a player who never clears
+   their Sent box accumulates rows forever. That is a storage question, not a protocol one, and it
+   is the part that could actually bite.
+
+Whichever is chosen, it is **operator policy** and must be labelled as such — the client has no
+opinion above 16.
+
 ## Serve the PSN / MGO Shop subsystem, so 1.36 does not have to be bypassed
 
 **Operator request, 2026-08-02. Not now — recorded so the bypass does not quietly become the
