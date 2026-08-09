@@ -18,7 +18,7 @@
 
         <!-- Runtime -->
         <netty.version>4.2.16.Final</netty.version>
-        <jooby.version>4.5.3</jooby.version>
+        <jooby.version>4.5.4</jooby.version>
         <jackson.version>2.22.1</jackson.version>
         <jdbi.version>3.54.0</jdbi.version>
         <flyway.version>13.0.0</flyway.version>
